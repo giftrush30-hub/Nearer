@@ -2,26 +2,34 @@
 
 **Your people. Nearby. Offline.**
 
-NeaRer is a native Android app being built for nearby communication and file sharing over a direct local connection. Its design goal is to let two compatible Android phones connect without mobile data or an internet server.
+NeaRer is a native Android app being built for nearby communication and file sharing over a direct local connection. Its goal is to let compatible Android phones connect and exchange information without mobile data or an internet server.
 
-## Current implementation
+## Implemented in the current source
 
-- Kotlin + Jetpack Compose Android application with a dark midnight / mint visual identity.
+- Kotlin + Jetpack Compose Android app with a midnight-blue and mint visual identity.
 - Wi-Fi Direct peer discovery and connection requests.
 - App-level identity greeting and explicit accept/reject approval.
-- Direct one-to-one text messages over the Wi-Fi Direct socket.
-- Message IDs and delivery acknowledgements.
-- Direct file transfer using chunked Base64 frames over the same local socket.
-- Received files are stored in NeaRer's private app storage and can be opened through Android's file-sharing provider.
+- One-to-one text chat over the local Wi-Fi Direct socket.
+- Message IDs, duplicate suppression and delivery acknowledgements.
+- Recent chat history saved locally (up to 500 messages).
+- Direct file selection and chunked file transfer.
+- SHA-256 and byte-count verification before a received file is accepted.
+- Received files saved in NeaRer's private app storage, with an action to open them using a compatible Android app.
+- File transfer size guardrail of 200 MB.
 - GitHub Actions workflow builds a debug APK and uploads it as `nearer-debug-apk`.
 
-## Important testing status
+## Testing and known limitations
 
-The features above are implemented in source code, but they are **not yet certified as working on physical phones**. The app needs two compatible Android devices with NeaRer installed, Wi-Fi enabled, and nearby-device permission granted. Android may also show its own Wi-Fi Direct invitation prompt.
+The code has **not yet been fully validated on two physical Android phones**. A successful automated build confirms compilation and APK packaging, not real-world Wi-Fi Direct compatibility or successful transfers. Device testing is still required.
 
-The current prototype supports one peer at a time. Chat history is currently held in memory and is not yet restored after the app is closed. File transfer currently has no resume-after-disconnect support or end-to-end encryption layer. Wi-Fi Direct provides link-level protection, but the app still needs stronger peer authentication and a security review before public release.
+Current prototype limitations:
+- One peer at a time; no group chats yet.
+- Chat works only while the two devices are connected. Recent local history is retained, but there is no offline message queue or cross-device sync.
+- File transfers do not yet support resume or user cancellation.
+- No end-to-end encryption or cryptographic identity verification has been added at the app protocol layer. Wi-Fi Direct provides link-level protection, but this is not a substitute for a reviewed end-to-end security design.
+- Device discovery and connection behavior can vary by phone hardware, Android release and manufacturer customizations.
 
-## Build
+## Build and download
 
 The GitHub Actions workflow runs on pushes to `main` and can also be started manually from the **Actions** tab. After a successful run, download the `nearer-debug-apk` artifact from that workflow run.
 
@@ -37,14 +45,14 @@ APK output:
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Next engineering milestones
+## Remaining release milestones
 
-1. Confirm clean APK build and test discovery, approval, messages and file transfers on two physical Android devices.
-2. Add durable local message/file history, retry handling, transfer progress and cancellation.
-3. Add stronger peer verification and secure session design before public release.
-4. Improve compatibility, accessibility, battery use and UI polish.
-5. Prepare signed release APK and a clear privacy/data-handling notice.
+1. Confirm a clean APK build from the latest commit.
+2. Test discovery, approval, two-way messaging and file transfers on two physical Android devices.
+3. Add transfer cancellation/resume, stronger peer verification and an end-to-end security design.
+4. Improve compatibility, battery use, accessibility and UI polish.
+5. Prepare a signed release APK and privacy/data-handling notice.
 
 ## Technical direction
 
-NeaRer uses Android Wi-Fi Direct for local peer-to-peer networking. Wi-Fi Direct can connect compatible devices without a conventional access point; after connection, apps exchange data using sockets. Actual support and behavior can vary by phone hardware, Android version and manufacturer software.
+NeaRer uses Android Wi-Fi Direct for local peer-to-peer networking. Wi-Fi Direct can connect compatible devices without a conventional access point; after connection, applications exchange data using sockets. It does not require mobile internet for the direct session, though Wi-Fi must be enabled and Android permissions and device support are required.
