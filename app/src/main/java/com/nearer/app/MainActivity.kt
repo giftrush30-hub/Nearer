@@ -231,6 +231,17 @@ class MainActivity : ComponentActivity() {
             override fun onLost(id: String, stableId: String) { runOnUiThread {
                 val name = hybridPeers.remove(id)
                 if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
+                if (hybridConnectedEndpoint == id) {
+                    hybridConnected = false
+                    hybridConnectedEndpoint = null
+                    val legacyLinkAlive = peerSocket?.isConnected == true && peerSocket?.isClosed == false
+                    if (!legacyLinkAlive) {
+                        connectedDeviceName = null
+                        chatReady = false
+                        connectionMessage = "Nearby connection ended"
+                        chatNotice = "The selected nearby person disconnected. Search again to reconnect."
+                    }
+                }
             } }
             override fun onRequest(id: String, name: String, token: String) {
                 runOnUiThread {
@@ -1521,6 +1532,10 @@ private fun NeaRerHome(
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     var draft by remember { mutableStateOf("") }
+    val messageScrollState = rememberScrollState()
+    androidx.compose.runtime.LaunchedEffect(messages.size) {
+        messageScrollState.animateScrollTo(messageScrollState.maxValue)
+    }
     var showLudo by remember { mutableStateOf(false) }
     var activeSection by remember { mutableStateOf("home") }
     val pageScrollState = rememberScrollState()
@@ -1734,7 +1749,7 @@ private fun NeaRerHome(
                             Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         } else {
                             Column(
-                                modifier = Modifier.fillMaxWidth().height(150.dp).verticalScroll(rememberScrollState()),
+                                modifier = Modifier.fillMaxWidth().height(150.dp).verticalScroll(messageScrollState),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
                                 messages.forEach { message ->
