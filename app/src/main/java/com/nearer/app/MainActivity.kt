@@ -759,6 +759,11 @@ class MainActivity : ComponentActivity() {
                                         if (transfer.receivedBytes > maxTransferBytes) {
                                             incomingTransfers.remove(parts[1])?.close()
                                             transfer.file.delete()
+                                            runOnUiThread {
+                                                incomingTransferName = null
+                                                incomingProgress = 0f
+                                                chatNotice = "This file exceeds NeaRer's 200 MB transfer limit."
+                                            }
                                             synchronized(writerLock) { peerWriter?.println("FILE_DONE|${parts[1]}|ERROR") }
                                         } else {
                                             transfer.output.write(bytes)
@@ -844,6 +849,8 @@ class MainActivity : ComponentActivity() {
                 }
                 incomingTransfers.clear()
                 runOnUiThread {
+                    incomingTransferName = null
+                    incomingProgress = 0f
                     if (chatReady) {
                         chatReady = false
                         chatNotice = "The nearby connection ended. Reconnect to continue chatting."
