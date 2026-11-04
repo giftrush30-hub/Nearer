@@ -20,7 +20,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onRequest(id: String, name: String, token: String)
         fun onConnected(id: String, name: String, stableId: String)
         fun onDisconnected(id: String, stableId: String, name: String)
-        fun onMessage(id: String, senderName: String, body: String)
+        fun onMessage(id: String, senderName: String, senderStableId: String, body: String)
         fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
@@ -34,14 +34,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val activeEndpoints = mutableSetOf<String>()
     private val localStableId = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         .let { prefs ->
-            prefs.getString("nearer_stable_id", null) ?: UUID.randomUUID().toString().replace("-", "").take(6).uppercase().also {
+            prefs.getString("nearer_stable_id", null) ?: UUID.randomUUID().toString().replace("-", "").uppercase().also {
                 prefs.edit().putString("nearer_stable_id", it).apply()
             }
         }
+    val localMemberId: String get() = localStableId
     private fun encodedName(): String = "${localName.take(23)}|$localStableId"
     private fun decodeName(value: String): Pair<String, String> {
         val split = value.lastIndexOf('|')
-        if (split in 1 until value.lastIndex && value.length - split - 1 == 6) {
+        val idLength = value.length - split - 1
+        if (split in 1 until value.lastIndex && idLength in setOf(6, 32)) {
             return value.substring(0, split).take(23) to value.substring(split + 1).uppercase()
         }
         return value.take(23) to ""
@@ -51,11 +53,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val incomingMetadata = ConcurrentHashMap<Long, FileMeta>()
     private val incomingPayloads = ConcurrentHashMap<Long, Payload>()
     private val completedPayloads = ConcurrentHashMap<Long, Payload>()
+    private val successfulIncomingPayloadIds = ConcurrentHashMap.newKeySet<Long>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
     private val fileIo = Executors.newSingleThreadExecutor()
     private val seenMessageIds = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var relayEnabled = false
-    private var started = false
+    @Volatile private var started = false
+    @Volatile private var startGeneration = 0
     @Volatile private var localName = "NeaRer User"
 
     private val discovery = object : EndpointDiscoveryCallback() {
@@ -102,6 +106,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     incomingPayloads[payload.id] = payload
                     val meta = incomingMetadata[payload.id]
                     listener.onFileProgress(id, payload.id, meta?.name ?: "Incoming file", 0L, meta?.size ?: -1L, true)
+                    // The payload callback and SUCCESS update are not guaranteed to arrive
+                    // in a particular order. Remember either event and finish once both exist.
+                    if (successfulIncomingPayloadIds.contains(payload.id)) {
+                        completedPayloads[payload.id] = payload
+                    }
                     processCompletedFile(payload.id)
                 }
                 else -> listener.onFileStatus("NeaRer received an unsupported nearby transfer type.")
@@ -112,6 +121,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val payloadId = update.payloadId
             val outgoing = outgoingFiles[payloadId]
             val incoming = incomingMetadata[payloadId]
+            val incomingPayload = incomingPayloads[payloadId]
+            // File metadata is a BYTES payload and may arrive before or after the FILE
+            // payload. Identify the transfer from the FILE callback too, not metadata alone.
+            // This prevents a fast file completion from being ignored while metadata is late.
+            if (outgoing == null && incoming == null && incomingPayload == null) return
             val name = outgoing?.second ?: incoming?.name ?: "Incoming file"
             val isIncoming = outgoing == null
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
@@ -120,6 +134,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             }
             if (update.status == PayloadTransferUpdate.Status.SUCCESS) {
                 if (isIncoming) {
+                    successfulIncomingPayloadIds.add(payloadId)
                     incomingPayloads[payloadId]?.let { completedPayloads[payloadId] = it }
                     processCompletedFile(payloadId)
                 } else {
@@ -132,6 +147,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 incomingMetadata.remove(payloadId)
                 incomingPayloads.remove(payloadId)?.close()
                 completedPayloads.remove(payloadId)?.close()
+                successfulIncomingPayloadIds.remove(payloadId)
                 listener.onFileStatus("Nearby file transfer failed or was cancelled.")
             }
         }
@@ -158,8 +174,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val ttl = envelope.optInt("ttl", 0)
             if (messageId.isBlank() || body.isBlank() || body.length > 4000 || !seenMessageIds.add(messageId)) return
             if (seenMessageIds.size > 5000) seenMessageIds.remove(seenMessageIds.first())
-            val senderName = synchronized(names) { names[endpointId] ?: "Nearby member" }
-            listener.onMessage(endpointId, senderName, body)
+            val senderDetails = synchronized(names) {
+                (names[endpointId] ?: "Nearby member") to stableIds[endpointId].orEmpty()
+            }
+            listener.onMessage(endpointId, senderDetails.first, senderDetails.second, body)
             if (relayEnabled && ttl > 0) {
                 val forwarded = JSONObject().put("id", messageId).put("body", body)
                     .put("ttl", ttl - 1).put("hops", envelope.optInt("hops", 0) + 1)
@@ -177,6 +195,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         if (!completedPayloads.remove(payloadId, payload)) return
         incomingPayloads.remove(payloadId)
         incomingMetadata.remove(payloadId)
+        successfulIncomingPayloadIds.remove(payloadId)
         fileIo.execute {
             var destination: File? = null
             try {
@@ -214,10 +233,18 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         raw.substringAfterLast('/').substringAfterLast('\\')
             .replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100).ifBlank { "shared-file" }
 
-    private fun startAdvertising() {
+    private fun failStart(generation: Int, message: String) {
+        if (generation != startGeneration || !started) return
+        started = false
+        try { client.stopAdvertising() } catch (_: Exception) { }
+        try { client.stopDiscovery() } catch (_: Exception) { }
+        listener.onStatus(message)
+    }
+
+    private fun startAdvertising(generation: Int = startGeneration) {
         val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
         client.startAdvertising(encodedName(), serviceId, lifecycle, options).addOnFailureListener {
-            listener.onStatus("Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}")
+            failStart(generation, "Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. Tap Find people to retry.")
         }
     }
 
@@ -225,16 +252,17 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val clean = name.trim().replace("|", " ").take(23).ifBlank { "NeaRer User" }
         if (clean == localName) return
         localName = clean
-        if (started) { client.stopAdvertising(); startAdvertising() }
+        if (started) { client.stopAdvertising(); startAdvertising(startGeneration) }
     }
 
     fun start() {
         if (started) return
         started = true
+        val generation = ++startGeneration
         val discovering = DiscoveryOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
-        startAdvertising()
+        startAdvertising(generation)
         client.startDiscovery(serviceId, discovery, discovering).addOnFailureListener {
-            listener.onStatus("Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}")
+            failStart(generation, "Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. Tap Find people to retry.")
         }
         listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
     }
@@ -254,6 +282,45 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val envelope = JSONObject().put("id", messageId).put("body", body)
             .put("ttl", 4).put("hops", 0).put("origin", localName)
         return broadcast(envelope.toString(), null)
+    }
+
+    /**
+     * Sends a private chat packet to exactly one approved endpoint.
+     * Community broadcasts use send(); one-to-one conversations must never fan out.
+     */
+    fun sendToEndpoint(endpointId: String, body: String): Boolean {
+        if (endpointId.isBlank() || body.isBlank() || body.length > 4000) return false
+        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return false
+        val messageId = UUID.randomUUID().toString()
+        seenMessageIds.add(messageId)
+        val envelope = JSONObject().put("id", messageId).put("body", body)
+            .put("ttl", 0).put("hops", 0).put("origin", localName).toString()
+        return try {
+            client.sendPayload(endpointId, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener {
+                    listener.onStatus("Private message could not be delivered. Check the nearby connection.")
+                }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun sendToStableIds(body: String, targetStableIds: Set<String>): Boolean {
+        if (body.isBlank() || targetStableIds.isEmpty()) return false
+        val targets = synchronized(activeEndpoints) {
+            activeEndpoints.filter { endpoint ->
+                synchronized(names) { stableIds[endpoint]?.let { it in targetStableIds } == true }
+            }
+        }
+        if (targets.isEmpty()) return false
+        val envelope = JSONObject().put("id", UUID.randomUUID().toString()).put("body", body)
+            .put("ttl", 0).put("hops", 0).put("origin", localName).toString()
+        targets.forEach { endpoint ->
+            client.sendPayload(endpoint, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener { listener.onStatus("A community message could not be sent to one nearby member.") }
+        }
+        return true
     }
 
     fun sendToNames(body: String, targetNames: Set<String>): Boolean {
@@ -350,6 +417,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
 
     fun stopSearching() {
         started = false
+        startGeneration += 1
         try { client.stopAdvertising() } catch (_: Exception) { }
         try { client.stopDiscovery() } catch (_: Exception) { }
     }
@@ -357,6 +425,19 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     fun disconnect() {
         try { client.stopAllEndpoints() } catch (_: Exception) { }
         synchronized(activeEndpoints) { activeEndpoints.clear() }
+        // Drop partial transfers when a peer disconnects so temporary payloads
+        // and stale progress entries cannot leak into the next connection.
+        (incomingPayloads.values + completedPayloads.values)
+            .distinctBy { it.id }
+            .forEach { try { it.close() } catch (_: Exception) { } }
+        incomingPayloads.clear()
+        completedPayloads.clear()
+        incomingMetadata.clear()
+        successfulIncomingPayloadIds.clear()
+        outgoingFiles.keys.forEach { payloadId ->
+            try { client.cancelPayload(payloadId) } catch (_: Exception) { }
+        }
+        outgoingFiles.clear()
     }
     fun stop() {
         stopSearching()

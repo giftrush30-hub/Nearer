@@ -52,6 +52,8 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -72,6 +74,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -79,10 +82,13 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
@@ -91,6 +97,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.launch
 import com.nearer.app.games.ludo.LudoGameScreen
 
 private val Midnight = Color(0xFF101A2B)
@@ -225,6 +232,17 @@ class MainActivity : ComponentActivity() {
             override fun onLost(id: String, stableId: String) { runOnUiThread {
                 val name = hybridPeers.remove(id)
                 if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
+                if (hybridConnectedEndpoint == id) {
+                    hybridConnected = false
+                    hybridConnectedEndpoint = null
+                    val legacyLinkAlive = peerSocket?.isConnected == true && peerSocket?.isClosed == false
+                    if (!legacyLinkAlive) {
+                        connectedDeviceName = null
+                        chatReady = false
+                        connectionMessage = "Nearby connection ended"
+                        chatNotice = "The selected nearby person disconnected. Search again to reconnect."
+                    }
+                }
             } }
             override fun onRequest(id: String, name: String, token: String) {
                 runOnUiThread {
@@ -262,9 +280,9 @@ class MainActivity : ComponentActivity() {
                     chatNotice = "Nearby connection ended. Search again to reconnect."
                 }
             }
-            override fun onMessage(id: String, senderName: String, body: String) {
+            override fun onMessage(id: String, senderName: String, senderStableId: String, body: String) {
                 runOnUiThread {
-                    if (body.startsWith("NR_COMMUNITY:")) handleCommunityPacket(senderName, body.removePrefix("NR_COMMUNITY:"))
+                    if (body.startsWith("NR_COMMUNITY:")) handleCommunityPacket(senderName, senderStableId, body.removePrefix("NR_COMMUNITY:"))
                     else {
                         chatMessages.add(ChatMessage("hybrid-" + System.currentTimeMillis(), body, outgoing = false, delivery = "Received"))
                         persistMessages()
@@ -314,8 +332,8 @@ class MainActivity : ComponentActivity() {
         })
         if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
         restoreLocalData()
-        restoreCommunityData()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
+        restoreCommunityData()
         nearbyTransport?.setDisplayName(displayName)
         restoreRecentlySeen()
         meshRelayEnabled = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getBoolean("mesh_relay_enabled", false)
@@ -350,12 +368,18 @@ class MainActivity : ComponentActivity() {
                     groupMessages = communityMessages.toList(),
                     selectedGroupCode = selectedCommunityCode,
                     communityNotice = communityNotice,
+                    communityLocalMemberId = localCommunityMemberId,
                     incomingGameInvite = incomingGameInvite,
                     activeGame = activeGame,
                     gameChatMessages = gameChatMessages.toList(),
                     onCreateGroup = ::createCommunityGroup,
                     onJoinGroup = ::joinCommunityGroup,
                     onSelectGroup = { selectedCommunityCode = it },
+                    onLeaveGroup = ::leaveCommunityGroup,
+                    onApproveMember = ::approveCommunityMember,
+                    onPromoteMember = ::promoteCommunityMember,
+                    onTransferOwnership = ::transferCommunityOwnership,
+                    onRemoveMember = ::removeCommunityMember,
                     onSendGroupMessage = ::sendCommunityGroupMessage,
                     onBroadcast = ::sendCommunityBroadcast,
                     onGameInvite = ::inviteToGame,
@@ -385,6 +409,25 @@ class MainActivity : ComponentActivity() {
                     onStopSearch = ::stopDiscovery,
                     onConnect = ::connectToDevice
                 )
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_DISCOVERY_PERMISSION) {
+            if (hasNearbyPermissions()) {
+                statusMessage = "Permissions granted. Starting nearby search…"
+                startDiscovery()
+            } else {
+                hybridSearching = false
+                scanning = false
+                statusMessage = "NeaRer needs Nearby devices and Bluetooth permissions to find other phones. You can enable them in Android app settings."
             }
         }
     }
@@ -625,7 +668,7 @@ class MainActivity : ComponentActivity() {
         }
 
         connectingAddress = device.deviceAddress
-        statusMessage = "Sending a connection invitation to ${device.deviceName.ifBlank { "nearby device" }}…"
+        statusMessage = "Sending a connection invitation to ${"nearby device"}…"
         connectionMessage = "Waiting for the other phone to approve"
 
         val config = WifiP2pConfig().apply {
@@ -652,7 +695,7 @@ class MainActivity : ComponentActivity() {
     private fun updateConnectionState(info: WifiP2pInfo) {
         if (info.groupFormed) {
             val active = nearbyDevices.firstOrNull { it.deviceAddress == connectingAddress }
-            connectedDeviceName = active?.deviceName?.ifBlank { null } ?: "Nearby device"
+            connectedDeviceName = "Nearby device"
             connectingAddress = null
             connectionMessage = if (info.isGroupOwner) {
                 "Connected • this phone hosts the local link"
@@ -762,7 +805,7 @@ class MainActivity : ComponentActivity() {
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 peerWriter = writer
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
-                val localName = Build.MODEL.orEmpty().replace("|", " ").take(40).ifBlank { "Android phone" }
+                val localName = displayName.trim().replace("|", " ").take(40).ifBlank { "NeaRer User" }
                 writer.println("NEARER_HELLO|$localName")
                 val pairingLine = reader.readLine().orEmpty()
                 if (!pairingLine.startsWith("PAIR|")) throw IllegalStateException("The other phone did not provide a pairing code")
@@ -950,8 +993,9 @@ class MainActivity : ComponentActivity() {
         if (body.isEmpty() || !chatReady) return
         val id = UUID.randomUUID().toString()
         if (hybridConnected) {
-            if (nearbyTransport?.send(body) != true) {
-                chatNotice = "Message could not be sent. Check the nearby connection."
+            val endpoint = hybridConnectedEndpoint
+            if (endpoint.isNullOrBlank() || nearbyTransport?.sendToEndpoint(endpoint, body) != true) {
+                chatNotice = "Message could not be sent to the selected nearby person. Check the connection."
                 return
             }
             chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sent"))
@@ -970,109 +1014,372 @@ class MainActivity : ComponentActivity() {
     }
 
 
+    private val localCommunityMemberId: String
+        get() = nearbyTransport?.localMemberId.orEmpty()
+
     private fun persistCommunityData() {
         val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         val groups = JSONArray()
-        communityGroups.forEach { groups.put(JSONObject().put("code", it.code).put("name", it.name).put("members", JSONArray(it.members))) }
+        communityGroups.forEach { group ->
+            val memberIds = JSONObject()
+            group.memberIds.forEach { (id, name) -> memberIds.put(id, name) }
+            val pending = JSONObject()
+            group.pendingMembers.forEach { (id, name) -> pending.put(id, name) }
+            groups.put(JSONObject().put("code", group.code).put("name", group.name)
+                .put("members", JSONArray(group.members)).put("ownerId", group.ownerId)
+                .put("memberIds", memberIds).put("moderators", JSONArray(group.moderators))
+                .put("pendingMembers", pending))
+        }
         val messages = JSONArray()
         communityMessages.takeLast(300).forEach { messages.put(JSONObject().put("id", it.id).put("code", it.groupCode).put("sender", it.sender).put("body", it.body).put("time", it.time)) }
         prefs.edit().putString("community_groups", groups.toString()).putString("community_messages", messages.toString()).apply()
     }
+
     private fun restoreCommunityData() {
         val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         try {
             val groups = JSONArray(prefs.getString("community_groups", "[]"))
             for (i in 0 until groups.length()) {
                 val item = groups.getJSONObject(i)
-                val members = item.optJSONArray("members") ?: JSONArray()
-                communityGroups.add(CommunityGroup(item.getString("code"), item.optString("name"), (0 until members.length()).map { members.optString(it) }))
+                val membersArray = item.optJSONArray("members") ?: JSONArray()
+                val members = (0 until membersArray.length()).map { membersArray.optString(it) }.filter { it.isNotBlank() }.distinct()
+                val memberIdsJson = item.optJSONObject("memberIds") ?: JSONObject()
+                val memberIds = mutableMapOf<String, String>()
+                val keys = memberIdsJson.keys()
+                while (keys.hasNext()) { val key = keys.next(); val value = memberIdsJson.optString(key); if (key.isNotBlank() && value.isNotBlank()) memberIds[key] = value }
+                val pendingJson = item.optJSONObject("pendingMembers") ?: JSONObject()
+                val pending = mutableMapOf<String, String>()
+                val pendingKeys = pendingJson.keys()
+                while (pendingKeys.hasNext()) { val key = pendingKeys.next(); val value = pendingJson.optString(key); if (key.isNotBlank() && value.isNotBlank()) pending[key] = value }
+                val moderatorsArray = item.optJSONArray("moderators") ?: JSONArray()
+                val moderators = (0 until moderatorsArray.length()).map { moderatorsArray.optString(it) }.filter { it.isNotBlank() }.toSet()
+                val ownerId = item.optString("ownerId")
+                // Migrate older locally-owned groups once; unknown remote previews remain untrusted.
+                if (memberIds.isEmpty() && ownerId.isBlank() && members.firstOrNull() == displayName && localCommunityMemberId.isNotBlank()) {
+                    memberIds[localCommunityMemberId] = displayName
+                }
+                communityGroups.add(CommunityGroup(item.getString("code"), item.optString("name"), members,
+                    ownerId.ifBlank { if (memberIds.containsKey(localCommunityMemberId)) localCommunityMemberId else "" },
+                    memberIds, moderators, pending))
             }
             val messages = JSONArray(prefs.getString("community_messages", "[]"))
             for (i in 0 until messages.length()) {
                 val item = messages.getJSONObject(i)
-                communityMessages.add(CommunityChatMessage(item.getString("id"), item.getString("code"), item.optString("sender"), item.getString("body"), item.optLong("time")))
+                communityMessages.add(CommunityChatMessage(item.getString("id"), item.getString("code"), item.optString("sender"), item.getString("body").take(1500), item.optLong("time")))
             }
         } catch (_: Exception) { communityGroups.clear(); communityMessages.clear() }
     }
+
     private fun sendCommunityPacket(packet: JSONObject): Boolean {
         if (!hybridConnected) { communityNotice = "Connect to nearby NeaRer phones first."; return false }
         return nearbyTransport?.send("NR_COMMUNITY:$packet") == true
     }
+
     private fun createCommunityGroup(raw: String) {
         val name = raw.trim().take(32)
-        if (name.isBlank() || communityGroups.size >= 20) return
-        var code = (100000..999999).random().toString()
-        while (communityGroups.any { it.code == code }) code = (100000..999999).random().toString()
-        communityGroups.add(0, CommunityGroup(code, name, listOf(displayName)))
+        if (name.isBlank() || communityGroups.size >= 20) {
+            communityNotice = if (communityGroups.size >= 20) "You have reached the 20-community limit." else "Enter a community name first."
+            return
+        }
+        val localId = localCommunityMemberId
+        if (localId.isBlank()) { communityNotice = "Your nearby identity is not ready. Reconnect and try again."; return }
+        var code: String
+        do { code = (100000 + SecureRandom().nextInt(900000)).toString() }
+        while (communityGroups.any { it.code == code })
+        communityGroups.add(0, CommunityGroup(code, name, listOf(displayName), localId,
+            mapOf(localId to displayName)))
         selectedCommunityCode = code
         persistCommunityData()
-        communityNotice = "Created $name. Share group code $code with nearby people."
-        sendCommunityPacket(JSONObject().put("type", "group_created").put("code", code).put("name", name).put("sender", displayName))
+        val announced = sendCommunityPacket(JSONObject().put("type", "group_created").put("code", code)
+            .put("name", name).put("sender", displayName).put("senderId", localId).put("ownerId", localId))
+        communityNotice = if (announced) "Community created. You are its owner. Share code " + code + " to invite people."
+            else "Community created on this phone. Share code " + code + "; connect nearby to announce it."
     }
+
+    private fun leaveCommunityGroup(rawCode: String) {
+        val code = rawCode.filter { it.isDigit() }.take(6)
+        val group = communityGroups.firstOrNull { it.code == code } ?: return
+        val localId = localCommunityMemberId
+        if (group.ownerId == localId && group.members.size > 1) {
+            communityNotice = "Transfer ownership or remove members before leaving this community."
+            return
+        }
+        sendCommunityPacket(JSONObject().put("type", "group_leave").put("code", code)
+            .put("sender", displayName).put("senderId", localId))
+        communityGroups.removeAll { it.code == code }
+        if (selectedCommunityCode == code) selectedCommunityCode = communityGroups.firstOrNull()?.code
+        persistCommunityData()
+        communityNotice = "You left " + group.name + ". Its saved messages remain on this phone."
+    }
+
     private fun joinCommunityGroup(raw: String) {
         val code = raw.filter { it.isDigit() }.take(6)
-        if (code.length != 6) return
-        if (communityGroups.none { it.code == code }) communityGroups.add(0, CommunityGroup(code, "Nearby group $code", listOf(displayName)))
+        val localId = localCommunityMemberId
+        if (code.length != 6 || localId.isBlank()) { communityNotice = "Enter a valid six-digit code after connecting nearby."; return }
+        val group = communityGroups.firstOrNull { it.code == code }
+        if (group?.memberIds?.containsKey(localId) == true) {
+            communityNotice = "You are already a member of this community."
+            selectedCommunityCode = code
+            return
+        }
+        if (group == null) communityGroups.add(0, CommunityGroup(code, "Nearby community $code", emptyList()))
         selectedCommunityCode = code
         persistCommunityData()
-        sendCommunityPacket(JSONObject().put("type", "group_join").put("code", code).put("sender", displayName))
-        communityNotice = "Group $code saved locally. Join notice sent if connected."
+        val sent = sendCommunityPacket(JSONObject().put("type", "group_join_request").put("code", code)
+            .put("sender", displayName).put("senderId", localId))
+        communityNotice = if (sent) "Join request sent. The community owner or a moderator must approve you."
+            else "Community code saved. Connect to a member of this community to request approval."
     }
+
     private fun sendGroupMembers(code: String) {
         val group = communityGroups.firstOrNull { it.code == code } ?: return
-        val packet = JSONObject().put("type", "group_members").put("code", code).put("members", JSONArray(group.members))
-        nearbyTransport?.sendToNames("NR_COMMUNITY:$packet", group.members.toSet())
+        val memberArray = JSONArray()
+        group.memberIds.forEach { (id, name) -> memberArray.put(JSONObject().put("id", id).put("name", name)) }
+        val pendingArray = JSONArray()
+        group.pendingMembers.forEach { (id, name) -> pendingArray.put(JSONObject().put("id", id).put("name", name)) }
+        val packet = JSONObject().put("type", "group_members").put("code", code)
+            .put("ownerId", group.ownerId).put("members", memberArray)
+            .put("moderators", JSONArray(group.moderators.toList())).put("pendingMembers", pendingArray)
+        nearbyTransport?.sendToStableIds("NR_COMMUNITY:$packet", group.memberIds.keys)
+    }
+
+    private fun approveCommunityMember(code: String, memberId: String) {
+        val i = communityGroups.indexOfFirst { it.code == code }
+        if (i < 0) return
+        val group = communityGroups[i]
+        val localId = localCommunityMemberId
+        if (!CommunityAccessPolicy.canManage(group.ownerId, group.moderators, localId)) return
+        val name = group.pendingMembers[memberId] ?: return
+        val nextIds = group.memberIds + (memberId to name)
+        communityGroups[i] = group.copy(members = (group.members + name).distinct(),
+            memberIds = nextIds, pendingMembers = group.pendingMembers - memberId)
+        persistCommunityData()
+        val approval = JSONObject().put("type", "group_join_approved").put("code", code)
+            .put("ownerId", group.ownerId).put("sender", displayName).put("senderId", localId)
+        nearbyTransport?.sendToStableIds("NR_COMMUNITY:$approval", setOf(memberId))
+        sendGroupMembers(code)
+        communityNotice = name + " approved to join " + group.name + "."
+    }
+
+    private fun promoteCommunityMember(code: String, memberId: String) {
+        val i = communityGroups.indexOfFirst { it.code == code }
+        if (i < 0) return
+        val group = communityGroups[i]
+        if (!CommunityAccessPolicy.canPromote(group.ownerId, group.memberIds, group.moderators, localCommunityMemberId, memberId)) return
+        communityGroups[i] = group.copy(moderators = group.moderators + memberId)
+        persistCommunityData()
+        sendGroupMembers(code)
+        communityNotice = group.memberIds[memberId].orEmpty() + " is now a moderator."
+    }
+
+    private fun transferCommunityOwnership(code: String, memberId: String) {
+        val i = communityGroups.indexOfFirst { it.code == code }
+        if (i < 0) return
+        val group = communityGroups[i]
+        val localId = localCommunityMemberId
+        if (!CommunityAccessPolicy.canTransferOwnership(group.ownerId, group.memberIds, localId, memberId)) return
+        val nextModerators = (group.moderators - memberId) + localId
+        communityGroups[i] = group.copy(ownerId = memberId, moderators = nextModerators)
+        persistCommunityData()
+        val packet = JSONObject().put("type", "ownership_transfer").put("code", code)
+            .put("ownerId", memberId).put("sender", displayName).put("senderId", localId)
+        nearbyTransport?.sendToStableIds("NR_COMMUNITY:$packet", group.memberIds.keys)
+        communityNotice = group.memberIds[memberId].orEmpty() + " is now the community owner. You are a moderator."
+    }
+
+    private fun removeCommunityMember(code: String, memberId: String) {
+        val i = communityGroups.indexOfFirst { it.code == code }
+        if (i < 0) return
+        val group = communityGroups[i]
+        val localId = localCommunityMemberId
+        if (!CommunityAccessPolicy.canRemove(group.ownerId, group.moderators, group.memberIds, localId, memberId)) {
+            // Pending join requests are not members yet; owners and moderators may decline them.
+            if (!CommunityAccessPolicy.canManage(group.ownerId, group.moderators, localId) || memberId !in group.pendingMembers) return
+        }
+        val name = group.memberIds[memberId] ?: group.pendingMembers[memberId] ?: return
+        communityGroups[i] = group.copy(members = group.members.filterNot { it == name },
+            memberIds = group.memberIds - memberId, moderators = group.moderators - memberId,
+            pendingMembers = group.pendingMembers - memberId)
+        persistCommunityData()
+        val removal = JSONObject().put("type", "group_member_removed").put("code", code)
+            .put("memberId", memberId).put("ownerId", group.ownerId).put("sender", displayName).put("senderId", localId)
+        nearbyTransport?.sendToStableIds("NR_COMMUNITY:$removal", setOf(memberId))
+        sendGroupMembers(code)
+        communityNotice = name + " removed from " + group.name + "."
     }
 
     private fun sendCommunityGroupMessage(raw: String) {
         val code = selectedCommunityCode ?: return
         val group = communityGroups.firstOrNull { it.code == code } ?: return
+        val localId = localCommunityMemberId
+        if (!CommunityAccessPolicy.canPost(group.memberIds, localId)) { communityNotice = "You must be approved as a member before posting."; return }
         val body = raw.trim().take(1500)
         if (body.isBlank()) return
         val id = UUID.randomUUID().toString()
-        val packet = JSONObject().put("type", "group_message").put("code", code).put("sender", displayName).put("body", body).put("id", id)
-        if (nearbyTransport?.sendToNames("NR_COMMUNITY:$packet", group.members.toSet()) == true) {
+        val packet = JSONObject().put("type", "group_message").put("code", code)
+            .put("sender", displayName).put("senderId", localId).put("body", body).put("id", id)
+        if (nearbyTransport?.sendToStableIds("NR_COMMUNITY:$packet", group.memberIds.keys - localId) == true) {
+            communityMessages.add(CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis()))
+            persistCommunityData()
+        } else if (group.members.size == 1) {
             communityMessages.add(CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis()))
             persistCommunityData()
         } else communityNotice = "No connected member of this group is available right now."
     }
+
     private fun sendCommunityBroadcast(raw: String) {
         val body = raw.trim().take(500)
         if (body.isNotBlank() && sendCommunityPacket(JSONObject().put("type", "broadcast").put("sender", displayName).put("body", body))) {
             communityNotice = "Broadcast sent to connected nearby phones."
         }
     }
-    private fun handleCommunityPacket(sender: String, raw: String) {
+    private fun handleCommunityPacket(sender: String, senderStableId: String, raw: String) {
         try {
             val packet = JSONObject(raw)
             val type = packet.optString("type")
             val code = packet.optString("code")
+            val senderId = packet.optString("senderId").ifBlank { senderStableId }
+            if (senderId.isBlank() || senderId != senderStableId ||
+                !senderStableId.matches(Regex("([A-F0-9]{6}|[A-F0-9]{32})"))) return
             when (type) {
-                "group_created", "group_join" -> {
+                "group_created" -> {
+                    val ownerId = packet.optString("ownerId").ifBlank { senderId }
+                    if (code.matches(Regex("[0-9]{6}")) && ownerId == senderId && communityGroups.none { it.code == code } && communityGroups.size < 20) {
+                        val groupName = packet.optString("name").trim().take(32).ifBlank { "Nearby community " + code }
+                        communityGroups.add(0, CommunityGroup(code, groupName, listOf(sender),
+                            ownerId, mapOf(senderId to sender)))
+                        persistCommunityData()
+                        communityNotice = "New community found: " + groupName + ". Request to join with code " + code + "."
+                    }
+                }
+                "group_join_request" -> {
                     val i = communityGroups.indexOfFirst { it.code == code }
                     if (i >= 0) {
-                        val old = communityGroups[i]
-                        val member = sender
-                        if (member !in old.members) communityGroups[i] = old.copy(members = old.members + member)
-                        persistCommunityData()
-                        sendGroupMembers(code)
+                        val group = communityGroups[i]
+                        if ((group.ownerId == localCommunityMemberId || localCommunityMemberId in group.moderators) &&
+                            senderId != group.ownerId && senderId !in group.memberIds && senderId !in group.pendingMembers &&
+                            group.pendingMembers.size < 100) {
+                            communityGroups[i] = group.copy(pendingMembers = group.pendingMembers + (senderId to sender))
+                            persistCommunityData()
+                            sendGroupMembers(code)
+                            communityNotice = sender + " requested to join " + group.name + ". Review the request."
+                        }
+                    }
+                }
+                "group_join_approved" -> {
+                    val i = communityGroups.indexOfFirst { it.code == code }
+                    if (i >= 0) {
+                        val group = communityGroups[i]
+                        val approverId = senderId
+                        val packetOwnerId = packet.optString("ownerId")
+                        val approvedByOwner = packetOwnerId.isNotBlank() && approverId == packetOwnerId
+                        val approvedByModerator = group.ownerId.isNotBlank() && packetOwnerId == group.ownerId &&
+                            approverId in group.moderators
+                        if ((group.ownerId.isBlank() && approvedByOwner) ||
+                            (packetOwnerId == group.ownerId && (approvedByOwner || approvedByModerator))) {
+                            val updatedMembers = group.memberIds + (approverId to sender) +
+                                (localCommunityMemberId to displayName)
+                            communityGroups[i] = group.copy(members = (group.members + sender + displayName).distinct(),
+                                ownerId = packetOwnerId, memberIds = updatedMembers)
+                            persistCommunityData()
+                            sendGroupMembers(code)
+                            communityNotice = "Your request to join " + group.name + " was approved."
+                        }
+                    }
+                }
+                "group_leave" -> {
+                    val i = communityGroups.indexOfFirst { it.code == code }
+                    if (i >= 0) {
+                        val group = communityGroups[i]
+                        if (senderId in group.memberIds && senderId != group.ownerId) {
+                            val name = group.memberIds[senderId]
+                            communityGroups[i] = group.copy(members = group.members.filterNot { it == name },
+                                memberIds = group.memberIds - senderId, moderators = group.moderators - senderId)
+                            persistCommunityData()
+                            sendGroupMembers(code)
+                        }
                     }
                 }
                 "group_members" -> {
                     val i = communityGroups.indexOfFirst { it.code == code }
                     if (i >= 0) {
-                        val array = packet.optJSONArray("members") ?: JSONArray()
-                        val members = (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }.distinct()
-                        communityGroups[i] = communityGroups[i].copy(members = members)
-                        persistCommunityData()
+                        val group = communityGroups[i]
+                        val incomingOwnerId = packet.optString("ownerId").ifBlank { group.ownerId }
+                        if ((senderId == group.ownerId || senderId in group.moderators) && incomingOwnerId == group.ownerId) {
+                            val array = packet.optJSONArray("members") ?: JSONArray()
+                            val members = mutableMapOf<String, String>()
+                            for (n in 0 until array.length()) {
+                                val member = array.optJSONObject(n) ?: continue
+                                val memberId = member.optString("id")
+                                val memberName = member.optString("name")
+                                if (memberId.isNotBlank() && memberName.isNotBlank()) members[memberId] = memberName.take(32)
+                            }
+                            val moderatorsArray = packet.optJSONArray("moderators") ?: JSONArray()
+                            val moderators = (0 until moderatorsArray.length()).map { moderatorsArray.optString(it) }
+                                .filter { it in members.keys && it != group.ownerId }.toSet()
+                            // Moderators may approve/remove ordinary members, but cannot alter ownership
+                            // or appoint/demote other moderators. Only the owner can change role assignments.
+                            val roleUpdateAllowed = senderId == group.ownerId ||
+                                (group.ownerId in members && moderators == group.moderators)
+                            if (roleUpdateAllowed) {
+                                val pendingArray = packet.optJSONArray("pendingMembers") ?: JSONArray()
+                                val pending = mutableMapOf<String, String>()
+                                for (n in 0 until pendingArray.length()) {
+                                    val request = pendingArray.optJSONObject(n) ?: continue
+                                    val requestId = request.optString("id")
+                                    val requestName = request.optString("name")
+                                    if (requestId.isNotBlank() && requestName.isNotBlank() && requestId !in members) pending[requestId] = requestName.take(32)
+                                }
+                                communityGroups[i] = group.copy(memberIds = members, members = members.values.distinct(),
+                                    moderators = moderators, pendingMembers = pending)
+                                persistCommunityData()
+                            }
+                        }
+                    }
+                }
+                "ownership_transfer" -> {
+                    val i = communityGroups.indexOfFirst { it.code == code }
+                    if (i >= 0) {
+                        val group = communityGroups[i]
+                        val newOwnerId = packet.optString("ownerId")
+                        if (senderId == group.ownerId && newOwnerId in group.memberIds && newOwnerId != group.ownerId) {
+                            communityGroups[i] = group.copy(ownerId = newOwnerId,
+                                moderators = (group.moderators - newOwnerId) + group.ownerId)
+                            persistCommunityData()
+                            communityNotice = "Community ownership was transferred to " + group.memberIds[newOwnerId].orEmpty() + "."
+                        }
+                    }
+                }
+                "group_member_removed" -> {
+                    val i = communityGroups.indexOfFirst { it.code == code }
+                    if (i >= 0 && packet.optString("memberId") == localCommunityMemberId) {
+                        val group = communityGroups[i]
+                        val packetOwnerId = packet.optString("ownerId")
+                        val senderIsOwner = senderId == group.ownerId ||
+                            (group.ownerId.isBlank() && packetOwnerId.isNotBlank() && senderId == packetOwnerId)
+                        val senderIsModerator = senderId in group.moderators
+                        val targetIsAllowed = localCommunityMemberId != group.ownerId &&
+                            (senderIsOwner || localCommunityMemberId !in group.moderators)
+                        val trustedRemoval = (senderIsOwner || senderIsModerator) && targetIsAllowed
+                        if (trustedRemoval) {
+                            communityGroups[i] = group.copy(members = group.members - displayName,
+                                memberIds = group.memberIds - localCommunityMemberId, moderators = group.moderators - localCommunityMemberId,
+                                pendingMembers = group.pendingMembers - localCommunityMemberId)
+                            persistCommunityData()
+                            communityNotice = "Your request to join " + group.name + " was declined or your membership was removed."
+                        }
                     }
                 }
                 "group_message" -> {
                     val group = communityGroups.firstOrNull { it.code == code }
-                    if (group != null && sender in group.members) {
-                        val id = packet.optString("id")
+                    val verifiedName = group?.memberIds?.get(senderId)
+                    val messageId = packet.optString("id")
+                    val messageBody = packet.optString("body")
+                    if (group != null && CommunityAccessPolicy.isValidGroupMessage(group.memberIds, senderId, sender, messageId, messageBody)) {
+                        val id = messageId
                         if (communityMessages.none { it.id == id }) {
-                            communityMessages.add(CommunityChatMessage(id, code, sender, packet.optString("body").take(1500), System.currentTimeMillis()))
+                            communityMessages.add(CommunityChatMessage(id, code, sender, packet.optString("body").trim().take(1500), System.currentTimeMillis()))
+                            while (communityMessages.size > 300) communityMessages.removeAt(0)
                             persistCommunityData()
                         }
                     }
@@ -1478,12 +1785,18 @@ private fun NeaRerHome(
     groupMessages: List<CommunityChatMessage>,
     selectedGroupCode: String?,
     communityNotice: String,
+    communityLocalMemberId: String,
     incomingGameInvite: GameInvite?,
     activeGame: TicTacToeMatch?,
     gameChatMessages: List<String>,
     onCreateGroup: (String) -> Unit,
     onJoinGroup: (String) -> Unit,
     onSelectGroup: (String) -> Unit,
+    onLeaveGroup: (String) -> Unit,
+    onApproveMember: (String, String) -> Unit,
+    onPromoteMember: (String, String) -> Unit,
+    onTransferOwnership: (String, String) -> Unit,
+    onRemoveMember: (String, String) -> Unit,
     onSendGroupMessage: (String) -> Unit,
     onBroadcast: (String) -> Unit,
     onGameInvite: () -> Unit,
@@ -1514,7 +1827,15 @@ private fun NeaRerHome(
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     var draft by remember { mutableStateOf("") }
+    val messageScrollState = rememberScrollState()
+    androidx.compose.runtime.LaunchedEffect(messages.size) {
+        messageScrollState.animateScrollTo(messageScrollState.maxValue)
+    }
     var showLudo by remember { mutableStateOf(false) }
+    var activeSection by remember { mutableStateOf("home") }
+    val pageScrollState = rememberScrollState()
+    val sectionPositions = remember { mutableStateMapOf<String, Int>() }
+    val navigationScope = rememberCoroutineScope()
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
@@ -1528,7 +1849,7 @@ private fun NeaRerHome(
     }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 26.dp),
+            modifier = Modifier.fillMaxSize().verticalScroll(pageScrollState).padding(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             Row(
@@ -1551,6 +1872,30 @@ private fun NeaRerHome(
                 }
             }
 
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf("Home" to "home", "Nearby" to "nearby", "Chats" to "chats", "Community" to "community").forEach { (label, key) ->
+                    Button(
+                        onClick = {
+                            activeSection = key
+                            navigationScope.launch {
+                                pageScrollState.animateScrollTo((sectionPositions[key] ?: 0).coerceAtLeast(0))
+                            }
+                        },
+                        modifier = Modifier.height(48.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 15.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (activeSection == key) Mint else Color(0xFF1C2E47),
+                            contentColor = if (activeSection == key) Midnight else White
+                        )
+                    ) { Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                }
+            }
+
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Text("YOUR NEARER NAME", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -1563,7 +1908,9 @@ private fun NeaRerHome(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Color(0xFF172B4A)) {
+            Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
+                sectionPositions["home"] = it.positionInParent().y.toInt()
+            }, shape = RoundedCornerShape(24.dp), color = Color(0xFF172B4A)) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = RoundedCornerShape(12.dp), color = BrandBlue, modifier = Modifier.size(42.dp)) {
@@ -1588,7 +1935,7 @@ private fun NeaRerHome(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("BLUETOOTH CHAT" to "Hybrid connection enabled", "MESH RELAY" to "Opt-in, up to 4 hops").forEach { item ->
+                        listOf("NEARBY LINK" to "Bluetooth + nearby Wi-Fi", "MESH RELAY" to "Opt-in, up to 4 hops").forEach { item ->
                             Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -1628,7 +1975,9 @@ private fun NeaRerHome(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), color = Panel) {
+            Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
+                sectionPositions["nearby"] = it.positionInParent().y.toInt()
+            }, shape = RoundedCornerShape(26.dp), color = Panel) {
                 Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("NEARBY CONNECTION", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text("Bring nearby people closer.", color = White, fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold)
@@ -1681,7 +2030,9 @@ private fun NeaRerHome(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
+            Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
+                sectionPositions["chats"] = it.positionInParent().y.toInt()
+            }, shape = RoundedCornerShape(20.dp), color = Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("PRIVATE CHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -1693,7 +2044,7 @@ private fun NeaRerHome(
                             Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         } else {
                             Column(
-                                modifier = Modifier.fillMaxWidth().height(150.dp).verticalScroll(rememberScrollState()),
+                                modifier = Modifier.fillMaxWidth().height(150.dp).verticalScroll(messageScrollState),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
                                 messages.forEach { message ->
@@ -1775,10 +2126,16 @@ private fun NeaRerHome(
                 }
             }
 
-            CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
-                activeGame, gameChatMessages, onCreateGroup, onJoinGroup, onSelectGroup,
-                onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
-                onRejectGameInvite, onGameMove, onGameChat, onEndGame)
+            androidx.compose.foundation.layout.Box(
+                Modifier.fillMaxWidth().onGloballyPositioned {
+                    sectionPositions["community"] = it.positionInParent().y.toInt()
+                }
+            ) {
+                CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, communityLocalMemberId, incomingGameInvite,
+                    activeGame, gameChatMessages, onCreateGroup, onJoinGroup, onSelectGroup, onLeaveGroup,
+                    onApproveMember, onPromoteMember, onTransferOwnership, onRemoveMember, onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
+                    onRejectGameInvite, onGameMove, onGameChat, onEndGame)
+            }
 
             if (incomingRequesterName != null) {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
@@ -1817,10 +2174,28 @@ private fun NeaRerHome(
                     Text(if (hybridPeers.isEmpty()) "Your nearby circle" else "${hybridPeers.size} active nearby", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     if (scanning && hybridPeers.isEmpty()) {
                         androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(142.dp), contentAlignment = Alignment.Center) {
-                            Surface(shape = CircleShape, color = Color(0xFF1C3554), modifier = Modifier.size(118.dp).alpha(pulse)) {}
-                            Surface(shape = CircleShape, color = Color(0xFF244A70), modifier = Modifier.size(82.dp).rotate(orbitRotation)) {
-                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.TopCenter) { Surface(shape = CircleShape, color = Mint, modifier = Modifier.size(12.dp)) {} }
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Transparent,
+                                border = BorderStroke(1.dp, Color(0xFF31516F)),
+                                modifier = Modifier.size(136.dp).alpha(pulse)
+                            ) {}
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Transparent,
+                                border = BorderStroke(1.dp, Color(0xFF315B7C)),
+                                modifier = Modifier.size(104.dp).rotate(orbitRotation)
+                            ) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.TopCenter) {
+                                    Surface(shape = CircleShape, color = Mint, modifier = Modifier.size(10.dp)) {}
+                                }
                             }
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Transparent,
+                                border = BorderStroke(1.dp, Color(0xFF31516F)),
+                                modifier = Modifier.size(72.dp)
+                            ) {}
                             Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(54.dp)) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("N", color = White, fontSize = 24.sp, fontWeight = FontWeight.Black) }
                             }
@@ -1909,7 +2284,7 @@ private fun NeaRerHome(
                                     }
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                                    Text(device.deviceName.ifBlank { "Nearby Android device" }, color = White, fontWeight = FontWeight.SemiBold)
+                                    Text("Nearby Wi-Fi Direct phone", color = White, fontWeight = FontWeight.SemiBold)
                                     Text(deviceStatus(device.status), color = Muted, fontSize = 11.sp)
                                 }
                                 Button(
@@ -1935,9 +2310,12 @@ private fun NeaRerHome(
 
 @androidx.compose.runtime.Composable
 private fun CommunityHub(
-    groups: List<CommunityGroup>, messages: List<CommunityChatMessage>, selectedCode: String?, notice: String,
+    groups: List<CommunityGroup>, messages: List<CommunityChatMessage>, selectedCode: String?, notice: String, localMemberId: String,
     invite: GameInvite?, game: TicTacToeMatch?, gameChat: List<String>,
     onCreate: (String) -> Unit, onJoin: (String) -> Unit, onSelect: (String) -> Unit,
+    onLeaveGroup: (String) -> Unit, onApproveMember: (String, String) -> Unit,
+    onPromoteMember: (String, String) -> Unit, onTransferOwnership: (String, String) -> Unit,
+    onRemoveMember: (String, String) -> Unit,
     onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
     onAccept: () -> Unit, onReject: () -> Unit, onMove: (Int) -> Unit, onGameChat: (String) -> Unit, onEndGame: () -> Unit
 ) {
@@ -1960,11 +2338,62 @@ private fun CommunityHub(
                 Button(onClick = { onJoin(code); code = "" }, enabled = code.length == 6) { Text("Join") }
             }
             groups.forEach { group ->
-                Button(onClick = { onSelect(group.code) }, Modifier.fillMaxWidth()) { Text(group.name + " • " + group.code + " • " + group.members.size + " known") }
+                Button(onClick = { onSelect(group.code) }, Modifier.fillMaxWidth()) {
+                    Text(group.name + " • " + group.code + " • " + group.memberIds.size + " members")
+                }
             }
             if (selected != null) {
-                Text("GROUP CHAT • " + selected.name, color = Mint, fontWeight = FontWeight.Bold)
-                Text("Share code " + selected.code + " with connected members.", color = Muted, fontSize = 10.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("GROUP CHAT • " + selected.name, color = Mint, fontWeight = FontWeight.Bold)
+                        Text("Share code " + selected.code + " with connected members.", color = Muted, fontSize = 10.sp)
+                    }
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    Button(onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("NeaRer community code", selected.code))
+                    }) { Text("Copy code") }
+                }
+                val isOwner = selected.ownerId == localMemberId && localMemberId.isNotBlank()
+                val canModerate = isOwner || localMemberId in selected.moderators
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(selected.memberIds.size.toString() + " known members", color = Muted, fontSize = 11.sp)
+                    Spacer(Modifier.weight(1f))
+                    Button(onClick = { onLeaveGroup(selected.code) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Leave") }
+                }
+                Text("MEMBERS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                selected.memberIds.forEach { (memberId, memberName) ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text(memberName, color = White, fontSize = 12.sp)
+                            Text(when {
+                                memberId == selected.ownerId -> "Owner"
+                                memberId in selected.moderators -> "Moderator"
+                                else -> "Member"
+                            }, color = Muted, fontSize = 10.sp)
+                        }
+                        if (isOwner && memberId != selected.ownerId && memberId !in selected.moderators) {
+                            TextButton(onClick = { onPromoteMember(selected.code, memberId) }) { Text("Make moderator") }
+                        }
+                        if (isOwner && memberId != selected.ownerId) {
+                            TextButton(onClick = { onTransferOwnership(selected.code, memberId) }) { Text("Make owner") }
+                        }
+                        if (canModerate && memberId != selected.ownerId && (isOwner || memberId !in selected.moderators)) {
+                            TextButton(onClick = { onRemoveMember(selected.code, memberId) }) { Text("Remove") }
+                        }
+                    }
+                }
+                if (canModerate && selected.pendingMembers.isNotEmpty()) {
+                    Text("JOIN REQUESTS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    selected.pendingMembers.forEach { (memberId, memberName) ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(memberName, color = White, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { onApproveMember(selected.code, memberId) }) { Text("Approve") }
+                            TextButton(onClick = { onRemoveMember(selected.code, memberId) }) { Text("Decline") }
+                        }
+                    }
+                }
                 Column(Modifier.fillMaxWidth().height(130.dp).verticalScroll(rememberScrollState())) {
                     messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { Text(it.sender + ": " + it.body, color = White, fontSize = 12.sp) }
                 }
@@ -2033,7 +2462,15 @@ private fun ticTacToeWinner(board: String): String? {
     }
     return null
 }
-private data class CommunityGroup(val code: String, val name: String, val members: List<String>)
+private data class CommunityGroup(
+    val code: String,
+    val name: String,
+    val members: List<String>,
+    val ownerId: String = "",
+    val memberIds: Map<String, String> = emptyMap(),
+    val moderators: Set<String> = emptySet(),
+    val pendingMembers: Map<String, String> = emptyMap()
+)
 private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
 private data class GameInvite(val matchId: String, val sender: String)
 private data class TicTacToeMatch(val matchId: String, val board: String, val turn: String, val localSymbol: String, val status: String, val opponent: String)
