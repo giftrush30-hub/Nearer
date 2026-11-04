@@ -155,8 +155,26 @@ class MainActivity : ComponentActivity() {
                 }
                 WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION -> {
                     val state = intent.getIntExtra(WifiP2pManager.EXTRA_DISCOVERY_STATE, -1)
-                    scanning = state == WifiP2pManager.WIFI_P2P_DISCOVERY_STARTED
-                    if (scanning) statusMessage = "Searching nearby…"
+                    if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STARTED) {
+                        scanning = true
+                        statusMessage = "Searching nearby…"
+                    } else if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STOPPED && scanning) {
+                        if (hasDiscoveryPermission()) {
+                            wifiManager?.requestPeers(channel) { peers ->
+                                nearbyDevices.clear()
+                                nearbyDevices.addAll(peers.deviceList)
+                                finishDiscovery()
+                                if (nearbyDevices.isEmpty() && hybridPeers.isEmpty()) {
+                                    statusMessage = "No nearby phones found yet. Keep Bluetooth and Wi-Fi ON on both phones, then search again."
+                                } else {
+                                    statusMessage = "Nearby search finished. Select a phone below to connect."
+                                }
+                            }
+                        } else {
+                            finishDiscovery()
+                            statusMessage = "Nearby search finished. Check the Nearby devices permission if no phones appear."
+                        }
+                    }
                 }
                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
                     if (hasDiscoveryPermission()) {
