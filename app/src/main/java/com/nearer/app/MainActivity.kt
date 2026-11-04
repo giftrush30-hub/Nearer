@@ -2325,7 +2325,7 @@ private fun CommunityHub(
                 val isOwner = selected.ownerId == localMemberId && localMemberId.isNotBlank()
                 val canModerate = isOwner || localMemberId in selected.moderators
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(selected.memberIds.size.toString() + " verified members", color = Muted, fontSize = 11.sp)
+                    Text(selected.memberIds.size.toString() + " known members", color = Muted, fontSize = 11.sp)
                     Spacer(Modifier.weight(1f))
                     Button(onClick = { onLeaveGroup(selected.code) },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Leave") }
