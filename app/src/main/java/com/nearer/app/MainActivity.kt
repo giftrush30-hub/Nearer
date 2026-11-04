@@ -81,7 +81,7 @@ private val Muted = Color(0xFFA8B6C9)
 private val White = Color(0xFFF6F8FC)
 
 class MainActivity : ComponentActivity() {
-    private lateinit var wifiManager: WifiP2pManager
+    private var wifiManager: WifiP2pManager? = null
     private var channel: WifiP2pManager.Channel? = null
     private var receiverRegistered = false
     private var scanning by mutableStateOf(false)
@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity() {
                 }
                 WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
                     if (hasDiscoveryPermission()) {
-                        wifiManager.requestPeers(channel) { peers ->
+                        wifiManager?.requestPeers(channel) { peers ->
                             nearbyDevices.clear()
                             nearbyDevices.addAll(peers.deviceList)
                             scanning = false
@@ -146,7 +146,7 @@ class MainActivity : ComponentActivity() {
                 }
                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
                     if (hasDiscoveryPermission()) {
-                        wifiManager.requestConnectionInfo(channel) { info ->
+                        wifiManager?.requestConnectionInfo(channel) { info ->
                             updateConnectionState(info)
                         }
                     }
@@ -160,8 +160,9 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = android.graphics.Color.rgb(16, 26, 43)
         window.navigationBarColor = android.graphics.Color.rgb(16, 26, 43)
         window.decorView.systemUiVisibility = 0
-        wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
-        channel = wifiManager.initialize(this, mainLooper, null)
+        wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
+        channel = wifiManager?.initialize(this, mainLooper, null)
+        if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
         restoreLocalData()
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(
@@ -262,10 +263,14 @@ class MainActivity : ComponentActivity() {
             statusMessage = "The nearby connection service is not ready. Please reopen NeaRer."
             return
         }
+        val manager = wifiManager ?: run {
+            statusMessage = "This phone does not provide Wi-Fi Direct support."
+            return
+        }
 
         scanning = true
         statusMessage = "Starting nearby search…"
-        wifiManager.discoverPeers(activeChannel, object : WifiP2pManager.ActionListener {
+        manager.discoverPeers(activeChannel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
                 statusMessage = "Search started. Looking for nearby Wi-Fi Direct devices…"
             }
@@ -289,6 +294,10 @@ class MainActivity : ComponentActivity() {
             return
         }
         val activeChannel = channel ?: return
+        val manager = wifiManager ?: run {
+            statusMessage = "This phone does not provide Wi-Fi Direct support."
+            return
+        }
         if (device.status == WifiP2pDevice.CONNECTED) {
             statusMessage = "This device already reports a Wi-Fi Direct connection."
             return
@@ -302,7 +311,7 @@ class MainActivity : ComponentActivity() {
             deviceAddress = device.deviceAddress
             wps.setup = WpsInfo.PBC
         }
-        wifiManager.connect(activeChannel, config, object : WifiP2pManager.ActionListener {
+        manager.connect(activeChannel, config, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
                 statusMessage = "Invitation sent. The other phone may need to accept the Wi-Fi Direct prompt."
             }
@@ -482,8 +491,9 @@ class MainActivity : ComponentActivity() {
         pairingCode = null
         connectionMessage = "Disconnecting…"
         statusMessage = "Closing the nearby NeaRer connection…"
-        if (activeChannel != null) {
-            wifiManager.removeGroup(activeChannel, object : WifiP2pManager.ActionListener {
+        val manager = wifiManager
+        if (activeChannel != null && manager != null) {
+            manager.removeGroup(activeChannel, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() {
                     connectionMessage = "Not connected"
                     statusMessage = "Disconnected. You can find nearby people again."
@@ -493,6 +503,9 @@ class MainActivity : ComponentActivity() {
                     statusMessage = "Android could not close the Wi-Fi Direct group (code $reason)."
                 }
             })
+        } else {
+            connectionMessage = "Wi-Fi Direct is unavailable"
+            statusMessage = "This phone does not support the current NeaRer connection method."
         }
     }
 
