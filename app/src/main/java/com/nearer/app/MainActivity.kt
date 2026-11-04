@@ -1049,7 +1049,7 @@ class MainActivity : ComponentActivity() {
                     val i = communityGroups.indexOfFirst { it.code == code }
                     if (i >= 0) {
                         val old = communityGroups[i]
-                        val member = packet.optString("sender", sender)
+                        val member = sender
                         if (member !in old.members) communityGroups[i] = old.copy(members = old.members + member)
                         persistCommunityData()
                         sendGroupMembers(code)
@@ -1069,19 +1069,19 @@ class MainActivity : ComponentActivity() {
                     if (group != null && sender in group.members) {
                         val id = packet.optString("id")
                         if (communityMessages.none { it.id == id }) {
-                            communityMessages.add(CommunityChatMessage(id, code, packet.optString("sender", sender), packet.optString("body").take(1500), System.currentTimeMillis()))
+                            communityMessages.add(CommunityChatMessage(id, code, sender, packet.optString("body").take(1500), System.currentTimeMillis()))
                             persistCommunityData()
                         }
                     }
                 }
-                "broadcast" -> communityNotice = "Broadcast from " + packet.optString("sender", sender) + ": " + packet.optString("body").take(500)
-                "game_invite" -> if (activeGame == null) incomingGameInvite = GameInvite(packet.optString("matchId"), packet.optString("sender", sender))
-                "game_accept" -> activeGame?.let { if (it.matchId == packet.optString("matchId")) activeGame = it.copy(opponent = packet.optString("sender", sender), status = "Your turn") }
+                "broadcast" -> communityNotice = "Broadcast from " + sender + ": " + packet.optString("body").take(500)
+                "game_invite" -> if (activeGame == null) incomingGameInvite = GameInvite(packet.optString("matchId"), sender)
+                "game_accept" -> activeGame?.let { if (it.matchId == packet.optString("matchId") && it.status == "Waiting for a player") activeGame = it.copy(opponent = sender, status = "Your turn") }
                 "game_move" -> {
                     val game = activeGame
                     val symbol = packet.optString("symbol")
                     val index = packet.optInt("index", -1)
-                    if (game != null && game.matchId == packet.optString("matchId") && symbol != game.localSymbol && index in 0..8 && game.board[index] == '.' && game.turn == symbol) {
+                    if (game != null && game.matchId == packet.optString("matchId") && sender == game.opponent && symbol != game.localSymbol && index in 0..8 && game.board[index] == '.' && game.turn == symbol) {
                         val board = game.board.toCharArray()
                         board[index] = symbol.first()
                         val next = String(board)
@@ -1091,7 +1091,7 @@ class MainActivity : ComponentActivity() {
                 }
                 "game_chat" -> activeGame?.let { game ->
                     if (game.matchId == packet.optString("matchId")) {
-                        gameChatMessages.add(packet.optString("sender", sender) + ": " + packet.optString("body").take(300))
+                        if (sender == game.opponent) gameChatMessages.add(sender + ": " + packet.optString("body").take(300))
                         while (gameChatMessages.size > 60) gameChatMessages.removeAt(0)
                     }
                 }
