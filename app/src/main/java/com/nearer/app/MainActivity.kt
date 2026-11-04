@@ -54,6 +54,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -101,6 +102,9 @@ class MainActivity : ComponentActivity() {
     private val chatMessages = mutableStateListOf<ChatMessage>()
     private val receivedFiles = mutableStateListOf<ReceivedFile>()
     private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
+    private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
+    private var outgoingTransferId by mutableStateOf<String?>(null)
+    private var outgoingProgress by mutableStateOf(0f)
     private val maxTransferBytes = 200L * 1024L * 1024L
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
@@ -178,6 +182,9 @@ class MainActivity : ComponentActivity() {
                     receivedFiles = receivedFiles,
                     onSendMessage = ::sendChatMessage,
                     onSendFile = ::sendFile,
+                    onCancelTransfer = ::cancelOutgoingFileTransfer,
+                    outgoingTransferId = outgoingTransferId,
+                    outgoingProgress = outgoingProgress,
                     onOpenFile = ::openReceivedFile,
                     onDisconnect = ::disconnectFromPeer,
                     onAccept = ::approveIncoming,
@@ -601,8 +608,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun cancelOutgoingFileTransfer() {
+        val id = outgoingTransferId ?: return
+        cancelledOutgoingTransfers.add(id)
+        sendWireLine("FILE_CANCEL|$id")
+        chatNotice = "Cancelling file transfer…"
+    }
+
     private fun sendFile(uri: Uri) {
         if (!chatReady) return
+        if (outgoingTransferId != null) {
+            chatNotice = "Finish or cancel the current file transfer first."
+            return
+        }
         io.execute {
             var fileName = "shared-file"
             var fileSize = 0L
@@ -619,6 +637,10 @@ class MainActivity : ComponentActivity() {
                 val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("Cannot open selected file")
                 input.use { stream ->
                     val id = UUID.randomUUID().toString()
+                    runOnUiThread {
+                        outgoingTransferId = id
+                        outgoingProgress = 0f
+                    }
                     val encodedName = Base64.getEncoder().encodeToString(fileName.toByteArray(Charsets.UTF_8))
                     if (!sendWireLine("FILE_START|$id|$encodedName|$fileSize")) throw IllegalStateException("Connection unavailable")
                     runOnUiThread { chatNotice = "Sending $fileName…" }
@@ -628,14 +650,22 @@ class MainActivity : ComponentActivity() {
                     while (true) {
                         val count = stream.read(buffer)
                         if (count < 0) break
+                        if (cancelledOutgoingTransfers.contains(id)) {
+                            sendWireLine("FILE_CANCEL|$id")
+                            throw IllegalStateException("Transfer cancelled")
+                        }
                         sentBytes += count
                         if (sentBytes > maxTransferBytes) throw IllegalStateException("Files must be 200 MB or smaller")
                         digest.update(buffer, 0, count)
                         val chunk = Base64.getEncoder().encodeToString(buffer.copyOf(count))
                         if (!sendWireLine("FILE_CHUNK|$id|0|$chunk")) throw IllegalStateException("Connection lost during transfer")
-                        if (sentBytes % (512 * 1024) < count) {
-                            val progress = if (fileSize > 0L) " • ${(sentBytes * 100 / fileSize).coerceAtMost(100)}%" else " • ${sentBytes / 1024} KB"
-                            runOnUiThread { chatNotice = "Sending $fileName$progress" }
+                        val fraction = if (fileSize > 0L) (sentBytes.toFloat() / fileSize.toFloat()).coerceIn(0f, 1f) else 0f
+                        if (sentBytes % (256 * 1024) < count || fraction >= 1f) {
+                            val progress = if (fileSize > 0L) " • ${(fraction * 100).toInt()}%" else " • ${sentBytes / 1024} KB"
+                            runOnUiThread {
+                                outgoingProgress = fraction
+                                chatNotice = "Sending $fileName$progress"
+                            }
                         }
                     }
                     val hash = digest.digest().joinToString("") { "%02x".format(it) }
@@ -643,7 +673,13 @@ class MainActivity : ComponentActivity() {
                     runOnUiThread { chatNotice = "Sending complete. Waiting for the other phone to confirm…" }
                 }
             } catch (e: Exception) {
-                runOnUiThread { chatNotice = "File transfer failed: ${e.message ?: "connection problem"}" }
+                runOnUiThread {
+                    outgoingTransferId = null
+                    outgoingProgress = 0f
+                    chatNotice = "File transfer failed: ${e.message ?: "connection problem"}"
+                }
+            } finally {
+                cancelledOutgoingTransfers.clear()
             }
         }
     }
@@ -744,10 +780,23 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         line.startsWith("FILE_DONE|") -> {
-                            val ok = line.split("|", limit = 3).getOrNull(2) == "OK"
+                            val parts = line.split("|", limit = 3)
+                            val ok = parts.getOrNull(2) == "OK"
                             runOnUiThread {
+                                if (outgoingTransferId == parts.getOrNull(1)) {
+                                    outgoingTransferId = null
+                                    outgoingProgress = 0f
+                                }
                                 chatNotice = if (ok) "File delivered and verified by the nearby phone." else "The other phone could not verify the file."
                             }
+                        }
+                        line.startsWith("FILE_CANCEL|") -> {
+                            val id = line.substringAfter("FILE_CANCEL|")
+                            incomingTransfers.remove(id)?.let { transfer ->
+                                transfer.close()
+                                transfer.file.delete()
+                            }
+                            runOnUiThread { chatNotice = "The other phone cancelled the file transfer." }
                         }
                         line == "PING" -> synchronized(writerLock) { peerWriter?.println("PONG") }
                     }
@@ -793,6 +842,9 @@ private fun NeaRerHome(
     receivedFiles: List<ReceivedFile>,
     onSendMessage: (String) -> Unit,
     onSendFile: (Uri) -> Unit,
+    onCancelTransfer: () -> Unit,
+    outgoingTransferId: String?,
+    outgoingProgress: Float,
     onOpenFile: (ReceivedFile) -> Unit,
     onDisconnect: () -> Unit,
     onAccept: () -> Unit,
@@ -925,6 +977,20 @@ private fun NeaRerHome(
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
                             ) { Text("Send", fontWeight = FontWeight.Bold) }
+                        }
+                        if (outgoingTransferId != null) {
+                            LinearProgressIndicator(
+                                progress = { outgoingProgress },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Mint,
+                                trackColor = Color(0xFF26364D)
+                            )
+                            Button(
+                                onClick = onCancelTransfer,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)
+                            ) { Text("Cancel file transfer") }
                         }
                         Button(
                             onClick = { filePicker.launch(arrayOf("*/*")) },
