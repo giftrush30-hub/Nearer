@@ -1015,15 +1015,23 @@ class MainActivity : ComponentActivity() {
         sendCommunityPacket(JSONObject().put("type", "group_join").put("code", code).put("sender", displayName))
         communityNotice = "Group $code saved locally. Join notice sent if connected."
     }
+    private fun sendGroupMembers(code: String) {
+        val group = communityGroups.firstOrNull { it.code == code } ?: return
+        val packet = JSONObject().put("type", "group_members").put("code", code).put("members", JSONArray(group.members))
+        nearbyTransport?.sendToNames("NR_COMMUNITY:$packet", group.members.toSet())
+    }
+
     private fun sendCommunityGroupMessage(raw: String) {
         val code = selectedCommunityCode ?: return
+        val group = communityGroups.firstOrNull { it.code == code } ?: return
         val body = raw.trim().take(1500)
         if (body.isBlank()) return
         val id = UUID.randomUUID().toString()
-        if (sendCommunityPacket(JSONObject().put("type", "group_message").put("code", code).put("sender", displayName).put("body", body).put("id", id))) {
+        val packet = JSONObject().put("type", "group_message").put("code", code).put("sender", displayName).put("body", body).put("id", id)
+        if (nearbyTransport?.sendToNames("NR_COMMUNITY:$packet", group.members.toSet()) == true) {
             communityMessages.add(CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis()))
             persistCommunityData()
-        }
+        } else communityNotice = "No connected member of this group is available right now."
     }
     private fun sendCommunityBroadcast(raw: String) {
         val body = raw.trim().take(500)
@@ -1044,13 +1052,26 @@ class MainActivity : ComponentActivity() {
                         val member = packet.optString("sender", sender)
                         if (member !in old.members) communityGroups[i] = old.copy(members = old.members + member)
                         persistCommunityData()
+                        sendGroupMembers(code)
                     }
                 }
-                "group_message" -> if (communityGroups.any { it.code == code }) {
-                    val id = packet.optString("id")
-                    if (communityMessages.none { it.id == id }) {
-                        communityMessages.add(CommunityChatMessage(id, code, packet.optString("sender", sender), packet.optString("body").take(1500), System.currentTimeMillis()))
+                "group_members" -> {
+                    val i = communityGroups.indexOfFirst { it.code == code }
+                    if (i >= 0) {
+                        val array = packet.optJSONArray("members") ?: JSONArray()
+                        val members = (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }.distinct()
+                        communityGroups[i] = communityGroups[i].copy(members = members)
                         persistCommunityData()
+                    }
+                }
+                "group_message" -> {
+                    val group = communityGroups.firstOrNull { it.code == code }
+                    if (group != null && sender in group.members) {
+                        val id = packet.optString("id")
+                        if (communityMessages.none { it.id == id }) {
+                            communityMessages.add(CommunityChatMessage(id, code, packet.optString("sender", sender), packet.optString("body").take(1500), System.currentTimeMillis()))
+                            persistCommunityData()
+                        }
                     }
                 }
                 "broadcast" -> communityNotice = "Broadcast from " + packet.optString("sender", sender) + ": " + packet.optString("body").take(500)
