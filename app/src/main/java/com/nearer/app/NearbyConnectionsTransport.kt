@@ -182,7 +182,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val folder = File(appContext.filesDir, "received").apply { mkdirs() }
                 val target = File(folder, "${System.currentTimeMillis()}-${meta.name}")
                 destination = target
-                val uri: Uri = payload.asFile().asUri()
+                val uri: Uri = payload.asFile()?.asUri() ?: throw IllegalStateException("Nearby file content is unavailable")
                 appContext.contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(target).use { output ->
                         val buffer = ByteArray(32 * 1024)
@@ -224,7 +224,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val clean = name.trim().replace("|", " ").take(23).ifBlank { "NeaRer User" }
         if (clean == localName) return
         localName = clean
-        if (started) client.stopAdvertising().addOnCompleteListener { startAdvertising() }
+        if (started) { client.stopAdvertising(); startAdvertising() }
     }
 
     fun start() {
