@@ -6,8 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pDevice
+import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Bundle
@@ -56,6 +58,9 @@ class MainActivity : ComponentActivity() {
     private var channel: WifiP2pManager.Channel? = null
     private var receiverRegistered = false
     private var scanning by mutableStateOf(false)
+    private var connectingAddress by mutableStateOf<String?>(null)
+    private var connectedDeviceName by mutableStateOf<String?>(null)
+    private var connectionMessage by mutableStateOf("Not connected")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
 
@@ -78,9 +83,9 @@ class MainActivity : ComponentActivity() {
                             nearbyDevices.addAll(peers.deviceList)
                             scanning = false
                             statusMessage = if (nearbyDevices.isEmpty()) {
-                                "No NeaRer-compatible devices found yet. Keep both phones nearby and scan again."
+                                "No nearby Wi-Fi Direct devices found yet. Keep both phones nearby and scan again."
                             } else {
-                                "${nearbyDevices.size} nearby device(s) found. Connection approval comes next."
+                                "${nearbyDevices.size} nearby device(s) found. Select one to request a connection."
                             }
                         }
                     }
@@ -89,6 +94,13 @@ class MainActivity : ComponentActivity() {
                     val state = intent.getIntExtra(WifiP2pManager.EXTRA_DISCOVERY_STATE, -1)
                     scanning = state == WifiP2pManager.WIFI_P2P_DISCOVERY_STARTED
                     if (scanning) statusMessage = "Searching nearby…"
+                }
+                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
+                    if (hasDiscoveryPermission()) {
+                        wifiManager.requestConnectionInfo(channel) { info ->
+                            updateConnectionState(info)
+                        }
+                    }
                 }
             }
         }
@@ -111,7 +123,11 @@ class MainActivity : ComponentActivity() {
                     status = statusMessage,
                     scanning = scanning,
                     devices = nearbyDevices,
-                    onFindNearby = ::startDiscovery
+                    connectingAddress = connectingAddress,
+                    connectedDeviceName = connectedDeviceName,
+                    connectionMessage = connectionMessage,
+                    onFindNearby = ::startDiscovery,
+                    onConnect = ::connectToDevice
                 )
             }
         }
@@ -123,6 +139,7 @@ class MainActivity : ComponentActivity() {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION)
+            addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
         }
         if (!receiverRegistered) {
             if (Build.VERSION.SDK_INT >= 33) {
@@ -188,6 +205,62 @@ class MainActivity : ComponentActivity() {
         })
     }
 
+    private fun connectToDevice(device: WifiP2pDevice) {
+        if (!hasDiscoveryPermission()) {
+            statusMessage = "Nearby-device permission is needed before connecting."
+            startDiscovery()
+            return
+        }
+        val activeChannel = channel ?: return
+        if (device.status == WifiP2pDevice.CONNECTED) {
+            statusMessage = "This device already reports a Wi-Fi Direct connection."
+            return
+        }
+
+        connectingAddress = device.deviceAddress
+        statusMessage = "Sending a connection invitation to ${device.deviceName.ifBlank { "nearby device" }}…"
+        connectionMessage = "Waiting for the other phone to approve"
+
+        val config = WifiP2pConfig().apply {
+            deviceAddress = device.deviceAddress
+            wps.setup = WpsInfo.PBC
+        }
+        wifiManager.connect(activeChannel, config, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+                statusMessage = "Invitation sent. The other phone may need to accept the Wi-Fi Direct prompt."
+            }
+
+            override fun onFailure(reason: Int) {
+                connectingAddress = null
+                connectionMessage = "Not connected"
+                statusMessage = when (reason) {
+                    WifiP2pManager.BUSY -> "Wi-Fi is busy. Wait a moment, then try again."
+                    WifiP2pManager.P2P_UNSUPPORTED -> "This phone does not support Wi-Fi Direct."
+                    else -> "Could not send the connection request (code $reason). Try again."
+                }
+            }
+        })
+    }
+
+    private fun updateConnectionState(info: WifiP2pInfo) {
+        if (info.groupFormed) {
+            val active = nearbyDevices.firstOrNull { it.deviceAddress == connectingAddress }
+            connectedDeviceName = active?.deviceName?.ifBlank { null } ?: "Nearby device"
+            connectingAddress = null
+            connectionMessage = if (info.isGroupOwner) {
+                "Connected • this phone hosts the local link"
+            } else {
+                "Connected • secure local link established"
+            }
+            statusMessage = "Wi-Fi Direct connection established. NeaRer app-to-app approval and chat are the next layer."
+        } else {
+            connectedDeviceName = null
+            connectingAddress = null
+            connectionMessage = "Not connected"
+            statusMessage = "The Wi-Fi Direct connection is not active. You can scan and connect again."
+        }
+    }
+
     companion object {
         private const val REQUEST_DISCOVERY_PERMISSION = 410
     }
@@ -198,7 +271,11 @@ private fun NeaRerHome(
     status: String,
     scanning: Boolean,
     devices: List<WifiP2pDevice>,
-    onFindNearby: () -> Unit
+    connectingAddress: String?,
+    connectedDeviceName: String?,
+    connectionMessage: String,
+    onFindNearby: () -> Unit,
+    onConnect: (WifiP2pDevice) -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(
@@ -226,7 +303,7 @@ private fun NeaRerHome(
                     Text("OFFLINE CONNECTION", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text("Bring nearby people closer.", color = White, fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "Find nearby Android phones using Wi-Fi Direct. Discovery happens locally and does not need mobile data.",
+                        "Find nearby Android phones using Wi-Fi Direct. Discovery and the direct link work locally without mobile data. Both phones need Wi-Fi turned on.",
                         color = Muted, fontSize = 14.sp, lineHeight = 21.sp
                     )
                     Button(
@@ -242,6 +319,14 @@ private fun NeaRerHome(
                 }
             }
 
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("CONNECTION STATUS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text(connectedDeviceName?.let { "Connected to $it" } ?: connectionMessage, color = White, fontWeight = FontWeight.SemiBold)
+                    Text(connectionMessage, color = Muted, fontSize = 11.sp)
+                }
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("NEARBY DEVICES", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
                 Spacer(modifier = Modifier.weight(1f))
@@ -252,22 +337,33 @@ private fun NeaRerHome(
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
                     Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("No devices listed yet", color = White, fontWeight = FontWeight.SemiBold)
-                        Text("Try scanning with another Android phone nearby with Wi-Fi turned on.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        Text("Scan with another Android phone nearby. For NeaRer chat, both phones will need the app installed.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                     }
                 }
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(devices, key = { it.deviceAddress }) { device ->
                         Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Panel) {
-                            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Surface(shape = CircleShape, color = Color(0xFF244B4A), modifier = Modifier.size(38.dp)) {
                                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                                         Text("N", color = Mint, fontWeight = FontWeight.Bold)
                                     }
                                 }
-                                Column(modifier = Modifier.padding(start = 12.dp)) {
+                                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
                                     Text(device.deviceName.ifBlank { "Nearby Android device" }, color = White, fontWeight = FontWeight.SemiBold)
                                     Text(deviceStatus(device.status), color = Muted, fontSize = 11.sp)
+                                }
+                                Button(
+                                    onClick = { onConnect(device) },
+                                    enabled = connectingAddress == null && connectedDeviceName == null && device.status != WifiP2pDevice.UNAVAILABLE,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
+                                ) {
+                                    Text(if (connectingAddress == device.deviceAddress) "Requesting…" else "Connect", fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -283,9 +379,9 @@ private fun NeaRerHome(
 
 private fun deviceStatus(status: Int): String = when (status) {
     WifiP2pDevice.AVAILABLE -> "Available"
-    WifiP2pDevice.INVITED -> "Connection invitation pending"
+    WifiP2pDevice.INVITED -> "Invitation pending"
     WifiP2pDevice.CONNECTED -> "Connected"
     WifiP2pDevice.FAILED -> "Connection failed"
     WifiP2pDevice.UNAVAILABLE -> "Temporarily unavailable"
-    else -> "Nearby device"
+    else -> "Nearby Wi-Fi Direct device"
 }
