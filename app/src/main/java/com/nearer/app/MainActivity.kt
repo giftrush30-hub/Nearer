@@ -212,10 +212,10 @@ class MainActivity : ComponentActivity() {
         channel = wifiManager?.initialize(this, mainLooper, null)
         nearbyTransport = NearbyConnectionsTransport(this, object : NearbyConnectionsTransport.Listener {
             override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
-            override fun onFound(id: String, name: String) { runOnUiThread { hybridPeers[id] = name; recentlySeenPeers.remove(id) } }
-            override fun onLost(id: String) { runOnUiThread {
+            override fun onFound(id: String, name: String, stableId: String) { runOnUiThread { hybridPeers[id] = name; if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId) } }
+            override fun onLost(id: String, stableId: String) { runOnUiThread {
                 val name = hybridPeers.remove(id)
-                if (name != null) recordRecentlySeen(id, name)
+                if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
             } }
             override fun onRequest(id: String, name: String, token: String) {
                 runOnUiThread {
@@ -226,7 +226,7 @@ class MainActivity : ComponentActivity() {
                     statusMessage = "$name is requesting a nearby connection."
                 }
             }
-            override fun onConnected(id: String, name: String) {
+            override fun onConnected(id: String, name: String, stableId: String) {
                 runOnUiThread {
                     hybridConnected = true
                     pendingHybridEndpoint = null
@@ -239,10 +239,10 @@ class MainActivity : ComponentActivity() {
                     statusMessage = "Connected to $name using Bluetooth / nearby Wi-Fi."
                 }
             }
-            override fun onDisconnected(id: String) {
+            override fun onDisconnected(id: String, stableId: String, name: String) {
                 runOnUiThread {
                     hybridConnected = false
-                    connectedDeviceName?.let { recordRecentlySeen(id, it) }
+                    recordRecentlySeen(stableId.ifBlank { id }, name)
                     pendingHybridEndpoint = null
                     connectedDeviceName = null
                     chatReady = false
