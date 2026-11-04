@@ -373,6 +373,7 @@ class MainActivity : ComponentActivity() {
                     onCreateGroup = ::createCommunityGroup,
                     onJoinGroup = ::joinCommunityGroup,
                     onSelectGroup = { selectedCommunityCode = it },
+                    onLeaveGroup = ::leaveCommunityGroup,
                     onSendGroupMessage = ::sendCommunityGroupMessage,
                     onBroadcast = ::sendCommunityBroadcast,
                     onGameInvite = ::inviteToGame,
@@ -1037,14 +1038,27 @@ class MainActivity : ComponentActivity() {
     }
     private fun createCommunityGroup(raw: String) {
         val name = raw.trim().take(32)
-        if (name.isBlank() || communityGroups.size >= 20) return
+        if (name.isBlank() || communityGroups.size >= 20) {
+            communityNotice = if (communityGroups.size >= 20) "You have reached the 20-community limit." else "Enter a community name first."
+            return
+        }
         var code = (100000..999999).random().toString()
         while (communityGroups.any { it.code == code }) code = (100000..999999).random().toString()
         communityGroups.add(0, CommunityGroup(code, name, listOf(displayName)))
         selectedCommunityCode = code
         persistCommunityData()
-        communityNotice = "Created $name. Share group code $code with nearby people."
-        sendCommunityPacket(JSONObject().put("type", "group_created").put("code", code).put("name", name).put("sender", displayName))
+        val announced = sendCommunityPacket(JSONObject().put("type", "group_created").put("code", code).put("name", name).put("sender", displayName))
+        communityNotice = if (announced) "Community created and announced nearby. Share code " + code + " to invite others."
+            else "Community created on this phone. Share code " + code + "; connect nearby to announce it."
+    }
+    private fun leaveCommunityGroup(rawCode: String) {
+        val code = rawCode.filter { it.isDigit() }.take(6)
+        val group = communityGroups.firstOrNull { it.code == code } ?: return
+        sendCommunityPacket(JSONObject().put("type", "group_leave").put("code", code).put("sender", displayName))
+        communityGroups.removeAll { it.code == code }
+        if (selectedCommunityCode == code) selectedCommunityCode = communityGroups.firstOrNull()?.code
+        persistCommunityData()
+        communityNotice = "You left " + group.name + ". Its messages remain saved on this phone."
     }
     private fun joinCommunityGroup(raw: String) {
         val code = raw.filter { it.isDigit() }.take(6)
@@ -1085,14 +1099,28 @@ class MainActivity : ComponentActivity() {
             val type = packet.optString("type")
             val code = packet.optString("code")
             when (type) {
-                "group_created", "group_join" -> {
+                "group_created" -> {
+                    if (code.length == 6 && communityGroups.none { it.code == code } && communityGroups.size < 20) {
+                        val groupName = packet.optString("name").trim().take(32).ifBlank { "Nearby community " + code }
+                        communityGroups.add(0, CommunityGroup(code, groupName, listOf(sender)))
+                        persistCommunityData()
+                        communityNotice = "New community found: " + groupName + ". Select it and join with code " + code + "."
+                    }
+                }
+                "group_join" -> {
                     val i = communityGroups.indexOfFirst { it.code == code }
                     if (i >= 0) {
                         val old = communityGroups[i]
-                        val member = sender
-                        if (member !in old.members) communityGroups[i] = old.copy(members = old.members + member)
+                        if (sender !in old.members) communityGroups[i] = old.copy(members = old.members + sender)
                         persistCommunityData()
                         sendGroupMembers(code)
+                    }
+                }
+                "group_leave" -> {
+                    val i = communityGroups.indexOfFirst { it.code == code }
+                    if (i >= 0) {
+                        communityGroups[i] = communityGroups[i].copy(members = communityGroups[i].members.filterNot { it == sender })
+                        persistCommunityData()
                     }
                 }
                 "group_members" -> {
@@ -1856,7 +1884,7 @@ private fun NeaRerHome(
                 }
             ) {
                 CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
-                    activeGame, gameChatMessages, onCreateGroup, onJoinGroup, onSelectGroup,
+                    activeGame, gameChatMessages, onCreateGroup, onJoinGroup, onSelectGroup, onLeaveGroup,
                     onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
                     onRejectGameInvite, onGameMove, onGameChat, onEndGame)
             }
@@ -2037,7 +2065,7 @@ private fun CommunityHub(
     groups: List<CommunityGroup>, messages: List<CommunityChatMessage>, selectedCode: String?, notice: String,
     invite: GameInvite?, game: TicTacToeMatch?, gameChat: List<String>,
     onCreate: (String) -> Unit, onJoin: (String) -> Unit, onSelect: (String) -> Unit,
-    onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
+    onLeaveGroup: (String) -> Unit, onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
     onAccept: () -> Unit, onReject: () -> Unit, onMove: (Int) -> Unit, onGameChat: (String) -> Unit, onEndGame: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
@@ -2062,8 +2090,23 @@ private fun CommunityHub(
                 Button(onClick = { onSelect(group.code) }, Modifier.fillMaxWidth()) { Text(group.name + " • " + group.code + " • " + group.members.size + " known") }
             }
             if (selected != null) {
-                Text("GROUP CHAT • " + selected.name, color = Mint, fontWeight = FontWeight.Bold)
-                Text("Share code " + selected.code + " with connected members.", color = Muted, fontSize = 10.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("GROUP CHAT • " + selected.name, color = Mint, fontWeight = FontWeight.Bold)
+                        Text("Share code " + selected.code + " with connected members.", color = Muted, fontSize = 10.sp)
+                    }
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    Button(onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("NeaRer community code", selected.code))
+                    }) { Text("Copy code") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(selected.members.size.toString() + " known members", color = Muted, fontSize = 11.sp)
+                    Spacer(Modifier.weight(1f))
+                    Button(onClick = { onLeaveGroup(selected.code) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Leave") }
+                }
                 Column(Modifier.fillMaxWidth().height(130.dp).verticalScroll(rememberScrollState())) {
                     messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { Text(it.sender + ": " + it.body, color = White, fontSize = 12.sp) }
                 }
