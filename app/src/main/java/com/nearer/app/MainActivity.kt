@@ -384,7 +384,7 @@ class MainActivity : ComponentActivity() {
     private fun stopDiscovery() {
         finishDiscovery()
         hybridSearching = false
-        nearbyTransport?.stop()
+        nearbyTransport?.stopSearching()
         val manager = wifiManager
         val activeChannel = channel
         if (manager != null && activeChannel != null) {
@@ -1325,8 +1325,11 @@ private fun NeaRerHome(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("CONNECTION STATUS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Spacer(modifier = Modifier.weight(1f))
-                        if (chatReady) Surface(shape = RoundedCornerShape(30.dp), color = Color(0xFF174B43)) {
-                            Text("CONNECTED", modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        if (chatReady) Surface(shape = RoundedCornerShape(30.dp), color = Color(0xFF174B43), modifier = Modifier.alpha(pulse)) {
+                            Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("✓", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                                Text("CONNECTED", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                     Text(connectedDeviceName?.let { "You are connected to $it" } ?: connectionMessage, color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
