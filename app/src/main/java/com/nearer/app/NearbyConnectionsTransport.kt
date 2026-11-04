@@ -391,6 +391,19 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     fun disconnect() {
         try { client.stopAllEndpoints() } catch (_: Exception) { }
         synchronized(activeEndpoints) { activeEndpoints.clear() }
+        // Drop partial transfers when a peer disconnects so temporary payloads
+        // and stale progress entries cannot leak into the next connection.
+        (incomingPayloads.values + completedPayloads.values)
+            .distinctBy { it.id }
+            .forEach { try { it.close() } catch (_: Exception) { } }
+        incomingPayloads.clear()
+        completedPayloads.clear()
+        incomingMetadata.clear()
+        successfulIncomingPayloadIds.clear()
+        outgoingFiles.keys.forEach { payloadId ->
+            try { client.cancelPayload(payloadId) } catch (_: Exception) { }
+        }
+        outgoingFiles.clear()
     }
     fun stop() {
         stopSearching()
