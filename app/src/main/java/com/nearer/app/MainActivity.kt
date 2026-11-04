@@ -958,7 +958,7 @@ class MainActivity : ComponentActivity() {
         if (id.startsWith("nearby:")) {
             val payloadId = id.substringAfter("nearby:").toLongOrNull()
             val endpoint = hybridConnectedEndpoint
-            if (payloadId != null && endpoint != null) nearbyTransport?.cancelFile(endpoint, payloadId)
+            if (payloadId != null && endpoint != null) nearbyTransport?.cancelFile(payloadId)
             outgoingTransferId = null
             outgoingProgress = 0f
             chatNotice = "Cancelling nearby file transfer…"
