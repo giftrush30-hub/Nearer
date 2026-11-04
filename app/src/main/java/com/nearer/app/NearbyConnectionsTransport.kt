@@ -178,10 +178,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             var destination: File? = null
             try {
                 val folder = File(appContext.filesDir, "received").apply { mkdirs() }
-                destination = File(folder, "${System.currentTimeMillis()}-${meta.name}")
+                val target = File(folder, "${System.currentTimeMillis()}-${meta.name}")
+                destination = target
                 val uri: Uri = payload.asFile().asUri()
                 appContext.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(destination).use { output ->
+                    FileOutputStream(target).use { output ->
                         val buffer = ByteArray(32 * 1024)
                         var copied = 0L
                         while (true) {
@@ -196,7 +197,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     }
                 } ?: throw IllegalStateException("Could not open the received file")
                 appContext.contentResolver.delete(uri, null, null)
-                listener.onFileReceived(meta.endpointId, meta.name, destination)
+                listener.onFileReceived(meta.endpointId, meta.name, target)
             } catch (error: Exception) {
                 destination?.delete()
                 listener.onFileStatus("Could not save the received file: ${error.localizedMessage ?: "transfer error"}")
@@ -260,16 +261,18 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         var descriptor: android.os.ParcelFileDescriptor? = null
         var filePayload: Payload? = null
         try {
-            descriptor = appContext.contentResolver.openFileDescriptor(uri, "r")
+            val openedDescriptor = appContext.contentResolver.openFileDescriptor(uri, "r")
                 ?: throw IllegalStateException("The selected file could not be opened")
-            val size = descriptor.statSize
+            descriptor = openedDescriptor
+            val size = openedDescriptor.statSize
             if (size < 0L || size > MAX_FILE_BYTES) throw IllegalStateException("Choose a file no larger than 200 MB")
-            filePayload = Payload.fromFile(descriptor)
+            val payload = Payload.fromFile(openedDescriptor)
+            filePayload = payload
             descriptor = null // The Payload now owns the descriptor.
             val name = safeFileName(displayName)
-            filePayload.setFileName(name)
-            filePayload.setSensitive(true)
-            val id = filePayload.id
+            payload.setFileName(name)
+            payload.setSensitive(true)
+            val id = payload.id
             outgoingFiles[id] = endpointId to name
             val metadata = JSONObject().put("kind", "file_meta").put("payloadId", id)
                 .put("name", name).put("size", size)
@@ -279,10 +282,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     try { filePayload.close() } catch (_: Exception) { }
                     listener.onFileStatus("Could not send file details: ${it.localizedMessage ?: "connection error"}")
                 }
-            client.sendPayload(endpointId, filePayload)
+            client.sendPayload(endpointId, payload)
                 .addOnFailureListener {
                     outgoingFiles.remove(id)
-                    try { filePayload.close() } catch (_: Exception) { }
+                    try { payload.close() } catch (_: Exception) { }
                     listener.onFileStatus("Could not start file transfer: ${it.localizedMessage ?: "connection error"}")
                 }
             listener.onFileProgress(endpointId, id, name, 0L, size, false)
