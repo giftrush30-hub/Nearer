@@ -668,6 +668,10 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                    if (cancelledOutgoingTransfers.contains(id)) {
+                        sendWireLine("FILE_CANCEL|$id")
+                        throw IllegalStateException("Transfer cancelled")
+                    }
                     val hash = digest.digest().joinToString("") { "%02x".format(it) }
                     if (!sendWireLine("FILE_END|$id|$hash")) throw IllegalStateException("Could not finish file transfer")
                     runOnUiThread { chatNotice = "Sending complete. Waiting for the other phone to confirm…" }
