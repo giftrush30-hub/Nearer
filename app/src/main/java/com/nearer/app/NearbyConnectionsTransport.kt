@@ -143,7 +143,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val payloadId = envelope.optLong("payloadId", -1L)
                 val name = safeFileName(envelope.optString("name", "shared-file"))
                 val size = envelope.optLong("size", -1L)
-                if (payloadId < 0L || size < 0L || size > MAX_FILE_BYTES) {
+                if (payloadId < 0L || size < 0L) {
                     listener.onFileStatus("A nearby phone sent invalid file information. The transfer was ignored.")
                     return
                 }
@@ -190,7 +190,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                             val count = input.read(buffer)
                             if (count < 0) break
                             copied += count
-                            if (copied > MAX_FILE_BYTES || copied > meta.size) throw IllegalStateException("Received file exceeded its declared size")
+                            if (copied > meta.size) throw IllegalStateException("Received file exceeded its declared size")
                             output.write(buffer, 0, count)
                         }
                         output.flush()
@@ -275,7 +275,6 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 } ?: -1L
             }
             if (reportedSize < 0L) throw IllegalStateException("NeaRer could not determine this file's size. Choose another file.")
-            if (reportedSize > MAX_FILE_BYTES) throw IllegalStateException("Choose a file no larger than 200 MB")
             val size = reportedSize
             val payload = Payload.fromFile(openedDescriptor)
             filePayload = payload
@@ -346,7 +345,4 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fileIo.shutdownNow()
     }
 
-    companion object {
-        const val MAX_FILE_BYTES = 200L * 1024L * 1024L
-    }
 }
