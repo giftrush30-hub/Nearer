@@ -377,6 +377,7 @@ class MainActivity : ComponentActivity() {
                 } else {
                     runOnUiThread {
                         incomingRequesterName = null
+                        pairingCode = null
                         approvalMessage = "Request declined or expired"
                         statusMessage = "The NeaRer connection request was declined or expired."
                     }
@@ -439,6 +440,7 @@ class MainActivity : ComponentActivity() {
                     else -> {
                         runOnUiThread {
                             chatReady = false
+                            pairingCode = null
                             approvalMessage = "Request declined or expired"
                             statusMessage = "The other person declined the request or it expired."
                             transportStarted = false
