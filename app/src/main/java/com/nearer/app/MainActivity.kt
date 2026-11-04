@@ -19,6 +19,9 @@ import java.io.PrintWriter
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.UUID
+import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import androidx.activity.ComponentActivity
@@ -39,12 +42,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,8 +80,13 @@ class MainActivity : ComponentActivity() {
     private var transportStarted = false
     private var serverSocket: ServerSocket? = null
     private var peerSocket: Socket? = null
+    private var peerWriter: PrintWriter? = null
+    private val writerLock = Any()
+    private val receivedMessageIds = ConcurrentHashMap.newKeySet<String>()
     private val io = Executors.newCachedThreadPool()
     private val approvalDecision = LinkedBlockingQueue<Boolean>()
+    private val chatMessages = mutableStateListOf<ChatMessage>()
+    private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
 
@@ -145,6 +155,9 @@ class MainActivity : ComponentActivity() {
                     incomingRequesterName = incomingRequesterName,
                     approvalMessage = approvalMessage,
                     chatReady = chatReady,
+                    messages = chatMessages,
+                    chatNotice = chatNotice,
+                    onSendMessage = ::sendChatMessage,
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
                     onFindNearby = ::startDiscovery,
@@ -306,6 +319,7 @@ class MainActivity : ComponentActivity() {
                 socket.soTimeout = 60_000
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
                 val writer = PrintWriter(socket.getOutputStream(), true)
+                peerWriter = writer
                 val hello = reader.readLine().orEmpty()
                 if (!hello.startsWith("NEARER_HELLO|")) {
                     writer.println("REJECT")
@@ -327,8 +341,10 @@ class MainActivity : ComponentActivity() {
                         incomingRequesterName = null
                         approvalMessage = "Connection approved. Private chat can now be opened."
                         connectionMessage = "NeaRer connection approved"
-                        statusMessage = "You approved $name. The private NeaRer link is ready."
+                        chatNotice = "Connected directly to $name. Say hello."
+                        statusMessage = "You approved $name. Private chat is ready."
                     }
+                    startMessageReader(socket)
                 } else {
                     runOnUiThread {
                         incomingRequesterName = null
@@ -355,16 +371,21 @@ class MainActivity : ComponentActivity() {
                 socket.connect(InetSocketAddress(info.groupOwnerAddress, 8988), 12_000)
                 socket.soTimeout = 65_000
                 val writer = PrintWriter(socket.getOutputStream(), true)
+                peerWriter = writer
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
                 val localName = Build.MODEL.orEmpty().replace("|", " ").take(40).ifBlank { "Android phone" }
                 writer.println("NEARER_HELLO|$localName")
                 runOnUiThread { statusMessage = "NeaRer identity sent. Waiting for the other person to approve…" }
                 when (reader.readLine()) {
-                    "ACCEPT" -> runOnUiThread {
-                        chatReady = true
-                        approvalMessage = "Your connection request was approved."
-                        connectionMessage = "NeaRer connection approved"
-                        statusMessage = "Connection approved. Your private NeaRer link is ready."
+                    "ACCEPT" -> {
+                        runOnUiThread {
+                            chatReady = true
+                            approvalMessage = "Your connection request was approved."
+                            connectionMessage = "NeaRer connection approved"
+                            chatNotice = "Connected directly to the other phone. Say hello."
+                            statusMessage = "Connection approved. Private chat is ready."
+                        }
+                        startMessageReader(socket)
                     }
                     else -> runOnUiThread {
                         chatReady = false
@@ -398,7 +419,79 @@ class MainActivity : ComponentActivity() {
         try { peerSocket?.close() } catch (_: Exception) { }
         try { serverSocket?.close() } catch (_: Exception) { }
         peerSocket = null
+        peerWriter = null
         serverSocket = null
+        chatReady = false
+    }
+
+    private fun sendChatMessage(rawText: String) {
+        val body = rawText.trim()
+        if (body.isEmpty() || !chatReady) return
+        val id = UUID.randomUUID().toString()
+        val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
+        val line = "MSG|$id|$encoded"
+        val writer = peerWriter
+        if (writer == null) {
+            chatNotice = "The local connection is not ready. Reconnect and try again."
+            return
+        }
+        synchronized(writerLock) {
+            writer.println(line)
+            if (writer.checkError()) {
+                chatNotice = "Message could not be sent. Check the nearby connection."
+                return
+            }
+        }
+        chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sent"))
+        chatNotice = "Sent directly • waiting for delivery confirmation"
+    }
+
+    private fun startMessageReader(socket: Socket) {
+        io.execute {
+            try {
+                socket.soTimeout = 0
+                val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
+                while (!socket.isClosed) {
+                    val line = reader.readLine() ?: break
+                    when {
+                        line.startsWith("MSG|") -> {
+                            val parts = line.split("|", limit = 3)
+                            if (parts.size == 3) {
+                                val id = parts[1]
+                                val body = try {
+                                    String(Base64.getDecoder().decode(parts[2]), Charsets.UTF_8)
+                                } catch (_: Exception) { "" }
+                                if (body.isNotBlank() && receivedMessageIds.add(id)) {
+                                    runOnUiThread {
+                                        chatMessages.add(ChatMessage(id, body, outgoing = false, delivery = "Received"))
+                                        chatNotice = "New message received directly."
+                                    }
+                                }
+                                synchronized(writerLock) { peerWriter?.println("ACK|$id") }
+                            }
+                        }
+                        line.startsWith("ACK|") -> {
+                            val id = line.substringAfter("ACK|")
+                            runOnUiThread {
+                                val index = chatMessages.indexOfFirst { it.id == id && it.outgoing }
+                                if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Delivered")
+                            }
+                        }
+                        line == "PING" -> synchronized(writerLock) { peerWriter?.println("PONG") }
+                    }
+                }
+            } catch (_: Exception) {
+                // Socket closure is handled below; no message body is logged.
+            } finally {
+                runOnUiThread {
+                    if (chatReady) {
+                        chatReady = false
+                        chatNotice = "The nearby connection ended. Reconnect to continue chatting."
+                        connectionMessage = "Connection ended"
+                    }
+                }
+            }
+        }
     }
 
     companion object {
@@ -417,11 +510,15 @@ private fun NeaRerHome(
     incomingRequesterName: String?,
     approvalMessage: String,
     chatReady: Boolean,
+    messages: List<ChatMessage>,
+    chatNotice: String,
+    onSendMessage: (String) -> Unit,
     onAccept: () -> Unit,
     onReject: () -> Unit,
     onFindNearby: () -> Unit,
     onConnect: (WifiP2pDevice) -> Unit
 ) {
+    var draft by remember { mutableStateOf("") }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 26.dp),
@@ -470,6 +567,62 @@ private fun NeaRerHome(
                     Text(connectedDeviceName?.let { "Connected to $it" } ?: connectionMessage, color = White, fontWeight = FontWeight.SemiBold)
                     Text(connectionMessage, color = Muted, fontSize = 11.sp)
                     Text(approvalMessage, color = if (chatReady) Mint else Muted, fontSize = 12.sp)
+                }
+            }
+
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("PRIVATE CHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(if (chatReady) "LOCAL LINK" else "NOT CONNECTED", color = Muted, fontSize = 9.sp)
+                    }
+                    if (chatReady) {
+                        if (messages.isEmpty()) {
+                            Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth().height(150.dp),
+                                verticalArrangement = Arrangement.spacedBy(7.dp)
+                            ) {
+                                items(messages, key = { it.id }) { message ->
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
+                                    ) {
+                                        Surface(
+                                            color = if (message.outgoing) Color(0xFF24564F) else Color(0xFF26364D),
+                                            shape = RoundedCornerShape(14.dp)
+                                        ) {
+                                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                                                Text(message.body, color = White, fontSize = 14.sp)
+                                                Text(if (message.outgoing) message.delivery else "Received", color = Mint, fontSize = 9.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Text(chatNotice, color = Muted, fontSize = 10.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = draft,
+                                onValueChange = { draft = it.take(2000) },
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text("Write a message…", color = Muted) },
+                                shape = RoundedCornerShape(14.dp),
+                                singleLine = true
+                            )
+                            Button(
+                                onClick = { onSendMessage(draft); draft = "" },
+                                enabled = draft.isNotBlank(),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
+                            ) { Text("Send", fontWeight = FontWeight.Bold) }
+                        }
+                    } else {
+                        Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    }
                 }
             }
 
@@ -536,6 +689,13 @@ private fun NeaRerHome(
         }
     }
 }
+
+private data class ChatMessage(
+    val id: String,
+    val body: String,
+    val outgoing: Boolean,
+    val delivery: String
+)
 
 private fun deviceStatus(status: Int): String = when (status) {
     WifiP2pDevice.AVAILABLE -> "Available"
