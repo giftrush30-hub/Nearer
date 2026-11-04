@@ -379,7 +379,7 @@ class MainActivity : ComponentActivity() {
                     displayName = displayName,
                     onSaveDisplayName = ::saveDisplayName,
                     meshRelayEnabled = meshRelayEnabled,
-                    onMeshRelayChange = ::setMeshRelayEnabled,
+                    onMeshRelayChange = ::updateMeshRelayEnabled,
                     onHybridConnect = { id -> nearbyTransport?.request(id) },
                     onFindNearby = ::startDiscovery,
                     onStopSearch = ::stopDiscovery,
@@ -472,7 +472,7 @@ class MainActivity : ComponentActivity() {
         } else statusMessage = "Search stopped."
     }
 
-    private fun setMeshRelayEnabled(enabled: Boolean) {
+    private fun updateMeshRelayEnabled(enabled: Boolean) {
         meshRelayEnabled = enabled
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", enabled).apply()
         nearbyTransport?.setRelayEnabled(enabled)
