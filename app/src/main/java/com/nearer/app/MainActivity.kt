@@ -91,6 +91,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import com.nearer.app.games.ludo.LudoGameScreen
 
 private val Midnight = Color(0xFF101A2B)
 private val Panel = Color(0xFF1A2940)
@@ -329,6 +330,7 @@ class MainActivity : ComponentActivity() {
                 onSurface = White
             )) {
                 NeaRerHome(
+                    playerName = displayName,
                     status = statusMessage,
                     scanning = scanning || hybridSearching,
                     devices = nearbyDevices,
@@ -377,7 +379,7 @@ class MainActivity : ComponentActivity() {
                     displayName = displayName,
                     onSaveDisplayName = ::saveDisplayName,
                     meshRelayEnabled = meshRelayEnabled,
-                    onMeshRelayChange = ::setMeshRelayEnabled,
+                    onMeshRelayChange = ::updateMeshRelayEnabled,
                     onHybridConnect = { id -> nearbyTransport?.request(id) },
                     onFindNearby = ::startDiscovery,
                     onStopSearch = ::stopDiscovery,
@@ -470,7 +472,7 @@ class MainActivity : ComponentActivity() {
         } else statusMessage = "Search stopped."
     }
 
-    private fun setMeshRelayEnabled(enabled: Boolean) {
+    private fun updateMeshRelayEnabled(enabled: Boolean) {
         meshRelayEnabled = enabled
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", enabled).apply()
         nearbyTransport?.setRelayEnabled(enabled)
@@ -1456,6 +1458,7 @@ class MainActivity : ComponentActivity() {
 
 @androidx.compose.runtime.Composable
 private fun NeaRerHome(
+    playerName: String,
     status: String,
     scanning: Boolean,
     devices: List<WifiP2pDevice>,
@@ -1511,12 +1514,17 @@ private fun NeaRerHome(
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     var draft by remember { mutableStateOf("") }
+    var showLudo by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
+    }
+    if (showLudo) {
+        LudoGameScreen(playerName = playerName, onExit = { showLudo = false })
+        return
     }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(
@@ -1590,7 +1598,7 @@ private fun NeaRerHome(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("LOCAL GROUPS" to "Coming soon", "PLAY TOGETHER" to "Coming soon").forEach { item ->
+                        listOf("LOCAL GROUPS" to "Nearby groups ready", "PLAY TOGETHER" to "Tic-tac-toe + Ludo").forEach { item ->
                             Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -1598,6 +1606,24 @@ private fun NeaRerHome(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF172B4A)) {
+                Column(modifier = Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("NEARER GAME ZONE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                            Text("Play. Connect. Compete.", color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF29466B)) {
+                            Text("NEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
+                        }
+                    }
+                    Text("Start with Ludo: traditional rules, colourful tokens and computer opponents. Nearby multiplayer is the next game milestone; online play will follow.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    Button(onClick = { showLudo = true }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
+                        Text("PLAY LUDO", fontWeight = FontWeight.Black)
                     }
                 }
             }
