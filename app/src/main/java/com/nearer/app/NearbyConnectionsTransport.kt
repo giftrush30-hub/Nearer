@@ -255,6 +255,23 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         return broadcast(envelope.toString(), null)
     }
 
+    fun sendToNames(body: String, targetNames: Set<String>): Boolean {
+        if (body.isBlank() || targetNames.isEmpty()) return false
+        val targets = synchronized(activeEndpoints) {
+            activeEndpoints.filter { endpoint ->
+                synchronized(names) { names[endpoint] in targetNames }
+            }
+        }
+        if (targets.isEmpty()) return false
+        val envelope = JSONObject().put("id", UUID.randomUUID().toString()).put("body", body)
+            .put("ttl", 0).put("hops", 0).put("origin", localName).toString()
+        targets.forEach { endpoint ->
+            client.sendPayload(endpoint, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener { listener.onStatus("A group message could not be sent to one nearby member.") }
+        }
+        return true
+    }
+
     fun sendFile(endpointId: String, uri: Uri, displayName: String): Long? {
         if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
             listener.onFileStatus("The nearby connection is no longer active.")
