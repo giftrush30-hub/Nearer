@@ -1,7 +1,6 @@
 package com.nearer.app
 
 import android.content.Context
-import android.os.Build
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.*
 import org.json.JSONObject
@@ -25,7 +24,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val seenMessageIds = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var relayEnabled = false
     private var started = false
-    private val localName = Build.MODEL.orEmpty().replace("|", " ").take(40).ifBlank { "Android phone" }
+    @Volatile private var localName = "NeaRer User"
     private val discovery = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(id: String, info: DiscoveredEndpointInfo) {
             synchronized(names) { names[id] = info.endpointName }
@@ -74,15 +73,25 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
         override fun onPayloadTransferUpdate(id: String, update: PayloadTransferUpdate) = Unit
     }
+    private fun startAdvertising() {
+        val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
+        client.startAdvertising(localName, serviceId, lifecycle, options).addOnFailureListener {
+            listener.onStatus("Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}")
+        }
+    }
+
+    fun setDisplayName(name: String) {
+        val clean = name.trim().replace("|", " ").take(24).ifBlank { "NeaRer User" }
+        if (clean == localName) return
+        localName = clean
+        if (started) client.stopAdvertising().addOnCompleteListener { startAdvertising() }
+    }
+
     fun start() {
         if (started) return
         started = true
-        val strategy = Strategy.P2P_CLUSTER
-        val advertising = AdvertisingOptions.Builder().setStrategy(strategy).build()
-        val discovering = DiscoveryOptions.Builder().setStrategy(strategy).build()
-        client.startAdvertising(localName, serviceId, lifecycle, advertising).addOnFailureListener {
-            listener.onStatus("Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}")
-        }
+        val discovering = DiscoveryOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
+        startAdvertising()
         client.startDiscovery(serviceId, discovery, discovering).addOnFailureListener {
             listener.onStatus("Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}")
         }
