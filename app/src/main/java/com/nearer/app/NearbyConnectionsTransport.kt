@@ -277,16 +277,19 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val metadata = JSONObject().put("kind", "file_meta").put("payloadId", id)
                 .put("name", name).put("size", size)
             client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
-                .addOnFailureListener {
-                    outgoingFiles.remove(id)
-                    try { filePayload.close() } catch (_: Exception) { }
-                    listener.onFileStatus("Could not send file details: ${it.localizedMessage ?: "connection error"}")
+                .addOnSuccessListener {
+                    client.sendPayload(endpointId, payload)
+                        .addOnFailureListener { error ->
+                            outgoingFiles.remove(id)
+                            try { payload.close() } catch (_: Exception) { }
+                            listener.onFileStatus("Could not start file transfer: ${error.localizedMessage ?: "connection error"}")
+                        }
                 }
-            client.sendPayload(endpointId, payload)
-                .addOnFailureListener {
+                .addOnFailureListener { error ->
                     outgoingFiles.remove(id)
+                    try { client.cancelPayload(endpointId, id) } catch (_: Exception) { }
                     try { payload.close() } catch (_: Exception) { }
-                    listener.onFileStatus("Could not start file transfer: ${it.localizedMessage ?: "connection error"}")
+                    listener.onFileStatus("Could not send file details: ${error.localizedMessage ?: "connection error"}")
                 }
             listener.onFileProgress(endpointId, id, name, 0L, size, false)
             return id
