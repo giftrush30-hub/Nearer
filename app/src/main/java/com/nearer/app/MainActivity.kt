@@ -955,8 +955,9 @@ class MainActivity : ComponentActivity() {
         if (body.isEmpty() || !chatReady) return
         val id = UUID.randomUUID().toString()
         if (hybridConnected) {
-            if (nearbyTransport?.send(body) != true) {
-                chatNotice = "Message could not be sent. Check the nearby connection."
+            val endpoint = hybridConnectedEndpoint
+            if (endpoint.isNullOrBlank() || nearbyTransport?.sendToEndpoint(endpoint, body) != true) {
+                chatNotice = "Message could not be sent to the selected nearby person. Check the connection."
                 return
             }
             chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sent"))
