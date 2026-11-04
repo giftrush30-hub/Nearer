@@ -360,6 +360,7 @@ class MainActivity : ComponentActivity() {
                     onRejectGameInvite = { incomingGameInvite = null },
                     onGameMove = ::playGameMove,
                     onGameChat = ::sendGameChat,
+                    onEndGame = ::endGame,
                     onSendFile = ::sendFile,
                     onCancelTransfer = ::cancelOutgoingFileTransfer,
                     outgoingTransferId = outgoingTransferId,
@@ -1100,6 +1101,13 @@ class MainActivity : ComponentActivity() {
         activeGame = game.copy(board = next, turn = if (game.localSymbol == "X") "O" else "X", status = winner?.let { "$it wins" } ?: if (next.none { it == '.' }) "Draw" else "Waiting for opponent")
         sendCommunityPacket(JSONObject().put("type", "game_move").put("matchId", game.matchId).put("index", index).put("symbol", game.localSymbol))
     }
+    private fun endGame() {
+        activeGame = null
+        incomingGameInvite = null
+        gameChatMessages.clear()
+        communityNotice = "Game closed."
+    }
+
     private fun sendGameChat(raw: String) {
         val game = activeGame ?: return
         val body = raw.trim().take(300)
@@ -1448,6 +1456,7 @@ private fun NeaRerHome(
     onRejectGameInvite: () -> Unit,
     onGameMove: (Int) -> Unit,
     onGameChat: (String) -> Unit,
+    onEndGame: () -> Unit,
     onSendFile: (Uri) -> Unit,
     onCancelTransfer: () -> Unit,
     outgoingTransferId: String?,
@@ -1711,7 +1720,7 @@ private fun NeaRerHome(
             CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
                 activeGame, gameChatMessages, onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
-                onRejectGameInvite, onGameMove, onGameChat)
+                onRejectGameInvite, onGameMove, onGameChat, onEndGame)
 
             if (incomingRequesterName != null) {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
@@ -1872,7 +1881,7 @@ private fun CommunityHub(
     invite: GameInvite?, game: TicTacToeMatch?, gameChat: List<String>,
     onCreate: (String) -> Unit, onJoin: (String) -> Unit, onSelect: (String) -> Unit,
     onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
-    onAccept: () -> Unit, onReject: () -> Unit, onMove: (Int) -> Unit, onGameChat: (String) -> Unit
+    onAccept: () -> Unit, onReject: () -> Unit, onMove: (Int) -> Unit, onGameChat: (String) -> Unit, onEndGame: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
@@ -1937,7 +1946,7 @@ private fun CommunityHub(
                             val index = row * 3 + col
                             val cell = game.board[index].takeIf { it != '.' }?.toString() ?: ""
                             Button(onClick = { onMove(index) }, Modifier.weight(1f).height(54.dp),
-                                enabled = cell.isEmpty() && game.turn == game.localSymbol && !game.status.endsWith("wins") && game.status != "Draw") {
+                                enabled = cell.isEmpty() && game.turn == game.localSymbol && game.status != "Waiting for a player" && !game.status.endsWith("wins") && game.status != "Draw") {
                                 Text(cell.ifBlank { " " }, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                             }
                         }
@@ -1951,6 +1960,7 @@ private fun CommunityHub(
                     OutlinedTextField(gameText, { gameText = it.take(300) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Chat while playing") })
                     Button(onClick = { onGameChat(gameText); gameText = "" }, enabled = gameText.isNotBlank()) { Text("Send") }
                 }
+                Button(onClick = onEndGame, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B))) { Text("End match") }
             }
         }
     }
