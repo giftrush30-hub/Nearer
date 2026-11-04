@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.wifi.WpsInfo
+import android.bluetooth.BluetoothManager
 import android.net.wifi.WifiManager
 import android.location.LocationManager
 import android.net.wifi.p2p.WifiP2pConfig
@@ -64,6 +65,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -90,6 +92,10 @@ class MainActivity : ComponentActivity() {
     private var channel: WifiP2pManager.Channel? = null
     private var receiverRegistered = false
     private var scanning by mutableStateOf(false)
+    private var nearbyTransport: NearbyConnectionsTransport? = null
+    private val hybridPeers = mutableStateMapOf<String, String>()
+    private var pendingHybridEndpoint: String? = null
+    private var hybridConnected = false
     private val discoveryHandler = Handler(Looper.getMainLooper())
     private var discoveryTimeout: Runnable? = null
     private var discoveryGeneration = 0
@@ -170,6 +176,50 @@ class MainActivity : ComponentActivity() {
         window.decorView.systemUiVisibility = 0
         wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
         channel = wifiManager?.initialize(this, mainLooper, null)
+        nearbyTransport = NearbyConnectionsTransport(this, object : NearbyConnectionsTransport.Listener {
+            override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
+            override fun onFound(id: String, name: String) { runOnUiThread { hybridPeers[id] = name } }
+            override fun onLost(id: String) { runOnUiThread { hybridPeers.remove(id) } }
+            override fun onRequest(id: String, name: String, token: String) {
+                runOnUiThread {
+                    pendingHybridEndpoint = id
+                    incomingRequesterName = name
+                    pairingCode = token
+                    approvalMessage = "Compare the security code on both phones before accepting"
+                    statusMessage = "$name is requesting a nearby connection."
+                }
+            }
+            override fun onConnected(id: String, name: String) {
+                runOnUiThread {
+                    hybridConnected = true
+                    pendingHybridEndpoint = null
+                    incomingRequesterName = null
+                    connectedDeviceName = name
+                    chatReady = true
+                    connectionMessage = "Secure nearby connection active"
+                    approvalMessage = "Connection approved"
+                    chatNotice = "Connected to $name. Offline chat is ready."
+                    statusMessage = "Connected to $name using Bluetooth / nearby Wi-Fi."
+                }
+            }
+            override fun onDisconnected(id: String) {
+                runOnUiThread {
+                    hybridConnected = false
+                    pendingHybridEndpoint = null
+                    connectedDeviceName = null
+                    chatReady = false
+                    connectionMessage = "Not connected"
+                    chatNotice = "Nearby connection ended. Search again to reconnect."
+                }
+            }
+            override fun onMessage(id: String, body: String) {
+                runOnUiThread {
+                    chatMessages.add(ChatMessage("hybrid-" + System.currentTimeMillis(), body, outgoing = false, delivery = "Received"))
+                    persistMessages()
+                    chatNotice = "New offline message received."
+                }
+            }
+        })
         if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
         restoreLocalData()
         setContent {
@@ -206,6 +256,8 @@ class MainActivity : ComponentActivity() {
                     onDisconnect = ::disconnectFromPeer,
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
+                    hybridPeers = hybridPeers.toMap(),
+                    onHybridConnect = { id -> nearbyTransport?.request(id) },
                     onFindNearby = ::startDiscovery,
                     onStopSearch = ::stopDiscovery,
                     onConnect = ::connectToDevice
@@ -235,6 +287,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         finishDiscovery()
+        nearbyTransport?.stop()
         closePeerTransport()
         io.shutdownNow()
         super.onDestroy()
@@ -294,20 +347,51 @@ class MainActivity : ComponentActivity() {
         } else statusMessage = "Search stopped."
     }
 
+    private fun nearbyPermissionList(): Array<String> {
+        val permissions = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= 31) {
+            permissions += Manifest.permission.BLUETOOTH_SCAN
+            permissions += Manifest.permission.BLUETOOTH_ADVERTISE
+            permissions += Manifest.permission.BLUETOOTH_CONNECT
+        }
+        if (Build.VERSION.SDK_INT >= 33) permissions += Manifest.permission.NEARBY_WIFI_DEVICES
+        else permissions += Manifest.permission.ACCESS_FINE_LOCATION
+        return permissions.distinct().toTypedArray()
+    }
+
+    private fun hasNearbyPermissions(): Boolean =
+        nearbyPermissionList().all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
+
     private fun startDiscovery() {
+        if (!hasNearbyPermissions()) {
+            ActivityCompat.requestPermissions(this, nearbyPermissionList(), REQUEST_DISCOVERY_PERMISSION)
+            statusMessage = "Allow Nearby devices and Bluetooth permissions so NeaRer can find phones without internet."
+            return
+        }
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val bluetoothOn = try { bluetoothManager?.adapter?.isEnabled == true } catch (_: SecurityException) { false }
+        if (!bluetoothOn) {
+            finishDiscovery()
+            statusMessage = "Turn Bluetooth ON on both phones. Wi-Fi ON also helps with faster connections; hotspot and mobile data are not required."
+            return
+        }
+        nearbyTransport?.start()
         if (!isWifiEnabled()) {
             finishDiscovery()
-            statusMessage = "Wi-Fi is OFF. Turn on Wi-Fi on both phones. Hotspot and mobile data are not required."
+            statusMessage = "Bluetooth discovery is active. Turn Wi-Fi ON on both phones for faster connections and file sharing. Hotspot and mobile data are not required."
             return
         }
         if (!hasDiscoveryPermission()) {
-            val permissions = if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-            ActivityCompat.requestPermissions(this, permissions, REQUEST_DISCOVERY_PERMISSION)
-            statusMessage = "Allow NeaRer to find nearby devices, then tap Find people nearby again."
+            statusMessage = "Bluetooth discovery is running. Allow Nearby devices permission to add Wi-Fi Direct discovery."
             return
         }
         val manager = wifiManager ?: run { finishDiscovery(); statusMessage = "This phone does not provide Wi-Fi Direct."; return }
-        val activeChannel = channel ?: run { finishDiscovery(); statusMessage = "Nearby connection service is not ready. Reopen NeaRer."; return }
+        val activeChannel = channel ?: run { finishDiscovery(); statusMessage = "Bluetooth discovery is active, but Wi-Fi Direct is unavailable."; return }
+        if (!isLocationEnabled()) {
+            finishDiscovery()
+            statusMessage = "Bluetooth discovery is active. Turn Location ON if you also want Wi-Fi Direct discovery on this Android version."
+            return
+        }
         finishDiscovery()
         val generation = discoveryGeneration
         scanning = true
@@ -550,6 +634,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun disconnectFromPeer() {
+        nearbyTransport?.disconnect()
+        hybridConnected = false
         val activeChannel = channel
         transportStarted = false
         closePeerTransport()
@@ -577,15 +663,29 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun approveIncoming() {
-        approvalDecision.offer(true)
+        val endpoint = pendingHybridEndpoint
+        if (endpoint != null) {
+            nearbyTransport?.accept(endpoint)
+            approvalMessage = "Accepting secure nearby connection…"
+        } else {
+            approvalDecision.offer(true)
+            approvalMessage = "Approving connection…"
+        }
         incomingRequesterName = null
-        approvalMessage = "Approving connection…"
     }
 
     private fun rejectIncoming() {
-        approvalDecision.offer(false)
+        val endpoint = pendingHybridEndpoint
+        if (endpoint != null) {
+            nearbyTransport?.reject(endpoint)
+            pendingHybridEndpoint = null
+            pairingCode = null
+            approvalMessage = "Nearby connection declined"
+        } else {
+            approvalDecision.offer(false)
+            approvalMessage = "Declining connection…"
+        }
         incomingRequesterName = null
-        approvalMessage = "Declining connection…"
     }
 
     private fun closePeerTransport() {
@@ -679,6 +779,16 @@ class MainActivity : ComponentActivity() {
         val body = rawText.trim()
         if (body.isEmpty() || !chatReady) return
         val id = UUID.randomUUID().toString()
+        if (hybridConnected) {
+            if (nearbyTransport?.send(body) != true) {
+                chatNotice = "Message could not be sent. Check the nearby connection."
+                return
+            }
+            chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sent"))
+            persistMessages()
+            chatNotice = "Sent securely over the offline nearby connection."
+            return
+        }
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
         if (!sendWireLine("MSG|$id|$encoded")) {
             chatNotice = "Message could not be sent. Check the nearby connection."
@@ -986,6 +1096,8 @@ private fun NeaRerHome(
     onDisconnect: () -> Unit,
     onAccept: () -> Unit,
     onReject: () -> Unit,
+    hybridPeers: Map<String, String>,
+    onHybridConnect: (String) -> Unit,
     onFindNearby: () -> Unit,
     onStopSearch: () -> Unit,
     onConnect: (WifiP2pDevice) -> Unit
@@ -1212,6 +1324,27 @@ private fun NeaRerHome(
                 Text("NEARBY DEVICES", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
                 Spacer(modifier = Modifier.weight(1f))
                 Text("${devices.size} found", color = Mint, fontSize = 11.sp)
+            }
+
+            if (hybridPeers.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("BLUETOOTH + HYBRID DEVICES", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    hybridPeers.forEach { (id, name) ->
+                        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Color(0xFF1C3453)) {
+                            Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(38.dp)) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("N", color = White, fontWeight = FontWeight.Bold) }
+                                }
+                                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                                    Text(name, color = White, fontWeight = FontWeight.SemiBold)
+                                    Text("Found through Nearby Connections", color = Muted, fontSize = 10.sp)
+                                }
+                                Button(onClick = { onHybridConnect(id) }, shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Connect") }
+                            }
+                        }
+                    }
+                }
             }
 
             if (devices.isEmpty()) {
