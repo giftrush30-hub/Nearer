@@ -44,7 +44,11 @@ object LudoEngine {
         computerNames: List<String> = listOf("NeaRer Bot", "NeaRer Bot 2", "NeaRer Bot 3")
     ): LudoState {
         val count = playerCount.coerceIn(2, 4)
-        val colors = when (count) {\n            2 -> listOf(LudoColor.RED, LudoColor.YELLOW)\n            3 -> listOf(LudoColor.RED, LudoColor.GREEN, LudoColor.YELLOW)\n            else -> LudoColor.values().toList()\n        }
+        val colors = when (count) {
+            2 -> listOf(LudoColor.RED, LudoColor.YELLOW)
+            3 -> listOf(LudoColor.RED, LudoColor.GREEN, LudoColor.YELLOW)
+            else -> LudoColor.values().toList()
+        }
         val players = colors.mapIndexed { index, color ->
             LudoPlayer(
                 id = "player-$index",
