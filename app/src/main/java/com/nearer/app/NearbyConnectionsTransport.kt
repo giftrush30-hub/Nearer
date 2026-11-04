@@ -51,6 +51,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val incomingMetadata = ConcurrentHashMap<Long, FileMeta>()
     private val incomingPayloads = ConcurrentHashMap<Long, Payload>()
     private val completedPayloads = ConcurrentHashMap<Long, Payload>()
+    private val successfulIncomingPayloadIds = ConcurrentHashMap.newKeySet<Long>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
     private val fileIo = Executors.newSingleThreadExecutor()
     private val seenMessageIds = ConcurrentHashMap.newKeySet<String>()
@@ -102,6 +103,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     incomingPayloads[payload.id] = payload
                     val meta = incomingMetadata[payload.id]
                     listener.onFileProgress(id, payload.id, meta?.name ?: "Incoming file", 0L, meta?.size ?: -1L, true)
+                    // The payload callback and SUCCESS update are not guaranteed to arrive
+                    // in a particular order. Remember either event and finish once both exist.
+                    if (successfulIncomingPayloadIds.contains(payload.id)) {
+                        completedPayloads[payload.id] = payload
+                    }
                     processCompletedFile(payload.id)
                 }
                 else -> listener.onFileStatus("NeaRer received an unsupported nearby transfer type.")
@@ -123,6 +129,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             }
             if (update.status == PayloadTransferUpdate.Status.SUCCESS) {
                 if (isIncoming) {
+                    successfulIncomingPayloadIds.add(payloadId)
                     incomingPayloads[payloadId]?.let { completedPayloads[payloadId] = it }
                     processCompletedFile(payloadId)
                 } else {
@@ -135,6 +142,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 incomingMetadata.remove(payloadId)
                 incomingPayloads.remove(payloadId)?.close()
                 completedPayloads.remove(payloadId)?.close()
+                successfulIncomingPayloadIds.remove(payloadId)
                 listener.onFileStatus("Nearby file transfer failed or was cancelled.")
             }
         }
@@ -180,6 +188,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         if (!completedPayloads.remove(payloadId, payload)) return
         incomingPayloads.remove(payloadId)
         incomingMetadata.remove(payloadId)
+        successfulIncomingPayloadIds.remove(payloadId)
         fileIo.execute {
             var destination: File? = null
             try {
