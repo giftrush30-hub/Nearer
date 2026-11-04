@@ -161,12 +161,7 @@ private fun LudoBoard(game: LudoState, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier.height(330.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xFFEEF2F7)).padding(3.dp)) {
         val cell = size.width / 15f
         val track = ludoTrackCells
-        val baseColors = listOf(
-            Color(game.players[0].color.hex),
-            Color(0xFF58C99B),
-            Color(0xFFFFD166),
-            Color(0xFF5B91F2)
-        )
+        val baseColors = LudoColor.values().map { Color(it.hex) }
         fun cellRect(x: Int, y: Int, color: Color) {
             drawRoundRect(color, Offset(x * cell + 1f, y * cell + 1f), Size(cell - 2f, cell - 2f), CornerRadius(cell * 0.12f))
         }
