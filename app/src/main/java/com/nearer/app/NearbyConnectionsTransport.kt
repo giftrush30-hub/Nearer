@@ -20,7 +20,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onRequest(id: String, name: String, token: String)
         fun onConnected(id: String, name: String, stableId: String)
         fun onDisconnected(id: String, stableId: String, name: String)
-        fun onMessage(id: String, senderName: String, body: String)
+        fun onMessage(id: String, senderName: String, senderStableId: String, body: String)
         fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
@@ -38,6 +38,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 prefs.edit().putString("nearer_stable_id", it).apply()
             }
         }
+    val localMemberId: String get() = localStableId
     private fun encodedName(): String = "${localName.take(23)}|$localStableId"
     private fun decodeName(value: String): Pair<String, String> {
         val split = value.lastIndexOf('|')
@@ -172,8 +173,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val ttl = envelope.optInt("ttl", 0)
             if (messageId.isBlank() || body.isBlank() || body.length > 4000 || !seenMessageIds.add(messageId)) return
             if (seenMessageIds.size > 5000) seenMessageIds.remove(seenMessageIds.first())
-            val senderName = synchronized(names) { names[endpointId] ?: "Nearby member" }
-            listener.onMessage(endpointId, senderName, body)
+            val senderDetails = synchronized(names) {
+                (names[endpointId] ?: "Nearby member") to stableIds[endpointId].orEmpty()
+            }
+            listener.onMessage(endpointId, senderDetails.first, senderDetails.second, body)
             if (relayEnabled && ttl > 0) {
                 val forwarded = JSONObject().put("id", messageId).put("body", body)
                     .put("ttl", ttl - 1).put("hops", envelope.optInt("hops", 0) + 1)
