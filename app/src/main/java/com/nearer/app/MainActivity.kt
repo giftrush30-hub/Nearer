@@ -176,6 +176,7 @@ class MainActivity : ComponentActivity() {
                     onSendMessage = ::sendChatMessage,
                     onSendFile = ::sendFile,
                     onOpenFile = ::openReceivedFile,
+                    onDisconnect = ::disconnectFromPeer,
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
                     onFindNearby = ::startDiscovery,
@@ -369,6 +370,7 @@ class MainActivity : ComponentActivity() {
                         approvalMessage = "Request declined or expired"
                         statusMessage = "The NeaRer connection request was declined or expired."
                     }
+                    transportStarted = false
                     closePeerTransport()
                 }
             } catch (e: Exception) {
@@ -384,9 +386,22 @@ class MainActivity : ComponentActivity() {
     private fun connectToApprovalServer(info: WifiP2pInfo) {
         io.execute {
             try {
-                val socket = Socket()
+                var connectedSocket: Socket? = null
+                var lastError: Exception? = null
+                for (attempt in 0 until 5) {
+                    val candidate = Socket()
+                    try {
+                        candidate.connect(InetSocketAddress(info.groupOwnerAddress, 8988), 8_000)
+                        connectedSocket = candidate
+                        break
+                    } catch (e: Exception) {
+                        lastError = e
+                        try { candidate.close() } catch (_: Exception) { }
+                        Thread.sleep(350L * (attempt + 1))
+                    }
+                }
+                val socket = connectedSocket ?: throw (lastError ?: IllegalStateException("Could not connect to the NeaRer host"))
                 peerSocket = socket
-                socket.connect(InetSocketAddress(info.groupOwnerAddress, 8988), 12_000)
                 socket.soTimeout = 65_000
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 peerWriter = writer
@@ -405,10 +420,14 @@ class MainActivity : ComponentActivity() {
                         }
                         startMessageReader(socket)
                     }
-                    else -> runOnUiThread {
-                        chatReady = false
-                        approvalMessage = "Request declined or expired"
-                        statusMessage = "The other person declined the request or it expired."
+                    else -> {
+                        runOnUiThread {
+                            chatReady = false
+                            approvalMessage = "Request declined or expired"
+                            statusMessage = "The other person declined the request or it expired."
+                            transportStarted = false
+                        }
+                        closePeerTransport()
                     }
                 }
             } catch (e: Exception) {
@@ -418,6 +437,28 @@ class MainActivity : ComponentActivity() {
                 }
                 closePeerTransport()
             }
+        }
+    }
+
+    private fun disconnectFromPeer() {
+        val activeChannel = channel
+        transportStarted = false
+        closePeerTransport()
+        connectedDeviceName = null
+        connectingAddress = null
+        connectionMessage = "Disconnecting…"
+        statusMessage = "Closing the nearby NeaRer connection…"
+        if (activeChannel != null) {
+            wifiManager.removeGroup(activeChannel, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    connectionMessage = "Not connected"
+                    statusMessage = "Disconnected. You can find nearby people again."
+                }
+                override fun onFailure(reason: Int) {
+                    connectionMessage = "Connection may still be active"
+                    statusMessage = "Android could not close the Wi-Fi Direct group (code $reason)."
+                }
+            })
         }
     }
 
@@ -732,6 +773,7 @@ private fun NeaRerHome(
     onSendMessage: (String) -> Unit,
     onSendFile: (Uri) -> Unit,
     onOpenFile: (ReceivedFile) -> Unit,
+    onDisconnect: () -> Unit,
     onAccept: () -> Unit,
     onReject: () -> Unit,
     onFindNearby: () -> Unit,
@@ -789,6 +831,14 @@ private fun NeaRerHome(
                     Text(connectedDeviceName?.let { "Connected to $it" } ?: connectionMessage, color = White, fontWeight = FontWeight.SemiBold)
                     Text(connectionMessage, color = Muted, fontSize = 11.sp)
                     Text(approvalMessage, color = if (chatReady) Mint else Muted, fontSize = 12.sp)
+                    if (connectedDeviceName != null || connectingAddress != null) {
+                        Button(
+                            onClick = onDisconnect,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)
+                        ) { Text("Disconnect") }
+                    }
                 }
             }
 
