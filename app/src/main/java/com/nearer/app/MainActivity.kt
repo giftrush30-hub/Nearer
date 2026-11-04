@@ -26,6 +26,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.UUID
 import java.util.Base64
+import java.security.MessageDigest
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
@@ -486,6 +487,19 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) { }
     }
 
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(16 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
     private fun sendWireLine(line: String): Boolean {
         val writer = peerWriter ?: return false
         synchronized(writerLock) {
@@ -544,13 +558,22 @@ class MainActivity : ComponentActivity() {
                     if (!sendWireLine("FILE_START|$id|$encodedName|$fileSize")) throw IllegalStateException("Connection unavailable")
                     runOnUiThread { chatNotice = "Sending $fileName…" }
                     val buffer = ByteArray(12 * 1024)
+                    val digest = MessageDigest.getInstance("SHA-256")
+                    var sentBytes = 0L
                     while (true) {
                         val count = stream.read(buffer)
                         if (count < 0) break
+                        digest.update(buffer, 0, count)
                         val chunk = Base64.getEncoder().encodeToString(buffer.copyOf(count))
                         if (!sendWireLine("FILE_CHUNK|$id|0|$chunk")) throw IllegalStateException("Connection lost during transfer")
+                        sentBytes += count
+                        if (sentBytes % (512 * 1024) < count) {
+                            val progress = if (fileSize > 0L) " • ${(sentBytes * 100 / fileSize).coerceAtMost(100)}%" else " • ${sentBytes / 1024} KB"
+                            runOnUiThread { chatNotice = "Sending $fileName$progress" }
+                        }
                     }
-                    if (!sendWireLine("FILE_END|$id")) throw IllegalStateException("Could not finish file transfer")
+                    val hash = digest.digest().joinToString("") { "%02x".format(it) }
+                    if (!sendWireLine("FILE_END|$id|$hash")) throw IllegalStateException("Could not finish file transfer")
                     runOnUiThread { chatNotice = "Sending complete. Waiting for the other phone to confirm…" }
                 }
             } catch (e: Exception) {
@@ -622,19 +645,33 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         line.startsWith("FILE_END|") -> {
-                            val id = line.substringAfter("FILE_END|")
-                            val transfer = incomingTransfers.remove(id)
-                            if (transfer != null) {
-                                transfer.close()
-                                runOnUiThread {
-                                    receivedFiles.add(0, ReceivedFile(transfer.name, transfer.file))
-                                    chatNotice = "Received file: ${transfer.name}. Tap it below to open."
+                            val parts = line.split("|", limit = 3)
+                            if (parts.size >= 2) {
+                                val id = parts[1]
+                                val transfer = incomingTransfers.remove(id)
+                                if (transfer != null) {
+                                    transfer.close()
+                                    val sizeMatches = transfer.expectedBytes <= 0L || transfer.receivedBytes == transfer.expectedBytes
+                                    val hashMatches = parts.getOrNull(2)?.let { it.equals(sha256(transfer.file), ignoreCase = true) } ?: false
+                                    if (sizeMatches && hashMatches) {
+                                        runOnUiThread {
+                                            receivedFiles.add(0, ReceivedFile(transfer.name, transfer.file))
+                                            chatNotice = "Received and verified: ${transfer.name}. Tap it below to open."
+                                        }
+                                        synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|OK") }
+                                    } else {
+                                        transfer.file.delete()
+                                        synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|ERROR") }
+                                        runOnUiThread { chatNotice = "The received file failed its integrity check and was discarded." }
+                                    }
                                 }
-                                synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id") }
                             }
                         }
                         line.startsWith("FILE_DONE|") -> {
-                            runOnUiThread { chatNotice = "File delivered successfully to the nearby phone." }
+                            val ok = line.split("|", limit = 3).getOrNull(2) == "OK"
+                            runOnUiThread {
+                                chatNotice = if (ok) "File delivered and verified by the nearby phone." else "The other phone could not verify the file."
+                            }
                         }
                         line == "PING" -> synchronized(writerLock) { peerWriter?.println("PONG") }
                     }
