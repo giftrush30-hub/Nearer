@@ -97,7 +97,7 @@ fun LudoGameScreen(
                 }
             }
 
-            LudoBoard(game = game, modifier = Modifier.fillMaxWidth().weight(1f, fill = false))
+            LudoBoard(game = game, modifier = Modifier.fillMaxWidth())
 
             Surface(color = LudoPanel, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -193,10 +193,10 @@ private fun LudoBoard(game: LudoState, modifier: Modifier = Modifier) {
         }
         // Home lanes leading into the centre.
         val lanes = listOf(
+            listOf(7 to 5, 7 to 4, 7 to 3, 7 to 2, 7 to 1, 7 to 7),
             listOf(5 to 7, 4 to 7, 3 to 7, 2 to 7, 1 to 7, 7 to 7),
-            listOf(7 to 1, 7 to 2, 7 to 3, 7 to 4, 7 to 5, 7 to 7),
-            listOf(9 to 7, 10 to 7, 11 to 7, 12 to 7, 13 to 7, 7 to 7),
-            listOf(7 to 13, 7 to 12, 7 to 11, 7 to 10, 7 to 9, 7 to 7)
+            listOf(7 to 9, 7 to 10, 7 to 11, 7 to 12, 7 to 13, 7 to 7),
+            listOf(9 to 7, 10 to 7, 11 to 7, 12 to 7, 13 to 7, 7 to 7)
         )
         lanes.forEachIndexed { index, lane ->
             lane.dropLast(1).forEach { (x, y) -> cellRect(x, y, baseColors[index].copy(alpha = 0.75f)) }
@@ -211,12 +211,13 @@ private fun LudoBoard(game: LudoState, modifier: Modifier = Modifier) {
         }
         drawPath(center, Color(0xFF23354D))
         // Tokens: yards, track and home lane.
-        game.players.forEachIndexed { playerIndex, player ->
+        game.players.forEach { player ->
+            val colorIndex = player.color.ordinal
             player.tokens.forEachIndexed { tokenIndex, progress ->
                 val point = when {
-                    progress == -1 -> ludoBaseSpots[playerIndex][tokenIndex]
+                    progress == -1 -> ludoBaseSpots[colorIndex][tokenIndex]
                     progress in 0..51 -> track[LudoEngine.globalSquare(player.color, progress)]
-                    progress in 52..55 -> ludoHomeLanes[playerIndex][progress - 52]
+                    progress in 52..55 -> ludoHomeLanes[colorIndex][progress - 52]
                     else -> 7 to 7
                 }
                 val x = (point.first + 0.5f) * cell
