@@ -26,6 +26,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.UUID
 import java.util.Base64
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -146,6 +148,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
         channel = wifiManager.initialize(this, mainLooper, null)
+        restoreLocalData()
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(
                 background = Midnight,
@@ -439,6 +442,50 @@ class MainActivity : ComponentActivity() {
         chatReady = false
     }
 
+    private fun restoreLocalData() {
+        val stored = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            .getString("messages", null)
+        if (!stored.isNullOrBlank()) {
+            try {
+                val array = JSONArray(stored)
+                for (i in 0 until array.length()) {
+                    val item = array.getJSONObject(i)
+                    val message = ChatMessage(
+                        id = item.getString("id"),
+                        body = item.getString("body"),
+                        outgoing = item.getBoolean("outgoing"),
+                        delivery = item.optString("delivery", "Sent")
+                    )
+                    chatMessages.add(message)
+                    if (!message.outgoing) receivedMessageIds.add(message.id)
+                }
+            } catch (_: Exception) {
+                chatMessages.clear()
+            }
+        }
+        val folder = File(filesDir, "received")
+        if (folder.exists()) {
+            folder.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }?.forEach {
+                receivedFiles.add(ReceivedFile(it.name.substringAfter('-', it.name), it))
+            }
+        }
+    }
+
+    private fun persistMessages() {
+        try {
+            val array = JSONArray()
+            chatMessages.takeLast(500).forEach { message ->
+                array.put(JSONObject()
+                    .put("id", message.id)
+                    .put("body", message.body)
+                    .put("outgoing", message.outgoing)
+                    .put("delivery", message.delivery))
+            }
+            getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .edit().putString("messages", array.toString()).apply()
+        } catch (_: Exception) { }
+    }
+
     private fun sendWireLine(line: String): Boolean {
         val writer = peerWriter ?: return false
         synchronized(writerLock) {
@@ -457,6 +504,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sent"))
+        persistMessages()
         chatNotice = "Sent directly • waiting for delivery confirmation"
     }
 
@@ -529,6 +577,7 @@ class MainActivity : ComponentActivity() {
                                 if (body.isNotBlank() && receivedMessageIds.add(id)) {
                                     runOnUiThread {
                                         chatMessages.add(ChatMessage(id, body, outgoing = false, delivery = "Received"))
+                                        persistMessages()
                                         chatNotice = "New message received directly."
                                     }
                                 }
@@ -539,7 +588,10 @@ class MainActivity : ComponentActivity() {
                             val id = line.substringAfter("ACK|")
                             runOnUiThread {
                                 val index = chatMessages.indexOfFirst { it.id == id && it.outgoing }
-                                if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Delivered")
+                                if (index >= 0) {
+                                    chatMessages[index] = chatMessages[index].copy(delivery = "Delivered")
+                                    persistMessages()
+                                }
                             }
                         }
                         line.startsWith("FILE_START|") -> {
