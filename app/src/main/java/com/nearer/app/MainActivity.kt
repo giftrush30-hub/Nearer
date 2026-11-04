@@ -332,8 +332,8 @@ class MainActivity : ComponentActivity() {
         })
         if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
         restoreLocalData()
-        restoreCommunityData()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
+        restoreCommunityData()
         nearbyTransport?.setDisplayName(displayName)
         restoreRecentlySeen()
         meshRelayEnabled = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getBoolean("mesh_relay_enabled", false)
