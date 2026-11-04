@@ -409,7 +409,7 @@ class MainActivity : ComponentActivity() {
     @Suppress("DEPRECATION")
     override fun onRequestPermissionsResult(
         requestCode: Int,
-        permissions: Array<out String>,
+        permissions: Array<String>,
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -661,7 +661,7 @@ class MainActivity : ComponentActivity() {
         }
 
         connectingAddress = device.deviceAddress
-        statusMessage = "Sending a connection invitation to ${device.deviceName.ifBlank { "nearby device" }}…"
+        statusMessage = "Sending a connection invitation to ${"nearby device"}…"
         connectionMessage = "Waiting for the other phone to approve"
 
         val config = WifiP2pConfig().apply {
@@ -688,7 +688,7 @@ class MainActivity : ComponentActivity() {
     private fun updateConnectionState(info: WifiP2pInfo) {
         if (info.groupFormed) {
             val active = nearbyDevices.firstOrNull { it.deviceAddress == connectingAddress }
-            connectedDeviceName = active?.deviceName?.ifBlank { null } ?: "Nearby device"
+            connectedDeviceName = "Nearby device"
             connectingAddress = null
             connectionMessage = if (info.isGroupOwner) {
                 "Connected • this phone hosts the local link"
@@ -2008,7 +2008,7 @@ private fun NeaRerHome(
                                     }
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                                    Text(device.deviceName.ifBlank { "Nearby Android device" }, color = White, fontWeight = FontWeight.SemiBold)
+                                    Text("Nearby Wi-Fi Direct phone", color = White, fontWeight = FontWeight.SemiBold)
                                     Text(deviceStatus(device.status), color = Muted, fontSize = 11.sp)
                                 }
                                 Button(

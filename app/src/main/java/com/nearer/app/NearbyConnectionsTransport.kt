@@ -56,7 +56,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val fileIo = Executors.newSingleThreadExecutor()
     private val seenMessageIds = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var relayEnabled = false
-    private var started = false
+    @Volatile private var started = false
+    @Volatile private var startGeneration = 0
     @Volatile private var localName = "NeaRer User"
 
     private val discovery = object : EndpointDiscoveryCallback() {
@@ -226,10 +227,18 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         raw.substringAfterLast('/').substringAfterLast('\\')
             .replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100).ifBlank { "shared-file" }
 
-    private fun startAdvertising() {
+    private fun failStart(generation: Int, message: String) {
+        if (generation != startGeneration || !started) return
+        started = false
+        try { client.stopAdvertising() } catch (_: Exception) { }
+        try { client.stopDiscovery() } catch (_: Exception) { }
+        listener.onStatus(message)
+    }
+
+    private fun startAdvertising(generation: Int = startGeneration) {
         val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
         client.startAdvertising(encodedName(), serviceId, lifecycle, options).addOnFailureListener {
-            listener.onStatus("Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}")
+            failStart(generation, "Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. Tap Find people to retry.")
         }
     }
 
@@ -237,16 +246,17 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val clean = name.trim().replace("|", " ").take(23).ifBlank { "NeaRer User" }
         if (clean == localName) return
         localName = clean
-        if (started) { client.stopAdvertising(); startAdvertising() }
+        if (started) { client.stopAdvertising(); startAdvertising(startGeneration) }
     }
 
     fun start() {
         if (started) return
         started = true
+        val generation = ++startGeneration
         val discovering = DiscoveryOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
-        startAdvertising()
+        startAdvertising(generation)
         client.startDiscovery(serviceId, discovery, discovering).addOnFailureListener {
-            listener.onStatus("Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}")
+            failStart(generation, "Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. Tap Find people to retry.")
         }
         listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
     }
@@ -384,6 +394,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
 
     fun stopSearching() {
         started = false
+        startGeneration += 1
         try { client.stopAdvertising() } catch (_: Exception) { }
         try { client.stopDiscovery() } catch (_: Exception) { }
     }
