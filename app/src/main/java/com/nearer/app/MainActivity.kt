@@ -99,6 +99,7 @@ class MainActivity : ComponentActivity() {
     private val chatMessages = mutableStateListOf<ChatMessage>()
     private val receivedFiles = mutableStateListOf<ReceivedFile>()
     private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
+    private val maxTransferBytes = 200L * 1024L * 1024L
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
@@ -438,7 +439,10 @@ class MainActivity : ComponentActivity() {
         peerSocket = null
         peerWriter = null
         serverSocket = null
-        incomingTransfers.values.forEach { it.close() }
+        incomingTransfers.values.forEach {
+            it.close()
+            it.file.delete()
+        }
         incomingTransfers.clear()
         chatReady = false
     }
@@ -551,6 +555,7 @@ class MainActivity : ComponentActivity() {
                         if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) fileSize = cursor.getLong(sizeIndex)
                     }
                 }
+                if (fileSize > maxTransferBytes) throw IllegalStateException("Files must be 200 MB or smaller")
                 val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("Cannot open selected file")
                 input.use { stream ->
                     val id = UUID.randomUUID().toString()
@@ -563,10 +568,11 @@ class MainActivity : ComponentActivity() {
                     while (true) {
                         val count = stream.read(buffer)
                         if (count < 0) break
+                        sentBytes += count
+                        if (sentBytes > maxTransferBytes) throw IllegalStateException("Files must be 200 MB or smaller")
                         digest.update(buffer, 0, count)
                         val chunk = Base64.getEncoder().encodeToString(buffer.copyOf(count))
                         if (!sendWireLine("FILE_CHUNK|$id|0|$chunk")) throw IllegalStateException("Connection lost during transfer")
-                        sentBytes += count
                         if (sentBytes % (512 * 1024) < count) {
                             val progress = if (fileSize > 0L) " • ${(sentBytes * 100 / fileSize).coerceAtMost(100)}%" else " • ${sentBytes / 1024} KB"
                             runOnUiThread { chatNotice = "Sending $fileName$progress" }
@@ -624,9 +630,13 @@ class MainActivity : ComponentActivity() {
                                 val name = try { String(Base64.getDecoder().decode(parts[2]), Charsets.UTF_8) } catch (_: Exception) { "shared-file" }
                                 val safeName = name.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100).ifBlank { "shared-file" }
                                 val expected = parts[3].toLongOrNull() ?: 0L
-                                val folder = File(filesDir, "received").apply { mkdirs() }
-                                val target = File(folder, "${System.currentTimeMillis()}-$safeName")
-                                incomingTransfers[id] = IncomingTransfer(safeName, expected, target, FileOutputStream(target))
+                                if (expected > maxTransferBytes) {
+                                    synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|ERROR") }
+                                } else {
+                                    val folder = File(filesDir, "received").apply { mkdirs() }
+                                    val target = File(folder, "${System.currentTimeMillis()}-$safeName")
+                                    incomingTransfers[id] = IncomingTransfer(safeName, expected, target, FileOutputStream(target))
+                                }
                             }
                         }
                         line.startsWith("FILE_CHUNK|") -> {
@@ -636,8 +646,13 @@ class MainActivity : ComponentActivity() {
                                 if (transfer != null) {
                                     try {
                                         val bytes = Base64.getDecoder().decode(parts[3])
-                                        transfer.output.write(bytes)
                                         transfer.receivedBytes += bytes.size
+                                        if (transfer.receivedBytes > maxTransferBytes) {
+                                            incomingTransfers.remove(parts[1])?.close()
+                                            transfer.file.delete()
+                                        } else {
+                                            transfer.output.write(bytes)
+                                        }
                                     } catch (_: Exception) {
                                         incomingTransfers.remove(parts[1])?.close()
                                     }
@@ -679,6 +694,11 @@ class MainActivity : ComponentActivity() {
             } catch (_: Exception) {
                 // Socket closure is handled below; no message body is logged.
             } finally {
+                incomingTransfers.values.forEach {
+                    it.close()
+                    it.file.delete()
+                }
+                incomingTransfers.clear()
                 runOnUiThread {
                     if (chatReady) {
                         chatReady = false
