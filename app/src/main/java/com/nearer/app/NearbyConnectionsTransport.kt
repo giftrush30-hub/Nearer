@@ -287,7 +287,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 }
                 .addOnFailureListener { error ->
                     outgoingFiles.remove(id)
-                    try { client.cancelPayload(endpointId, id) } catch (_: Exception) { }
+                    try { client.cancelPayload(id) } catch (_: Exception) { }
                     try { payload.close() } catch (_: Exception) { }
                     listener.onFileStatus("Could not send file details: ${error.localizedMessage ?: "connection error"}")
                 }
@@ -301,8 +301,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
-    fun cancelFile(endpointId: String, payloadId: Long) {
-        try { client.cancelPayload(endpointId, payloadId) } catch (_: Exception) { }
+    fun cancelFile(payloadId: Long) {
+        try { client.cancelPayload(payloadId) } catch (_: Exception) { }
         outgoingFiles.remove(payloadId)
     }
 
