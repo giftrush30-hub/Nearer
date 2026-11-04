@@ -1,11 +1,15 @@
 package com.nearer.app
 
 import android.content.Context
+import android.net.Uri
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.*
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 
 class NearbyConnectionsTransport(context: Context, private val listener: Listener) {
     interface Listener {
@@ -16,8 +20,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onConnected(id: String, name: String, stableId: String)
         fun onDisconnected(id: String, stableId: String, name: String)
         fun onMessage(id: String, body: String)
+        fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
+        fun onFileReceived(id: String, name: String, file: File)
+        fun onFileStatus(message: String)
     }
-    private val client = Nearby.getConnectionsClient(context.applicationContext)
+
+    private val appContext = context.applicationContext
+    private val client = Nearby.getConnectionsClient(appContext)
     private val serviceId = context.packageName
     private val names = mutableMapOf<String, String>()
     private val stableIds = mutableMapOf<String, String>()
@@ -36,10 +45,18 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
         return value.take(23) to ""
     }
+
+    private data class FileMeta(val endpointId: String, val name: String, val size: Long)
+    private val incomingMetadata = ConcurrentHashMap<Long, FileMeta>()
+    private val incomingPayloads = ConcurrentHashMap<Long, Payload>()
+    private val completedPayloads = ConcurrentHashMap<Long, Payload>()
+    private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
+    private val fileIo = Executors.newSingleThreadExecutor()
     private val seenMessageIds = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var relayEnabled = false
     private var started = false
     @Volatile private var localName = "NeaRer User"
+
     private val discovery = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(id: String, info: DiscoveredEndpointInfo) {
             val (name, stableId) = decodeName(info.endpointName)
@@ -74,29 +91,125 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             }
         }
     }
+
     private val payloads = object : PayloadCallback() {
         override fun onPayloadReceived(id: String, payload: Payload) {
-            if (payload.type != Payload.Type.BYTES) return
-            try {
-                val envelope = JSONObject(payload.asBytes()?.toString(Charsets.UTF_8).orEmpty())
-                val messageId = envelope.optString("id")
-                val body = envelope.optString("body")
-                val ttl = envelope.optInt("ttl", 0)
-                if (messageId.isBlank() || body.isBlank() || body.length > 4000 || !seenMessageIds.add(messageId)) return
-                if (seenMessageIds.size > 5000) seenMessageIds.remove(seenMessageIds.first())
-                listener.onMessage(id, body)
-                if (relayEnabled && ttl > 0) {
-                    val forwarded = JSONObject().put("id", messageId).put("body", body)
-                        .put("ttl", ttl - 1).put("hops", envelope.optInt("hops", 0) + 1)
-                        .put("origin", envelope.optString("origin", "nearby"))
-                    broadcast(forwarded.toString(), id)
+            when (payload.type) {
+                Payload.Type.BYTES -> handleBytes(id, payload.asBytes())
+                Payload.Type.FILE -> {
+                    incomingPayloads[payload.id] = payload
+                    val meta = incomingMetadata[payload.id]
+                    listener.onFileProgress(id, payload.id, meta?.name ?: "Incoming file", 0L, meta?.size ?: -1L, true)
+                    processCompletedFile(payload.id)
                 }
-            } catch (_: Exception) {
-                listener.onStatus("A nearby message could not be read and was ignored.")
+                else -> listener.onFileStatus("NeaRer received an unsupported nearby transfer type.")
             }
         }
-        override fun onPayloadTransferUpdate(id: String, update: PayloadTransferUpdate) = Unit
+
+        override fun onPayloadTransferUpdate(id: String, update: PayloadTransferUpdate) {
+            val payloadId = update.payloadId
+            val outgoing = outgoingFiles[payloadId]
+            val incoming = incomingMetadata[payloadId]
+            val name = outgoing?.second ?: incoming?.name ?: "Incoming file"
+            val isIncoming = outgoing == null
+            if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
+                listener.onFileProgress(id, payloadId, name, update.bytesTransferred, update.totalBytes, isIncoming)
+                return
+            }
+            if (update.status == PayloadTransferUpdate.Status.SUCCESS) {
+                if (isIncoming) {
+                    incomingPayloads[payloadId]?.let { completedPayloads[payloadId] = it }
+                    processCompletedFile(payloadId)
+                } else {
+                    outgoingFiles.remove(payloadId)
+                    listener.onFileProgress(id, payloadId, name, update.totalBytes, update.totalBytes, false)
+                    listener.onFileStatus("File sent to the nearby phone: $name")
+                }
+            } else {
+                outgoingFiles.remove(payloadId)
+                incomingMetadata.remove(payloadId)
+                incomingPayloads.remove(payloadId)?.close()
+                completedPayloads.remove(payloadId)?.close()
+                listener.onFileStatus("Nearby file transfer failed or was cancelled.")
+            }
+        }
     }
+
+    private fun handleBytes(endpointId: String, bytes: ByteArray?) {
+        try {
+            val envelope = JSONObject(bytes?.toString(Charsets.UTF_8).orEmpty())
+            if (envelope.optString("kind") == "file_meta") {
+                val payloadId = envelope.optLong("payloadId", -1L)
+                val name = safeFileName(envelope.optString("name", "shared-file"))
+                val size = envelope.optLong("size", -1L)
+                if (payloadId < 0L || size < 0L || size > MAX_FILE_BYTES) {
+                    listener.onFileStatus("A nearby phone sent invalid file information. The transfer was ignored.")
+                    return
+                }
+                incomingMetadata[payloadId] = FileMeta(endpointId, name, size)
+                listener.onFileProgress(endpointId, payloadId, name, 0L, size, true)
+                processCompletedFile(payloadId)
+                return
+            }
+            val messageId = envelope.optString("id")
+            val body = envelope.optString("body")
+            val ttl = envelope.optInt("ttl", 0)
+            if (messageId.isBlank() || body.isBlank() || body.length > 4000 || !seenMessageIds.add(messageId)) return
+            if (seenMessageIds.size > 5000) seenMessageIds.remove(seenMessageIds.first())
+            listener.onMessage(endpointId, body)
+            if (relayEnabled && ttl > 0) {
+                val forwarded = JSONObject().put("id", messageId).put("body", body)
+                    .put("ttl", ttl - 1).put("hops", envelope.optInt("hops", 0) + 1)
+                    .put("origin", envelope.optString("origin", "nearby"))
+                broadcast(forwarded.toString(), endpointId)
+            }
+        } catch (_: Exception) {
+            listener.onStatus("A nearby message could not be read and was ignored.")
+        }
+    }
+
+    private fun processCompletedFile(payloadId: Long) {
+        val payload = completedPayloads[payloadId] ?: return
+        val meta = incomingMetadata[payloadId] ?: return
+        if (!completedPayloads.remove(payloadId, payload)) return
+        incomingPayloads.remove(payloadId)
+        incomingMetadata.remove(payloadId)
+        fileIo.execute {
+            var destination: File? = null
+            try {
+                val folder = File(appContext.filesDir, "received").apply { mkdirs() }
+                destination = File(folder, "${System.currentTimeMillis()}-${meta.name}")
+                val uri: Uri = payload.asFile().asUri()
+                appContext.contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(destination).use { output ->
+                        val buffer = ByteArray(32 * 1024)
+                        var copied = 0L
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            copied += count
+                            if (copied > MAX_FILE_BYTES || copied > meta.size) throw IllegalStateException("Received file exceeded its declared size")
+                            output.write(buffer, 0, count)
+                        }
+                        output.flush()
+                        if (copied != meta.size) throw IllegalStateException("Received file size did not match")
+                    }
+                } ?: throw IllegalStateException("Could not open the received file")
+                appContext.contentResolver.delete(uri, null, null)
+                listener.onFileReceived(meta.endpointId, meta.name, destination)
+            } catch (error: Exception) {
+                destination?.delete()
+                listener.onFileStatus("Could not save the received file: ${error.localizedMessage ?: "transfer error"}")
+            } finally {
+                try { payload.close() } catch (_: Exception) { }
+            }
+        }
+    }
+
+    private fun safeFileName(raw: String): String =
+        raw.substringAfterLast('/').substringAfterLast('\\')
+            .replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100).ifBlank { "shared-file" }
+
     private fun startAdvertising() {
         val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
         client.startAdvertising(encodedName(), serviceId, lifecycle, options).addOnFailureListener {
@@ -121,7 +234,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
         listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
     }
-    fun request(id: String) { client.requestConnection(encodedName(), id, lifecycle).addOnFailureListener { listener.onStatus("Connection request failed: ${it.localizedMessage ?: "try again"}") } }
+
+    fun request(id: String) {
+        client.requestConnection(encodedName(), id, lifecycle).addOnFailureListener {
+            listener.onStatus("Connection request failed: ${it.localizedMessage ?: "try again"}")
+        }
+    }
     fun accept(id: String) { client.acceptConnection(id, payloads).addOnFailureListener { listener.onStatus("Could not accept nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun reject(id: String) { client.rejectConnection(id).addOnFailureListener { listener.onStatus("Could not reject nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun setRelayEnabled(enabled: Boolean) { relayEnabled = enabled }
@@ -132,6 +250,54 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val envelope = JSONObject().put("id", messageId).put("body", body)
             .put("ttl", 4).put("hops", 0).put("origin", localName)
         return broadcast(envelope.toString(), null)
+    }
+
+    fun sendFile(endpointId: String, uri: Uri, displayName: String): Long? {
+        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
+            listener.onFileStatus("The nearby connection is no longer active.")
+            return null
+        }
+        var descriptor: android.os.ParcelFileDescriptor? = null
+        var filePayload: Payload? = null
+        try {
+            descriptor = appContext.contentResolver.openFileDescriptor(uri, "r")
+                ?: throw IllegalStateException("The selected file could not be opened")
+            val size = descriptor.statSize
+            if (size < 0L || size > MAX_FILE_BYTES) throw IllegalStateException("Choose a file no larger than 200 MB")
+            filePayload = Payload.fromFile(descriptor)
+            descriptor = null // The Payload now owns the descriptor.
+            val name = safeFileName(displayName)
+            filePayload.setFileName(name)
+            filePayload.setSensitive(true)
+            val id = filePayload.id
+            outgoingFiles[id] = endpointId to name
+            val metadata = JSONObject().put("kind", "file_meta").put("payloadId", id)
+                .put("name", name).put("size", size)
+            client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener {
+                    outgoingFiles.remove(id)
+                    try { filePayload.close() } catch (_: Exception) { }
+                    listener.onFileStatus("Could not send file details: ${it.localizedMessage ?: "connection error"}")
+                }
+            client.sendPayload(endpointId, filePayload)
+                .addOnFailureListener {
+                    outgoingFiles.remove(id)
+                    try { filePayload.close() } catch (_: Exception) { }
+                    listener.onFileStatus("Could not start file transfer: ${it.localizedMessage ?: "connection error"}")
+                }
+            listener.onFileProgress(endpointId, id, name, 0L, size, false)
+            return id
+        } catch (error: Exception) {
+            try { filePayload?.close() } catch (_: Exception) { }
+            try { descriptor?.close() } catch (_: Exception) { }
+            listener.onFileStatus("File could not be prepared: ${error.localizedMessage ?: "choose another file"}")
+            return null
+        }
+    }
+
+    fun cancelFile(endpointId: String, payloadId: Long) {
+        try { client.cancelPayload(endpointId, payloadId) } catch (_: Exception) { }
+        outgoingFiles.remove(payloadId)
     }
 
     private fun broadcast(content: String, excludeEndpoint: String?): Boolean {
@@ -146,12 +312,24 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
         return sent
     }
+
     fun stopSearching() {
         started = false
         try { client.stopAdvertising() } catch (_: Exception) { }
         try { client.stopDiscovery() } catch (_: Exception) { }
     }
 
-    fun disconnect() { try { client.stopAllEndpoints() } catch (_: Exception) {}; synchronized(activeEndpoints) { activeEndpoints.clear() } }
-    fun stop() { stopSearching(); disconnect() }
+    fun disconnect() {
+        try { client.stopAllEndpoints() } catch (_: Exception) { }
+        synchronized(activeEndpoints) { activeEndpoints.clear() }
+    }
+    fun stop() {
+        stopSearching()
+        disconnect()
+        fileIo.shutdownNow()
+    }
+
+    companion object {
+        const val MAX_FILE_BYTES = 200L * 1024L * 1024L
+    }
 }
