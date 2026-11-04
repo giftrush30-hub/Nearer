@@ -157,6 +157,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.statusBarColor = android.graphics.Color.rgb(16, 26, 43)
+        window.navigationBarColor = android.graphics.Color.rgb(16, 26, 43)
+        window.decorView.systemUiVisibility = 0
         wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
         channel = wifiManager.initialize(this, mainLooper, null)
         restoreLocalData()
