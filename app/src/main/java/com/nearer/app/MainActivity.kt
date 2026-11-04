@@ -1145,7 +1145,7 @@ class MainActivity : ComponentActivity() {
         if (i < 0) return
         val group = communityGroups[i]
         val localId = localCommunityMemberId
-        if (localId != group.ownerId && localId !in group.moderators) return
+        if (!CommunityAccessPolicy.canManage(group.ownerId, group.moderators, localId)) return
         val name = group.pendingMembers[memberId] ?: return
         val nextIds = group.memberIds + (memberId to name)
         communityGroups[i] = group.copy(members = (group.members + name).distinct(),
@@ -1162,7 +1162,7 @@ class MainActivity : ComponentActivity() {
         val i = communityGroups.indexOfFirst { it.code == code }
         if (i < 0) return
         val group = communityGroups[i]
-        if (group.ownerId != localCommunityMemberId || memberId !in group.memberIds || memberId == group.ownerId) return
+        if (!CommunityAccessPolicy.canPromote(group.ownerId, group.memberIds, group.moderators, localCommunityMemberId, memberId)) return
         communityGroups[i] = group.copy(moderators = group.moderators + memberId)
         persistCommunityData()
         sendGroupMembers(code)
@@ -1174,7 +1174,7 @@ class MainActivity : ComponentActivity() {
         if (i < 0) return
         val group = communityGroups[i]
         val localId = localCommunityMemberId
-        if (group.ownerId != localId || memberId !in group.memberIds || memberId == localId) return
+        if (!CommunityAccessPolicy.canTransferOwnership(group.ownerId, group.memberIds, localId, memberId)) return
         val nextModerators = (group.moderators - memberId) + localId
         communityGroups[i] = group.copy(ownerId = memberId, moderators = nextModerators)
         persistCommunityData()
@@ -1189,8 +1189,10 @@ class MainActivity : ComponentActivity() {
         if (i < 0) return
         val group = communityGroups[i]
         val localId = localCommunityMemberId
-        val canManage = localId == group.ownerId || localId in group.moderators
-        if (!canManage || memberId == group.ownerId || (memberId in group.moderators && localId != group.ownerId)) return
+        if (!CommunityAccessPolicy.canRemove(group.ownerId, group.moderators, group.memberIds, localId, memberId)) {
+            // Pending join requests are not members yet; owners and moderators may decline them.
+            if (!CommunityAccessPolicy.canManage(group.ownerId, group.moderators, localId) || memberId !in group.pendingMembers) return
+        }
         val name = group.memberIds[memberId] ?: group.pendingMembers[memberId] ?: return
         communityGroups[i] = group.copy(members = group.members.filterNot { it == name },
             memberIds = group.memberIds - memberId, moderators = group.moderators - memberId,
@@ -1207,7 +1209,7 @@ class MainActivity : ComponentActivity() {
         val code = selectedCommunityCode ?: return
         val group = communityGroups.firstOrNull { it.code == code } ?: return
         val localId = localCommunityMemberId
-        if (localId !in group.memberIds) { communityNotice = "You must be approved as a member before posting."; return }
+        if (!CommunityAccessPolicy.canPost(group.memberIds, localId)) { communityNotice = "You must be approved as a member before posting."; return }
         val body = raw.trim().take(1500)
         if (body.isBlank()) return
         val id = UUID.randomUUID().toString()
@@ -1345,8 +1347,10 @@ class MainActivity : ComponentActivity() {
                 "group_message" -> {
                     val group = communityGroups.firstOrNull { it.code == code }
                     val verifiedName = group?.memberIds?.get(senderId)
-                    if (group != null && verifiedName == sender && packet.optString("id").isNotBlank()) {
-                        val id = packet.optString("id")
+                    val messageId = packet.optString("id")
+                    val messageBody = packet.optString("body")
+                    if (group != null && CommunityAccessPolicy.isValidGroupMessage(group.memberIds, senderId, sender, messageId, messageBody)) {
+                        val id = messageId
                         if (communityMessages.none { it.id == id }) {
                             communityMessages.add(CommunityChatMessage(id, code, sender, packet.optString("body").trim().take(1500), System.currentTimeMillis()))
                             while (communityMessages.size > 300) communityMessages.removeAt(0)
