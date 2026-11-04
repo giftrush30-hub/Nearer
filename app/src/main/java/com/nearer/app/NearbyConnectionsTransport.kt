@@ -10,43 +10,64 @@ import java.util.concurrent.ConcurrentHashMap
 class NearbyConnectionsTransport(context: Context, private val listener: Listener) {
     interface Listener {
         fun onStatus(message: String)
-        fun onFound(id: String, name: String)
-        fun onLost(id: String)
+        fun onFound(id: String, name: String, stableId: String)
+        fun onLost(id: String, stableId: String)
         fun onRequest(id: String, name: String, token: String)
-        fun onConnected(id: String, name: String)
-        fun onDisconnected(id: String)
+        fun onConnected(id: String, name: String, stableId: String)
+        fun onDisconnected(id: String, stableId: String, name: String)
         fun onMessage(id: String, body: String)
     }
     private val client = Nearby.getConnectionsClient(context.applicationContext)
     private val serviceId = context.packageName
     private val names = mutableMapOf<String, String>()
+    private val stableIds = mutableMapOf<String, String>()
     private val activeEndpoints = mutableSetOf<String>()
+    private val localStableId = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        .let { prefs ->
+            prefs.getString("nearer_stable_id", null) ?: UUID.randomUUID().toString().replace("-", "").take(6).uppercase().also {
+                prefs.edit().putString("nearer_stable_id", it).apply()
+            }
+        }
+    private fun encodedName(): String = "${localName.take(23)}|$localStableId"
+    private fun decodeName(value: String): Pair<String, String> {
+        val split = value.lastIndexOf('|')
+        if (split in 1 until value.lastIndex && value.length - split - 1 == 6) {
+            return value.substring(0, split).take(23) to value.substring(split + 1).uppercase()
+        }
+        return value.take(23) to ""
+    }
     private val seenMessageIds = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var relayEnabled = false
     private var started = false
     @Volatile private var localName = "NeaRer User"
     private val discovery = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(id: String, info: DiscoveredEndpointInfo) {
-            synchronized(names) { names[id] = info.endpointName }
-            listener.onFound(id, info.endpointName)
+            val (name, stableId) = decodeName(info.endpointName)
+            synchronized(names) { names[id] = name; stableIds[id] = stableId }
+            listener.onFound(id, name, stableId)
         }
-        override fun onEndpointLost(id: String) { synchronized(names) { names.remove(id) }; listener.onLost(id) }
+        override fun onEndpointLost(id: String) {
+            val stableId = synchronized(names) { stableIds.remove(id).orEmpty().also { names.remove(id) } }
+            listener.onLost(id, stableId)
+        }
     }
     private val lifecycle = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(id: String, info: ConnectionInfo) {
-            synchronized(names) { names[id] = info.endpointName }
-            listener.onRequest(id, info.endpointName, info.authenticationToken)
+            val (name, stableId) = decodeName(info.endpointName)
+            synchronized(names) { names[id] = name; stableIds[id] = stableId }
+            listener.onRequest(id, name, info.authenticationToken)
         }
         override fun onConnectionResult(id: String, result: ConnectionResolution) {
             if (result.status.isSuccess) {
                 synchronized(activeEndpoints) { activeEndpoints.add(id) }
-                val name = synchronized(names) { names[id] } ?: "Nearby NeaRer user"
-                listener.onConnected(id, name)
+                val details = synchronized(names) { (names[id] ?: "Nearby NeaRer user") to stableIds[id].orEmpty() }
+                listener.onConnected(id, details.first, details.second)
             } else listener.onStatus("Nearby connection was not approved. Try again.")
         }
         override fun onDisconnected(id: String) {
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
-            if (empty) listener.onDisconnected(id)
+            val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
+            if (empty) listener.onDisconnected(id, details.first, details.second)
             else listener.onStatus("One nearby person disconnected. Your other direct connections remain active.")
         }
     }
@@ -75,13 +96,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
     private fun startAdvertising() {
         val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
-        client.startAdvertising(localName, serviceId, lifecycle, options).addOnFailureListener {
+        client.startAdvertising(encodedName(), serviceId, lifecycle, options).addOnFailureListener {
             listener.onStatus("Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}")
         }
     }
 
     fun setDisplayName(name: String) {
-        val clean = name.trim().replace("|", " ").take(24).ifBlank { "NeaRer User" }
+        val clean = name.trim().replace("|", " ").take(23).ifBlank { "NeaRer User" }
         if (clean == localName) return
         localName = clean
         if (started) client.stopAdvertising().addOnCompleteListener { startAdvertising() }
@@ -97,7 +118,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
         listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
     }
-    fun request(id: String) { client.requestConnection(localName, id, lifecycle).addOnFailureListener { listener.onStatus("Connection request failed: ${it.localizedMessage ?: "try again"}") } }
+    fun request(id: String) { client.requestConnection(encodedName(), id, lifecycle).addOnFailureListener { listener.onStatus("Connection request failed: ${it.localizedMessage ?: "try again"}") } }
     fun accept(id: String) { client.acceptConnection(id, payloads).addOnFailureListener { listener.onStatus("Could not accept nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun reject(id: String) { client.rejectConnection(id).addOnFailureListener { listener.onStatus("Could not reject nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun setRelayEnabled(enabled: Boolean) { relayEnabled = enabled }
