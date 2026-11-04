@@ -68,7 +68,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
             if (empty) listener.onDisconnected(id, details.first, details.second)
-            else listener.onStatus("One nearby person disconnected. Your other direct connections remain active.")
+            else {
+                listener.onLost(id, details.first)
+                listener.onStatus("One nearby person disconnected. Your other direct connections remain active.")
+            }
         }
     }
     private val payloads = object : PayloadCallback() {
