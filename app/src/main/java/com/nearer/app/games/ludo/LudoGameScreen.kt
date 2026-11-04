@@ -3,6 +3,7 @@ package com.nearer.app.games.ludo
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -158,7 +159,7 @@ fun LudoGameScreen(
 
 @Composable
 private fun LudoBoard(game: LudoState, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.height(330.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xFFEEF2F7)).padding(3.dp)) {
+    Canvas(modifier = modifier.aspectRatio(1f).clip(RoundedCornerShape(18.dp)).background(Color(0xFFEEF2F7)).padding(3.dp)) {
         val cell = size.width / 15f
         val track = ludoTrackCells
         val baseColors = LudoColor.values().map { Color(it.hex) }
