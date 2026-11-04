@@ -2054,7 +2054,7 @@ private fun NeaRerHome(
                     sectionPositions["community"] = it.positionInParent().y.toInt()
                 }
             ) {
-                CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
+                CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, localCommunityMemberId, incomingGameInvite,
                     activeGame, gameChatMessages, onCreateGroup, onJoinGroup, onSelectGroup, onLeaveGroup,
                     onApproveMember, onPromoteMember, onRemoveMember, onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
                     onRejectGameInvite, onGameMove, onGameChat, onEndGame)
@@ -2233,10 +2233,12 @@ private fun NeaRerHome(
 
 @androidx.compose.runtime.Composable
 private fun CommunityHub(
-    groups: List<CommunityGroup>, messages: List<CommunityChatMessage>, selectedCode: String?, notice: String,
+    groups: List<CommunityGroup>, messages: List<CommunityChatMessage>, selectedCode: String?, notice: String, localMemberId: String,
     invite: GameInvite?, game: TicTacToeMatch?, gameChat: List<String>,
     onCreate: (String) -> Unit, onJoin: (String) -> Unit, onSelect: (String) -> Unit,
-    onLeaveGroup: (String) -> Unit, onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
+    onLeaveGroup: (String) -> Unit, onApproveMember: (String, String) -> Unit,
+    onPromoteMember: (String, String) -> Unit, onRemoveMember: (String, String) -> Unit,
+    onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
     onAccept: () -> Unit, onReject: () -> Unit, onMove: (Int) -> Unit, onGameChat: (String) -> Unit, onEndGame: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
@@ -2272,11 +2274,42 @@ private fun CommunityHub(
                         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("NeaRer community code", selected.code))
                     }) { Text("Copy code") }
                 }
+                val isOwner = selected.ownerId == localMemberId && localMemberId.isNotBlank()
+                val canModerate = isOwner || localMemberId in selected.moderators
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(selected.members.size.toString() + " known members", color = Muted, fontSize = 11.sp)
+                    Text(selected.memberIds.size.toString() + " verified members", color = Muted, fontSize = 11.sp)
                     Spacer(Modifier.weight(1f))
                     Button(onClick = { onLeaveGroup(selected.code) },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Leave") }
+                }
+                Text("MEMBERS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                selected.memberIds.forEach { (memberId, memberName) ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text(memberName, color = White, fontSize = 12.sp)
+                            Text(when {
+                                memberId == selected.ownerId -> "Owner"
+                                memberId in selected.moderators -> "Moderator"
+                                else -> "Member"
+                            }, color = Muted, fontSize = 10.sp)
+                        }
+                        if (isOwner && memberId != selected.ownerId && memberId !in selected.moderators) {
+                            TextButton(onClick = { onPromoteMember(selected.code, memberId) }) { Text("Make moderator") }
+                        }
+                        if (canModerate && memberId != selected.ownerId && (isOwner || memberId !in selected.moderators)) {
+                            TextButton(onClick = { onRemoveMember(selected.code, memberId) }) { Text("Remove") }
+                        }
+                    }
+                }
+                if (canModerate && selected.pendingMembers.isNotEmpty()) {
+                    Text("JOIN REQUESTS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    selected.pendingMembers.forEach { (memberId, memberName) ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(memberName, color = White, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { onApproveMember(selected.code, memberId) }) { Text("Approve") }
+                            TextButton(onClick = { onRemoveMember(selected.code, memberId) }) { Text("Decline") }
+                        }
+                    }
                 }
                 Column(Modifier.fillMaxWidth().height(130.dp).verticalScroll(rememberScrollState())) {
                     messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { Text(it.sender + ": " + it.body, color = White, fontSize = 12.sp) }
