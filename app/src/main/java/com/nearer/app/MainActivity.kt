@@ -1096,6 +1096,13 @@ class MainActivity : ComponentActivity() {
                         while (gameChatMessages.size > 60) gameChatMessages.removeAt(0)
                     }
                 }
+                "game_end" -> activeGame?.let { game ->
+                    if (game.matchId == packet.optString("matchId") && sender == game.opponent) {
+                        activeGame = null
+                        gameChatMessages.clear()
+                        communityNotice = "$sender ended the match."
+                    }
+                }
             }
         } catch (_: Exception) { communityNotice = "A community packet was invalid and ignored." }
     }
@@ -1124,6 +1131,9 @@ class MainActivity : ComponentActivity() {
         nearbyTransport?.sendToNames("NR_COMMUNITY:" + JSONObject().put("type", "game_move").put("matchId", game.matchId).put("index", index).put("symbol", game.localSymbol).put("sender", displayName), setOf(game.opponent))
     }
     private fun endGame() {
+        activeGame?.let { game ->
+            nearbyTransport?.sendToNames("NR_COMMUNITY:" + JSONObject().put("type", "game_end").put("matchId", game.matchId), setOf(game.opponent))
+        }
         activeGame = null
         incomingGameInvite = null
         gameChatMessages.clear()
