@@ -13,6 +13,7 @@ import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.webkit.MimeTypeMap
 import android.os.Build
 import android.os.Bundle
 import java.io.BufferedReader
@@ -65,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 
 private val Midnight = Color(0xFF101A2B)
 private val Panel = Color(0xFF1A2940)
@@ -92,7 +94,7 @@ class MainActivity : ComponentActivity() {
     private val io = Executors.newCachedThreadPool()
     private val approvalDecision = LinkedBlockingQueue<Boolean>()
     private val chatMessages = mutableStateListOf<ChatMessage>()
-    private val receivedFiles = mutableStateListOf<String>()
+    private val receivedFiles = mutableStateListOf<ReceivedFile>()
     private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
@@ -168,6 +170,7 @@ class MainActivity : ComponentActivity() {
                     receivedFiles = receivedFiles,
                     onSendMessage = ::sendChatMessage,
                     onSendFile = ::sendFile,
+                    onOpenFile = ::openReceivedFile,
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
                     onFindNearby = ::startDiscovery,
@@ -457,6 +460,21 @@ class MainActivity : ComponentActivity() {
         chatNotice = "Sent directly • waiting for delivery confirmation"
     }
 
+    private fun openReceivedFile(item: ReceivedFile) {
+        try {
+            val uri = FileProvider.getUriForFile(this, "${packageName}.files", item.file)
+            val extension = item.file.extension.lowercase()
+            val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "*/*"
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(intent)
+        } catch (_: Exception) {
+            chatNotice = "No app is available to open this file, or the file could not be accessed."
+        }
+    }
+
     private fun sendFile(uri: Uri) {
         if (!chatReady) return
         io.execute {
@@ -557,8 +575,8 @@ class MainActivity : ComponentActivity() {
                             if (transfer != null) {
                                 transfer.close()
                                 runOnUiThread {
-                                    receivedFiles.add(0, transfer.name)
-                                    chatNotice = "Received file: ${transfer.name}. Saved inside NeaRer."
+                                    receivedFiles.add(0, ReceivedFile(transfer.name, transfer.file))
+                                    chatNotice = "Received file: ${transfer.name}. Tap it below to open."
                                 }
                                 synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id") }
                             }
@@ -601,9 +619,10 @@ private fun NeaRerHome(
     chatReady: Boolean,
     messages: List<ChatMessage>,
     chatNotice: String,
-    receivedFiles: List<String>,
+    receivedFiles: List<ReceivedFile>,
     onSendMessage: (String) -> Unit,
     onSendFile: (Uri) -> Unit,
+    onOpenFile: (ReceivedFile) -> Unit,
     onAccept: () -> Unit,
     onReject: () -> Unit,
     onFindNearby: () -> Unit,
@@ -698,8 +717,13 @@ private fun NeaRerHome(
                             }
                         }
                         Text(chatNotice, color = Muted, fontSize = 10.sp)
-                        receivedFiles.take(3).forEach { fileName ->
-                            Text("Received: $fileName", color = Mint, fontSize = 10.sp)
+                        receivedFiles.take(3).forEach { fileItem ->
+                            Button(
+                                onClick = { onOpenFile(fileItem) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26364D), contentColor = White)
+                            ) { Text("Open ${fileItem.displayName}", maxLines = 1) }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
@@ -799,6 +823,8 @@ private data class ChatMessage(
     val outgoing: Boolean,
     val delivery: String
 )
+
+private data class ReceivedFile(val displayName: String, val file: File)
 
 private data class IncomingTransfer(
     val name: String,
