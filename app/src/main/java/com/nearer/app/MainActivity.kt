@@ -1347,11 +1347,15 @@ class MainActivity : ComponentActivity() {
                     val i = communityGroups.indexOfFirst { it.code == code }
                     if (i >= 0 && packet.optString("memberId") == localCommunityMemberId) {
                         val group = communityGroups[i]
-                        if (senderId == group.ownerId || senderId in group.moderators) {
+                        val packetOwnerId = packet.optString("ownerId")
+                        val trustedRemoval = senderId == group.ownerId || senderId in group.moderators ||
+                            (group.ownerId.isBlank() && packetOwnerId.isNotBlank() && senderId == packetOwnerId)
+                        if (trustedRemoval) {
                             communityGroups[i] = group.copy(members = group.members - displayName,
-                                memberIds = group.memberIds - localCommunityMemberId, moderators = group.moderators - localCommunityMemberId)
+                                memberIds = group.memberIds - localCommunityMemberId, moderators = group.moderators - localCommunityMemberId,
+                                pendingMembers = group.pendingMembers - localCommunityMemberId)
                             persistCommunityData()
-                            communityNotice = "You were removed from " + group.name + "."
+                            communityNotice = "Your request to join " + group.name + " was declined or your membership was removed."
                         }
                     }
                 }
