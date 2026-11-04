@@ -242,6 +242,7 @@ class MainActivity : ComponentActivity() {
             override fun onDisconnected(id: String) {
                 runOnUiThread {
                     hybridConnected = false
+                    connectedDeviceName?.let { recordRecentlySeen(id, it) }
                     pendingHybridEndpoint = null
                     connectedDeviceName = null
                     chatReady = false
@@ -1319,7 +1320,7 @@ private fun NeaRerHome(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
+            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(18.dp), color = if (chatReady) Color(0xFF173C3A) else Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("CONNECTION STATUS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
