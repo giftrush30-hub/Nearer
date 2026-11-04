@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.wifi.WpsInfo
+import android.net.wifi.WifiManager
+import android.location.LocationManager
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pInfo
@@ -247,7 +249,33 @@ class MainActivity : ComponentActivity() {
         return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
     }
 
+    private fun isWifiEnabled(): Boolean {
+        val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        return wifi?.isWifiEnabled == true
+    }
+
+    private fun isLocationEnabled(): Boolean {
+        val location = getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            location.isLocationEnabled
+        } else {
+            @Suppress("DEPRECATION")
+            location.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                location.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        }
+    }
+
     private fun startDiscovery() {
+        if (!isWifiEnabled()) {
+            scanning = false
+            statusMessage = "Wi-Fi is OFF. Turn on Wi-Fi in Quick Settings, then tap Find people nearby again. Mobile data is not required."
+            return
+        }
+        if (!isLocationEnabled()) {
+            scanning = false
+            statusMessage = "Android requires Location to be ON for Wi-Fi Direct discovery. Turn on Location in Quick Settings; NeaRer does not use it to track you."
+            return
+        }
         if (!hasDiscoveryPermission()) {
             val permissions = if (Build.VERSION.SDK_INT >= 33) {
                 arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES)
@@ -278,8 +306,8 @@ class MainActivity : ComponentActivity() {
             override fun onFailure(reason: Int) {
                 scanning = false
                 statusMessage = when (reason) {
-                    WifiP2pManager.BUSY -> "Wi-Fi is busy. Wait a moment and try again."
-                    WifiP2pManager.ERROR -> "Wi-Fi Direct reported an error. Check that Wi-Fi is on."
+                    WifiP2pManager.BUSY -> "Android Wi-Fi is busy. Wait 5–10 seconds and try again."
+                    WifiP2pManager.ERROR -> "Android could not start Wi-Fi Direct. Check that Wi-Fi and Location are both ON, then retry."
                     WifiP2pManager.P2P_UNSUPPORTED -> "This phone does not support Wi-Fi Direct."
                     else -> "Could not start discovery (code $reason). Check Wi-Fi and try again."
                 }
