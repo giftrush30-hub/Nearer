@@ -74,6 +74,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -1080,8 +1081,9 @@ class MainActivity : ComponentActivity() {
         }
         val localId = localCommunityMemberId
         if (localId.isBlank()) { communityNotice = "Your nearby identity is not ready. Reconnect and try again."; return }
-        var code = (100000..999999).random().toString()
-        while (communityGroups.any { it.code == code }) code = (100000..999999).random().toString()
+        var code: String
+        do { code = (100000 + SecureRandom().nextInt(900000)).toString() }
+        while (communityGroups.any { it.code == code })
         communityGroups.add(0, CommunityGroup(code, name, listOf(displayName), localId,
             mapOf(localId to displayName)))
         selectedCommunityCode = code
@@ -1216,11 +1218,12 @@ class MainActivity : ComponentActivity() {
             val type = packet.optString("type")
             val code = packet.optString("code")
             val senderId = packet.optString("senderId").ifBlank { senderStableId }
-            if (senderId.isBlank() || senderId != senderStableId) return
+            if (senderId.isBlank() || senderId != senderStableId ||
+                !senderStableId.matches(Regex("([A-F0-9]{6}|[A-F0-9]{32})"))) return
             when (type) {
                 "group_created" -> {
                     val ownerId = packet.optString("ownerId").ifBlank { senderId }
-                    if (code.length == 6 && ownerId == senderId && communityGroups.none { it.code == code } && communityGroups.size < 20) {
+                    if (code.matches(Regex("[0-9]{6}")) && ownerId == senderId && communityGroups.none { it.code == code } && communityGroups.size < 20) {
                         val groupName = packet.optString("name").trim().take(32).ifBlank { "Nearby community " + code }
                         communityGroups.add(0, CommunityGroup(code, groupName, listOf(sender),
                             ownerId, mapOf(senderId to sender)))
@@ -1233,7 +1236,8 @@ class MainActivity : ComponentActivity() {
                     if (i >= 0) {
                         val group = communityGroups[i]
                         if ((group.ownerId == localCommunityMemberId || localCommunityMemberId in group.moderators) &&
-                            senderId != group.ownerId && senderId !in group.memberIds && senderId !in group.pendingMembers) {
+                            senderId != group.ownerId && senderId !in group.memberIds && senderId !in group.pendingMembers &&
+                            group.pendingMembers.size < 100) {
                             communityGroups[i] = group.copy(pendingMembers = group.pendingMembers + (senderId to sender))
                             persistCommunityData()
                             communityNotice = sender + " requested to join " + group.name + ". Review the request."
@@ -1272,7 +1276,8 @@ class MainActivity : ComponentActivity() {
                     val i = communityGroups.indexOfFirst { it.code == code }
                     if (i >= 0) {
                         val group = communityGroups[i]
-                        if (senderId == group.ownerId || senderId in group.moderators) {
+                        if ((senderId == group.ownerId || senderId in group.moderators) &&
+                            packet.optString("ownerId").ifBlank { group.ownerId } == group.ownerId) {
                             val array = packet.optJSONArray("members") ?: JSONArray()
                             val members = mutableMapOf<String, String>()
                             for (n in 0 until array.length()) {
@@ -1308,7 +1313,8 @@ class MainActivity : ComponentActivity() {
                     if (group != null && verifiedName == sender && packet.optString("id").isNotBlank()) {
                         val id = packet.optString("id")
                         if (communityMessages.none { it.id == id }) {
-                            communityMessages.add(CommunityChatMessage(id, code, sender, packet.optString("body").take(1500), System.currentTimeMillis()))
+                            communityMessages.add(CommunityChatMessage(id, code, sender, packet.optString("body").trim().take(1500), System.currentTimeMillis()))
+                            while (communityMessages.size > 300) communityMessages.removeAt(0)
                             persistCommunityData()
                         }
                     }
@@ -2260,7 +2266,9 @@ private fun CommunityHub(
                 Button(onClick = { onJoin(code); code = "" }, enabled = code.length == 6) { Text("Join") }
             }
             groups.forEach { group ->
-                Button(onClick = { onSelect(group.code) }, Modifier.fillMaxWidth()) { Text(group.name + " • " + group.code + " • " + group.members.size + " known") }
+                Button(onClick = { onSelect(group.code) }, Modifier.fillMaxWidth()) {
+                    Text(group.name + " • " + group.code + " • " + group.memberIds.size + " members")
+                }
             }
             if (selected != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
