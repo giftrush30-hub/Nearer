@@ -4,7 +4,7 @@
 
 NeaRer is a native Android app for nearby communication, file sharing and local community features. Direct Nearby Connections sessions are designed to discover and connect devices without requiring an internet connection.
 
-## Current source milestone: 0.5.1
+## Current source milestone: 0.5.2
 
 ### Existing nearby foundation
 - Kotlin + Jetpack Compose Android app.
@@ -18,7 +18,7 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - Create a local group with a six-digit join code.
 - Join a group using its code.
 - Persist local group membership and up to 300 group messages on the phone.
-- Send group messages to currently connected Nearby Connections peers that have joined the same group code.
+- Send group messages directly to connected peers whose names are in the locally stored group member list.
 - Send a nearby broadcast to currently connected NeaRer peers.
 - Invite a nearby peer to a live two-player tic-tac-toe match.
 - Synchronise legal board moves over the Nearby Connections message channel.
