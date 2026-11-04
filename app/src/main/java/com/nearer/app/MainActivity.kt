@@ -259,12 +259,12 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val activeChannel = channel ?: run {
-            statusMessage = "The nearby connection service is not ready. Please reopen NeaRer."
-            return
-        }
         val manager = wifiManager ?: run {
             statusMessage = "This phone does not provide Wi-Fi Direct support."
+            return
+        }
+        val activeChannel = channel ?: run {
+            statusMessage = "The nearby connection service is not ready. Please reopen NeaRer."
             return
         }
 
@@ -293,9 +293,12 @@ class MainActivity : ComponentActivity() {
             startDiscovery()
             return
         }
-        val activeChannel = channel ?: return
         val manager = wifiManager ?: run {
             statusMessage = "This phone does not provide Wi-Fi Direct support."
+            return
+        }
+        val activeChannel = channel ?: run {
+            statusMessage = "The nearby connection service is not ready. Please reopen NeaRer."
             return
         }
         if (device.status == WifiP2pDevice.CONNECTED) {
