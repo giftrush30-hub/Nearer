@@ -18,7 +18,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val client = Nearby.getConnectionsClient(context.applicationContext)
     private val serviceId = context.packageName
     private val names = mutableMapOf<String, String>()
-    private var activeEndpoint: String? = null
+    private val activeEndpoints = mutableSetOf<String>()
     private var started = false
     private val localName = Build.MODEL.orEmpty().replace("|", " ").take(40).ifBlank { "Android phone" }
     private val discovery = object : EndpointDiscoveryCallback() {
@@ -35,12 +35,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
         override fun onConnectionResult(id: String, result: ConnectionResolution) {
             if (result.status.isSuccess) {
-                activeEndpoint = id
+                synchronized(activeEndpoints) { activeEndpoints.add(id) }
                 val name = synchronized(names) { names[id] } ?: "Nearby NeaRer user"
                 listener.onConnected(id, name)
             } else listener.onStatus("Nearby connection was not approved. Try again.")
         }
-        override fun onDisconnected(id: String) { if (activeEndpoint == id) activeEndpoint = null; listener.onDisconnected(id) }
+        override fun onDisconnected(id: String) {
+            val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
+            if (empty) listener.onDisconnected(id)
+            else listener.onStatus("One nearby person disconnected. Your other direct connections remain active.")
+        }
     }
     private val payloads = object : PayloadCallback() {
         override fun onPayloadReceived(id: String, payload: Payload) {
@@ -69,8 +73,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     fun accept(id: String) { client.acceptConnection(id, payloads).addOnFailureListener { listener.onStatus("Could not accept nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun reject(id: String) { client.rejectConnection(id).addOnFailureListener { listener.onStatus("Could not reject nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun send(body: String): Boolean {
-        val id = activeEndpoint ?: return false
-        return try { client.sendPayload(id, Payload.fromBytes(body.toByteArray(Charsets.UTF_8))); true } catch (_: Exception) { false }
+        val targets = synchronized(activeEndpoints) { activeEndpoints.toList() }
+        if (targets.isEmpty()) return false
+        var deliveredToAtLeastOne = false
+        targets.forEach { endpoint ->
+            try {
+                client.sendPayload(endpoint, Payload.fromBytes(body.toByteArray(Charsets.UTF_8)))
+                deliveredToAtLeastOne = true
+            } catch (_: Exception) { }
+        }
+        return deliveredToAtLeastOne
     }
     fun disconnect() { try { client.stopAllEndpoints() } catch (_: Exception) {}; activeEndpoint = null }
     fun stop() { started = false; try { client.stopAdvertising() } catch (_: Exception) {}; try { client.stopDiscovery() } catch (_: Exception) {}; disconnect() }

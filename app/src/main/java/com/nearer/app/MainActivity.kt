@@ -822,6 +822,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun sendFile(uri: Uri) {
+        if (hybridConnected) {
+            chatNotice = "Offline chat is active. For file sharing, connect using the Wi-Fi Direct device list; hybrid file transfer is being completed."
+            return
+        }
         if (!chatReady) return
         if (outgoingTransferId != null) {
             chatNotice = "Finish or cancel the current file transfer first."
@@ -1156,7 +1160,7 @@ private fun NeaRerHome(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("BLUETOOTH + MESH" to "In development", "PLAY TOGETHER" to "Coming soon").forEach { item ->
+                        listOf("BLUETOOTH CHAT" to "Hybrid connection enabled", "MESH + GAMES" to "In development").forEach { item ->
                             Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -1299,7 +1303,7 @@ private fun NeaRerHome(
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26364D), contentColor = White)
                         ) { Text("Share a photo or file") }
-                        Text("Direct transfer • maximum 200 MB per file", color = Muted, fontSize = 10.sp)
+                        Text("Wi-Fi Direct file transfer • maximum 200 MB per file", color = Muted, fontSize = 10.sp)
                     } else {
                         Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                     }
