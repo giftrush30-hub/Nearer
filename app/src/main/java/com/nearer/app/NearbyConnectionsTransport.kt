@@ -305,6 +305,23 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
+    fun sendToStableIds(body: String, targetStableIds: Set<String>): Boolean {
+        if (body.isBlank() || targetStableIds.isEmpty()) return false
+        val targets = synchronized(activeEndpoints) {
+            activeEndpoints.filter { endpoint ->
+                synchronized(names) { stableIds[endpoint]?.let { it in targetStableIds } == true }
+            }
+        }
+        if (targets.isEmpty()) return false
+        val envelope = JSONObject().put("id", UUID.randomUUID().toString()).put("body", body)
+            .put("ttl", 0).put("hops", 0).put("origin", localName).toString()
+        targets.forEach { endpoint ->
+            client.sendPayload(endpoint, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener { listener.onStatus("A community message could not be sent to one nearby member.") }
+        }
+        return true
+    }
+
     fun sendToNames(body: String, targetNames: Set<String>): Boolean {
         if (body.isBlank() || targetNames.isEmpty()) return false
         val targets = synchronized(activeEndpoints) {
