@@ -48,6 +48,12 @@ class LudoEngineTest {
         assertTrue(result.isFinished)
     }
 
+    @Test fun twoPlayerMatchUsesOppositeColours() {
+        val state = LudoEngine.newGame("You", 2)
+        assertEquals(listOf(LudoColor.RED, LudoColor.YELLOW), state.players.map { it.color })
+        assertEquals(2, state.players.size)
+    }
+
     @Test fun globalTrackWrapsAtFiftyTwo() {
         assertEquals(0, LudoEngine.globalSquare(LudoColor.BLUE, 13))
     }
