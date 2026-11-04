@@ -24,10 +24,10 @@ object CommunityAccessPolicy {
         actorId.isNotBlank() && actorId == ownerId && targetId.isNotBlank() &&
             targetId != ownerId && targetId in memberIds
 
-    fun isVerifiedMember(memberIds: Map<String, String>, senderId: String, senderName: String): Boolean =
+    fun isKnownMember(memberIds: Map<String, String>, senderId: String, senderName: String): Boolean =
         senderId.isNotBlank() && senderName.isNotBlank() && memberIds[senderId] == senderName
 
     fun isValidGroupMessage(memberIds: Map<String, String>, senderId: String, senderName: String, messageId: String, body: String): Boolean =
-        isVerifiedMember(memberIds, senderId, senderName) &&
+        isKnownMember(memberIds, senderId, senderName) &&
             messageId.isNotBlank() && messageId.length <= 80 && body.isNotBlank() && body.length <= 1500
 }
