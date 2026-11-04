@@ -852,9 +852,9 @@ private fun NeaRerHome(
                     Text(connectedDeviceName?.let { "Connected to $it" } ?: connectionMessage, color = White, fontWeight = FontWeight.SemiBold)
                     Text(connectionMessage, color = Muted, fontSize = 11.sp)
                     Text(approvalMessage, color = if (chatReady) Mint else Muted, fontSize = 12.sp)
-                    if (pairingCode != null) {
+                    pairingCode?.let { code ->
                         Text("PAIRING CODE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        Text(pairingCode, color = Mint, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
+                        Text(code, color = Mint, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
                         Text("Check that both phones show the same code before approving.", color = Muted, fontSize = 10.sp)
                     }
                     if (connectedDeviceName != null || connectingAddress != null) {
