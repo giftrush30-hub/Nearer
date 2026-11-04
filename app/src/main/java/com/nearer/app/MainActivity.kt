@@ -1134,9 +1134,11 @@ class MainActivity : ComponentActivity() {
         val group = communityGroups.firstOrNull { it.code == code } ?: return
         val memberArray = JSONArray()
         group.memberIds.forEach { (id, name) -> memberArray.put(JSONObject().put("id", id).put("name", name)) }
+        val pendingArray = JSONArray()
+        group.pendingMembers.forEach { (id, name) -> pendingArray.put(JSONObject().put("id", id).put("name", name)) }
         val packet = JSONObject().put("type", "group_members").put("code", code)
             .put("ownerId", group.ownerId).put("members", memberArray)
-            .put("moderators", JSONArray(group.moderators.toList()))
+            .put("moderators", JSONArray(group.moderators.toList())).put("pendingMembers", pendingArray)
         nearbyTransport?.sendToStableIds("NR_COMMUNITY:$packet", group.memberIds.keys)
     }
 
@@ -1258,6 +1260,7 @@ class MainActivity : ComponentActivity() {
                             group.pendingMembers.size < 100) {
                             communityGroups[i] = group.copy(pendingMembers = group.pendingMembers + (senderId to sender))
                             persistCommunityData()
+                            sendGroupMembers(code)
                             communityNotice = sender + " requested to join " + group.name + ". Review the request."
                         }
                     }
@@ -1313,8 +1316,16 @@ class MainActivity : ComponentActivity() {
                             val moderatorsArray = packet.optJSONArray("moderators") ?: JSONArray()
                             val moderators = (0 until moderatorsArray.length()).map { moderatorsArray.optString(it) }
                                 .filter { it in members.keys && it != group.ownerId }.toSet()
+                            val pendingArray = packet.optJSONArray("pendingMembers") ?: JSONArray()
+                            val pending = mutableMapOf<String, String>()
+                            for (n in 0 until pendingArray.length()) {
+                                val request = pendingArray.optJSONObject(n) ?: continue
+                                val requestId = request.optString("id")
+                                val requestName = request.optString("name")
+                                if (requestId.isNotBlank() && requestName.isNotBlank() && requestId !in members) pending[requestId] = requestName.take(32)
+                            }
                             communityGroups[i] = group.copy(ownerId = packet.optString("ownerId").ifBlank { group.ownerId },
-                                memberIds = members, members = members.values.distinct(), moderators = moderators)
+                                memberIds = members, members = members.values.distinct(), moderators = moderators, pendingMembers = pending)
                             persistCommunityData()
                         }
                     }
