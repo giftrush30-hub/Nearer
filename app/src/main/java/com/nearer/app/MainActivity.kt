@@ -126,7 +126,7 @@ class MainActivity : ComponentActivity() {
         }
         if (!receiverRegistered) {
             if (Build.VERSION.SDK_INT >= 33) {
-                registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
             } else {
                 @Suppress("DEPRECATION")
                 registerReceiver(receiver, filter)
