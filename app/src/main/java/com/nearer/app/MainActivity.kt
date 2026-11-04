@@ -1598,7 +1598,7 @@ private fun NeaRerHome(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("LOCAL GROUPS" to "Coming soon", "PLAY TOGETHER" to "Coming soon").forEach { item ->
+                        listOf("LOCAL GROUPS" to "Nearby groups ready", "PLAY TOGETHER" to "Tic-tac-toe + Ludo").forEach { item ->
                             Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
