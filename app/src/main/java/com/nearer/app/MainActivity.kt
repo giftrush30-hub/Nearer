@@ -16,6 +16,7 @@ import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import android.os.Build
 import android.os.Bundle
+import android.os.Looper
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
@@ -515,9 +516,15 @@ class MainActivity : ComponentActivity() {
             it.file.delete()
         }
         incomingTransfers.clear()
-        incomingTransferName = null
-        incomingProgress = 0f
-        chatReady = false
+        cancelledOutgoingTransfers.clear()
+        val resetUi = {
+            incomingTransferName = null
+            incomingProgress = 0f
+            outgoingTransferId = null
+            outgoingProgress = 0f
+            chatReady = false
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) resetUi() else runOnUiThread { resetUi() }
     }
 
     private fun restoreLocalData() {
@@ -700,6 +707,7 @@ class MainActivity : ComponentActivity() {
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
                 while (!socket.isClosed) {
                     val line = reader.readLine() ?: break
+                    if (line.length > 24 * 1024) throw IllegalStateException("NeaRer message frame exceeded the allowed size")
                     when {
                         line.startsWith("MSG|") -> {
                             val parts = line.split("|", limit = 3)
@@ -817,8 +825,12 @@ class MainActivity : ComponentActivity() {
                         line.startsWith("FILE_DONE|") -> {
                             val parts = line.split("|", limit = 3)
                             val ok = parts.getOrNull(2) == "OK"
+                            val transferId = parts.getOrNull(1)
                             runOnUiThread {
-                                if (outgoingTransferId == parts.getOrNull(1)) {
+                                if (!ok && transferId != null && outgoingTransferId == transferId) {
+                                    cancelledOutgoingTransfers.add(transferId)
+                                }
+                                if (outgoingTransferId == transferId) {
                                     outgoingTransferId = null
                                     outgoingProgress = 0f
                                 }
@@ -849,10 +861,9 @@ class MainActivity : ComponentActivity() {
                 }
                 incomingTransfers.clear()
                 runOnUiThread {
-                    incomingTransferName = null
-                    incomingProgress = 0f
-                    if (chatReady) {
-                        chatReady = false
+                    val wasReady = chatReady
+                    closePeerTransport()
+                    if (wasReady) {
                         chatNotice = "The nearby connection ended. Reconnect to continue chatting."
                         connectionMessage = "Connection ended"
                     }
