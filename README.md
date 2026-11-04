@@ -8,7 +8,7 @@ NeaRer is a native Android app being built for nearby communication and file sha
 
 - Kotlin + Jetpack Compose Android app with a midnight-blue and mint visual identity.
 - Wi-Fi Direct peer discovery and connection requests.
-- App-level identity greeting and explicit accept/reject approval.
+- App-level identity greeting, matching six-digit pairing code and explicit accept/reject approval.
 - One-to-one text chat over the local Wi-Fi Direct socket.
 - Message IDs, duplicate suppression and delivery acknowledgements.
 - Recent chat history saved locally (up to 500 messages).
@@ -26,7 +26,7 @@ Current prototype limitations:
 - One peer at a time; no group chats yet.
 - Chat works only while the two devices are connected. Recent local history is retained, but there is no offline message queue or cross-device sync.
 - File transfers do not yet support resume or user cancellation.
-- No end-to-end encryption or cryptographic identity verification has been added at the app protocol layer. Wi-Fi Direct provides link-level protection, but this is not a substitute for a reviewed end-to-end security design.
+- The six-digit code helps people check they are approving the intended nearby phone, but it is not cryptographic identity verification. No end-to-end encryption has been added at the app protocol layer. Wi-Fi Direct provides link-level protection, but this is not a substitute for a reviewed end-to-end security design.
 - Device discovery and connection behavior can vary by phone hardware, Android release and manufacturer customizations.
 
 ## Build and download
