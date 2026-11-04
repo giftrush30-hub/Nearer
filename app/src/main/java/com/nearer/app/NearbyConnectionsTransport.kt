@@ -119,9 +119,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val payloadId = update.payloadId
             val outgoing = outgoingFiles[payloadId]
             val incoming = incomingMetadata[payloadId]
-            // Nearby also reports progress for ordinary BYTES messages and file metadata.
-            // Only render progress for the actual file payload, never for chat packets.
-            if (outgoing == null && incoming == null) return
+            val incomingPayload = incomingPayloads[payloadId]
+            // File metadata is a BYTES payload and may arrive before or after the FILE
+            // payload. Identify the transfer from the FILE callback too, not metadata alone.
+            // This prevents a fast file completion from being ignored while metadata is late.
+            if (outgoing == null && incoming == null && incomingPayload == null) return
             val name = outgoing?.second ?: incoming?.name ?: "Incoming file"
             val isIncoming = outgoing == null
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
