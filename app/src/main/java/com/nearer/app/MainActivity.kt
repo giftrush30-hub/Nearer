@@ -139,7 +139,6 @@ class MainActivity : ComponentActivity() {
     private var outgoingProgress by mutableStateOf(0f)
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
-    private val maxTransferBytes = 200L * 1024L * 1024L
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
@@ -1017,7 +1016,6 @@ class MainActivity : ComponentActivity() {
                         if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) fileSize = cursor.getLong(sizeIndex)
                     }
                 }
-                if (fileSize > maxTransferBytes) throw IllegalStateException("Files must be 200 MB or smaller")
                 val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("Cannot open selected file")
                 input.use { stream ->
                     val id = transferId
@@ -1035,7 +1033,6 @@ class MainActivity : ComponentActivity() {
                             throw IllegalStateException("Transfer cancelled")
                         }
                         sentBytes += count
-                        if (sentBytes > maxTransferBytes) throw IllegalStateException("Files must be 200 MB or smaller")
                         digest.update(buffer, 0, count)
                         val chunk = Base64.getEncoder().encodeToString(buffer.copyOf(count))
                         if (!sendWireLine("FILE_CHUNK|$id|0|$chunk")) throw IllegalStateException("Connection lost during transfer")
@@ -1111,7 +1108,7 @@ class MainActivity : ComponentActivity() {
                                 val name = try { String(Base64.getDecoder().decode(parts[2]), Charsets.UTF_8) } catch (_: Exception) { "shared-file" }
                                 val safeName = name.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100).ifBlank { "shared-file" }
                                 val expected = parts[3].toLongOrNull() ?: 0L
-                                if (expected > maxTransferBytes) {
+                                if (expected < 0L) {
                                     synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|ERROR") }
                                 } else {
                                     val folder = File(filesDir, "received").apply { mkdirs() }
@@ -1132,13 +1129,13 @@ class MainActivity : ComponentActivity() {
                                     try {
                                         val bytes = Base64.getDecoder().decode(parts[3])
                                         transfer.receivedBytes += bytes.size
-                                        if (transfer.receivedBytes > maxTransferBytes) {
+                                        if (transfer.expectedBytes > 0L && transfer.receivedBytes > transfer.expectedBytes) {
                                             incomingTransfers.remove(parts[1])?.close()
                                             transfer.file.delete()
                                             runOnUiThread {
                                                 incomingTransferName = null
                                                 incomingProgress = 0f
-                                                chatNotice = "This file exceeds NeaRer's 200 MB transfer limit."
+                                                chatNotice = "The received file was larger than its declared size. Transfer stopped."
                                             }
                                             synchronized(writerLock) { peerWriter?.println("FILE_DONE|${parts[1]}|ERROR") }
                                         } else {
@@ -1515,7 +1512,7 @@ private fun NeaRerHome(
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26364D), contentColor = White)
                         ) { Text("Share a photo or file") }
-                        Text(if (usingNearbyConnections) "Nearby Connections file transfer • maximum 200 MB per file" else "Wi-Fi Direct file transfer • maximum 200 MB per file", color = Muted, fontSize = 10.sp)
+                        Text(if (usingNearbyConnections) "Nearby Connections • no fixed file-size cap" else "Wi-Fi Direct • no fixed file-size cap", color = Muted, fontSize = 10.sp)
                     } else {
                         Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                     }
