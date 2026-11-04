@@ -2,22 +2,28 @@
 
 **Your people. Nearby. Offline.**
 
-NeaRer is an offline-first Android communication and file-sharing app. The goal is to let people discover, approve and connect to nearby devices, then exchange messages and files over a direct local connection without relying on mobile data.
+NeaRer is a native Android app being built for nearby communication and file sharing over a direct local connection. Its design goal is to let two compatible Android phones connect without mobile data or an internet server.
 
-## Project status
+## Current implementation
 
-This repository now contains the first native Android application scaffold:
+- Kotlin + Jetpack Compose Android application with a dark midnight / mint visual identity.
+- Wi-Fi Direct peer discovery and connection requests.
+- App-level identity greeting and explicit accept/reject approval.
+- Direct one-to-one text messages over the Wi-Fi Direct socket.
+- Message IDs and delivery acknowledgements.
+- Direct file transfer using chunked Base64 frames over the same local socket.
+- Received files are stored in NeaRer's private app storage and can be opened through Android's file-sharing provider.
+- GitHub Actions workflow builds a debug APK and uploads it as `nearer-debug-apk`.
 
-- Kotlin + Jetpack Compose Android app
-- Initial NeaRer home screen and visual identity
-- Android Gradle build configuration
-- GitHub Actions workflow to build and upload a debug APK
+## Important testing status
 
-The current home screen is an early foundation. Nearby discovery, connection approval, messaging, delivery receipts and file transfer still need to be implemented and tested between real Android devices. The buttons are not yet connected to those networking features.
+The features above are implemented in source code, but they are **not yet certified as working on physical phones**. The app needs two compatible Android devices with NeaRer installed, Wi-Fi enabled, and nearby-device permission granted. Android may also show its own Wi-Fi Direct invitation prompt.
+
+The current prototype supports one peer at a time. Chat history is currently held in memory and is not yet restored after the app is closed. File transfer currently has no resume-after-disconnect support or end-to-end encryption layer. Wi-Fi Direct provides link-level protection, but the app still needs stronger peer authentication and a security review before public release.
 
 ## Build
 
-The GitHub Actions workflow runs on pushes to `main` and can also be started manually from the **Actions** tab. When a build succeeds, download the `nearer-debug-apk` artifact from that workflow run.
+The GitHub Actions workflow runs on pushes to `main` and can also be started manually from the **Actions** tab. After a successful run, download the `nearer-debug-apk` artifact from that workflow run.
 
 To build locally with Android SDK installed:
 
@@ -25,20 +31,20 @@ To build locally with Android SDK installed:
 gradle assembleDebug
 ```
 
-The APK output is:
+APK output:
 
 ```
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Planned development sequence
+## Next engineering milestones
 
-1. Nearby device discovery using Android's local peer-to-peer networking APIs.
-2. Explicit connection approval and secure session setup.
-3. One-to-one chat with message IDs, acknowledgements and duplicate protection.
-4. Direct file transfer with progress, cancellation and integrity checks.
-5. Multi-device testing, permissions review and release APK preparation.
+1. Confirm clean APK build and test discovery, approval, messages and file transfers on two physical Android devices.
+2. Add durable local message/file history, retry handling, transfer progress and cancellation.
+3. Add stronger peer verification and secure session design before public release.
+4. Improve compatibility, accessibility, battery use and UI polish.
+5. Prepare signed release APK and a clear privacy/data-handling notice.
 
 ## Technical direction
 
-NeaRer is being built as a native Android app so it can use Android's device-to-device networking capabilities. A local connection should not require mobile internet, although Android may request Bluetooth, nearby-device or Wi-Fi permissions depending on the feature and OS version.
+NeaRer uses Android Wi-Fi Direct for local peer-to-peer networking. Wi-Fi Direct can connect compatible devices without a conventional access point; after connection, apps exchange data using sockets. Actual support and behavior can vary by phone hardware, Android version and manufacturer software.
