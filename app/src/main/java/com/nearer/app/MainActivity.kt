@@ -377,6 +377,7 @@ class MainActivity : ComponentActivity() {
                     onLeaveGroup = ::leaveCommunityGroup,
                     onApproveMember = ::approveCommunityMember,
                     onPromoteMember = ::promoteCommunityMember,
+                    onTransferOwnership = ::transferCommunityOwnership,
                     onRemoveMember = ::removeCommunityMember,
                     onSendGroupMessage = ::sendCommunityGroupMessage,
                     onBroadcast = ::sendCommunityBroadcast,
@@ -1168,6 +1169,21 @@ class MainActivity : ComponentActivity() {
         communityNotice = group.memberIds[memberId].orEmpty() + " is now a moderator."
     }
 
+    private fun transferCommunityOwnership(code: String, memberId: String) {
+        val i = communityGroups.indexOfFirst { it.code == code }
+        if (i < 0) return
+        val group = communityGroups[i]
+        val localId = localCommunityMemberId
+        if (group.ownerId != localId || memberId !in group.memberIds || memberId == localId) return
+        val nextModerators = (group.moderators - memberId) + localId
+        communityGroups[i] = group.copy(ownerId = memberId, moderators = nextModerators)
+        persistCommunityData()
+        val packet = JSONObject().put("type", "ownership_transfer").put("code", code)
+            .put("ownerId", memberId).put("sender", displayName).put("senderId", localId)
+        nearbyTransport?.sendToStableIds("NR_COMMUNITY:$packet", group.memberIds.keys)
+        communityNotice = group.memberIds[memberId].orEmpty() + " is now the community owner. You are a moderator."
+    }
+
     private fun removeCommunityMember(code: String, memberId: String) {
         val i = communityGroups.indexOfFirst { it.code == code }
         if (i < 0) return
@@ -1292,6 +1308,19 @@ class MainActivity : ComponentActivity() {
                             communityGroups[i] = group.copy(ownerId = packet.optString("ownerId").ifBlank { group.ownerId },
                                 memberIds = members, members = members.values.distinct(), moderators = moderators)
                             persistCommunityData()
+                        }
+                    }
+                }
+                "ownership_transfer" -> {
+                    val i = communityGroups.indexOfFirst { it.code == code }
+                    if (i >= 0) {
+                        val group = communityGroups[i]
+                        val newOwnerId = packet.optString("ownerId")
+                        if (senderId == group.ownerId && newOwnerId in group.memberIds && newOwnerId != group.ownerId) {
+                            communityGroups[i] = group.copy(ownerId = newOwnerId,
+                                moderators = (group.moderators - newOwnerId) + group.ownerId)
+                            persistCommunityData()
+                            communityNotice = "Community ownership was transferred to " + group.memberIds[newOwnerId].orEmpty() + "."
                         }
                     }
                 }
@@ -2062,7 +2091,7 @@ private fun NeaRerHome(
             ) {
                 CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, localCommunityMemberId, incomingGameInvite,
                     activeGame, gameChatMessages, onCreateGroup, onJoinGroup, onSelectGroup, onLeaveGroup,
-                    onApproveMember, onPromoteMember, onRemoveMember, onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
+                    onApproveMember, onPromoteMember, onTransferOwnership, onRemoveMember, onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
                     onRejectGameInvite, onGameMove, onGameChat, onEndGame)
             }
 
@@ -2243,7 +2272,8 @@ private fun CommunityHub(
     invite: GameInvite?, game: TicTacToeMatch?, gameChat: List<String>,
     onCreate: (String) -> Unit, onJoin: (String) -> Unit, onSelect: (String) -> Unit,
     onLeaveGroup: (String) -> Unit, onApproveMember: (String, String) -> Unit,
-    onPromoteMember: (String, String) -> Unit, onRemoveMember: (String, String) -> Unit,
+    onPromoteMember: (String, String) -> Unit, onTransferOwnership: (String, String) -> Unit,
+    onRemoveMember: (String, String) -> Unit,
     onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
     onAccept: () -> Unit, onReject: () -> Unit, onMove: (Int) -> Unit, onGameChat: (String) -> Unit, onEndGame: () -> Unit
 ) {
@@ -2303,6 +2333,9 @@ private fun CommunityHub(
                         }
                         if (isOwner && memberId != selected.ownerId && memberId !in selected.moderators) {
                             TextButton(onClick = { onPromoteMember(selected.code, memberId) }) { Text("Make moderator") }
+                        }
+                        if (isOwner && memberId != selected.ownerId) {
+                            TextButton(onClick = { onTransferOwnership(selected.code, memberId) }) { Text("Make owner") }
                         }
                         if (canModerate && memberId != selected.ownerId && (isOwner || memberId !in selected.moderators)) {
                             TextButton(onClick = { onRemoveMember(selected.code, memberId) }) { Text("Remove") }
