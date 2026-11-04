@@ -19,6 +19,7 @@ import android.webkit.MimeTypeMap
 import android.os.Build
 import android.os.Bundle
 import android.os.Looper
+import android.os.Handler
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
@@ -81,12 +82,17 @@ private val Panel = Color(0xFF1A2940)
 private val Mint = Color(0xFF69E0C0)
 private val Muted = Color(0xFFA8B6C9)
 private val White = Color(0xFFF6F8FC)
+private val BrandBlue = Color(0xFF2563EB)
+private val Gold = Color(0xFFFFD12D)
 
 class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
     private var channel: WifiP2pManager.Channel? = null
     private var receiverRegistered = false
     private var scanning by mutableStateOf(false)
+    private val discoveryHandler = Handler(Looper.getMainLooper())
+    private var discoveryTimeout: Runnable? = null
+    private var discoveryGeneration = 0
     private var connectingAddress by mutableStateOf<String?>(null)
     private var connectedDeviceName by mutableStateOf<String?>(null)
     private var connectionMessage by mutableStateOf("Not connected")
@@ -132,7 +138,7 @@ class MainActivity : ComponentActivity() {
                         wifiManager?.requestPeers(channel) { peers ->
                             nearbyDevices.clear()
                             nearbyDevices.addAll(peers.deviceList)
-                            scanning = false
+                            finishDiscovery()
                             statusMessage = if (nearbyDevices.isEmpty()) {
                                 "No nearby Wi-Fi Direct devices found yet. Keep both phones nearby and scan again."
                             } else {
@@ -201,6 +207,7 @@ class MainActivity : ComponentActivity() {
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
                     onFindNearby = ::startDiscovery,
+                    onStopSearch = ::stopDiscovery,
                     onConnect = ::connectToDevice
                 )
             }
@@ -227,6 +234,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        finishDiscovery()
         closePeerTransport()
         io.shutdownNow()
         super.onDestroy()
@@ -265,56 +273,84 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun finishDiscovery() {
+        discoveryGeneration += 1
+        discoveryTimeout?.let(discoveryHandler::removeCallbacks)
+        discoveryTimeout = null
+        scanning = false
+    }
+
+    private fun stopDiscovery() {
+        finishDiscovery()
+        val manager = wifiManager
+        val activeChannel = channel
+        if (manager != null && activeChannel != null) {
+            try {
+                manager.stopPeerDiscovery(activeChannel, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() { statusMessage = "Search stopped. You can search again whenever you are ready." }
+                    override fun onFailure(reason: Int) { statusMessage = "Search stopped. Android reported code $reason." }
+                })
+            } catch (_: SecurityException) { statusMessage = "Search stopped. Check nearby-device permission before searching again." }
+        } else statusMessage = "Search stopped."
+    }
+
     private fun startDiscovery() {
         if (!isWifiEnabled()) {
-            scanning = false
-            statusMessage = "Wi-Fi is OFF. Turn on Wi-Fi in Quick Settings, then tap Find people nearby again. Mobile data is not required."
-            return
-        }
-        if (!isLocationEnabled()) {
-            scanning = false
-            statusMessage = "Android requires Location to be ON for Wi-Fi Direct discovery. Turn on Location in Quick Settings; NeaRer does not use it to track you."
+            finishDiscovery()
+            statusMessage = "Wi-Fi is OFF. Turn on Wi-Fi on both phones. Hotspot and mobile data are not required."
             return
         }
         if (!hasDiscoveryPermission()) {
-            val permissions = if (Build.VERSION.SDK_INT >= 33) {
-                arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES)
-            } else {
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-            }
+            val permissions = if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
             ActivityCompat.requestPermissions(this, permissions, REQUEST_DISCOVERY_PERMISSION)
-            statusMessage = "Allow nearby-device permission, then tap Find people nearby again."
+            statusMessage = "Allow NeaRer to find nearby devices, then tap Find people nearby again."
             return
         }
-
-        val manager = wifiManager ?: run {
-            statusMessage = "This phone does not provide Wi-Fi Direct support."
-            return
-        }
-        val activeChannel = channel ?: run {
-            statusMessage = "The nearby connection service is not ready. Please reopen NeaRer."
-            return
-        }
-
+        val manager = wifiManager ?: run { finishDiscovery(); statusMessage = "This phone does not provide Wi-Fi Direct."; return }
+        val activeChannel = channel ?: run { finishDiscovery(); statusMessage = "Nearby connection service is not ready. Reopen NeaRer."; return }
+        finishDiscovery()
+        val generation = discoveryGeneration
         scanning = true
-        statusMessage = "Starting nearby search…"
-        manager.discoverPeers(activeChannel, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                statusMessage = "Search started. Looking for nearby Wi-Fi Direct devices…"
-            }
-
-            override fun onFailure(reason: Int) {
-                scanning = false
-                statusMessage = when (reason) {
-                    WifiP2pManager.BUSY -> "Android Wi-Fi is busy. Wait 5–10 seconds and try again."
-                    WifiP2pManager.ERROR -> "Android could not start Wi-Fi Direct. Check that Wi-Fi and Location are both ON, then retry."
-                    WifiP2pManager.P2P_UNSUPPORTED -> "This phone does not support Wi-Fi Direct."
-                    else -> "Could not start discovery (code $reason). Check Wi-Fi and try again."
+        statusMessage = "Looking for nearby phones. Keep NeaRer open on both devices…"
+        val timeout = Runnable {
+            if (generation == discoveryGeneration && scanning) {
+                try {
+                    manager.requestPeers(activeChannel) { peers ->
+                        if (generation != discoveryGeneration) return@requestPeers
+                        nearbyDevices.clear()
+                        nearbyDevices.addAll(peers.deviceList)
+                        finishDiscovery()
+                        statusMessage = if (nearbyDevices.isEmpty()) "No Wi-Fi Direct phones found in 20 seconds. Check Wi-Fi on both phones, Location for Wi-Fi Direct, and keep NeaRer open." else "${nearbyDevices.size} nearby phone(s) found. Choose one to connect."
+                    }
+                } catch (_: SecurityException) {
+                    finishDiscovery()
+                    statusMessage = "Android blocked nearby discovery. Check NeaRer's Nearby devices permission."
                 }
             }
-        })
+        }
+        discoveryTimeout = timeout
+        discoveryHandler.postDelayed(timeout, 20_000L)
+        try {
+            manager.discoverPeers(activeChannel, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    if (generation == discoveryGeneration) statusMessage = "Search is active. Waiting for nearby phones…"
+                }
+                override fun onFailure(reason: Int) {
+                    if (generation != discoveryGeneration) return
+                    finishDiscovery()
+                    statusMessage = when (reason) {
+                        WifiP2pManager.BUSY -> "Android Wi-Fi is busy. Wait a few seconds and try again."
+                        WifiP2pManager.ERROR -> "Android could not start nearby search. Check Wi-Fi and Location settings."
+                        WifiP2pManager.P2P_UNSUPPORTED -> "This phone does not support Wi-Fi Direct."
+                        else -> "Nearby search could not start (code $reason). Check phone settings and retry."
+                    }
+                }
+            })
+        } catch (_: SecurityException) {
+            finishDiscovery()
+            statusMessage = "Android denied nearby-device access. Allow Nearby devices in app permissions."
+        }
     }
-
     private fun connectToDevice(device: WifiP2pDevice) {
         if (!hasDiscoveryPermission()) {
             statusMessage = "Nearby-device permission is needed before connecting."
@@ -951,6 +987,7 @@ private fun NeaRerHome(
     onAccept: () -> Unit,
     onReject: () -> Unit,
     onFindNearby: () -> Unit,
+    onStopSearch: () -> Unit,
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     var draft by remember { mutableStateOf("") }
@@ -982,22 +1019,60 @@ private fun NeaRerHome(
                 }
             }
 
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Color(0xFF172B4A)) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(shape = RoundedCornerShape(12.dp), color = BrandBlue, modifier = Modifier.size(42.dp)) {
+                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("N", color = White, fontSize = 23.sp, fontWeight = FontWeight.Black) }
+                        }
+                        Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
+                            Text("YOUR OFFLINE WORLD", color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                            Text("People, sharing and play — closer.", color = Muted, fontSize = 11.sp)
+                        }
+                        Text("NEARER", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                    }
+                    Text("Everything starts nearby.", color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text("Connect without mobile data. Share directly. Build a local community with people around you.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("PRIVATE CHAT" to "Ready after connection", "FILE SHARING" to "Ready after connection").forEach { item ->
+                            Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(item.first, color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text(item.second, color = Muted, fontSize = 10.sp)
+                                }
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("BLUETOOTH + MESH" to "In development", "PLAY TOGETHER" to "Coming soon").forEach { item ->
+                            Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text(item.second, color = Muted, fontSize = 10.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), color = Panel) {
                 Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("OFFLINE CONNECTION", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("NEARBY CONNECTION", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text("Bring nearby people closer.", color = White, fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "Find nearby Android phones using Wi-Fi Direct. Discovery and the direct link work locally without mobile data. Both phones need Wi-Fi turned on.",
+                        "Find nearby Android phones using Wi-Fi Direct. Both phones need Wi-Fi ON; hotspot and mobile data are not required. Some Android versions also require Location ON for Wi-Fi Direct discovery.",
                         color = Muted, fontSize = 14.sp, lineHeight = 21.sp
                     )
-                    Button(
-                        onClick = onFindNearby,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        enabled = !scanning,
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
-                    ) {
-                        Text(if (scanning) "Searching nearby…" else "Find people nearby", fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(onClick = onFindNearby, modifier = Modifier.weight(1f).height(52.dp), enabled = !scanning,
+                            shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
+                            Text(if (scanning) "Searching…" else "Find people", fontWeight = FontWeight.Bold)
+                        }
+                        if (scanning) {
+                            Button(onClick = onStopSearch, modifier = Modifier.height(52.dp), shape = RoundedCornerShape(16.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35445B), contentColor = White)) { Text("Stop") }
+                        }
                     }
                     Text(status, color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                 }
