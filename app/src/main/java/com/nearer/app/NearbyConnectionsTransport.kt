@@ -65,6 +65,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             listener.onFound(id, name, stableId)
         }
         override fun onEndpointLost(id: String) {
+            if (synchronized(activeEndpoints) { activeEndpoints.contains(id) }) return
             val stableId = synchronized(names) { stableIds.remove(id).orEmpty().also { names.remove(id) } }
             listener.onLost(id, stableId)
         }
@@ -259,7 +260,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         if (body.isBlank() || targetNames.isEmpty()) return false
         val targets = synchronized(activeEndpoints) {
             activeEndpoints.filter { endpoint ->
-                synchronized(names) { names[endpoint] in targetNames }
+                synchronized(names) { names[endpoint]?.let { it in targetNames } == true }
             }
         }
         if (targets.isEmpty()) return false
