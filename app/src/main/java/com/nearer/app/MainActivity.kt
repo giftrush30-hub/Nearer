@@ -27,6 +27,7 @@ import java.net.Socket
 import java.util.UUID
 import java.util.Base64
 import java.security.MessageDigest
+import java.security.SecureRandom
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
@@ -87,6 +88,7 @@ class MainActivity : ComponentActivity() {
     private var connectionMessage by mutableStateOf("Not connected")
     private var incomingRequesterName by mutableStateOf<String?>(null)
     private var approvalMessage by mutableStateOf("Waiting for app approval")
+    private var pairingCode by mutableStateOf<String?>(null)
     private var chatReady by mutableStateOf(false)
     private var transportStarted = false
     private var serverSocket: ServerSocket? = null
@@ -169,6 +171,7 @@ class MainActivity : ComponentActivity() {
                     connectionMessage = connectionMessage,
                     incomingRequesterName = incomingRequesterName,
                     approvalMessage = approvalMessage,
+                    pairingCode = pairingCode,
                     chatReady = chatReady,
                     messages = chatMessages,
                     chatNotice = chatNotice,
@@ -351,9 +354,12 @@ class MainActivity : ComponentActivity() {
                     return@execute
                 }
                 val name = hello.substringAfter("|").take(40).ifBlank { "Nearby NeaRer user" }
+                val code = (100000 + SecureRandom().nextInt(900000)).toString()
+                writer.println("PAIR|$code")
                 runOnUiThread {
+                    pairingCode = code
                     incomingRequesterName = name
-                    approvalMessage = "Review this connection request"
+                    approvalMessage = "Compare the six-digit code before accepting"
                     statusMessage = "$name wants to connect on NeaRer."
                 }
                 val accepted = approvalDecision.poll(60, java.util.concurrent.TimeUnit.SECONDS) ?: false
@@ -412,7 +418,13 @@ class MainActivity : ComponentActivity() {
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
                 val localName = Build.MODEL.orEmpty().replace("|", " ").take(40).ifBlank { "Android phone" }
                 writer.println("NEARER_HELLO|$localName")
-                runOnUiThread { statusMessage = "NeaRer identity sent. Waiting for the other person to approve…" }
+                val pairingLine = reader.readLine().orEmpty()
+                if (!pairingLine.startsWith("PAIR|")) throw IllegalStateException("The other phone did not provide a pairing code")
+                val code = pairingLine.substringAfter("PAIR|").take(6)
+                runOnUiThread {
+                    pairingCode = code
+                    statusMessage = "Compare code $code with the other phone before approving."
+                }
                 when (reader.readLine()) {
                     "ACCEPT" -> {
                         runOnUiThread {
@@ -450,6 +462,7 @@ class MainActivity : ComponentActivity() {
         closePeerTransport()
         connectedDeviceName = null
         connectingAddress = null
+        pairingCode = null
         connectionMessage = "Disconnecting…"
         statusMessage = "Closing the nearby NeaRer connection…"
         if (activeChannel != null) {
@@ -770,6 +783,7 @@ private fun NeaRerHome(
     connectionMessage: String,
     incomingRequesterName: String?,
     approvalMessage: String,
+    pairingCode: String?,
     chatReady: Boolean,
     messages: List<ChatMessage>,
     chatNotice: String,
@@ -835,6 +849,11 @@ private fun NeaRerHome(
                     Text(connectedDeviceName?.let { "Connected to $it" } ?: connectionMessage, color = White, fontWeight = FontWeight.SemiBold)
                     Text(connectionMessage, color = Muted, fontSize = 11.sp)
                     Text(approvalMessage, color = if (chatReady) Mint else Muted, fontSize = 12.sp)
+                    if (pairingCode != null) {
+                        Text("PAIRING CODE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text(pairingCode, color = Mint, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
+                        Text("Check that both phones show the same code before approving.", color = Muted, fontSize = 10.sp)
+                    }
                     if (connectedDeviceName != null || connectingAddress != null) {
                         Button(
                             onClick = onDisconnect,
@@ -921,7 +940,7 @@ private fun NeaRerHome(
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("NEARER CONNECTION REQUEST", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Text("$incomingRequesterName wants to connect with you.", color = White, fontWeight = FontWeight.SemiBold)
-                        Text("Accept only if you recognise this person. Approval is required before NeaRer marks the link ready.", color = Muted, fontSize = 12.sp)
+                        Text("Compare the six-digit code on both phones. Accept only if it matches and you recognise this person.", color = Muted, fontSize = 12.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Button(onClick = onAccept, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Accept") }
                             Button(onClick = onReject, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Reject") }
