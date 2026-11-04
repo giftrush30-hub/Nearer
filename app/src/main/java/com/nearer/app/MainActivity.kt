@@ -1134,7 +1134,7 @@ class MainActivity : ComponentActivity() {
         val packet = JSONObject().put("type", "group_members").put("code", code)
             .put("ownerId", group.ownerId).put("members", memberArray)
             .put("moderators", JSONArray(group.moderators.toList()))
-        nearbyTransport?.sendToNames("NR_COMMUNITY:$packet", group.members.toSet())
+        nearbyTransport?.sendToStableIds("NR_COMMUNITY:$packet", group.memberIds.keys)
     }
 
     private fun approveCommunityMember(code: String, memberId: String) {
@@ -1150,7 +1150,7 @@ class MainActivity : ComponentActivity() {
         persistCommunityData()
         val approval = JSONObject().put("type", "group_join_approved").put("code", code)
             .put("ownerId", group.ownerId).put("sender", displayName).put("senderId", localId)
-        nearbyTransport?.sendToNames("NR_COMMUNITY:$approval", setOf(name))
+        nearbyTransport?.sendToStableIds("NR_COMMUNITY:$approval", setOf(memberId))
         sendGroupMembers(code)
         communityNotice = name + " approved to join " + group.name + "."
     }
@@ -1180,7 +1180,7 @@ class MainActivity : ComponentActivity() {
         persistCommunityData()
         val removal = JSONObject().put("type", "group_member_removed").put("code", code)
             .put("memberId", memberId).put("ownerId", group.ownerId).put("sender", displayName).put("senderId", localId)
-        nearbyTransport?.sendToNames("NR_COMMUNITY:$removal", setOf(name))
+        nearbyTransport?.sendToStableIds("NR_COMMUNITY:$removal", setOf(memberId))
         sendGroupMembers(code)
         communityNotice = name + " removed from " + group.name + "."
     }
@@ -1195,7 +1195,7 @@ class MainActivity : ComponentActivity() {
         val id = UUID.randomUUID().toString()
         val packet = JSONObject().put("type", "group_message").put("code", code)
             .put("sender", displayName).put("senderId", localId).put("body", body).put("id", id)
-        if (nearbyTransport?.sendToNames("NR_COMMUNITY:$packet", group.members.toSet() - displayName) == true) {
+        if (nearbyTransport?.sendToStableIds("NR_COMMUNITY:$packet", group.memberIds.keys - localId) == true) {
             communityMessages.add(CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis()))
             persistCommunityData()
         } else if (group.members.size == 1) {
