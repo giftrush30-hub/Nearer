@@ -621,6 +621,9 @@ class MainActivity : ComponentActivity() {
             chatNotice = "Finish or cancel the current file transfer first."
             return
         }
+        val transferId = UUID.randomUUID().toString()
+        outgoingTransferId = transferId
+        outgoingProgress = 0f
         io.execute {
             var fileName = "shared-file"
             var fileSize = 0L
@@ -636,11 +639,7 @@ class MainActivity : ComponentActivity() {
                 if (fileSize > maxTransferBytes) throw IllegalStateException("Files must be 200 MB or smaller")
                 val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("Cannot open selected file")
                 input.use { stream ->
-                    val id = UUID.randomUUID().toString()
-                    runOnUiThread {
-                        outgoingTransferId = id
-                        outgoingProgress = 0f
-                    }
+                    val id = transferId
                     val encodedName = Base64.getEncoder().encodeToString(fileName.toByteArray(Charsets.UTF_8))
                     if (!sendWireLine("FILE_START|$id|$encodedName|$fileSize")) throw IllegalStateException("Connection unavailable")
                     runOnUiThread { chatNotice = "Sending $fileName…" }
