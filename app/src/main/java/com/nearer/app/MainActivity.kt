@@ -710,6 +710,7 @@ class MainActivity : ComponentActivity() {
                                         if (transfer.receivedBytes > maxTransferBytes) {
                                             incomingTransfers.remove(parts[1])?.close()
                                             transfer.file.delete()
+                                            synchronized(writerLock) { peerWriter?.println("FILE_DONE|${parts[1]}|ERROR") }
                                         } else {
                                             transfer.output.write(bytes)
                                         }
@@ -931,6 +932,7 @@ private fun NeaRerHome(
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26364D), contentColor = White)
                         ) { Text("Share a photo or file") }
+                        Text("Direct transfer • maximum 200 MB per file", color = Muted, fontSize = 10.sp)
                     } else {
                         Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                     }
