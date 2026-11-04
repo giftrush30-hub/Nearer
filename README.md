@@ -4,7 +4,7 @@
 
 NeaRer is a native Android app for nearby communication, file sharing and local community features. Direct Nearby Connections sessions are designed to discover and connect devices without requiring an internet connection.
 
-## Current source milestone: 0.5.0
+## Current source milestone: 0.5.1
 
 ### Existing nearby foundation
 - Kotlin + Jetpack Compose Android app.
