@@ -13,6 +13,14 @@ import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Bundle
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.PrintWriter
+import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
@@ -61,6 +69,14 @@ class MainActivity : ComponentActivity() {
     private var connectingAddress by mutableStateOf<String?>(null)
     private var connectedDeviceName by mutableStateOf<String?>(null)
     private var connectionMessage by mutableStateOf("Not connected")
+    private var incomingRequesterName by mutableStateOf<String?>(null)
+    private var approvalMessage by mutableStateOf("Waiting for app approval")
+    private var chatReady by mutableStateOf(false)
+    private var transportStarted = false
+    private var serverSocket: ServerSocket? = null
+    private var peerSocket: Socket? = null
+    private val io = Executors.newCachedThreadPool()
+    private val approvalDecision = LinkedBlockingQueue<Boolean>()
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
 
@@ -126,6 +142,11 @@ class MainActivity : ComponentActivity() {
                     connectingAddress = connectingAddress,
                     connectedDeviceName = connectedDeviceName,
                     connectionMessage = connectionMessage,
+                    incomingRequesterName = incomingRequesterName,
+                    approvalMessage = approvalMessage,
+                    chatReady = chatReady,
+                    onAccept = ::approveIncoming,
+                    onReject = ::rejectIncoming,
                     onFindNearby = ::startDiscovery,
                     onConnect = ::connectToDevice
                 )
@@ -150,6 +171,12 @@ class MainActivity : ComponentActivity() {
             }
             receiverRegistered = true
         }
+    }
+
+    override fun onDestroy() {
+        closePeerTransport()
+        io.shutdownNow()
+        super.onDestroy()
     }
 
     override fun onPause() {
@@ -252,13 +279,126 @@ class MainActivity : ComponentActivity() {
             } else {
                 "Connected • secure local link established"
             }
-            statusMessage = "Wi-Fi Direct connection established. NeaRer app-to-app approval and chat are the next layer."
+            statusMessage = "Direct link formed. Checking whether the other phone has NeaRer…"
+            if (!transportStarted) {
+                transportStarted = true
+                if (info.isGroupOwner) startApprovalServer() else connectToApprovalServer(info)
+            }
         } else {
             connectedDeviceName = null
             connectingAddress = null
             connectionMessage = "Not connected"
+            chatReady = false
+            incomingRequesterName = null
+            transportStarted = false
+            closePeerTransport()
             statusMessage = "The Wi-Fi Direct connection is not active. You can scan and connect again."
         }
+    }
+
+    private fun startApprovalServer() {
+        io.execute {
+            try {
+                val server = ServerSocket(8988)
+                serverSocket = server
+                val socket = server.accept()
+                peerSocket = socket
+                socket.soTimeout = 60_000
+                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+                val writer = PrintWriter(socket.getOutputStream(), true)
+                val hello = reader.readLine().orEmpty()
+                if (!hello.startsWith("NEARER_HELLO|")) {
+                    writer.println("REJECT")
+                    runOnUiThread { statusMessage = "A device connected, but it did not identify as NeaRer." }
+                    closePeerTransport()
+                    return@execute
+                }
+                val name = hello.substringAfter("|").take(40).ifBlank { "Nearby NeaRer user" }
+                runOnUiThread {
+                    incomingRequesterName = name
+                    approvalMessage = "Review this connection request"
+                    statusMessage = "$name wants to connect on NeaRer."
+                }
+                val accepted = approvalDecision.poll(60, java.util.concurrent.TimeUnit.SECONDS) ?: false
+                writer.println(if (accepted) "ACCEPT" else "REJECT")
+                if (accepted) {
+                    runOnUiThread {
+                        chatReady = true
+                        incomingRequesterName = null
+                        approvalMessage = "Connection approved. Private chat can now be opened."
+                        connectionMessage = "NeaRer connection approved"
+                        statusMessage = "You approved $name. The private NeaRer link is ready."
+                    }
+                } else {
+                    runOnUiThread {
+                        incomingRequesterName = null
+                        approvalMessage = "Request declined or expired"
+                        statusMessage = "The NeaRer connection request was declined or expired."
+                    }
+                    closePeerTransport()
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    incomingRequesterName = null
+                    statusMessage = "Could not complete the NeaRer approval handshake. Keep both apps open and retry."
+                }
+                closePeerTransport()
+            }
+        }
+    }
+
+    private fun connectToApprovalServer(info: WifiP2pInfo) {
+        io.execute {
+            try {
+                val socket = Socket()
+                peerSocket = socket
+                socket.connect(InetSocketAddress(info.groupOwnerAddress, 8988), 12_000)
+                socket.soTimeout = 65_000
+                val writer = PrintWriter(socket.getOutputStream(), true)
+                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+                val localName = Build.MODEL.orEmpty().replace("|", " ").take(40).ifBlank { "Android phone" }
+                writer.println("NEARER_HELLO|$localName")
+                runOnUiThread { statusMessage = "NeaRer identity sent. Waiting for the other person to approve…" }
+                when (reader.readLine()) {
+                    "ACCEPT" -> runOnUiThread {
+                        chatReady = true
+                        approvalMessage = "Your connection request was approved."
+                        connectionMessage = "NeaRer connection approved"
+                        statusMessage = "Connection approved. Your private NeaRer link is ready."
+                    }
+                    else -> runOnUiThread {
+                        chatReady = false
+                        approvalMessage = "Request declined or expired"
+                        statusMessage = "The other person declined the request or it expired."
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    chatReady = false
+                    statusMessage = "The other phone did not complete NeaRer approval. Both phones must have NeaRer open."
+                }
+                closePeerTransport()
+            }
+        }
+    }
+
+    private fun approveIncoming() {
+        approvalDecision.offer(true)
+        incomingRequesterName = null
+        approvalMessage = "Approving connection…"
+    }
+
+    private fun rejectIncoming() {
+        approvalDecision.offer(false)
+        incomingRequesterName = null
+        approvalMessage = "Declining connection…"
+    }
+
+    private fun closePeerTransport() {
+        try { peerSocket?.close() } catch (_: Exception) { }
+        try { serverSocket?.close() } catch (_: Exception) { }
+        peerSocket = null
+        serverSocket = null
     }
 
     companion object {
@@ -274,6 +414,11 @@ private fun NeaRerHome(
     connectingAddress: String?,
     connectedDeviceName: String?,
     connectionMessage: String,
+    incomingRequesterName: String?,
+    approvalMessage: String,
+    chatReady: Boolean,
+    onAccept: () -> Unit,
+    onReject: () -> Unit,
     onFindNearby: () -> Unit,
     onConnect: (WifiP2pDevice) -> Unit
 ) {
@@ -324,6 +469,21 @@ private fun NeaRerHome(
                     Text("CONNECTION STATUS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text(connectedDeviceName?.let { "Connected to $it" } ?: connectionMessage, color = White, fontWeight = FontWeight.SemiBold)
                     Text(connectionMessage, color = Muted, fontSize = 11.sp)
+                    Text(approvalMessage, color = if (chatReady) Mint else Muted, fontSize = 12.sp)
+                }
+            }
+
+            if (incomingRequesterName != null) {
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("NEARER CONNECTION REQUEST", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("$incomingRequesterName wants to connect with you.", color = White, fontWeight = FontWeight.SemiBold)
+                        Text("Accept only if you recognise this person. Approval is required before NeaRer marks the link ready.", color = Muted, fontSize = 12.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(onClick = onAccept, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Accept") }
+                            Button(onClick = onReject, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Reject") }
+                        }
+                    }
                 }
             }
 
