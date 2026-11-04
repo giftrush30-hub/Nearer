@@ -111,6 +111,7 @@ class MainActivity : ComponentActivity() {
     private var hybridSearching by mutableStateOf(false)
     private var pendingHybridEndpoint: String? = null
     private var hybridConnected = false
+    private var hybridConnectedEndpoint: String? = null
     private var meshRelayEnabled by mutableStateOf(false)
     private val discoveryHandler = Handler(Looper.getMainLooper())
     private var discoveryTimeout: Runnable? = null
@@ -229,6 +230,7 @@ class MainActivity : ComponentActivity() {
             override fun onConnected(id: String, name: String, stableId: String) {
                 runOnUiThread {
                     hybridConnected = true
+                    hybridConnectedEndpoint = id
                     pendingHybridEndpoint = null
                     incomingRequesterName = null
                     connectedDeviceName = name
@@ -242,6 +244,7 @@ class MainActivity : ComponentActivity() {
             override fun onDisconnected(id: String, stableId: String, name: String) {
                 runOnUiThread {
                     hybridConnected = false
+                    hybridConnectedEndpoint = null
                     val lastName = hybridPeers.remove(id) ?: name
                     recordRecentlySeen(stableId.ifBlank { id }, lastName)
                     pendingHybridEndpoint = null
@@ -256,6 +259,45 @@ class MainActivity : ComponentActivity() {
                     chatMessages.add(ChatMessage("hybrid-" + System.currentTimeMillis(), body, outgoing = false, delivery = "Received"))
                     persistMessages()
                     chatNotice = "New offline message received."
+                }
+            }
+            override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {
+                runOnUiThread {
+                    val fraction = if (total > 0L) (transferred.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
+                    if (incoming) {
+                        incomingTransferName = name
+                        incomingProgress = fraction
+                        chatNotice = if (total > 0L) "Receiving $name • ${(fraction * 100).toInt()}%" else "Receiving $name…"
+                    } else {
+                        outgoingTransferId = "nearby:$payloadId"
+                        outgoingProgress = fraction
+                        chatNotice = if (total > 0L) "Sending $name • ${(fraction * 100).toInt()}%" else "Sending $name…"
+                    }
+                }
+            }
+            override fun onFileReceived(id: String, name: String, file: File) {
+                runOnUiThread {
+                    incomingTransferName = null
+                    incomingProgress = 0f
+                    receivedFiles.add(0, ReceivedFile(name, file))
+                    chatNotice = "Received and saved: $name. Tap it below to open."
+                }
+            }
+            override fun onFileStatus(message: String) {
+                runOnUiThread {
+                    chatNotice = message
+                    if (message.startsWith("File sent to the nearby phone") ||
+                        message.startsWith("Nearby file transfer failed") ||
+                        message.startsWith("Could not start file transfer") ||
+                        message.startsWith("Could not send file details") ||
+                        message.startsWith("File could not be prepared")) {
+                        outgoingTransferId = null
+                        outgoingProgress = 0f
+                    }
+                    if (message.startsWith("Nearby file transfer failed")) {
+                        incomingTransferName = null
+                        incomingProgress = 0f
+                    }
                 }
             }
         })
@@ -286,6 +328,7 @@ class MainActivity : ComponentActivity() {
                     approvalMessage = approvalMessage,
                     pairingCode = pairingCode,
                     chatReady = chatReady,
+                    usingNearbyConnections = hybridConnected,
                     messages = chatMessages,
                     chatNotice = chatNotice,
                     receivedFiles = receivedFiles,
@@ -912,6 +955,15 @@ class MainActivity : ComponentActivity() {
 
     private fun cancelOutgoingFileTransfer() {
         val id = outgoingTransferId ?: return
+        if (id.startsWith("nearby:")) {
+            val payloadId = id.substringAfter("nearby:").toLongOrNull()
+            val endpoint = hybridConnectedEndpoint
+            if (payloadId != null && endpoint != null) nearbyTransport?.cancelFile(endpoint, payloadId)
+            outgoingTransferId = null
+            outgoingProgress = 0f
+            chatNotice = "Cancelling nearby file transfer…"
+            return
+        }
         cancelledOutgoingTransfers.add(id)
         sendWireLine("FILE_CANCEL|$id")
         chatNotice = "Cancelling file transfer…"
@@ -919,7 +971,30 @@ class MainActivity : ComponentActivity() {
 
     private fun sendFile(uri: Uri) {
         if (hybridConnected) {
-            chatNotice = "Offline chat is active. For file sharing, connect using the Wi-Fi Direct device list; hybrid file transfer is being completed."
+            val endpoint = hybridConnectedEndpoint
+            if (endpoint == null) {
+                chatNotice = "The nearby connection is not ready. Reconnect and try again."
+                return
+            }
+            if (outgoingTransferId != null) {
+                chatNotice = "Finish or cancel the current file transfer first."
+                return
+            }
+            var fileName = "shared-file"
+            try {
+                contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (index >= 0) fileName = cursor.getString(index) ?: fileName
+                    }
+                }
+            } catch (_: Exception) { }
+            val payloadId = nearbyTransport?.sendFile(endpoint, uri, fileName)
+            if (payloadId != null) {
+                outgoingTransferId = "nearby:$payloadId"
+                outgoingProgress = 0f
+                chatNotice = "Preparing to send $fileName over Nearby Connections…"
+            }
             return
         }
         if (!chatReady) return
@@ -1182,6 +1257,7 @@ private fun NeaRerHome(
     approvalMessage: String,
     pairingCode: String?,
     chatReady: Boolean,
+    usingNearbyConnections: Boolean,
     messages: List<ChatMessage>,
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
@@ -1439,7 +1515,7 @@ private fun NeaRerHome(
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26364D), contentColor = White)
                         ) { Text("Share a photo or file") }
-                        Text("Wi-Fi Direct file transfer • maximum 200 MB per file", color = Muted, fontSize = 10.sp)
+                        Text(if (usingNearbyConnections) "Nearby Connections file transfer • maximum 200 MB per file" else "Wi-Fi Direct file transfer • maximum 200 MB per file", color = Muted, fontSize = 10.sp)
                     } else {
                         Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                     }
