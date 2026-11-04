@@ -1110,7 +1110,7 @@ class MainActivity : ComponentActivity() {
         activeGame = TicTacToeMatch(invite.matchId, ".........", "X", "O", "Waiting for X", invite.sender)
         incomingGameInvite = null
         gameChatMessages.clear()
-        sendCommunityPacket(JSONObject().put("type", "game_accept").put("matchId", invite.matchId).put("sender", displayName))
+        nearbyTransport?.sendToNames("NR_COMMUNITY:" + JSONObject().put("type", "game_accept").put("matchId", invite.matchId).put("sender", displayName), setOf(invite.sender))
     }
     private fun playGameMove(index: Int) {
         val game = activeGame ?: return
@@ -1120,7 +1120,7 @@ class MainActivity : ComponentActivity() {
         val next = String(board)
         val winner = ticTacToeWinner(next)
         activeGame = game.copy(board = next, turn = if (game.localSymbol == "X") "O" else "X", status = winner?.let { "$it wins" } ?: if (next.none { it == '.' }) "Draw" else "Waiting for opponent")
-        sendCommunityPacket(JSONObject().put("type", "game_move").put("matchId", game.matchId).put("index", index).put("symbol", game.localSymbol))
+        nearbyTransport?.sendToNames("NR_COMMUNITY:" + JSONObject().put("type", "game_move").put("matchId", game.matchId).put("index", index).put("symbol", game.localSymbol).put("sender", displayName), setOf(game.opponent))
     }
     private fun endGame() {
         activeGame = null
@@ -1132,7 +1132,7 @@ class MainActivity : ComponentActivity() {
     private fun sendGameChat(raw: String) {
         val game = activeGame ?: return
         val body = raw.trim().take(300)
-        if (body.isNotBlank() && sendCommunityPacket(JSONObject().put("type", "game_chat").put("matchId", game.matchId).put("sender", displayName).put("body", body))) {
+        if (body.isNotBlank() && nearbyTransport?.sendToNames("NR_COMMUNITY:" + JSONObject().put("type", "game_chat").put("matchId", game.matchId).put("sender", displayName).put("body", body), setOf(game.opponent)) == true) {
             gameChatMessages.add("$displayName: $body")
             while (gameChatMessages.size > 60) gameChatMessages.removeAt(0)
         }
