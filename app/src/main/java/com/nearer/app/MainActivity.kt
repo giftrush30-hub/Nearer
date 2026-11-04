@@ -96,6 +96,7 @@ class MainActivity : ComponentActivity() {
     private val hybridPeers = mutableStateMapOf<String, String>()
     private var pendingHybridEndpoint: String? = null
     private var hybridConnected = false
+    private var meshRelayEnabled by mutableStateOf(false)
     private val discoveryHandler = Handler(Looper.getMainLooper())
     private var discoveryTimeout: Runnable? = null
     private var discoveryGeneration = 0
@@ -240,6 +241,8 @@ class MainActivity : ComponentActivity() {
         })
         if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
         restoreLocalData()
+        meshRelayEnabled = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getBoolean("mesh_relay_enabled", false)
+        nearbyTransport?.setRelayEnabled(meshRelayEnabled)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(
                 background = Midnight,
@@ -275,6 +278,8 @@ class MainActivity : ComponentActivity() {
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
                     hybridPeers = hybridPeers.toMap(),
+                    meshRelayEnabled = meshRelayEnabled,
+                    onMeshRelayChange = ::setMeshRelayEnabled,
                     onHybridConnect = { id -> nearbyTransport?.request(id) },
                     onFindNearby = ::startDiscovery,
                     onStopSearch = ::stopDiscovery,
@@ -363,6 +368,13 @@ class MainActivity : ComponentActivity() {
                 })
             } catch (_: SecurityException) { statusMessage = "Search stopped. Check nearby-device permission before searching again." }
         } else statusMessage = "Search stopped."
+    }
+
+    private fun setMeshRelayEnabled(enabled: Boolean) {
+        meshRelayEnabled = enabled
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", enabled).apply()
+        nearbyTransport?.setRelayEnabled(enabled)
+        statusMessage = if (enabled) "Community relay is ON. Your phone may forward nearby NeaRer text messages while connected." else "Community relay is OFF. Your phone only receives messages from its direct connections."
     }
 
     private fun nearbyPermissionList(): Array<String> {
@@ -1119,6 +1131,8 @@ private fun NeaRerHome(
     onAccept: () -> Unit,
     onReject: () -> Unit,
     hybridPeers: Map<String, String>,
+    meshRelayEnabled: Boolean,
+    onMeshRelayChange: (Boolean) -> Unit,
     onHybridConnect: (String) -> Unit,
     onFindNearby: () -> Unit,
     onStopSearch: () -> Unit,
@@ -1178,7 +1192,7 @@ private fun NeaRerHome(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("BLUETOOTH CHAT" to "Hybrid connection enabled", "MESH + GAMES" to "In development").forEach { item ->
+                        listOf("BLUETOOTH CHAT" to "Hybrid connection enabled", "MESH RELAY" to "Opt-in, up to 4 hops").forEach { item ->
                             Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -1339,6 +1353,17 @@ private fun NeaRerHome(
                             Button(onClick = onReject, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Reject") }
                         }
                     }
+                }
+            }
+
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
+                Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("COMMUNITY MESH RELAY", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("Allow your phone to pass group text messages to other connected NeaRer phones.", color = White, fontSize = 12.sp, lineHeight = 17.sp)
+                        Text("Optional • up to 4 hops • off by default", color = Muted, fontSize = 10.sp)
+                    }
+                    androidx.compose.material3.Switch(checked = meshRelayEnabled, onCheckedChange = onMeshRelayChange)
                 }
             }
 
