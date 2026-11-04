@@ -242,7 +242,8 @@ class MainActivity : ComponentActivity() {
             override fun onDisconnected(id: String, stableId: String, name: String) {
                 runOnUiThread {
                     hybridConnected = false
-                    recordRecentlySeen(stableId.ifBlank { id }, name)
+                    val lastName = hybridPeers.remove(id) ?: name
+                    recordRecentlySeen(stableId.ifBlank { id }, lastName)
                     pendingHybridEndpoint = null
                     connectedDeviceName = null
                     chatReady = false
