@@ -279,7 +279,7 @@ class MainActivity : ComponentActivity() {
                     onReject = ::rejectIncoming,
                     hybridPeers = hybridPeers.toMap(),
                     meshRelayEnabled = meshRelayEnabled,
-                    onMeshRelayChange = ::setMeshRelayEnabled,
+                    onMeshRelayChange = ::updateMeshRelayEnabled,
                     onHybridConnect = { id -> nearbyTransport?.request(id) },
                     onFindNearby = ::startDiscovery,
                     onStopSearch = ::stopDiscovery,
