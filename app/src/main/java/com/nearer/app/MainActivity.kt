@@ -52,6 +52,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -79,10 +80,13 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
@@ -91,6 +95,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.launch
 import com.nearer.app.games.ludo.LudoGameScreen
 
 private val Midnight = Color(0xFF101A2B)
@@ -762,7 +767,7 @@ class MainActivity : ComponentActivity() {
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 peerWriter = writer
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
-                val localName = Build.MODEL.orEmpty().replace("|", " ").take(40).ifBlank { "Android phone" }
+                val localName = displayName.trim().replace("|", " ").take(40).ifBlank { "NeaRer User" }
                 writer.println("NEARER_HELLO|$localName")
                 val pairingLine = reader.readLine().orEmpty()
                 if (!pairingLine.startsWith("PAIR|")) throw IllegalStateException("The other phone did not provide a pairing code")
@@ -1515,6 +1520,10 @@ private fun NeaRerHome(
 ) {
     var draft by remember { mutableStateOf("") }
     var showLudo by remember { mutableStateOf(false) }
+    var activeSection by remember { mutableStateOf("home") }
+    val pageScrollState = rememberScrollState()
+    val sectionPositions = remember { mutableStateMapOf<String, Int>() }
+    val navigationScope = rememberCoroutineScope()
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
@@ -1528,7 +1537,7 @@ private fun NeaRerHome(
     }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 26.dp),
+            modifier = Modifier.fillMaxSize().verticalScroll(pageScrollState).padding(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             Row(
@@ -1551,6 +1560,30 @@ private fun NeaRerHome(
                 }
             }
 
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf("Home" to "home", "Nearby" to "nearby", "Chats" to "chats", "Community" to "community").forEach { (label, key) ->
+                    Button(
+                        onClick = {
+                            activeSection = key
+                            navigationScope.launch {
+                                pageScrollState.animateScrollTo((sectionPositions[key] ?: 0).coerceAtLeast(0))
+                            }
+                        },
+                        modifier = Modifier.height(38.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 15.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (activeSection == key) Mint else Color(0xFF1C2E47),
+                            contentColor = if (activeSection == key) Midnight else White
+                        )
+                    ) { Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                }
+            }
+
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Text("YOUR NEARER NAME", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -1563,7 +1596,9 @@ private fun NeaRerHome(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Color(0xFF172B4A)) {
+            Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
+                sectionPositions["home"] = it.positionInParent().y.toInt()
+            }, shape = RoundedCornerShape(24.dp), color = Color(0xFF172B4A)) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = RoundedCornerShape(12.dp), color = BrandBlue, modifier = Modifier.size(42.dp)) {
@@ -1628,7 +1663,9 @@ private fun NeaRerHome(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), color = Panel) {
+            Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
+                sectionPositions["nearby"] = it.positionInParent().y.toInt()
+            }, shape = RoundedCornerShape(26.dp), color = Panel) {
                 Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("NEARBY CONNECTION", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text("Bring nearby people closer.", color = White, fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold)
@@ -1681,7 +1718,9 @@ private fun NeaRerHome(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
+            Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
+                sectionPositions["chats"] = it.positionInParent().y.toInt()
+            }, shape = RoundedCornerShape(20.dp), color = Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("PRIVATE CHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -1775,10 +1814,16 @@ private fun NeaRerHome(
                 }
             }
 
-            CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
-                activeGame, gameChatMessages, onCreateGroup, onJoinGroup, onSelectGroup,
-                onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
-                onRejectGameInvite, onGameMove, onGameChat, onEndGame)
+            androidx.compose.foundation.layout.Box(
+                Modifier.fillMaxWidth().onGloballyPositioned {
+                    sectionPositions["community"] = it.positionInParent().y.toInt()
+                }
+            ) {
+                CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
+                    activeGame, gameChatMessages, onCreateGroup, onJoinGroup, onSelectGroup,
+                    onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
+                    onRejectGameInvite, onGameMove, onGameChat, onEndGame)
+            }
 
             if (incomingRequesterName != null) {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
