@@ -43,8 +43,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -167,6 +165,7 @@ class MainActivity : ComponentActivity() {
                     chatReady = chatReady,
                     messages = chatMessages,
                     chatNotice = chatNotice,
+                    receivedFiles = receivedFiles,
                     onSendMessage = ::sendChatMessage,
                     onSendFile = ::sendFile,
                     onAccept = ::approveIncoming,
@@ -432,6 +431,8 @@ class MainActivity : ComponentActivity() {
         peerSocket = null
         peerWriter = null
         serverSocket = null
+        incomingTransfers.values.forEach { it.close() }
+        incomingTransfers.clear()
         chatReady = false
     }
 
@@ -674,11 +675,11 @@ private fun NeaRerHome(
                         if (messages.isEmpty()) {
                             Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         } else {
-                            LazyColumn(
-                                modifier = Modifier.fillMaxWidth().height(150.dp),
+                            Column(
+                                modifier = Modifier.fillMaxWidth().height(150.dp).verticalScroll(rememberScrollState()),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
-                                items(messages, key = { it.id }) { message ->
+                                messages.forEach { message ->
                                     Column(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
