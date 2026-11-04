@@ -52,6 +52,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -1863,10 +1864,28 @@ private fun NeaRerHome(
                     Text(if (hybridPeers.isEmpty()) "Your nearby circle" else "${hybridPeers.size} active nearby", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     if (scanning && hybridPeers.isEmpty()) {
                         androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(142.dp), contentAlignment = Alignment.Center) {
-                            Surface(shape = CircleShape, color = Color(0xFF1C3554), modifier = Modifier.size(118.dp).alpha(pulse)) {}
-                            Surface(shape = CircleShape, color = Color(0xFF244A70), modifier = Modifier.size(82.dp).rotate(orbitRotation)) {
-                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.TopCenter) { Surface(shape = CircleShape, color = Mint, modifier = Modifier.size(12.dp)) {} }
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Transparent,
+                                border = BorderStroke(1.dp, Color(0xFF31516F)),
+                                modifier = Modifier.size(136.dp).alpha(pulse)
+                            ) {}
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Transparent,
+                                border = BorderStroke(1.dp, Color(0xFF315B7C)),
+                                modifier = Modifier.size(104.dp).rotate(orbitRotation)
+                            ) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.TopCenter) {
+                                    Surface(shape = CircleShape, color = Mint, modifier = Modifier.size(10.dp)) {}
+                                }
                             }
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Transparent,
+                                border = BorderStroke(1.dp, Color(0xFF31516F)),
+                                modifier = Modifier.size(72.dp)
+                            ) {}
                             Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(54.dp)) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("N", color = White, fontSize = 24.sp, fontWeight = FontWeight.Black) }
                             }
