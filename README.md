@@ -82,7 +82,7 @@ The Game Zone is being developed as a collection of games with one shared presen
 - Offline play must not require account registration or mobile data.
 
 ### Current Ludo implementation
-- A standalone Ludo rules engine for 2–4 seats.
+- A standalone Ludo rules engine for 2–4 seats; two-player matches use opposite colours.
 - Four colours and four tokens per player.
 - Six required to bring a token out of the yard.
 - Exact roll required to finish.
