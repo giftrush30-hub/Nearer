@@ -105,6 +105,8 @@ class MainActivity : ComponentActivity() {
     private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
     private var outgoingTransferId by mutableStateOf<String?>(null)
     private var outgoingProgress by mutableStateOf(0f)
+    private var incomingTransferName by mutableStateOf<String?>(null)
+    private var incomingProgress by mutableStateOf(0f)
     private val maxTransferBytes = 200L * 1024L * 1024L
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
@@ -185,6 +187,8 @@ class MainActivity : ComponentActivity() {
                     onCancelTransfer = ::cancelOutgoingFileTransfer,
                     outgoingTransferId = outgoingTransferId,
                     outgoingProgress = outgoingProgress,
+                    incomingTransferName = incomingTransferName,
+                    incomingProgress = incomingProgress,
                     onOpenFile = ::openReceivedFile,
                     onDisconnect = ::disconnectFromPeer,
                     onAccept = ::approveIncoming,
@@ -511,6 +515,8 @@ class MainActivity : ComponentActivity() {
             it.file.delete()
         }
         incomingTransfers.clear()
+        incomingTransferName = null
+        incomingProgress = 0f
         chatReady = false
     }
 
@@ -735,6 +741,10 @@ class MainActivity : ComponentActivity() {
                                     val folder = File(filesDir, "received").apply { mkdirs() }
                                     val target = File(folder, "${System.currentTimeMillis()}-$safeName")
                                     incomingTransfers[id] = IncomingTransfer(safeName, expected, target, FileOutputStream(target))
+                                    runOnUiThread {
+                                        incomingTransferName = safeName
+                                        incomingProgress = 0f
+                                    }
                                 }
                             }
                         }
@@ -752,6 +762,17 @@ class MainActivity : ComponentActivity() {
                                             synchronized(writerLock) { peerWriter?.println("FILE_DONE|${parts[1]}|ERROR") }
                                         } else {
                                             transfer.output.write(bytes)
+                                            val fraction = if (transfer.expectedBytes > 0L) {
+                                                (transfer.receivedBytes.toFloat() / transfer.expectedBytes.toFloat()).coerceIn(0f, 1f)
+                                            } else 0f
+                                            runOnUiThread {
+                                                incomingProgress = fraction
+                                                chatNotice = if (transfer.expectedBytes > 0L) {
+                                                    "Receiving ${transfer.name} • ${(fraction * 100).toInt()}%"
+                                                } else {
+                                                    "Receiving ${transfer.name} • ${transfer.receivedBytes / 1024} KB"
+                                                }
+                                            }
                                         }
                                     } catch (_: Exception) {
                                         incomingTransfers.remove(parts[1])?.close()
@@ -770,6 +791,8 @@ class MainActivity : ComponentActivity() {
                                     val hashMatches = parts.getOrNull(2)?.let { it.equals(sha256(transfer.file), ignoreCase = true) } ?: false
                                     if (sizeMatches && hashMatches) {
                                         runOnUiThread {
+                                            incomingTransferName = null
+                                            incomingProgress = 0f
                                             receivedFiles.add(0, ReceivedFile(transfer.name, transfer.file))
                                             chatNotice = "Received and verified: ${transfer.name}. Tap it below to open."
                                         }
@@ -777,7 +800,11 @@ class MainActivity : ComponentActivity() {
                                     } else {
                                         transfer.file.delete()
                                         synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|ERROR") }
-                                        runOnUiThread { chatNotice = "The received file failed its integrity check and was discarded." }
+                                        runOnUiThread {
+                                            incomingTransferName = null
+                                            incomingProgress = 0f
+                                            chatNotice = "The received file failed its integrity check and was discarded."
+                                        }
                                     }
                                 }
                             }
@@ -799,7 +826,11 @@ class MainActivity : ComponentActivity() {
                                 transfer.close()
                                 transfer.file.delete()
                             }
-                            runOnUiThread { chatNotice = "The other phone cancelled the file transfer." }
+                            runOnUiThread {
+                                incomingTransferName = null
+                                incomingProgress = 0f
+                                chatNotice = "The other phone cancelled the file transfer."
+                            }
                         }
                         line == "PING" -> synchronized(writerLock) { peerWriter?.println("PONG") }
                     }
@@ -848,6 +879,8 @@ private fun NeaRerHome(
     onCancelTransfer: () -> Unit,
     outgoingTransferId: String?,
     outgoingProgress: Float,
+    incomingTransferName: String?,
+    incomingProgress: Float,
     onOpenFile: (ReceivedFile) -> Unit,
     onDisconnect: () -> Unit,
     onAccept: () -> Unit,
@@ -980,6 +1013,15 @@ private fun NeaRerHome(
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
                             ) { Text("Send", fontWeight = FontWeight.Bold) }
+                        }
+                        incomingTransferName?.let { incomingName ->
+                            Text("Receiving $incomingName", color = Muted, fontSize = 11.sp)
+                            LinearProgressIndicator(
+                                progress = { incomingProgress },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Mint,
+                                trackColor = Color(0xFF26364D)
+                            )
                         }
                         if (outgoingTransferId != null) {
                             LinearProgressIndicator(
