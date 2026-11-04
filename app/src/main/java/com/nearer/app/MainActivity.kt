@@ -132,6 +132,13 @@ class MainActivity : ComponentActivity() {
     private val io = Executors.newCachedThreadPool()
     private val approvalDecision = LinkedBlockingQueue<Boolean>()
     private val chatMessages = mutableStateListOf<ChatMessage>()
+    private val communityGroups = mutableStateListOf<CommunityGroup>()
+    private val communityMessages = mutableStateListOf<CommunityChatMessage>()
+    private var selectedCommunityCode by mutableStateOf<String?>(null)
+    private var communityNotice by mutableStateOf("Create or join a nearby group.")
+    private var incomingGameInvite by mutableStateOf<GameInvite?>(null)
+    private var activeGame by mutableStateOf<TicTacToeMatch?>(null)
+    private val gameChatMessages = mutableStateListOf<String>()
     private val receivedFiles = mutableStateListOf<ReceivedFile>()
     private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
     private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
@@ -253,11 +260,14 @@ class MainActivity : ComponentActivity() {
                     chatNotice = "Nearby connection ended. Search again to reconnect."
                 }
             }
-            override fun onMessage(id: String, body: String) {
+            override fun onMessage(id: String, senderName: String, body: String) {
                 runOnUiThread {
-                    chatMessages.add(ChatMessage("hybrid-" + System.currentTimeMillis(), body, outgoing = false, delivery = "Received"))
-                    persistMessages()
-                    chatNotice = "New offline message received."
+                    if (body.startsWith("NR_COMMUNITY:")) handleCommunityPacket(senderName, body.removePrefix("NR_COMMUNITY:"))
+                    else {
+                        chatMessages.add(ChatMessage("hybrid-" + System.currentTimeMillis(), body, outgoing = false, delivery = "Received"))
+                        persistMessages()
+                        chatNotice = "New offline message received from $senderName."
+                    }
                 }
             }
             override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {
@@ -302,6 +312,7 @@ class MainActivity : ComponentActivity() {
         })
         if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
         restoreLocalData()
+        restoreCommunityData()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
         nearbyTransport?.setDisplayName(displayName)
         restoreRecentlySeen()
@@ -332,6 +343,23 @@ class MainActivity : ComponentActivity() {
                     chatNotice = chatNotice,
                     receivedFiles = receivedFiles,
                     onSendMessage = ::sendChatMessage,
+                    groups = communityGroups.toList(),
+                    groupMessages = communityMessages.toList(),
+                    selectedGroupCode = selectedCommunityCode,
+                    communityNotice = communityNotice,
+                    incomingGameInvite = incomingGameInvite,
+                    activeGame = activeGame,
+                    gameChatMessages = gameChatMessages.toList(),
+                    onCreateGroup = ::createCommunityGroup,
+                    onJoinGroup = ::joinCommunityGroup,
+                    onSelectGroup = { selectedCommunityCode = it },
+                    onSendGroupMessage = ::sendCommunityGroupMessage,
+                    onBroadcast = ::sendCommunityBroadcast,
+                    onGameInvite = ::inviteToGame,
+                    onAcceptGameInvite = ::acceptGameInvite,
+                    onRejectGameInvite = { incomingGameInvite = null },
+                    onGameMove = ::playGameMove,
+                    onGameChat = ::sendGameChat,
                     onSendFile = ::sendFile,
                     onCancelTransfer = ::cancelOutgoingFileTransfer,
                     outgoingTransferId = outgoingTransferId,
@@ -937,6 +965,150 @@ class MainActivity : ComponentActivity() {
         chatNotice = "Sent directly • waiting for delivery confirmation"
     }
 
+
+    private fun persistCommunityData() {
+        val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val groups = JSONArray()
+        communityGroups.forEach { groups.put(JSONObject().put("code", it.code).put("name", it.name).put("members", JSONArray(it.members))) }
+        val messages = JSONArray()
+        communityMessages.takeLast(300).forEach { messages.put(JSONObject().put("id", it.id).put("code", it.groupCode).put("sender", it.sender).put("body", it.body).put("time", it.time)) }
+        prefs.edit().putString("community_groups", groups.toString()).putString("community_messages", messages.toString()).apply()
+    }
+    private fun restoreCommunityData() {
+        val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        try {
+            val groups = JSONArray(prefs.getString("community_groups", "[]"))
+            for (i in 0 until groups.length()) {
+                val item = groups.getJSONObject(i)
+                val members = item.optJSONArray("members") ?: JSONArray()
+                communityGroups.add(CommunityGroup(item.getString("code"), item.optString("name"), (0 until members.length()).map { members.optString(it) }))
+            }
+            val messages = JSONArray(prefs.getString("community_messages", "[]"))
+            for (i in 0 until messages.length()) {
+                val item = messages.getJSONObject(i)
+                communityMessages.add(CommunityChatMessage(item.getString("id"), item.getString("code"), item.optString("sender"), item.getString("body"), item.optLong("time")))
+            }
+        } catch (_: Exception) { communityGroups.clear(); communityMessages.clear() }
+    }
+    private fun sendCommunityPacket(packet: JSONObject): Boolean {
+        if (!hybridConnected) { communityNotice = "Connect to nearby NeaRer phones first."; return false }
+        return nearbyTransport?.send("NR_COMMUNITY:$packet") == true
+    }
+    private fun createCommunityGroup(raw: String) {
+        val name = raw.trim().take(32)
+        if (name.isBlank() || communityGroups.size >= 20) return
+        var code = (100000..999999).random().toString()
+        while (communityGroups.any { it.code == code }) code = (100000..999999).random().toString()
+        communityGroups.add(0, CommunityGroup(code, name, listOf(displayName)))
+        selectedCommunityCode = code
+        persistCommunityData()
+        communityNotice = "Created $name. Share group code $code with nearby people."
+        sendCommunityPacket(JSONObject().put("type", "group_created").put("code", code).put("name", name).put("sender", displayName))
+    }
+    private fun joinCommunityGroup(raw: String) {
+        val code = raw.filter { it.isDigit() }.take(6)
+        if (code.length != 6) return
+        if (communityGroups.none { it.code == code }) communityGroups.add(0, CommunityGroup(code, "Nearby group $code", listOf(displayName)))
+        selectedCommunityCode = code
+        persistCommunityData()
+        sendCommunityPacket(JSONObject().put("type", "group_join").put("code", code).put("sender", displayName))
+        communityNotice = "Group $code saved locally. Join notice sent if connected."
+    }
+    private fun sendCommunityGroupMessage(raw: String) {
+        val code = selectedCommunityCode ?: return
+        val body = raw.trim().take(1500)
+        if (body.isBlank()) return
+        val id = UUID.randomUUID().toString()
+        if (sendCommunityPacket(JSONObject().put("type", "group_message").put("code", code).put("sender", displayName).put("body", body).put("id", id))) {
+            communityMessages.add(CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis()))
+            persistCommunityData()
+        }
+    }
+    private fun sendCommunityBroadcast(raw: String) {
+        val body = raw.trim().take(500)
+        if (body.isNotBlank() && sendCommunityPacket(JSONObject().put("type", "broadcast").put("sender", displayName).put("body", body))) {
+            communityNotice = "Broadcast sent to connected nearby phones."
+        }
+    }
+    private fun handleCommunityPacket(sender: String, raw: String) {
+        try {
+            val packet = JSONObject(raw)
+            val type = packet.optString("type")
+            val code = packet.optString("code")
+            when (type) {
+                "group_created", "group_join" -> {
+                    val i = communityGroups.indexOfFirst { it.code == code }
+                    if (i >= 0) {
+                        val old = communityGroups[i]
+                        val member = packet.optString("sender", sender)
+                        if (member !in old.members) communityGroups[i] = old.copy(members = old.members + member)
+                        persistCommunityData()
+                    }
+                }
+                "group_message" -> if (communityGroups.any { it.code == code }) {
+                    val id = packet.optString("id")
+                    if (communityMessages.none { it.id == id }) {
+                        communityMessages.add(CommunityChatMessage(id, code, packet.optString("sender", sender), packet.optString("body").take(1500), System.currentTimeMillis()))
+                        persistCommunityData()
+                    }
+                }
+                "broadcast" -> communityNotice = "Broadcast from " + packet.optString("sender", sender) + ": " + packet.optString("body").take(500)
+                "game_invite" -> if (activeGame == null) incomingGameInvite = GameInvite(packet.optString("matchId"), packet.optString("sender", sender))
+                "game_accept" -> activeGame?.let { if (it.matchId == packet.optString("matchId")) activeGame = it.copy(opponent = packet.optString("sender", sender), status = "Your turn") }
+                "game_move" -> {
+                    val game = activeGame
+                    val symbol = packet.optString("symbol")
+                    val index = packet.optInt("index", -1)
+                    if (game != null && game.matchId == packet.optString("matchId") && symbol != game.localSymbol && index in 0..8 && game.board[index] == '.' && game.turn == symbol) {
+                        val board = game.board.toCharArray()
+                        board[index] = symbol.first()
+                        val next = String(board)
+                        val winner = ticTacToeWinner(next)
+                        activeGame = game.copy(board = next, turn = if (symbol == "X") "O" else "X", status = winner?.let { "$it wins" } ?: if (next.none { it == '.' }) "Draw" else "Your turn")
+                    }
+                }
+                "game_chat" -> activeGame?.let { game ->
+                    if (game.matchId == packet.optString("matchId")) {
+                        gameChatMessages.add(packet.optString("sender", sender) + ": " + packet.optString("body").take(300))
+                        while (gameChatMessages.size > 60) gameChatMessages.removeAt(0)
+                    }
+                }
+            }
+        } catch (_: Exception) { communityNotice = "A community packet was invalid and ignored." }
+    }
+    private fun inviteToGame() {
+        if (!hybridConnected || activeGame != null) return
+        val id = UUID.randomUUID().toString()
+        activeGame = TicTacToeMatch(id, ".........", "X", "X", "Waiting for a player", "Nearby opponent")
+        gameChatMessages.clear()
+        if (!sendCommunityPacket(JSONObject().put("type", "game_invite").put("matchId", id).put("sender", displayName))) activeGame = null
+    }
+    private fun acceptGameInvite() {
+        val invite = incomingGameInvite ?: return
+        activeGame = TicTacToeMatch(invite.matchId, ".........", "X", "O", "Waiting for X", invite.sender)
+        incomingGameInvite = null
+        gameChatMessages.clear()
+        sendCommunityPacket(JSONObject().put("type", "game_accept").put("matchId", invite.matchId).put("sender", displayName))
+    }
+    private fun playGameMove(index: Int) {
+        val game = activeGame ?: return
+        if (game.status.endsWith("wins") || game.status == "Draw" || game.turn != game.localSymbol || index !in 0..8 || game.board[index] != '.') return
+        val board = game.board.toCharArray()
+        board[index] = game.localSymbol.first()
+        val next = String(board)
+        val winner = ticTacToeWinner(next)
+        activeGame = game.copy(board = next, turn = if (game.localSymbol == "X") "O" else "X", status = winner?.let { "$it wins" } ?: if (next.none { it == '.' }) "Draw" else "Waiting for opponent")
+        sendCommunityPacket(JSONObject().put("type", "game_move").put("matchId", game.matchId).put("index", index).put("symbol", game.localSymbol))
+    }
+    private fun sendGameChat(raw: String) {
+        val game = activeGame ?: return
+        val body = raw.trim().take(300)
+        if (body.isNotBlank() && sendCommunityPacket(JSONObject().put("type", "game_chat").put("matchId", game.matchId).put("sender", displayName).put("body", body))) {
+            gameChatMessages.add("$displayName: $body")
+            while (gameChatMessages.size > 60) gameChatMessages.removeAt(0)
+        }
+    }
+
     private fun openReceivedFile(item: ReceivedFile) {
         try {
             val uri = FileProvider.getUriForFile(this, "${packageName}.files", item.file)
@@ -1259,6 +1431,23 @@ private fun NeaRerHome(
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
     onSendMessage: (String) -> Unit,
+    groups: List<CommunityGroup>,
+    groupMessages: List<CommunityChatMessage>,
+    selectedGroupCode: String?,
+    communityNotice: String,
+    incomingGameInvite: GameInvite?,
+    activeGame: TicTacToeMatch?,
+    gameChatMessages: List<String>,
+    onCreateGroup: (String) -> Unit,
+    onJoinGroup: (String) -> Unit,
+    onSelectGroup: (String) -> Unit,
+    onSendGroupMessage: (String) -> Unit,
+    onBroadcast: (String) -> Unit,
+    onGameInvite: () -> Unit,
+    onAcceptGameInvite: () -> Unit,
+    onRejectGameInvite: () -> Unit,
+    onGameMove: (Int) -> Unit,
+    onGameChat: (String) -> Unit,
     onSendFile: (Uri) -> Unit,
     onCancelTransfer: () -> Unit,
     outgoingTransferId: String?,
@@ -1519,6 +1708,11 @@ private fun NeaRerHome(
                 }
             }
 
+            CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
+                activeGame, gameChatMessages, onCreateGroup, onJoinGroup, onSelectGroup,
+                onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
+                onRejectGameInvite, onGameMove, onGameChat)
+
             if (incomingRequesterName != null) {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1670,6 +1864,111 @@ private fun NeaRerHome(
         }
     }
 }
+
+
+@Composable
+private fun CommunityHub(
+    groups: List<CommunityGroup>, messages: List<CommunityChatMessage>, selectedCode: String?, notice: String,
+    invite: GameInvite?, game: TicTacToeMatch?, gameChat: List<String>,
+    onCreate: (String) -> Unit, onJoin: (String) -> Unit, onSelect: (String) -> Unit,
+    onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
+    onAccept: () -> Unit, onReject: () -> Unit, onMove: (Int) -> Unit, onGameChat: (String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf("") }
+    var groupText by remember { mutableStateOf("") }
+    var broadcastText by remember { mutableStateOf("") }
+    var gameText by remember { mutableStateOf("") }
+    val selected = groups.firstOrNull { it.code == selectedCode }
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("NEARER COMMUNITY", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("Groups and nearby broadcasts", color = White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(name, { name = it.take(32) }, Modifier.weight(1f), singleLine = true, label = { Text("Group name") })
+                Button(onClick = { onCreate(name); name = "" }, enabled = name.isNotBlank()) { Text("Create") }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6) }, Modifier.weight(1f), singleLine = true, label = { Text("6-digit code") })
+                Button(onClick = { onJoin(code); code = "" }, enabled = code.length == 6) { Text("Join") }
+            }
+            groups.forEach { group ->
+                Button(onClick = { onSelect(group.code) }, Modifier.fillMaxWidth()) { Text(group.name + " • " + group.code + " • " + group.members.size + " known") }
+            }
+            if (selected != null) {
+                Text("GROUP CHAT • " + selected.name, color = Mint, fontWeight = FontWeight.Bold)
+                Text("Share code " + selected.code + " with connected members.", color = Muted, fontSize = 10.sp)
+                Column(Modifier.fillMaxWidth().height(130.dp).verticalScroll(rememberScrollState())) {
+                    messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { Text(it.sender + ": " + it.body, color = White, fontSize = 12.sp) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(groupText, { groupText = it.take(1500) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Group message") })
+                    Button(onClick = { onGroupMessage(groupText); groupText = "" }, enabled = groupText.isNotBlank()) { Text("Send") }
+                }
+            }
+            Text("BROADCAST TO CONNECTED PEOPLE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(broadcastText, { broadcastText = it.take(500) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Announcement") })
+                Button(onClick = { onBroadcast(broadcastText); broadcastText = "" }, enabled = broadcastText.isNotBlank()) { Text("Send") }
+            }
+            Text("Only currently connected NeaRer devices receive these broadcasts.", color = Muted, fontSize = 10.sp)
+            Text(notice, color = Mint, fontSize = 10.sp)
+        }
+    }
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF172A42)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text("PLAY TOGETHER", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("Tic-tac-toe • live nearby match", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Invite a connected player. Board moves and game chat use the offline link.", color = Muted, fontSize = 11.sp)
+            if (invite != null) {
+                Text(invite.sender + " invited you to play.", color = White)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onAccept, Modifier.weight(1f)) { Text("Accept") }
+                    Button(onClick = onReject, Modifier.weight(1f)) { Text("Decline") }
+                }
+            }
+            if (game == null) Button(onClick = onInviteGame, Modifier.fillMaxWidth()) { Text("Challenge nearby players") }
+            else {
+                Text("You are " + game.localSymbol + " • " + game.opponent, color = White, fontWeight = FontWeight.SemiBold)
+                Text(game.status, color = Mint)
+                repeat(3) { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        repeat(3) { col ->
+                            val index = row * 3 + col
+                            val cell = game.board[index].takeIf { it != '.' }?.toString() ?: ""
+                            Button(onClick = { onMove(index) }, Modifier.weight(1f).height(54.dp),
+                                enabled = cell.isEmpty() && game.turn == game.localSymbol && !game.status.endsWith("wins") && game.status != "Draw") {
+                                Text(cell.ifBlank { " " }, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+                Text("IN-GAME CHAT", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Column(Modifier.fillMaxWidth().height(80.dp).verticalScroll(rememberScrollState())) {
+                    gameChat.takeLast(20).forEach { Text(it, color = White, fontSize = 11.sp) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(gameText, { gameText = it.take(300) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Chat while playing") })
+                    Button(onClick = { onGameChat(gameText); gameText = "" }, enabled = gameText.isNotBlank()) { Text("Send") }
+                }
+            }
+        }
+    }
+}
+private fun ticTacToeWinner(board: String): String? {
+    val lines = listOf("012", "345", "678", "036", "147", "258", "048", "246")
+    for (line in lines) {
+        val a = board[line[0].digitToInt()]
+        val b = board[line[1].digitToInt()]
+        val c = board[line[2].digitToInt()]
+        if (a != '.' && a == b && b == c) return a.toString()
+    }
+    return null
+}
+private data class CommunityGroup(val code: String, val name: String, val members: List<String>)
+private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
+private data class GameInvite(val matchId: String, val sender: String)
+private data class TicTacToeMatch(val matchId: String, val board: String, val turn: String, val localSymbol: String, val status: String, val opponent: String)
 
 private data class NearbyPerson(val name: String, val lastSeenAt: Long)
 
