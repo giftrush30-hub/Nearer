@@ -122,6 +122,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
         return sent
     }
+    fun stopSearching() {
+        started = false
+        try { client.stopAdvertising() } catch (_: Exception) { }
+        try { client.stopDiscovery() } catch (_: Exception) { }
+    }
+
     fun disconnect() { try { client.stopAllEndpoints() } catch (_: Exception) {}; synchronized(activeEndpoints) { activeEndpoints.clear() } }
-    fun stop() { started = false; try { client.stopAdvertising() } catch (_: Exception) {}; try { client.stopDiscovery() } catch (_: Exception) {}; disconnect() }
+    fun stop() { stopSearching(); disconnect() }
 }
