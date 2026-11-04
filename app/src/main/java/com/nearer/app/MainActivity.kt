@@ -1201,6 +1201,16 @@ private fun NeaRerHome(
                             }
                         }
                     }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("LOCAL GROUPS" to "Coming soon", "PLAY TOGETHER" to "Coming soon").forEach { item ->
+                            Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text(item.second, color = Muted, fontSize = 10.sp)
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1361,7 +1371,7 @@ private fun NeaRerHome(
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("COMMUNITY MESH RELAY", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Text("Allow your phone to pass group text messages to other connected NeaRer phones.", color = White, fontSize = 12.sp, lineHeight = 17.sp)
-                        Text("Optional • up to 4 hops • off by default", color = Muted, fontSize = 10.sp)
+                        Text("Optional • up to 4 hops • off by default. Relaying phones can read message text, so use only with trusted groups.", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
                     }
                     androidx.compose.material3.Switch(checked = meshRelayEnabled, onCheckedChange = onMeshRelayChange)
                 }
