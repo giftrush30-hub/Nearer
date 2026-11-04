@@ -1265,10 +1265,16 @@ class MainActivity : ComponentActivity() {
                     if (i >= 0) {
                         val group = communityGroups[i]
                         val approverId = senderId
-                        if (packet.optString("ownerId") == group.ownerId &&
-                            (approverId == group.ownerId || approverId in group.moderators)) {
-                            communityGroups[i] = group.copy(members = (group.members + displayName).distinct(),
-                                memberIds = group.memberIds + (localCommunityMemberId to displayName))
+                        val packetOwnerId = packet.optString("ownerId")
+                        val approvedByOwner = packetOwnerId.isNotBlank() && approverId == packetOwnerId
+                        val approvedByModerator = group.ownerId.isNotBlank() && packetOwnerId == group.ownerId &&
+                            approverId in group.moderators
+                        if ((group.ownerId.isBlank() && approvedByOwner) ||
+                            (packetOwnerId == group.ownerId && (approvedByOwner || approvedByModerator))) {
+                            val updatedMembers = group.memberIds + (approverId to sender) +
+                                (localCommunityMemberId to displayName)
+                            communityGroups[i] = group.copy(members = (group.members + sender + displayName).distinct(),
+                                ownerId = packetOwnerId, memberIds = updatedMembers)
                             persistCommunityData()
                             sendGroupMembers(code)
                             communityNotice = "Your request to join " + group.name + " was approved."
