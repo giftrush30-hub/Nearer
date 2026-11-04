@@ -1303,8 +1303,8 @@ class MainActivity : ComponentActivity() {
                     val i = communityGroups.indexOfFirst { it.code == code }
                     if (i >= 0) {
                         val group = communityGroups[i]
-                        if ((senderId == group.ownerId || senderId in group.moderators) &&
-                            packet.optString("ownerId").ifBlank { group.ownerId } == group.ownerId) {
+                        val incomingOwnerId = packet.optString("ownerId").ifBlank { group.ownerId }
+                        if ((senderId == group.ownerId || senderId in group.moderators) && incomingOwnerId == group.ownerId) {
                             val array = packet.optJSONArray("members") ?: JSONArray()
                             val members = mutableMapOf<String, String>()
                             for (n in 0 until array.length()) {
@@ -1316,17 +1316,23 @@ class MainActivity : ComponentActivity() {
                             val moderatorsArray = packet.optJSONArray("moderators") ?: JSONArray()
                             val moderators = (0 until moderatorsArray.length()).map { moderatorsArray.optString(it) }
                                 .filter { it in members.keys && it != group.ownerId }.toSet()
-                            val pendingArray = packet.optJSONArray("pendingMembers") ?: JSONArray()
-                            val pending = mutableMapOf<String, String>()
-                            for (n in 0 until pendingArray.length()) {
-                                val request = pendingArray.optJSONObject(n) ?: continue
-                                val requestId = request.optString("id")
-                                val requestName = request.optString("name")
-                                if (requestId.isNotBlank() && requestName.isNotBlank() && requestId !in members) pending[requestId] = requestName.take(32)
+                            // Moderators may approve/remove ordinary members, but cannot alter ownership
+                            // or appoint/demote other moderators. Only the owner can change role assignments.
+                            val roleUpdateAllowed = senderId == group.ownerId ||
+                                (group.ownerId in members && moderators == group.moderators)
+                            if (roleUpdateAllowed) {
+                                val pendingArray = packet.optJSONArray("pendingMembers") ?: JSONArray()
+                                val pending = mutableMapOf<String, String>()
+                                for (n in 0 until pendingArray.length()) {
+                                    val request = pendingArray.optJSONObject(n) ?: continue
+                                    val requestId = request.optString("id")
+                                    val requestName = request.optString("name")
+                                    if (requestId.isNotBlank() && requestName.isNotBlank() && requestId !in members) pending[requestId] = requestName.take(32)
+                                }
+                                communityGroups[i] = group.copy(memberIds = members, members = members.values.distinct(),
+                                    moderators = moderators, pendingMembers = pending)
+                                persistCommunityData()
                             }
-                            communityGroups[i] = group.copy(ownerId = packet.optString("ownerId").ifBlank { group.ownerId },
-                                memberIds = members, members = members.values.distinct(), moderators = moderators, pendingMembers = pending)
-                            persistCommunityData()
                         }
                     }
                 }
@@ -1348,8 +1354,12 @@ class MainActivity : ComponentActivity() {
                     if (i >= 0 && packet.optString("memberId") == localCommunityMemberId) {
                         val group = communityGroups[i]
                         val packetOwnerId = packet.optString("ownerId")
-                        val trustedRemoval = senderId == group.ownerId || senderId in group.moderators ||
+                        val senderIsOwner = senderId == group.ownerId ||
                             (group.ownerId.isBlank() && packetOwnerId.isNotBlank() && senderId == packetOwnerId)
+                        val senderIsModerator = senderId in group.moderators
+                        val targetIsAllowed = localCommunityMemberId != group.ownerId &&
+                            (senderIsOwner || localCommunityMemberId !in group.moderators)
+                        val trustedRemoval = (senderIsOwner || senderIsModerator) && targetIsAllowed
                         if (trustedRemoval) {
                             communityGroups[i] = group.copy(members = group.members - displayName,
                                 memberIds = group.memberIds - localCommunityMemberId, moderators = group.moderators - localCommunityMemberId,
