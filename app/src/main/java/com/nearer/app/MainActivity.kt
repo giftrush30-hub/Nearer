@@ -1640,7 +1640,7 @@ private fun NeaRerHome(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("BLUETOOTH CHAT" to "Hybrid connection enabled", "MESH RELAY" to "Opt-in, up to 4 hops").forEach { item ->
+                        listOf("NEARBY LINK" to "Bluetooth + nearby Wi-Fi", "MESH RELAY" to "Opt-in, up to 4 hops").forEach { item ->
                             Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
