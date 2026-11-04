@@ -1609,7 +1609,7 @@ private fun NeaRerHome(
                                 pageScrollState.animateScrollTo((sectionPositions[key] ?: 0).coerceAtLeast(0))
                             }
                         },
-                        modifier = Modifier.height(38.dp),
+                        modifier = Modifier.height(48.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 15.dp, vertical = 4.dp),
                         shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(
