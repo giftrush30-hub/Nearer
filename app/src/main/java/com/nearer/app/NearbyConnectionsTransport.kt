@@ -2,6 +2,7 @@ package com.nearer.app
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.*
 import org.json.JSONObject
@@ -264,8 +265,18 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val openedDescriptor = appContext.contentResolver.openFileDescriptor(uri, "r")
                 ?: throw IllegalStateException("The selected file could not be opened")
             descriptor = openedDescriptor
-            val size = openedDescriptor.statSize
-            if (size < 0L || size > MAX_FILE_BYTES) throw IllegalStateException("Choose a file no larger than 200 MB")
+            val descriptorSize = openedDescriptor.statSize
+            val reportedSize = if (descriptorSize >= 0L) descriptorSize else {
+                appContext.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                        if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex) else -1L
+                    } else -1L
+                } ?: -1L
+            }
+            if (reportedSize < 0L) throw IllegalStateException("NeaRer could not determine this file's size. Choose another file.")
+            if (reportedSize > MAX_FILE_BYTES) throw IllegalStateException("Choose a file no larger than 200 MB")
+            val size = reportedSize
             val payload = Payload.fromFile(openedDescriptor)
             filePayload = payload
             descriptor = null // The Payload now owns the descriptor.
