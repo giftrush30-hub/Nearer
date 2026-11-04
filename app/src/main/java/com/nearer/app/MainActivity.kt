@@ -314,7 +314,7 @@ class MainActivity : ComponentActivity() {
             statusMessage = "Direct link formed. Checking whether the other phone has NeaRer…"
             if (!transportStarted) {
                 transportStarted = true
-                if (info.isGroupOwner) startApprovalServer() else connectToApprovalServer(info)
+                if (info.isGroupOwner) startApprovalServer(info) else connectToApprovalServer(info)
             }
         } else {
             connectedDeviceName = null
@@ -328,10 +328,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startApprovalServer() {
+    private fun startApprovalServer(info: WifiP2pInfo) {
         io.execute {
             try {
-                val server = ServerSocket(8988)
+                // Listen only on the Wi-Fi Direct group-owner interface, not every network interface.
+                val server = ServerSocket().apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress(info.groupOwnerAddress, 8988), 1)
+                }
                 serverSocket = server
                 val socket = server.accept()
                 peerSocket = socket
