@@ -53,7 +53,7 @@ fun LudoGameScreen(
     var playerCount by remember { mutableStateOf(4) }
     var game by remember(playerName) { mutableStateOf(LudoEngine.newGame(playerName, playerCount)) }
 
-    LaunchedEffect(game.activePlayerIndex, game.dice, game.turnNumber, game.winnerId) {
+    LaunchedEffect(game.activePlayerIndex, game.dice, game.turnNumber, game.winnerId, game.message) {
         if (!game.isFinished && game.activePlayer.isComputer) {
             delay(650)
             if (game.dice == null) game = LudoEngine.roll(game)
