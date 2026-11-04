@@ -368,6 +368,7 @@ class MainActivity : ComponentActivity() {
                     groupMessages = communityMessages.toList(),
                     selectedGroupCode = selectedCommunityCode,
                     communityNotice = communityNotice,
+                    communityLocalMemberId = localCommunityMemberId,
                     incomingGameInvite = incomingGameInvite,
                     activeGame = activeGame,
                     gameChatMessages = gameChatMessages.toList(),
@@ -1784,12 +1785,18 @@ private fun NeaRerHome(
     groupMessages: List<CommunityChatMessage>,
     selectedGroupCode: String?,
     communityNotice: String,
+    communityLocalMemberId: String,
     incomingGameInvite: GameInvite?,
     activeGame: TicTacToeMatch?,
     gameChatMessages: List<String>,
     onCreateGroup: (String) -> Unit,
     onJoinGroup: (String) -> Unit,
     onSelectGroup: (String) -> Unit,
+    onLeaveGroup: (String) -> Unit,
+    onApproveMember: (String, String) -> Unit,
+    onPromoteMember: (String, String) -> Unit,
+    onTransferOwnership: (String, String) -> Unit,
+    onRemoveMember: (String, String) -> Unit,
     onSendGroupMessage: (String) -> Unit,
     onBroadcast: (String) -> Unit,
     onGameInvite: () -> Unit,
@@ -2124,7 +2131,7 @@ private fun NeaRerHome(
                     sectionPositions["community"] = it.positionInParent().y.toInt()
                 }
             ) {
-                CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, localCommunityMemberId, incomingGameInvite,
+                CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, communityLocalMemberId, incomingGameInvite,
                     activeGame, gameChatMessages, onCreateGroup, onJoinGroup, onSelectGroup, onLeaveGroup,
                     onApproveMember, onPromoteMember, onTransferOwnership, onRemoveMember, onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
                     onRejectGameInvite, onGameMove, onGameChat, onEndGame)
