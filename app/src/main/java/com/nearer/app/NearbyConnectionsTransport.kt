@@ -112,6 +112,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val payloadId = update.payloadId
             val outgoing = outgoingFiles[payloadId]
             val incoming = incomingMetadata[payloadId]
+            // Nearby also reports progress for ordinary BYTES messages and file metadata.
+            // Only render progress for the actual file payload, never for chat packets.
+            if (outgoing == null && incoming == null) return
             val name = outgoing?.second ?: incoming?.name ?: "Incoming file"
             val isIncoming = outgoing == null
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
@@ -254,6 +257,28 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val envelope = JSONObject().put("id", messageId).put("body", body)
             .put("ttl", 4).put("hops", 0).put("origin", localName)
         return broadcast(envelope.toString(), null)
+    }
+
+    /**
+     * Sends a private chat packet to exactly one approved endpoint.
+     * Community broadcasts use send(); one-to-one conversations must never fan out.
+     */
+    fun sendToEndpoint(endpointId: String, body: String): Boolean {
+        if (endpointId.isBlank() || body.isBlank() || body.length > 4000) return false
+        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return false
+        val messageId = UUID.randomUUID().toString()
+        seenMessageIds.add(messageId)
+        val envelope = JSONObject().put("id", messageId).put("body", body)
+            .put("ttl", 0).put("hops", 0).put("origin", localName).toString()
+        return try {
+            client.sendPayload(endpointId, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener {
+                    listener.onStatus("Private message could not be delivered. Check the nearby connection.")
+                }
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun sendToNames(body: String, targetNames: Set<String>): Boolean {
