@@ -20,7 +20,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onRequest(id: String, name: String, token: String)
         fun onConnected(id: String, name: String, stableId: String)
         fun onDisconnected(id: String, stableId: String, name: String)
-        fun onMessage(id: String, body: String)
+        fun onMessage(id: String, senderName: String, body: String)
         fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
@@ -157,7 +157,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val ttl = envelope.optInt("ttl", 0)
             if (messageId.isBlank() || body.isBlank() || body.length > 4000 || !seenMessageIds.add(messageId)) return
             if (seenMessageIds.size > 5000) seenMessageIds.remove(seenMessageIds.first())
-            listener.onMessage(endpointId, body)
+            val senderName = synchronized(names) { names[endpointId] ?: "Nearby member" }
+            listener.onMessage(endpointId, senderName, body)
             if (relayEnabled && ttl > 0) {
                 val forwarded = JSONObject().put("id", messageId).put("body", body)
                     .put("ttl", ttl - 1).put("hops", envelope.optInt("hops", 0) + 1)
