@@ -42,6 +42,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -72,6 +82,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -94,6 +106,9 @@ class MainActivity : ComponentActivity() {
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
     private val hybridPeers = mutableStateMapOf<String, String>()
+    private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
+    private var displayName by mutableStateOf("NeaRer User")
+    private var hybridSearching by mutableStateOf(false)
     private var pendingHybridEndpoint: String? = null
     private var hybridConnected = false
     private var meshRelayEnabled by mutableStateOf(false)
@@ -197,8 +212,11 @@ class MainActivity : ComponentActivity() {
         channel = wifiManager?.initialize(this, mainLooper, null)
         nearbyTransport = NearbyConnectionsTransport(this, object : NearbyConnectionsTransport.Listener {
             override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
-            override fun onFound(id: String, name: String) { runOnUiThread { hybridPeers[id] = name } }
-            override fun onLost(id: String) { runOnUiThread { hybridPeers.remove(id) } }
+            override fun onFound(id: String, name: String) { runOnUiThread { hybridPeers[id] = name; recentlySeenPeers.remove(id) } }
+            override fun onLost(id: String) { runOnUiThread {
+                val name = hybridPeers.remove(id)
+                if (name != null) recordRecentlySeen(id, name)
+            } }
             override fun onRequest(id: String, name: String, token: String) {
                 runOnUiThread {
                     pendingHybridEndpoint = id
@@ -241,6 +259,9 @@ class MainActivity : ComponentActivity() {
         })
         if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
         restoreLocalData()
+        displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
+        nearbyTransport?.setDisplayName(displayName)
+        restoreRecentlySeen()
         meshRelayEnabled = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getBoolean("mesh_relay_enabled", false)
         nearbyTransport?.setRelayEnabled(meshRelayEnabled)
         setContent {
@@ -254,7 +275,7 @@ class MainActivity : ComponentActivity() {
             )) {
                 NeaRerHome(
                     status = statusMessage,
-                    scanning = scanning,
+                    scanning = scanning || hybridSearching,
                     devices = nearbyDevices,
                     connectingAddress = connectingAddress,
                     connectedDeviceName = connectedDeviceName,
@@ -278,8 +299,11 @@ class MainActivity : ComponentActivity() {
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
                     hybridPeers = hybridPeers.toMap(),
+                    recentlySeenPeers = recentlySeenPeers.toMap(),
+                    displayName = displayName,
+                    onSaveDisplayName = ::saveDisplayName,
                     meshRelayEnabled = meshRelayEnabled,
-                    onMeshRelayChange = ::updateMeshRelayEnabled,
+                    onMeshRelayChange = ::setMeshRelayEnabled,
                     onHybridConnect = { id -> nearbyTransport?.request(id) },
                     onFindNearby = ::startDiscovery,
                     onStopSearch = ::stopDiscovery,
@@ -358,6 +382,8 @@ class MainActivity : ComponentActivity() {
 
     private fun stopDiscovery() {
         finishDiscovery()
+        hybridSearching = false
+        nearbyTransport?.stop()
         val manager = wifiManager
         val activeChannel = channel
         if (manager != null && activeChannel != null) {
@@ -375,6 +401,43 @@ class MainActivity : ComponentActivity() {
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", enabled).apply()
         nearbyTransport?.setRelayEnabled(enabled)
         statusMessage = if (enabled) "Community relay is ON. Your phone may forward nearby NeaRer text messages while connected." else "Community relay is OFF. Your phone only receives messages from its direct connections."
+    }
+
+    private fun saveDisplayName(rawName: String) {
+        val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
+        if (cleanName.isBlank()) { statusMessage = "Choose a name so nearby people know what to call you."; return }
+        displayName = cleanName
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("display_name", cleanName).apply()
+        nearbyTransport?.setDisplayName(cleanName)
+        statusMessage = "Your nearby name is now $cleanName."
+    }
+
+    private fun recordRecentlySeen(id: String, name: String) {
+        val person = NearbyPerson(name, System.currentTimeMillis())
+        recentlySeenPeers[id] = person
+        val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val saved = org.json.JSONArray(prefs.getString("recently_seen", "[]"))
+        val updated = org.json.JSONArray()
+        for (index in 0 until saved.length()) {
+            val item = saved.optJSONObject(index) ?: continue
+            if (item.optString("id") != id) updated.put(item)
+        }
+        updated.put(org.json.JSONObject().put("id", id).put("name", name).put("time", person.lastSeenAt))
+        val trimmed = org.json.JSONArray()
+        for (index in (updated.length() - 30).coerceAtLeast(0) until updated.length()) trimmed.put(updated.get(index))
+        prefs.edit().putString("recently_seen", trimmed.toString()).apply()
+    }
+
+    private fun restoreRecentlySeen() {
+        try {
+            val array = org.json.JSONArray(getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("recently_seen", "[]"))
+            val now = System.currentTimeMillis()
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val id = item.optString("id"); val name = item.optString("name"); val time = item.optLong("time")
+                if (id.isNotBlank() && name.isNotBlank() && now - time < 7L * 24L * 60L * 60L * 1000L) recentlySeenPeers[id] = NearbyPerson(name, time)
+            }
+        } catch (_: Exception) { }
     }
 
     private fun nearbyPermissionList(): Array<String> {
@@ -406,6 +469,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         nearbyTransport?.start()
+        hybridSearching = true
         if (!isWifiEnabled()) {
             finishDiscovery()
             statusMessage = "Bluetooth discovery is active. Turn Wi-Fi ON on both phones for faster connections and file sharing. Hotspot and mobile data are not required."
@@ -1131,6 +1195,9 @@ private fun NeaRerHome(
     onAccept: () -> Unit,
     onReject: () -> Unit,
     hybridPeers: Map<String, String>,
+    recentlySeenPeers: Map<String, NearbyPerson>,
+    displayName: String,
+    onSaveDisplayName: (String) -> Unit,
     meshRelayEnabled: Boolean,
     onMeshRelayChange: (Boolean) -> Unit,
     onHybridConnect: (String) -> Unit,
@@ -1139,6 +1206,10 @@ private fun NeaRerHome(
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     var draft by remember { mutableStateOf("") }
+    var nameDraft by remember(displayName) { mutableStateOf(displayName) }
+    val searchMotion = rememberInfiniteTransition(label = "nearby-search")
+    val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
+    val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
     }
@@ -1164,6 +1235,18 @@ private fun NeaRerHome(
                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                         Text("N", color = Mint, fontSize = 21.sp, fontWeight = FontWeight.Bold)
                     }
+                }
+            }
+
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("YOUR NEARER NAME", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("What should people around you call you?", color = White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(24) }, modifier = Modifier.weight(1f), singleLine = true, placeholder = { Text("e.g. Hope, Jay Flex, Mimi", color = Muted) }, shape = RoundedCornerShape(14.dp))
+                        Button(onClick = { onSaveDisplayName(nameDraft) }, enabled = nameDraft.trim().isNotBlank(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Save") }
+                    }
+                    Text("This is your public nearby name, not your phone model.", color = Muted, fontSize = 10.sp)
                 }
             }
 
@@ -1219,7 +1302,7 @@ private fun NeaRerHome(
                     Text("NEARBY CONNECTION", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text("Bring nearby people closer.", color = White, fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "Find nearby Android phones using Wi-Fi Direct. Both phones need Wi-Fi ON; hotspot and mobile data are not required. Some Android versions also require Location ON for Wi-Fi Direct discovery.",
+                        "NeaRer advertises your chosen name while searching for other NeaRer phones. Nearby Connections can use Bluetooth and nearby Wi-Fi automatically; Wi-Fi Direct is an additional discovery path. Hotspot and mobile data are not required.",
                         color = Muted, fontSize = 14.sp, lineHeight = 21.sp
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1238,8 +1321,14 @@ private fun NeaRerHome(
 
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("CONNECTION STATUS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                    Text(connectedDeviceName?.let { "Connected to $it" } ?: connectionMessage, color = White, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("CONNECTION STATUS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Spacer(modifier = Modifier.weight(1f))
+                        if (chatReady) Surface(shape = RoundedCornerShape(30.dp), color = Color(0xFF174B43)) {
+                            Text("CONNECTED", modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Text(connectedDeviceName?.let { "You are connected to $it" } ?: connectionMessage, color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     Text(connectionMessage, color = Muted, fontSize = 11.sp)
                     Text(approvalMessage, color = if (chatReady) Mint else Muted, fontSize = 12.sp)
                     pairingCode?.let { code ->
@@ -1383,21 +1472,77 @@ private fun NeaRerHome(
                 Text("${devices.size} found", color = Mint, fontSize = 11.sp)
             }
 
+            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Color(0xFF14243A)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("PEOPLE AROUND YOU", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text(if (hybridPeers.isEmpty()) "Your nearby circle" else "${hybridPeers.size} active nearby", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    if (scanning && hybridPeers.isEmpty()) {
+                        androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(142.dp), contentAlignment = Alignment.Center) {
+                            Surface(shape = CircleShape, color = Color(0xFF1C3554), modifier = Modifier.size(118.dp).alpha(pulse)) {}
+                            Surface(shape = CircleShape, color = Color(0xFF244A70), modifier = Modifier.size(82.dp).rotate(orbitRotation)) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.TopCenter) { Surface(shape = CircleShape, color = Mint, modifier = Modifier.size(12.dp)) {} }
+                            }
+                            Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(54.dp)) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("N", color = White, fontSize = 24.sp, fontWeight = FontWeight.Black) }
+                            }
+                        }
+                        Text("Looking for NeaRer people…", color = White, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.CenterHorizontally))
+                        Text("Your chosen name is visible to nearby NeaRer phones.", color = Muted, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+                    } else if (hybridPeers.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            hybridPeers.entries.take(5).forEachIndexed { index, entry ->
+                                val drift by searchMotion.animateFloat(0f, if (index % 2 == 0) 5f else -5f, infiniteRepeatable(tween(1300 + index * 170), RepeatMode.Reverse), label = "bubble-$index")
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                                    Surface(shape = CircleShape, color = Color(0xFF244B70), modifier = Modifier.size(54.dp).rotate(drift)) {
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(entry.value.take(1).uppercase(), color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+                                    }
+                                    Text(entry.value, color = White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    Text("Active now", color = Mint, fontSize = 9.sp)
+                                }
+                            }
+                        }
+                    } else {
+                        androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(78.dp), contentAlignment = Alignment.Center) {
+                            Surface(shape = CircleShape, color = Color(0xFF1C3554), modifier = Modifier.size(68.dp)) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("•••", color = Mint, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+                            }
+                        }
+                        Text("Nearby names will appear here as phones are discovered.", color = Muted, fontSize = 11.sp)
+                    }
+                    AnimatedVisibility(visible = recentlySeenPeers.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Text("RECENTLY SEEN ON THIS PHONE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            recentlySeenPeers.values.sortedByDescending { it.lastSeenAt }.take(5).forEach { person ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(shape = CircleShape, color = Color(0xFF344256), modifier = Modifier.size(32.dp)) {
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(person.name.take(1).uppercase(), color = Muted, fontWeight = FontWeight.Bold) }
+                                    }
+                                    Column(Modifier.weight(1f).padding(start = 9.dp)) {
+                                        Text(person.name, color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("Not currently visible", color = Muted, fontSize = 9.sp)
+                                    }
+                                    Text(seenAgo(person.lastSeenAt), color = Muted, fontSize = 10.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             if (hybridPeers.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("BLUETOOTH + HYBRID DEVICES", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("CONNECT WITH A NEARBY PERSON", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     hybridPeers.forEach { (id, name) ->
                         Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Color(0xFF1C3453)) {
                             Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(38.dp)) {
-                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("N", color = White, fontWeight = FontWeight.Bold) }
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(name.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold) }
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
                                     Text(name, color = White, fontWeight = FontWeight.SemiBold)
-                                    Text("Found through Nearby Connections", color = Muted, fontSize = 10.sp)
+                                    Text("Active now • Nearby Connections", color = Mint, fontSize = 10.sp)
                                 }
-                                Button(onClick = { onHybridConnect(id) }, shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Connect") }
+                                Button(onClick = { onHybridConnect(id) }, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Connect") }
                             }
                         }
                     }
@@ -1445,6 +1590,18 @@ private fun NeaRerHome(
             Spacer(modifier = Modifier.weight(1f, fill = false))
             Text("NEARER  •  DIRECT DEVICE DISCOVERY", color = Muted, fontSize = 10.sp, letterSpacing = 1.sp)
         }
+    }
+}
+
+private data class NearbyPerson(val name: String, val lastSeenAt: Long)
+
+private fun seenAgo(timestamp: Long): String {
+    val seconds = (System.currentTimeMillis() - timestamp).coerceAtLeast(0L) / 1000L
+    return when {
+        seconds < 60 -> "Seen just now"
+        seconds < 3600 -> "Seen ${seconds / 60}m ago"
+        seconds < 86400 -> "Seen ${seconds / 3600}h ago"
+        else -> "Seen ${seconds / 86400}d ago"
     }
 }
 
