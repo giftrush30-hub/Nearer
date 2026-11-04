@@ -67,3 +67,43 @@ app/build/outputs/apk/debug/app-debug.apk
 - [Nearby Connections overview](https://developers.google.com/nearby/connections/overview)
 - [Nearby Connections: exchange data](https://developers.google.com/nearby/connections/android/exchange-data)
 - [Android Room persistence guidance](https://developer.android.com/training/data-storage/room)
+
+
+## NeaRer Game Zone — Ludo foundation (0.6.0 development branch)
+
+The Game Zone is being developed as a collection of games with one shared presentation and match architecture.
+
+### Locked product decisions
+- Game collection, delivered one complete game at a time.
+- First game: Ludo.
+- Traditional rules, with computer opponents available.
+- Premium, colourful board presentation and smooth play.
+- Nearby offline multiplayer is the next multiplayer milestone; internet multiplayer follows later.
+- Offline play must not require account registration or mobile data.
+
+### Current Ludo implementation
+- A standalone Ludo rules engine for 2–4 seats.
+- Four colours and four tokens per player.
+- Six required to bring a token out of the yard.
+- Exact roll required to finish.
+- Safe squares, captures, extra turns on six/capture/home, and win detection.
+- Basic computer move selection.
+- A premium board screen with dice control, token selection, player-count selection and computer opponents.
+- Game Zone entry integrated into the app home screen.
+
+### Not yet implemented or verified
+- Nearby Ludo invitations, room hosting, multiplayer state synchronisation and in-game Ludo chat.
+- Online matchmaking, accounts, server-authoritative dice and global leaderboards.
+- Advanced Ludo AI, custom rule variants, sound, haptics, reconnect recovery and persistent match resume.
+- Automated unit tests and two-device gameplay verification.
+
+### Planned Game Zone delivery
+1. Complete and test Ludo rules and board layout.
+2. Polish animations, responsive layouts, sound settings and computer strategy.
+3. Add nearby 2–4 player rooms over Nearby Connections with authoritative host validation and in-game chat.
+4. Test on multiple real Android phones, including disconnect/reconnect cases.
+5. Add the next complete games (Chess/Checkers, Quiz Battle, Snake and Ladders, Word Battle, Mini Racing).
+6. Add online multiplayer using a server-backed match service, player identities and matchmaking.
+7. Add cosmetic achievements and leaderboards without pay-to-win mechanics.
+
+The current 0.6.0 work is a development milestone, not a claim that nearby or online Ludo multiplayer is already available.
