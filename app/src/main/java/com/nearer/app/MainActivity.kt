@@ -968,8 +968,12 @@ private fun NeaRerHome(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("NeaRer", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                    Text("Your people. Nearby. Offline.", color = Muted, fontSize = 13.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Nea", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("R", color = Color(0xFFFFD400), fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("er", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text("No Data? We Are NeaRer.", color = Muted, fontSize = 13.sp)
                 }
                 Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(46.dp)) {
                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
