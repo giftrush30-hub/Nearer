@@ -1896,7 +1896,7 @@ private fun NeaRerHome(
 }
 
 
-@Composable
+@androidx.compose.runtime.Composable
 private fun CommunityHub(
     groups: List<CommunityGroup>, messages: List<CommunityChatMessage>, selectedCode: String?, notice: String,
     invite: GameInvite?, game: TicTacToeMatch?, gameChat: List<String>,
