@@ -34,7 +34,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val activeEndpoints = mutableSetOf<String>()
     private val localStableId = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         .let { prefs ->
-            prefs.getString("nearer_stable_id", null) ?: UUID.randomUUID().toString().replace("-", "").take(6).uppercase().also {
+            prefs.getString("nearer_stable_id", null) ?: UUID.randomUUID().toString().replace("-", "").uppercase().also {
                 prefs.edit().putString("nearer_stable_id", it).apply()
             }
         }
@@ -42,7 +42,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private fun encodedName(): String = "${localName.take(23)}|$localStableId"
     private fun decodeName(value: String): Pair<String, String> {
         val split = value.lastIndexOf('|')
-        if (split in 1 until value.lastIndex && value.length - split - 1 == 6) {
+        val idLength = value.length - split - 1
+        if (split in 1 until value.lastIndex && idLength in setOf(6, 32)) {
             return value.substring(0, split).take(23) to value.substring(split + 1).uppercase()
         }
         return value.take(23) to ""
