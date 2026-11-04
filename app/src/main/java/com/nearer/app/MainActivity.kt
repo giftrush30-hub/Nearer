@@ -11,9 +11,13 @@ import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.os.Build
 import android.os.Bundle
 import java.io.BufferedReader
+import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.net.InetSocketAddress
@@ -26,6 +30,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,6 +41,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -86,6 +94,8 @@ class MainActivity : ComponentActivity() {
     private val io = Executors.newCachedThreadPool()
     private val approvalDecision = LinkedBlockingQueue<Boolean>()
     private val chatMessages = mutableStateListOf<ChatMessage>()
+    private val receivedFiles = mutableStateListOf<String>()
+    private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
@@ -158,6 +168,7 @@ class MainActivity : ComponentActivity() {
                     messages = chatMessages,
                     chatNotice = chatNotice,
                     onSendMessage = ::sendChatMessage,
+                    onSendFile = ::sendFile,
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
                     onFindNearby = ::startDiscovery,
@@ -424,26 +435,61 @@ class MainActivity : ComponentActivity() {
         chatReady = false
     }
 
+    private fun sendWireLine(line: String): Boolean {
+        val writer = peerWriter ?: return false
+        synchronized(writerLock) {
+            writer.println(line)
+            return !writer.checkError()
+        }
+    }
+
     private fun sendChatMessage(rawText: String) {
         val body = rawText.trim()
         if (body.isEmpty() || !chatReady) return
         val id = UUID.randomUUID().toString()
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
-        val line = "MSG|$id|$encoded"
-        val writer = peerWriter
-        if (writer == null) {
-            chatNotice = "The local connection is not ready. Reconnect and try again."
+        if (!sendWireLine("MSG|$id|$encoded")) {
+            chatNotice = "Message could not be sent. Check the nearby connection."
             return
-        }
-        synchronized(writerLock) {
-            writer.println(line)
-            if (writer.checkError()) {
-                chatNotice = "Message could not be sent. Check the nearby connection."
-                return
-            }
         }
         chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sent"))
         chatNotice = "Sent directly • waiting for delivery confirmation"
+    }
+
+    private fun sendFile(uri: Uri) {
+        if (!chatReady) return
+        io.execute {
+            var fileName = "shared-file"
+            var fileSize = 0L
+            try {
+                contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                        if (nameIndex >= 0) fileName = cursor.getString(nameIndex) ?: fileName
+                        if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) fileSize = cursor.getLong(sizeIndex)
+                    }
+                }
+                val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("Cannot open selected file")
+                input.use { stream ->
+                    val id = UUID.randomUUID().toString()
+                    val encodedName = Base64.getEncoder().encodeToString(fileName.toByteArray(Charsets.UTF_8))
+                    if (!sendWireLine("FILE_START|$id|$encodedName|$fileSize")) throw IllegalStateException("Connection unavailable")
+                    runOnUiThread { chatNotice = "Sending $fileName…" }
+                    val buffer = ByteArray(12 * 1024)
+                    while (true) {
+                        val count = stream.read(buffer)
+                        if (count < 0) break
+                        val chunk = Base64.getEncoder().encodeToString(buffer.copyOf(count))
+                        if (!sendWireLine("FILE_CHUNK|$id|0|$chunk")) throw IllegalStateException("Connection lost during transfer")
+                    }
+                    if (!sendWireLine("FILE_END|$id")) throw IllegalStateException("Could not finish file transfer")
+                    runOnUiThread { chatNotice = "Sending complete. Waiting for the other phone to confirm…" }
+                }
+            } catch (e: Exception) {
+                runOnUiThread { chatNotice = "File transfer failed: ${e.message ?: "connection problem"}" }
+            }
+        }
     }
 
     private fun startMessageReader(socket: Socket) {
@@ -476,6 +522,48 @@ class MainActivity : ComponentActivity() {
                                 val index = chatMessages.indexOfFirst { it.id == id && it.outgoing }
                                 if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Delivered")
                             }
+                        }
+                        line.startsWith("FILE_START|") -> {
+                            val parts = line.split("|", limit = 4)
+                            if (parts.size == 4) {
+                                val id = parts[1]
+                                val name = try { String(Base64.getDecoder().decode(parts[2]), Charsets.UTF_8) } catch (_: Exception) { "shared-file" }
+                                val safeName = name.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100).ifBlank { "shared-file" }
+                                val expected = parts[3].toLongOrNull() ?: 0L
+                                val folder = File(filesDir, "received").apply { mkdirs() }
+                                val target = File(folder, "${System.currentTimeMillis()}-$safeName")
+                                incomingTransfers[id] = IncomingTransfer(safeName, expected, target, FileOutputStream(target))
+                            }
+                        }
+                        line.startsWith("FILE_CHUNK|") -> {
+                            val parts = line.split("|", limit = 4)
+                            if (parts.size == 4) {
+                                val transfer = incomingTransfers[parts[1]]
+                                if (transfer != null) {
+                                    try {
+                                        val bytes = Base64.getDecoder().decode(parts[3])
+                                        transfer.output.write(bytes)
+                                        transfer.receivedBytes += bytes.size
+                                    } catch (_: Exception) {
+                                        incomingTransfers.remove(parts[1])?.close()
+                                    }
+                                }
+                            }
+                        }
+                        line.startsWith("FILE_END|") -> {
+                            val id = line.substringAfter("FILE_END|")
+                            val transfer = incomingTransfers.remove(id)
+                            if (transfer != null) {
+                                transfer.close()
+                                runOnUiThread {
+                                    receivedFiles.add(0, transfer.name)
+                                    chatNotice = "Received file: ${transfer.name}. Saved inside NeaRer."
+                                }
+                                synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id") }
+                            }
+                        }
+                        line.startsWith("FILE_DONE|") -> {
+                            runOnUiThread { chatNotice = "File delivered successfully to the nearby phone." }
                         }
                         line == "PING" -> synchronized(writerLock) { peerWriter?.println("PONG") }
                     }
@@ -512,16 +600,21 @@ private fun NeaRerHome(
     chatReady: Boolean,
     messages: List<ChatMessage>,
     chatNotice: String,
+    receivedFiles: List<String>,
     onSendMessage: (String) -> Unit,
+    onSendFile: (Uri) -> Unit,
     onAccept: () -> Unit,
     onReject: () -> Unit,
     onFindNearby: () -> Unit,
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     var draft by remember { mutableStateOf("") }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onSendFile(uri)
+    }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 26.dp),
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 26.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             Row(
@@ -604,6 +697,9 @@ private fun NeaRerHome(
                             }
                         }
                         Text(chatNotice, color = Muted, fontSize = 10.sp)
+                        receivedFiles.take(3).forEach { fileName ->
+                            Text("Received: $fileName", color = Mint, fontSize = 10.sp)
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
                                 value = draft,
@@ -620,6 +716,12 @@ private fun NeaRerHome(
                                 colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
                             ) { Text("Send", fontWeight = FontWeight.Bold) }
                         }
+                        Button(
+                            onClick = { filePicker.launch(arrayOf("*/*")) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26364D), contentColor = White)
+                        ) { Text("Share a photo or file") }
                     } else {
                         Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                     }
@@ -654,8 +756,8 @@ private fun NeaRerHome(
                     }
                 }
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(devices, key = { it.deviceAddress }) { device ->
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    devices.forEach { device ->
                         Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Panel) {
                             Row(
                                 modifier = Modifier.padding(14.dp),
@@ -696,6 +798,18 @@ private data class ChatMessage(
     val outgoing: Boolean,
     val delivery: String
 )
+
+private data class IncomingTransfer(
+    val name: String,
+    val expectedBytes: Long,
+    val file: File,
+    val output: FileOutputStream,
+    var receivedBytes: Long = 0L
+) {
+    fun close() {
+        try { output.flush(); output.close() } catch (_: Exception) { }
+    }
+}
 
 private fun deviceStatus(status: Int): String = when (status) {
     WifiP2pDevice.AVAILABLE -> "Available"
