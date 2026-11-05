@@ -57,4 +57,16 @@ class LudoEngineTest {
     @Test fun globalTrackWrapsAtFiftyTwo() {
         assertEquals(0, LudoEngine.globalSquare(LudoColor.BLUE, 13))
     }
+
+    @Test fun passAndPlayCreatesHumanOpponents() {
+        val state = LudoEngine.newGame("Hope", 3, computerOpponents = false)
+        assertEquals(3, state.players.size)
+        assertTrue(state.players.none { it.isComputer })
+        assertEquals("Player 2", state.players[1].name)
+    }
+
+    @Test fun computerModeKeepsBotOpponents() {
+        val state = LudoEngine.newGame("Hope", 4, computerOpponents = true)
+        assertTrue(state.players.drop(1).all { it.isComputer })
+    }
 }
