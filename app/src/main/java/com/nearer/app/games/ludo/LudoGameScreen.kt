@@ -74,7 +74,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
         rolling = false
     }
 
-    LaunchedEffect(game.activePlayerIndex, game.dice, game.turnNumber, game.winnerId) {
+    LaunchedEffect(game.activePlayerIndex, game.dice, game.turnNumber, game.winnerId, game.message) {
         if (!game.isFinished && game.activePlayer.isComputer) {
             if (game.dice == null) animateRoll(computer = true)
             else {
@@ -170,7 +170,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                                 else -> "Choose a token to move"
                             }, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                         }
-                        DiceFace(if (rolling) rollingFace else game.dice ?: rollingFace, Modifier.size(66.dp))
+                        DiceFace(if (rolling) rollingFace else game.dice ?: rollingFace, rolling, Modifier.size(66.dp))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
                         Button(onClick = { scope.launch { animateRoll() } },
@@ -246,10 +246,9 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
 }
 
 @Composable
-private fun DiceFace(value: Int, modifier: Modifier = Modifier) {
-    val rotation by rememberInfiniteTransition(label = "dice-spin").animateFloat(
-        0f, 360f, infiniteRepeatable(tween(1800, easing = FastOutSlowInEasing)), label = "dice-angle")
-    Canvas(modifier = modifier.rotate(rotation % 360f).shadow(12.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp))) {
+private fun DiceFace(value: Int, rolling: Boolean, modifier: Modifier = Modifier) {
+    val rotation by animateFloatAsState(if (rolling) 12f else 0f, tween(130), label = "dice-angle")
+    Canvas(modifier = modifier.rotate(rotation).shadow(12.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp))) {
         drawRoundRect(Brush.linearGradient(listOf(Color(0xFFFFE995), Gold, Color(0xFFE7A91F))),
             cornerRadius = CornerRadius(size.width * 0.22f))
         drawRoundRect(Color.White.copy(alpha = 0.45f), cornerRadius = CornerRadius(size.width * 0.22f),
@@ -355,7 +354,7 @@ private fun positionForProgress(color: LudoColor, tokenIndex: Int, progress: Flo
     if (progress < 52f) {
         val index = progress.toInt()
         val from = ludoTrackCells[LudoEngine.globalSquare(color, index)]
-        val to = ludoTrackCells[LudoEngine.globalSquare(color, (index + 1).coerceAtMost(51))]
+        val to = ludoTrackCells[LudoEngine.globalSquare(color, (index + 1) % 52)]
         return interpolateCell(from, to, progress - index)
     }
     val lane = ludoHomeLanes[color.ordinal]
