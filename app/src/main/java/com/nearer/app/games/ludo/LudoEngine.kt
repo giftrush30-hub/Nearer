@@ -53,9 +53,9 @@ object LudoEngine {
         val players = colors.mapIndexed { index, color ->
             LudoPlayer(
                 id = "player-$index",
-                name = if (index == 0) humanName.ifBlank { "You" } else computerNames.getOrElse(index - 1) { "Player ${index + 1}" },
+                name = if (index == 0) humanName.ifBlank { "You" } else if (computerOpponents) computerNames.getOrElse(index - 1) { "NeaRer Bot" } else "Player ${index + 1}",
                 color = color,
-                isComputer = index != 0
+                isComputer = computerOpponents && index != 0
             )
         }
         return LudoState(players = players, message = "${players.first().name} rolls first")
