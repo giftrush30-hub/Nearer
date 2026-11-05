@@ -41,7 +41,8 @@ object LudoEngine {
     fun newGame(
         humanName: String,
         playerCount: Int = 4,
-        computerNames: List<String> = listOf("NeaRer Bot", "NeaRer Bot 2", "NeaRer Bot 3")
+        computerNames: List<String> = listOf("NeaRer Bot", "NeaRer Bot 2", "NeaRer Bot 3"),
+        computerOpponents: Boolean = true
     ): LudoState {
         val count = playerCount.coerceIn(2, 4)
         val colors = when (count) {
@@ -52,9 +53,9 @@ object LudoEngine {
         val players = colors.mapIndexed { index, color ->
             LudoPlayer(
                 id = "player-$index",
-                name = if (index == 0) humanName.ifBlank { "You" } else computerNames.getOrElse(index - 1) { "Player ${index + 1}" },
+                name = if (index == 0) humanName.ifBlank { "You" } else if (computerOpponents) computerNames.getOrElse(index - 1) { "NeaRer Bot" } else "Player ${index + 1}",
                 color = color,
-                isComputer = index != 0
+                isComputer = computerOpponents && index != 0
             )
         }
         return LudoState(players = players, message = "${players.first().name} rolls first")

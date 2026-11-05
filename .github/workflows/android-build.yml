@@ -2,7 +2,7 @@ name: Android debug APK
 
 on:
   push:
-    branches: [ main, feature/game-zone-ludo, feature/nearer-ui-polish ]
+    branches: [ main, feature/game-zone-ludo, feature/nearer-ui-polish, feature/nearer-premium-blue-gold-ludo ]
   workflow_dispatch:
 
 concurrency:
