@@ -100,13 +100,13 @@ import androidx.core.content.FileProvider
 import kotlinx.coroutines.launch
 import com.nearer.app.games.ludo.LudoGameScreen
 
-private val Midnight = Color(0xFF101A2B)
-private val Panel = Color(0xFF1A2940)
-private val Mint = Color(0xFF69E0C0)
-private val Muted = Color(0xFFA8B6C9)
-private val White = Color(0xFFF6F8FC)
-private val BrandBlue = Color(0xFF2563EB)
-private val Gold = Color(0xFFFFD12D)
+private val Midnight = Color(0xFF081426)
+private val Panel = Color(0xFF112746)
+private val Mint = Color(0xFFFFD34E)
+private val Muted = Color(0xFFAABBD4)
+private val White = Color(0xFFF6F8FF)
+private val BrandBlue = Color(0xFF2868E8)
+private val Gold = Color(0xFFFFD34E)
 
 class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
@@ -221,8 +221,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = android.graphics.Color.rgb(16, 26, 43)
-        window.navigationBarColor = android.graphics.Color.rgb(16, 26, 43)
+        window.statusBarColor = android.graphics.Color.rgb(8, 20, 38)
+        window.navigationBarColor = android.graphics.Color.rgb(8, 20, 38)
         window.decorView.systemUiVisibility = 0
         wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
         channel = wifiManager?.initialize(this, mainLooper, null)
