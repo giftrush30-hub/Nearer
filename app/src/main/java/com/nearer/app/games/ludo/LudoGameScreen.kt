@@ -11,6 +11,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -151,7 +153,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                         Spacer(Modifier.weight(1f))
                         Text("4 TOKENS EACH", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
-                    LudoBoard(game, pulse, Modifier.fillMaxWidth())
+                    LudoBoard(game, pulse, Modifier.fillMaxWidth()) { token -> game = LudoEngine.move(game, token) }
                 }
             }
 
@@ -273,14 +275,34 @@ private fun DiceFace(value: Int, rolling: Boolean, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifier) {
+private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifier, onTokenTap: (Int) -> Unit) {
     val animated = game.players.map { player ->
         player.tokens.map { target ->
             animateFloatAsState(target.toFloat(), tween((abs(target + 1) * 95).toInt().coerceIn(260, 1150),
                 easing = FastOutSlowInEasing), label = "token-" + player.id + "-" + target).value
         }
     }
-    Canvas(modifier.aspectRatio(1f).clip(RoundedCornerShape(16.dp)).background(Color(0xFFE9EFF8))) {
+    Canvas(
+        modifier.aspectRatio(1f).clip(RoundedCornerShape(16.dp)).background(Color(0xFFE9EFF8))
+            .pointerInput(game.activePlayer.id, game.legalTokenIndexes, game.activePlayer.tokens) {
+                detectTapGestures { tap ->
+                    if (game.activePlayer.isComputer || game.legalTokenIndexes.isEmpty()) return@detectTapGestures
+                    val cellSize = size.width / 15f
+                    val nearest = game.legalTokenIndexes.minByOrNull { token ->
+                        val p = positionForProgress(game.activePlayer.color, token, game.activePlayer.tokens[token].toFloat())
+                        val dx = tap.x - (p.first + 0.5f) * cellSize
+                        val dy = tap.y - (p.second + 0.5f) * cellSize
+                        dx * dx + dy * dy
+                    }
+                    if (nearest != null) {
+                        val p = positionForProgress(game.activePlayer.color, nearest, game.activePlayer.tokens[nearest].toFloat())
+                        val dx = tap.x - (p.first + 0.5f) * cellSize
+                        val dy = tap.y - (p.second + 0.5f) * cellSize
+                        if (dx * dx + dy * dy <= cellSize * cellSize * 0.65f) onTokenTap(nearest)
+                    }
+                }
+            }
+    ) {
         val cell = size.width / 15f
         val colors = listOf(Color(0xFFD94C62), Color(0xFF23A879), Color(0xFFE5A923), Color(0xFF3978E8))
         fun tile(x: Int, y: Int, color: Color) {
