@@ -1910,19 +1910,19 @@ private fun NeaRerHome(
 
             Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
                 sectionPositions["home"] = it.positionInParent().y.toInt()
-            }, shape = RoundedCornerShape(24.dp), color = Color(0xFF172B4A)) {
+            }, shape = RoundedCornerShape(24.dp), color = Color(0xFF142B4E), border = BorderStroke(1.dp, Color(0xFF315987))) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = RoundedCornerShape(12.dp), color = BrandBlue, modifier = Modifier.size(42.dp)) {
                             androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("N", color = White, fontSize = 23.sp, fontWeight = FontWeight.Black) }
                         }
                         Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
-                            Text("YOUR OFFLINE WORLD", color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                            Text("YOUR OFFLINE WORLD", color = White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.7.sp)
                             Text("People, sharing and play — closer.", color = Muted, fontSize = 11.sp)
                         }
                         Text("NEARER", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                     }
-                    Text("Everything starts nearby.", color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text("Everything starts nearby.", color = White, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = 0.2.sp)
                     Text("Connect without mobile data. Share directly. Build a local community with people around you.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("PRIVATE CHAT" to "Ready after connection", "FILE SHARING" to "Ready after connection").forEach { item ->
@@ -1957,12 +1957,12 @@ private fun NeaRerHome(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF172B4A)) {
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF15315A), border = BorderStroke(1.dp, Color(0xFF42618B))) {
                 Column(modifier = Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("NEARER GAME ZONE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-                            Text("Play. Connect. Compete.", color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Text("NEARER GAME ZONE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.7.sp)
+                            Text("Play. Connect. Compete.", color = White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.1.sp)
                         }
                         Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF29466B)) {
                             Text("NEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
