@@ -247,7 +247,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
 
 @Composable
 private fun DiceFace(value: Int, rolling: Boolean, modifier: Modifier = Modifier) {
-    val rotation by animateFloatAsState(if (rolling) 12f else 0f, tween(130), label = "dice-angle")
+    val rotation by animateFloatAsState(if (rolling) 360f else 0f, tween(560, easing = FastOutSlowInEasing), label = "dice-angle")
     Canvas(modifier = modifier.rotate(rotation).shadow(12.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp))) {
         drawRoundRect(Brush.linearGradient(listOf(Color(0xFFFFE995), Gold, Color(0xFFE7A91F))),
             cornerRadius = CornerRadius(size.width * 0.22f))
@@ -349,7 +349,10 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
 
 private fun positionForProgress(color: LudoColor, tokenIndex: Int, progress: Float): Pair<Float, Float> {
     val base = ludoBaseSpots[color.ordinal][tokenIndex]
-    if (progress < 0f) return base.first.toFloat() to base.second.toFloat()
+    if (progress < 0f) {
+        val start = ludoTrackCells[LudoEngine.globalSquare(color, 0)]
+        return interpolateCell(base, start, progress + 1f)
+    }
     if (progress >= 56f) return 7f to 7f
     if (progress < 52f) {
         val index = progress.toInt()
