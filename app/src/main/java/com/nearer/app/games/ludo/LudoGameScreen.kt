@@ -55,7 +55,8 @@ private val Muted = Color(0xFFAABBD4)
 @Composable
 fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
     var playerCount by remember { mutableIntStateOf(4) }
-    var game by remember(playerName) { mutableStateOf(LudoEngine.newGame(playerName, playerCount)) }
+    var computerOpponents by remember { mutableStateOf(true) }
+    var game by remember(playerName) { mutableStateOf(LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents)) }
     var rolling by remember { mutableStateOf(false) }
     var rollingFace by remember { mutableIntStateOf(1) }
     val scope = rememberCoroutineScope()
@@ -184,7 +185,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                             Text(if (rolling) "ROLLING…" else if (game.dice == null) "ROLL DICE  ⚄" else "DICE: " + game.dice,
                                 fontWeight = FontWeight.Black, fontSize = 14.sp, letterSpacing = 0.5.sp)
                         }
-                        Button(onClick = { game = LudoEngine.newGame(playerName, playerCount); rolling = false },
+                        Button(onClick = { game = LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents); rolling = false },
                             modifier = Modifier.height(54.dp), shape = RoundedCornerShape(15.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25466F), contentColor = White),
                             contentPadding = PaddingValues(horizontal = 13.dp)) {
@@ -223,6 +224,31 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text("MATCH MODE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
+                Spacer(Modifier.weight(1f))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Surface(color = if (computerOpponents) Cobalt else Panel, shape = RoundedCornerShape(11.dp),
+                        border = BorderStroke(1.dp, if (computerOpponents) Gold else Color(0xFF294362)),
+                        modifier = Modifier.clickable {
+                            computerOpponents = true
+                            game = LudoEngine.newGame(playerName, playerCount, computerOpponents = true)
+                        }) {
+                        Text("VS COMPUTER", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 9.sp,
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp))
+                    }
+                    Surface(color = if (!computerOpponents) Cobalt else Panel, shape = RoundedCornerShape(11.dp),
+                        border = BorderStroke(1.dp, if (!computerOpponents) Gold else Color(0xFF294362)),
+                        modifier = Modifier.clickable {
+                            computerOpponents = false
+                            game = LudoEngine.newGame(playerName, playerCount, computerOpponents = false)
+                        }) {
+                        Text("PASS & PLAY", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 9.sp,
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp))
+                    }
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("PLAYERS", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
                 Spacer(Modifier.weight(1f))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -240,7 +266,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                     }
                 }
             }
-            Text("TRADITIONAL LUDO  •  1 PLAYER + COMPUTER OPPONENTS  •  OFFLINE",
+            Text(if (computerOpponents) "TRADITIONAL LUDO  •  YOU VS COMPUTER OPPONENTS  •  OFFLINE" else "TRADITIONAL LUDO  •  LOCAL PASS & PLAY  •  OFFLINE",
                 color = Color(0xFF8299B8), fontSize = 8.sp, fontWeight = FontWeight.Bold,
                 letterSpacing = 0.7.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp))
         }
