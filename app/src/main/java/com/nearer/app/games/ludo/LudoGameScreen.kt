@@ -257,7 +257,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                             border = BorderStroke(1.dp, if (playerCount == count) Gold else Color(0xFF294362)),
                             modifier = Modifier.clickable {
                                 playerCount = count
-                                game = LudoEngine.newGame(playerName, count)
+                                game = LudoEngine.newGame(playerName, count, computerOpponents = computerOpponents)
                                 rolling = false
                             }) {
                             Text(count.toString(), color = White, fontWeight = FontWeight.ExtraBold,
