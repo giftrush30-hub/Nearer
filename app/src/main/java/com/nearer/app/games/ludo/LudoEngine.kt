@@ -41,7 +41,8 @@ object LudoEngine {
     fun newGame(
         humanName: String,
         playerCount: Int = 4,
-        computerNames: List<String> = listOf("NeaRer Bot", "NeaRer Bot 2", "NeaRer Bot 3")
+        computerNames: List<String> = listOf("NeaRer Bot", "NeaRer Bot 2", "NeaRer Bot 3"),
+        computerOpponents: Boolean = true
     ): LudoState {
         val count = playerCount.coerceIn(2, 4)
         val colors = when (count) {
