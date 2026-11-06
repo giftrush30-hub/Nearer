@@ -61,4 +61,23 @@ class DeferredFileDigestTrackerTest {
         assertEquals(1, tracker.removeEndpoint("peer-b"))
         assertEquals(0, tracker.pendingCount())
     }
+
+    @Test fun acceptsFileCompletionBeforeMetadataAndDigest() {
+        val tracker = DeferredFileDigestTracker()
+        assertNull(tracker.markFileCompleted("peer", 14L))
+        assertNull(tracker.registerFile("peer", 14L, 789L))
+        val ready = tracker.recordDigest("peer", 14L, digest)
+        assertEquals(DeferredFileDigestTracker.Ready("peer", 14L, digest.lowercase()), ready)
+    }
+
+    @Test fun identicalDuplicateDigestIsIdempotent() {
+        val tracker = DeferredFileDigestTracker()
+        tracker.registerFile("peer", 15L, 789L)
+        tracker.recordDigest("peer", 15L, digest)
+        assertNull(tracker.recordDigest("peer", 15L, digest.lowercase()))
+        assertEquals(1, tracker.pendingCount())
+        assertEquals(DeferredFileDigestTracker.Ready("peer", 15L, digest.lowercase()),
+            tracker.markFileCompleted("peer", 15L))
+    }
+
 }
