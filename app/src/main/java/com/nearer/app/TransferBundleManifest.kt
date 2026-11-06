@@ -53,7 +53,7 @@ internal data class TransferBundleManifest(
 
         // A file cannot also be a parent directory. Without this check, a later
         // item such as "Photos/2026/a.jpg" could collide with an earlier file "Photos".
-        paths.forEach { (path, kind) ->
+        paths.keys.forEach { path ->
             val components = path.split('/')
             for (index in 1 until components.size) {
                 val parent = components.take(index).joinToString("/")
