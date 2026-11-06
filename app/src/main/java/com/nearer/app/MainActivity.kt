@@ -2051,6 +2051,19 @@ private fun NeaRerHome(
 
             AnimatedVisibility(visible = activeSection == "home", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
                 // File sharing is the primary purpose of NeaRer: make Send and Receive the first actions.
+                val homeMotion = rememberInfiniteTransition(label = "home-transfer-motion")
+                val homePulse by homeMotion.animateFloat(
+                    initialValue = 0.62f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(tween(1250, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                    label = "home-status-pulse"
+                )
+                val homeGlow by homeMotion.animateFloat(
+                    initialValue = 0.18f,
+                    targetValue = 0.42f,
+                    animationSpec = infiniteRepeatable(tween(1900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                    label = "home-fast-send-glow"
+                )
                 Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -2070,7 +2083,13 @@ private fun NeaRerHome(
                             verticalArrangement = Arrangement.spacedBy(13.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(42.dp)) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = BrandBlue.copy(alpha = 0.88f),
+                                    border = BorderStroke(1.dp, Color(0xFF8CB8FF).copy(alpha = homePulse * 0.7f)),
+                                    shadowElevation = 8.dp,
+                                    modifier = Modifier.size(42.dp)
+                                ) {
                                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                                         Text("N", color = White, fontSize = 23.sp, fontWeight = FontWeight.Black)
                                     }
@@ -2127,6 +2146,59 @@ private fun NeaRerHome(
                         }
                     }
 
+
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            if (chatReady) filePicker.launch(arrayOf("*/*"))
+                            else {
+                                navigateToSection("nearby")
+                                onFindNearby()
+                                navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                            }
+                        },
+                        shape = RoundedCornerShape(21.dp),
+                        color = Color(0xFF142F54),
+                        border = BorderStroke(1.dp, Gold.copy(alpha = homeGlow)),
+                        shadowElevation = 7.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Brush.linearGradient(listOf(Color(0xFF24466C), Color(0xFF102847), Color(0xFF18365C))))
+                                .padding(horizontal = 15.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Gold.copy(alpha = 0.16f),
+                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.42f)),
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text("ϟ", color = Gold, fontSize = 29.sp, fontWeight = FontWeight.Black)
+                                }
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    Text("FAST SEND", color = White, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 0.8.sp)
+                                    Text("QUICK ROUTE", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                                }
+                                Text(
+                                    if (chatReady) "Pick anything and send straight away"
+                                    else "Skip categories. Choose files, then connect.",
+                                    color = Color(0xFFD1E0F5), fontSize = 10.sp, lineHeight = 14.sp
+                                )
+                            }
+                            androidx.compose.foundation.layout.Box(
+                                modifier = Modifier.size(27.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Surface(shape = CircleShape, color = Gold.copy(alpha = 0.10f * homePulse + 0.05f), modifier = Modifier.size(27.dp)) {}
+                                Text("›", color = Gold, fontSize = 27.sp, fontWeight = FontWeight.Light)
+                            }
+                        }
+                    }
 
                     Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
