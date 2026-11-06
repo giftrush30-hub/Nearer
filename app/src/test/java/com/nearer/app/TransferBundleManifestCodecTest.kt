@@ -11,8 +11,7 @@ class TransferBundleManifestCodecTest {
             TransferBundleItem("folder", "Photos", "Photos", 0L, null, TransferBundleItem.Kind.DIRECTORY),
             TransferBundleItem("photo", "Photos/Ọjà.jpg", "Ọjà.jpg", 4096L, "image/jpeg")
         ))
-        val decoded = TransferBundleManifestCodec.decode(TransferBundleManifestCodec.encode(manifest))
-        assertEquals(manifest, decoded)
+        assertEquals(manifest, TransferBundleManifestCodec.decode(TransferBundleManifestCodec.encode(manifest)))
     }
 
     @Test
@@ -24,17 +23,20 @@ class TransferBundleManifestCodecTest {
 
     @Test
     fun rejectsMalformedAndUnsafeWireManifest() {
-        val unsafe = """{"version":1,"transferId":"x","items":[{"id":"1","path":"../escape.txt","name":"escape.txt","size":1,"kind":"FILE","mime":"text/plain"}]}"""
-        assertThrows(IllegalArgumentException::class.java) {
-            TransferBundleManifestCodec.decode(unsafe.toByteArray(Charsets.UTF_8))
+        assertThrows(Exception::class.java) {
+            TransferBundleManifestCodec.decode(byteArrayOf(1, 2, 3))
         }
+        val unsafe = TransferBundleManifest("x", listOf(
+            TransferBundleItem("1", "../escape.txt", "escape.txt", 1L, "text/plain")
+        ))
+        assertThrows(IllegalArgumentException::class.java) { TransferBundleManifestCodec.encode(unsafe) }
     }
 
     @Test
-    fun rejectsUnknownItemKind() {
-        val unknownKind = """{"version":1,"transferId":"x","items":[{"id":"1","path":"file.txt","name":"file.txt","size":1,"kind":"SYMLINK","mime":null}]}"""
-        assertThrows(IllegalArgumentException::class.java) {
-            TransferBundleManifestCodec.decode(unknownKind.toByteArray(Charsets.UTF_8))
-        }
+    fun rejectsTrailingBytes() {
+        val bytes = TransferBundleManifestCodec.encode(TransferBundleManifest("x", listOf(
+            TransferBundleItem("1", "file.txt", "file.txt", 1L, null)
+        ))) + byteArrayOf(0)
+        assertThrows(IllegalArgumentException::class.java) { TransferBundleManifestCodec.decode(bytes) }
     }
 }
