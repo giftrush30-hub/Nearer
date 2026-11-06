@@ -146,6 +146,11 @@ class MainActivity : ComponentActivity() {
     private var outgoingTransferId by mutableStateOf<String?>(null)
     private val pendingFileUris = java.util.ArrayDeque<Uri>()
     private val pendingBundleItemsByUri = HashMap<String, TransferBundleItem>()
+    // Keep a small two-file window for bundle sends: enough to overlap file setup
+    // and radio work without creating an unbounded queue of open descriptors.
+    private val activeNearbyOutgoingPayloadIds = ConcurrentHashMap.newKeySet<Long>()
+    private val nearbyOutgoingProgress = ConcurrentHashMap<Long, Float>()
+    private val maxParallelNearbyFiles = 2
     private var activeOutgoingBundleTransferId: String? = null
     private var outgoingProgress by mutableStateOf(0f)
     private var incomingTransferName by mutableStateOf<String?>(null)
@@ -259,6 +264,10 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     hybridConnected = false
                     hybridConnectedEndpoint = null
+                    activeNearbyOutgoingPayloadIds.clear()
+                    nearbyOutgoingProgress.clear()
+                    outgoingTransferId = null
+                    outgoingProgress = 0f
                     val abandonedQueueCount = synchronized(pendingFileUris) {
                         val count = pendingFileUris.size
                         pendingFileUris.clear()
@@ -325,9 +334,13 @@ class MainActivity : ComponentActivity() {
                         incomingProgress = fraction
                         chatNotice = if (total > 0L) "Receiving $name • ${(fraction * 100).toInt()}%" else "Receiving $name…"
                     } else {
-                        outgoingTransferId = "nearby:$payloadId"
-                        outgoingProgress = fraction
-                        chatNotice = if (total > 0L) "Sending $name • ${(fraction * 100).toInt()}%" else "Sending $name…"
+                        nearbyOutgoingProgress[payloadId] = fraction
+                        val payloadKey = "nearby:$payloadId"
+                        if (outgoingTransferId == null) outgoingTransferId = payloadKey
+                        if (outgoingTransferId == payloadKey) {
+                            outgoingProgress = fraction
+                            chatNotice = if (total > 0L) "Sending $name • ${(fraction * 100).toInt()}%" else "Sending $name…"
+                        }
                     }
                 }
             }
@@ -341,9 +354,14 @@ class MainActivity : ComponentActivity() {
             }
             override fun onOutgoingFileFinished(endpointId: String, payloadId: Long, name: String, success: Boolean, message: String) {
                 runOnUiThread {
-                    if (hybridConnectedEndpoint == endpointId && outgoingTransferId == "nearby:$payloadId") {
-                        outgoingTransferId = null
-                        outgoingProgress = 0f
+                    activeNearbyOutgoingPayloadIds.remove(payloadId)
+                    nearbyOutgoingProgress.remove(payloadId)
+                    if (hybridConnectedEndpoint == endpointId) {
+                        if (outgoingTransferId == "nearby:$payloadId") {
+                            val nextActive = activeNearbyOutgoingPayloadIds.firstOrNull()
+                            outgoingTransferId = nextActive?.let { "nearby:$it" }
+                            outgoingProgress = nextActive?.let { nearbyOutgoingProgress[it] ?: 0f } ?: 0f
+                        }
                         chatNotice = message
                         sendNextQueuedFile()
                     }
@@ -1653,8 +1671,13 @@ class MainActivity : ComponentActivity() {
             val payloadId = id.substringAfter("nearby:").toLongOrNull()
             val endpoint = hybridConnectedEndpoint
             if (payloadId != null && endpoint != null) nearbyTransport?.cancelFile(payloadId)
-            outgoingTransferId = null
-            outgoingProgress = 0f
+            if (payloadId != null) {
+                activeNearbyOutgoingPayloadIds.remove(payloadId)
+                nearbyOutgoingProgress.remove(payloadId)
+            }
+            val nextActive = activeNearbyOutgoingPayloadIds.firstOrNull()
+            outgoingTransferId = nextActive?.let { "nearby:$it" }
+            outgoingProgress = nextActive?.let { nearbyOutgoingProgress[it] ?: 0f } ?: 0f
             chatNotice = "Cancelling nearby file transfer…"
             sendNextQueuedFile()
             return
@@ -1772,10 +1795,31 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun sendNextQueuedFile() {
-        if (outgoingTransferId != null) return
         if (!hybridConnected && !chatReady) return
-        if (hybridConnected && hybridConnectedEndpoint == null) return
-        val next = synchronized(pendingFileUris) { if (pendingFileUris.isEmpty()) null else pendingFileUris.removeFirst() }
+        if (hybridConnected) {
+            if (hybridConnectedEndpoint == null) return
+            // Nearby supports multiple independent FILE payloads. A bounded window
+            // overlaps per-file preparation with active radio transfers.
+            while (activeNearbyOutgoingPayloadIds.size < maxParallelNearbyFiles) {
+                val next = synchronized(pendingFileUris) {
+                    if (pendingFileUris.isEmpty()) null else pendingFileUris.removeFirst()
+                } ?: break
+                sendFile(next)
+            }
+            val queueEmpty = synchronized(pendingFileUris) { pendingFileUris.isEmpty() }
+            if (queueEmpty && activeNearbyOutgoingPayloadIds.isEmpty()) {
+                activeOutgoingBundleTransferId = null
+                synchronized(pendingFileUris) { pendingBundleItemsByUri.clear() }
+                outgoingTransferId = null
+                outgoingProgress = 0f
+                chatNotice = "All selected files have been processed."
+            }
+            return
+        }
+        if (outgoingTransferId != null) return
+        val next = synchronized(pendingFileUris) {
+            if (pendingFileUris.isEmpty()) null else pendingFileUris.removeFirst()
+        }
         if (next != null) sendFile(next)
         else {
             activeOutgoingBundleTransferId = null
@@ -1791,8 +1835,8 @@ class MainActivity : ComponentActivity() {
                 chatNotice = "The nearby connection is not ready. Reconnect and try again."
                 return
             }
-            if (outgoingTransferId != null) {
-                chatNotice = "Finish or cancel the current file transfer first."
+            if (activeNearbyOutgoingPayloadIds.size >= maxParallelNearbyFiles) {
+                synchronized(pendingFileUris) { pendingFileUris.addFirst(uri) }
                 return
             }
             var fileName = "shared-file"
@@ -1818,9 +1862,15 @@ class MainActivity : ComponentActivity() {
                 relativePath = bundleItem?.relativePath
             )
             if (payloadId != null) {
-                outgoingTransferId = "nearby:$payloadId"
-                outgoingProgress = 0f
+                activeNearbyOutgoingPayloadIds.add(payloadId)
+                nearbyOutgoingProgress.putIfAbsent(payloadId, 0f)
+                if (outgoingTransferId == null) {
+                    outgoingTransferId = "nearby:$payloadId"
+                    outgoingProgress = 0f
+                }
                 chatNotice = "Preparing to send $fileName over Nearby Connections…"
+            } else {
+                sendNextQueuedFile()
             }
             return
         }
