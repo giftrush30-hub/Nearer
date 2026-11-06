@@ -84,4 +84,30 @@ class IncomingPayloadCompletionTrackerTest {
             IncomingPayloadCompletionTracker(ttlMillis = 0L)
         }
     }
+    @Test fun expiryRemainsCorrectAcrossSignedLongWraparound() {
+        var now = Long.MAX_VALUE - 100L
+        val tracker = IncomingPayloadCompletionTracker(
+            maxEntries = 4,
+            ttlMillis = 500L,
+            nowMillis = { now }
+        )
+        tracker.markCompleted("peer", 9L)
+        now += 499L
+        assertTrue(tracker.isCompleted("peer", 9L))
+        now += 1L
+        assertFalse(tracker.isCompleted("peer", 9L))
+        assertEquals(0, tracker.pendingCount())
+    }
+
+    @Test fun wrappedClockDoesNotPrematurelyExpireMarker() {
+        var now = Long.MAX_VALUE - 10L
+        val tracker = IncomingPayloadCompletionTracker(
+            ttlMillis = 100L,
+            nowMillis = { now }
+        )
+        tracker.markCompleted("peer", 10L)
+        now += 50L
+        assertTrue(tracker.isCompleted("peer", 10L))
+    }
+
 }
