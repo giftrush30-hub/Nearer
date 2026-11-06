@@ -355,10 +355,27 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
         for (y in 0..5) for (x in 9..14) tile(x, y, Color(0xFFDCE8FF))
         val yards = listOf(Offset(0f, 0f), Offset(0f, 9f), Offset(9f, 9f), Offset(9f, 0f))
         yards.forEachIndexed { i, p ->
-            drawRoundRect(colors[i].copy(alpha = 0.16f), Offset((p.x + 1f) * cell, (p.y + 1f) * cell),
+            val yardTopLeft = Offset((p.x + 1f) * cell, (p.y + 1f) * cell)
+            drawRoundRect(Color(0xFF172A45).copy(alpha = 0.10f),
+                Offset(yardTopLeft.x, yardTopLeft.y + cell * 0.09f),
                 Size(4f * cell, 4f * cell), CornerRadius(cell * 0.42f))
-            drawRoundRect(colors[i].copy(alpha = 0.55f), Offset((p.x + 1f) * cell, (p.y + 1f) * cell),
-                Size(4f * cell, 4f * cell), CornerRadius(cell * 0.42f), style = Stroke(cell * 0.055f))
+            drawRoundRect(
+                Brush.linearGradient(listOf(colors[i].copy(alpha = 0.28f), colors[i].copy(alpha = 0.12f))),
+                yardTopLeft, Size(4f * cell, 4f * cell), CornerRadius(cell * 0.42f)
+            )
+            drawRoundRect(Color.White.copy(alpha = 0.92f),
+                Offset(yardTopLeft.x + cell * 0.48f, yardTopLeft.y + cell * 0.48f),
+                Size(3.04f * cell, 3.04f * cell), CornerRadius(cell * 0.32f))
+            drawRoundRect(colors[i].copy(alpha = 0.72f),
+                Offset(yardTopLeft.x + cell * 0.48f, yardTopLeft.y + cell * 0.48f),
+                Size(3.04f * cell, 3.04f * cell), CornerRadius(cell * 0.32f),
+                style = Stroke(cell * 0.045f))
+            ludoBaseSpots[i].forEach { (x, y) ->
+                val socket = Offset((x + 0.5f) * cell, (y + 0.5f) * cell)
+                drawCircle(colors[i].copy(alpha = 0.14f), cell * 0.39f, socket)
+                drawCircle(colors[i].copy(alpha = 0.8f), cell * 0.34f, socket, style = Stroke(cell * 0.055f))
+                drawCircle(Color(0xFFF0F4FA), cell * 0.25f, socket)
+            }
         }
         ludoTrackCells.forEachIndexed { index, point ->
             val safe = LudoEngine.isSafeSquare(index)
