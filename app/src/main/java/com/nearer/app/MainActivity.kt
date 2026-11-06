@@ -2742,11 +2742,32 @@ private fun NeaRerHome(
                                     }
                                 }
                                 receivedFiles.take(2).forEach { fileItem ->
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("✓", color = Gold, fontSize = 18.sp, fontWeight = FontWeight.Black)
-                                        Text(fileItem.displayName, color = White, fontSize = 10.sp, maxLines = 1,
-                                            modifier = Modifier.weight(1f).padding(start = 8.dp))
-                                        TextButton(onClick = { onOpenFile(fileItem) }) { Text("OPEN", color = Gold, fontSize = 9.sp) }
+                                    val sizeBytes = fileItem.file.length()
+                                    val sizeLabel = when {
+                                        sizeBytes < 1024L -> "$sizeBytes B"
+                                        sizeBytes < 1024L * 1024L -> "${(sizeBytes / 1024.0).toInt()} KB"
+                                        sizeBytes < 1024L * 1024L * 1024L -> "${(sizeBytes / (1024.0 * 1024.0) * 10).toInt() / 10.0} MB"
+                                        else -> "${(sizeBytes / (1024.0 * 1024.0 * 1024.0) * 10).toInt() / 10.0} GB"
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text("✓", color = Color(0xFF8EF0C6), fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                fileItem.displayName,
+                                                color = White,
+                                                fontSize = 10.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text("Saved on this phone • $sizeLabel", color = Muted, fontSize = 8.sp)
+                                        }
+                                        TextButton(onClick = { onOpenFile(fileItem) }) {
+                                            Text("OPEN", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     }
                                 }
                                 if (hasTransferResult && incomingTransferName == null && outgoingTransferId == null) {
