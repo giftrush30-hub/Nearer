@@ -1,6 +1,6 @@
 # HyperTransfer performance decision: Nearby connection strategies
 
-Status: research-backed implementation decision; runtime strategy switching is not yet implemented.
+Status: research-backed decision; an opt-in runtime Point-to-Point mode is now implemented behind the HIGH-SPEED 1-TO-1 setting. It is not yet validated on physical devices, and no speed multiplier is claimed.
 
 ## Evidence reviewed
 
@@ -21,10 +21,10 @@ Status: research-backed implementation decision; runtime strategy switching is n
 
 ## Required implementation sequence
 
-- Add an explicit High-Speed mode choice visible on both devices.
-- Stop the existing Cluster advertising/discovery before starting Point-to-Point on both peers; do not attempt to upgrade an already-established Cluster connection in place.
-- Add a handshake/version capability so older builds fail back to Cluster safely.
-- Run identical files and conditions through Cluster and Point-to-Point, alternating sender/receiver roles.
+- [x] Add an explicit High-Speed mode choice visible on both devices; the setting is persisted locally.
+- [x] Select Point-to-Point before starting advertising/discovery when the mode is enabled; both peers must choose the same mode before searching.
+- [ ] Add an explicit peer capability/version handshake and safe compatibility fallback. The current UX relies on both users selecting the same strategy and does not negotiate it automatically.
+- [ ] Run identical files and conditions through Cluster and Point-to-Point, alternating sender/receiver roles.
 - Record median MiB/s, first-byte latency, failure rate, and thermal state over repeated runs. Compare medians, retain failed runs, and report device/network conditions.
 - Only enable automatic strategy selection after these tests show a repeatable benefit without unacceptable connection failures.
 
