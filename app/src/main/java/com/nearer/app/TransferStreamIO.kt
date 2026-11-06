@@ -30,7 +30,16 @@ internal object TransferStreamIO {
             val wanted = minOf(buffer.size.toLong(), expectedBytes - copied).toInt()
             val read = input.read(buffer, 0, wanted)
             if (read < 0) throw EOFException("Transfer stream ended before the declared file size")
-            if (read == 0) continue
+            if (read == 0) {
+                // A few custom/provider streams can legally make no progress on a
+                // bulk read. Fall back to one byte so we cannot spin forever.
+                val single = input.read()
+                if (single < 0) throw EOFException("Transfer stream ended before the declared file size")
+                output.write(single)
+                digest.update(single.toByte())
+                copied += 1L
+                continue
+            }
             output.write(buffer, 0, read)
             digest.update(buffer, 0, read)
             copied += read
@@ -39,7 +48,8 @@ internal object TransferStreamIO {
         return CopyResult(copied, digest.digest())
     }
 
-    fun sha256Hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
+    fun sha256Hex(digestBytes: ByteArray): String =
+        digestBytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
 
 internal class TransferCancelledException : Exception("Transfer cancelled")
