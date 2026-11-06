@@ -33,6 +33,19 @@ class TransferBundleManifestCodecTest {
     }
 
     @Test
+    fun rejectsMalformedUtf8InsteadOfSilentlyReplacingIt() {
+        val encoded = TransferBundleManifestCodec.encode(TransferBundleManifest("abc", listOf(
+            TransferBundleItem("1", "file.txt", "file.txt", 1L, null)
+        )))
+        // Header is magic, version, transfer-ID byte length; the first ID byte
+        // begins at offset 12. 0xC3 followed by ASCII is not valid UTF-8.
+        encoded[12] = 0xC3.toByte()
+        assertThrows(IllegalArgumentException::class.java) {
+            TransferBundleManifestCodec.decode(encoded)
+        }
+    }
+
+    @Test
     fun rejectsTrailingBytes() {
         val bytes = TransferBundleManifestCodec.encode(TransferBundleManifest("x", listOf(
             TransferBundleItem("1", "file.txt", "file.txt", 1L, null)
