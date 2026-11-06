@@ -68,7 +68,7 @@ class FlashCallScreeningService : CallScreeningService() {
         const val KEY_LAST_CALL = "last_call"
         const val CHANNEL_ID = "nearer_flash_messages"
         const val NOTIFICATION_ID = 7042
-        const val BURST_WINDOW_MS = 300_000L
+        const val BURST_WINDOW_MS = 120_000L
         val FLASH_CODES = mapOf(
             1 to "Call me when you can",
             2 to "Come outside",
