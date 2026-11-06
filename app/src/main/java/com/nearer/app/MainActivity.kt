@@ -2148,29 +2148,49 @@ private fun NeaRerHome(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("TRANSFER ACTIVITY", color = White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                                     Spacer(Modifier.weight(1f))
-                                    Text(if (incomingTransferName != null || outgoingTransferId != null) "IN PROGRESS" else "RECENT", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                    Text(
+                                        if (incomingTransferName != null || outgoingTransferId != null) "IN PROGRESS" else "RECENT",
+                                        color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black,
+                                        modifier = Modifier.alpha(if (incomingTransferName != null || outgoingTransferId != null) pulse else 1f)
+                                    )
                                 }
                                 incomingTransferName?.let { name ->
                                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                         Text("Receiving $name", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                        LinearProgressIndicator(
-                                            progress = { incomingProgress.coerceIn(0f, 1f) },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            color = BrandBlue,
-                                            trackColor = Color(0xFF24436D)
-                                        )
+                                        if (incomingProgress <= 0f) {
+                                            LinearProgressIndicator(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                color = BrandBlue,
+                                                trackColor = Color(0xFF24436D)
+                                            )
+                                        } else {
+                                            LinearProgressIndicator(
+                                                progress = { incomingProgress.coerceIn(0f, 1f) },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                color = BrandBlue,
+                                                trackColor = Color(0xFF24436D)
+                                            )
+                                        }
                                         Text("${(incomingProgress * 100).toInt().coerceIn(0, 100)}% received", color = Muted, fontSize = 9.sp)
                                     }
                                 }
                                 if (outgoingTransferId != null) {
                                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                         Text("Sending file to nearby device", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                        LinearProgressIndicator(
-                                            progress = { outgoingProgress.coerceIn(0f, 1f) },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            color = Gold,
-                                            trackColor = Color(0xFF24436D)
-                                        )
+                                        if (outgoingProgress <= 0f) {
+                                            LinearProgressIndicator(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                color = Gold,
+                                                trackColor = Color(0xFF24436D)
+                                            )
+                                        } else {
+                                            LinearProgressIndicator(
+                                                progress = { outgoingProgress.coerceIn(0f, 1f) },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                color = Gold,
+                                                trackColor = Color(0xFF24436D)
+                                            )
+                                        }
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text("${(outgoingProgress * 100).toInt().coerceIn(0, 100)}% sent", color = Muted, fontSize = 9.sp)
                                             Spacer(Modifier.weight(1f))
