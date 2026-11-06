@@ -242,6 +242,7 @@ class MainActivity : ComponentActivity() {
                     incomingRequesterName = null
                     connectedDeviceName = name
                     chatReady = true
+                    resumeLudoAfterReconnect(name)
                     connectionMessage = "Secure nearby connection active"
                     approvalMessage = "Connection approved"
                     chatNotice = "Connected to $name. Offline chat is ready."
@@ -252,16 +253,16 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     hybridConnected = false
                     hybridConnectedEndpoint = null
-                    activeGame = null
+                    activeGame = activeGame?.let { it.copy(ready = false) }
                     incomingGameInvite = null
-                    gameChatMessages.clear()
                     val lastName = hybridPeers.remove(id) ?: name
                     recordRecentlySeen(stableId.ifBlank { id }, lastName)
                     pendingHybridEndpoint = null
                     connectedDeviceName = null
                     chatReady = false
                     connectionMessage = "Not connected"
-                    chatNotice = "Nearby connection ended. Search again to reconnect."
+                    chatNotice = if (activeGame != null) "Connection paused. Your Ludo match is saved here; reconnect to $lastName to continue." else "Nearby connection ended. Search again to reconnect."
+                    if (activeGame != null) communityNotice = "Ludo paused — waiting for $lastName to reconnect."
                 }
             }
             override fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
@@ -756,6 +757,7 @@ class MainActivity : ComponentActivity() {
                 if (accepted) {
                     runOnUiThread {
                         chatReady = true
+                        resumeLudoAfterReconnect(name)
                         incomingRequesterName = null
                         approvalMessage = "Connection approved. Private chat can now be opened."
                         connectionMessage = "NeaRer connection approved"
@@ -819,6 +821,7 @@ class MainActivity : ComponentActivity() {
                     "ACCEPT" -> {
                         runOnUiThread {
                             chatReady = true
+                            resumeLudoAfterReconnect(connectedDeviceName ?: "Nearby device")
                             approvalMessage = "Your connection request was approved."
                             connectionMessage = "NeaRer connection approved"
                             chatNotice = "Connected directly to the other phone. Say hello."
@@ -1187,6 +1190,15 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                "ludo_sync" -> activeGame?.let { game ->
+                    if (game.isHost && game.matchId == packet.optString("matchId") &&
+                        sender == game.opponentName && !game.ready) {
+                        val resumed = game.copy(ready = true, revision = game.revision + 1L)
+                        activeGame = resumed
+                        sendLudoState(resumed)
+                        communityNotice = "$sender reconnected. Ludo board synchronised."
+                    }
+                }
                 "ludo_rematch" -> activeGame?.let { game ->
                     if (game.isHost && game.matchId == packet.optString("matchId") &&
                         game.ready && game.state.isFinished && sender == game.opponentName &&
@@ -1346,6 +1358,25 @@ class MainActivity : ComponentActivity() {
             ) == true
             if (!sent) communityNotice = "Your move could not reach the host. Check the nearby connection."
         }
+    }
+
+    private fun resumeLudoAfterReconnect(peerName: String) {
+        val game = activeGame ?: return
+        if (peerName != game.opponentName || game.ready) return
+        if (game.isHost) {
+            val resumed = game.copy(ready = true, revision = game.revision + 1L)
+            activeGame = resumed
+            sendLudoState(resumed)
+        } else {
+            activeGame = game.copy(ready = true)
+            val sent = sendCommunityToNames(
+                "NR_COMMUNITY:" + JSONObject().put("type", "ludo_sync")
+                    .put("matchId", game.matchId).put("revision", game.revision).put("sender", displayName),
+                setOf(game.opponentName)
+            ) == true
+            if (!sent) communityNotice = "Reconnected, but the host has not resumed the match yet."
+        }
+        communityNotice = "Reconnected to $peerName. Restoring your Ludo match…"
     }
 
     private fun newNetworkLudoState(game: LudoNetworkMatch): LudoNetworkMatch {
@@ -1723,10 +1754,10 @@ class MainActivity : ComponentActivity() {
                     val wasReady = chatReady
                     closePeerTransport()
                     if (wasReady) {
-                        activeGame = null
+                        activeGame = activeGame?.let { it.copy(ready = false) }
                         incomingGameInvite = null
-                        gameChatMessages.clear()
-                        chatNotice = "The nearby connection ended. Reconnect to continue chatting."
+                        chatNotice = if (activeGame != null) "Connection paused. Reconnect to resume your Ludo match." else "The nearby connection ended. Reconnect to continue chatting."
+                        if (activeGame != null) communityNotice = "Ludo paused — reconnect to your opponent to resume."
                         connectionMessage = "Connection ended"
                     }
                 }
