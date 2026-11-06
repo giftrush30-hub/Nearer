@@ -316,39 +316,61 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         if (!completedPayloads.remove(payloadId, payload)) return
         incomingPayloads.remove(payloadId)
         incomingMetadata.remove(payloadId)
-        fileIo.execute {
-            var destination: File? = null
-            try {
-                val folder = File(appContext.filesDir, "received").apply { mkdirs() }
-                val target = File(folder, "${System.currentTimeMillis()}-${meta.name}")
-                destination = target
-                val uri: Uri = payload.asFile()?.asUri() ?: throw IllegalStateException("Nearby file content is unavailable")
-                appContext.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(target).use { output ->
-                        val buffer = ByteArray(HyperTransferTuning.receiveBufferBytes(appContext))
-                        var copied = 0L
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            copied += count
-                            if (copied > meta.size) throw IllegalStateException("Received file exceeded its declared size")
-                            output.write(buffer, 0, count)
-                        }
-                        output.flush()
-                        if (copied != meta.size) throw IllegalStateException("Received file size did not match")
+        try {
+            fileIo.execute {
+                var temporary: File? = null
+                var destination: File? = null
+                try {
+                    val folder = File(appContext.filesDir, "received").apply {
+                        if (!exists() && !mkdirs()) throw IllegalStateException("Could not create the received-files folder")
+                        if (!isDirectory) throw IllegalStateException("Received-files location is not a folder")
                     }
-                } ?: throw IllegalStateException("Could not open the received file")
-                appContext.contentResolver.delete(uri, null, null)
-                listener.onFileReceived(meta.endpointId, meta.name, target)
-                completedTransferRates.remove(payloadId)?.let { rate ->
-                    listener.onFileStatus("Received ${meta.name} • $rate MB/s average")
+                    val uniquePrefix = "${System.currentTimeMillis()}-${UUID.randomUUID().toString().take(8)}"
+                    val target = File(folder, "$uniquePrefix-${meta.name}")
+                    val temp = File(folder, ".$uniquePrefix.part")
+                    temporary = temp
+                    destination = target
+
+                    val uri: Uri = payload.asFile()?.asUri()
+                        ?: throw IllegalStateException("Nearby file content is unavailable")
+                    val copied = appContext.contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(temp).use { output ->
+                            val result = TransferStreamIO.copyExactly(
+                                input = input,
+                                output = output,
+                                expectedBytes = meta.size,
+                                bufferBytes = HyperTransferTuning.receiveBufferBytes(appContext)
+                            )
+                            output.fd.sync()
+                            result
+                        }
+                    } ?: throw IllegalStateException("Could not open the received file")
+
+                    if (copied.bytesCopied != meta.size || temp.length() != meta.size) {
+                        throw IllegalStateException("Received file size did not match")
+                    }
+                    if (target.exists()) throw IllegalStateException("A file with this destination name already exists")
+                    if (!temp.renameTo(target)) {
+                        throw IllegalStateException("Could not safely finalize the received file")
+                    }
+                    temporary = null
+                    appContext.contentResolver.delete(uri, null, null)
+                    listener.onFileReceived(meta.endpointId, meta.name, target)
+                    completedTransferRates.remove(payloadId)?.let { rate ->
+                        listener.onFileStatus("Received ${meta.name} • $rate MB/s average • integrity digest calculated")
+                    }
+                } catch (error: Exception) {
+                    temporary?.delete()
+                    destination?.takeIf { it.exists() }?.delete()
+                    listener.onFileStatus("Could not save the received file: ${error.localizedMessage ?: "transfer error"}")
+                } finally {
+                    try { payload.close() } catch (_: Exception) { }
                 }
-            } catch (error: Exception) {
-                destination?.delete()
-                listener.onFileStatus("Could not save the received file: ${error.localizedMessage ?: "transfer error"}")
-            } finally {
-                try { payload.close() } catch (_: Exception) { }
             }
+        } catch (error: Exception) {
+            completedTransferRates.remove(payloadId)
+            try { payload.close() } catch (_: Exception) { }
+            listener.onFileStatus("Could not queue the received file for saving: ${error.localizedMessage ?: "storage busy"}")
         }
     }
 
