@@ -849,6 +849,9 @@ class MainActivity : ComponentActivity() {
     private fun disconnectFromPeer() {
         nearbyTransport?.disconnect()
         hybridConnected = false
+        activeGame = null
+        incomingGameInvite = null
+        gameChatMessages.clear()
         val activeChannel = channel
         transportStarted = false
         closePeerTransport()
@@ -1664,6 +1667,9 @@ class MainActivity : ComponentActivity() {
                     val wasReady = chatReady
                     closePeerTransport()
                     if (wasReady) {
+                        activeGame = null
+                        incomingGameInvite = null
+                        gameChatMessages.clear()
                         chatNotice = "The nearby connection ended. Reconnect to continue chatting."
                         connectionMessage = "Connection ended"
                     }
