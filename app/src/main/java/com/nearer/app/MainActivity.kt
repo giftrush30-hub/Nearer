@@ -391,8 +391,7 @@ class MainActivity : ComponentActivity() {
                     onHybridConnect = { id -> nearbyTransport?.request(id) },
                     onFindNearby = ::startDiscovery,
                     onStopSearch = ::stopDiscovery,
-                    onConnect = ::connectToDevice,
-                    onOpenFlash = { startActivity(Intent(this, FlashActivity::class.java)) }
+                    onConnect = ::connectToDevice
                 )
             }
         }
@@ -1519,8 +1518,7 @@ private fun NeaRerHome(
     onHybridConnect: (String) -> Unit,
     onFindNearby: () -> Unit,
     onStopSearch: () -> Unit,
-    onConnect: (WifiP2pDevice) -> Unit,
-    onOpenFlash: () -> Unit
+    onConnect: (WifiP2pDevice) -> Unit
 ) {
     var draft by remember { mutableStateOf("") }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
@@ -1619,15 +1617,12 @@ private fun NeaRerHome(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("✦", color = Gold, fontSize = 25.sp)
                         Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
-                            Text("NEARER FLASH", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                            Text("Send a signal beyond distance", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Text("NEARER MESSAGES", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            Text("One chat. Smarter delivery.", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         }
-                        Text("NEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                        Text("DIRECT", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
                     }
-                    Text("Preset missed-call messages over the cellular voice network. No mobile data required.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
-                    Button(onClick = onOpenFlash, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)) {
-                        Text("OPEN NEARER FLASH", fontWeight = FontWeight.Bold)
-                    }
+                    Text("Send a normal message in your private chat. NeaRer uses the available nearby connection, confirms when the other phone acknowledges it, and keeps the conversation on your device.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                 }
             }
 
