@@ -150,7 +150,6 @@ class MainActivity : ComponentActivity() {
     // and radio work without creating an unbounded queue of open descriptors.
     private val activeNearbyOutgoingPayloadIds = ConcurrentHashMap.newKeySet<Long>()
     private val nearbyOutgoingProgress = ConcurrentHashMap<Long, Float>()
-    private val maxParallelNearbyFiles = 2
     private var activeOutgoingBundleTransferId: String? = null
     private var outgoingProgress by mutableStateOf(0f)
     private var incomingTransferName by mutableStateOf<String?>(null)
@@ -1789,13 +1788,29 @@ class MainActivity : ComponentActivity() {
         else chatNotice = uris.size.toString() + " file(s) added to the transfer queue."
     }
 
+    private fun nearbyOutgoingWindowSize(): Int {
+        val manager = getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        val memory = android.app.ActivityManager.MemoryInfo()
+        manager?.getMemoryInfo(memory)
+        val thermalStatus = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            (getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager)?.currentThermalStatus ?: 0
+        } else 0
+        return TransferConcurrencyPolicy.maxParallelFiles(
+            availableMemoryBytes = memory.availMem,
+            lowMemory = memory.lowMemory,
+            lowRamDevice = manager?.isLowRamDevice == true,
+            thermalStatus = thermalStatus
+        )
+    }
+
     private fun sendNextQueuedFile() {
         if (!hybridConnected && !chatReady) return
         if (hybridConnected) {
             if (hybridConnectedEndpoint == null) return
-            // Nearby supports multiple independent FILE payloads. A bounded window
-            // overlaps per-file preparation with active radio transfers.
-            while (activeNearbyOutgoingPayloadIds.size < maxParallelNearbyFiles) {
+            // Two payloads can overlap on capable phones; memory or severe thermal
+            // pressure automatically falls back to one in-flight file.
+            val windowSize = nearbyOutgoingWindowSize()
+            while (activeNearbyOutgoingPayloadIds.size < windowSize) {
                 if (nearbyTransport?.isEndpointConnected(hybridConnectedEndpoint!!) != true) break
                 val next = synchronized(pendingFileUris) {
                     if (pendingFileUris.isEmpty()) null else pendingFileUris.removeFirst()
@@ -1831,7 +1846,7 @@ class MainActivity : ComponentActivity() {
                 chatNotice = "The nearby connection is not ready. Reconnect and try again."
                 return
             }
-            if (activeNearbyOutgoingPayloadIds.size >= maxParallelNearbyFiles) {
+            if (activeNearbyOutgoingPayloadIds.size >= nearbyOutgoingWindowSize()) {
                 synchronized(pendingFileUris) { pendingFileUris.addFirst(uri) }
                 return
             }
