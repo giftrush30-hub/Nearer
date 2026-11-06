@@ -1,5 +1,6 @@
 package com.nearer.app.games.ludo
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -303,9 +304,21 @@ private fun DiceFace(value: Int, rolling: Boolean, modifier: Modifier = Modifier
 @Composable
 private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifier, onTokenTap: (Int) -> Unit) {
     val animated = game.players.map { player ->
-        player.tokens.map { target ->
-            animateFloatAsState(target.toFloat(), tween((abs(target + 1) * 95).toInt().coerceIn(260, 1150),
-                easing = FastOutSlowInEasing), label = "token-" + player.id + "-" + target).value
+        player.tokens.mapIndexed { tokenIndex, target ->
+            val progress = remember(player.id, tokenIndex) { Animatable(target.toFloat()) }
+            LaunchedEffect(player.id, tokenIndex, target) {
+                val distance = abs(target.toFloat() - progress.value)
+                if (distance > 0.001f) {
+                    progress.animateTo(
+                        targetValue = target.toFloat(),
+                        animationSpec = tween(
+                            durationMillis = (distance * 92f).toInt().coerceIn(220, 1050),
+                            easing = FastOutSlowInEasing
+                        )
+                    )
+                }
+            }
+            progress.value
         }
     }
     Canvas(
