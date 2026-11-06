@@ -42,6 +42,8 @@ internal class TransferResumeExchangeTracker(
     )
 
     private val entries = LinkedHashMap<Key, Entry>()
+    // Short-lived tombstones prevent late/duplicate callbacks from recreating a completed or rejected exchange.
+    private val terminalEntries = LinkedHashMap<Key, Long>()
 
     init {
         require(entryTtlMillis > 0L) { "Resume exchange expiry must be positive" }
@@ -54,6 +56,7 @@ internal class TransferResumeExchangeTracker(
     fun recordProposal(endpointId: String, envelope: TransferResumeMessageCodec.Envelope): Update {
         val key = key(endpointId, envelope.payloadId) ?: return Update.INVALID_KEY
         pruneExpired()
+        if (terminalEntries.containsKey(key)) return Update.DUPLICATE
         val entry = entryFor(key) ?: return Update.CAPACITY_REACHED
         val existing = entry.proposal
         if (existing != null) return if (existing == envelope.proposal) Update.DUPLICATE else invalidate(key)
@@ -65,6 +68,7 @@ internal class TransferResumeExchangeTracker(
     fun recordDecision(endpointId: String, envelope: TransferResumeMessageCodec.DecisionEnvelope): Update {
         val key = key(endpointId, envelope.payloadId) ?: return Update.INVALID_KEY
         pruneExpired()
+        if (terminalEntries.containsKey(key)) return Update.DUPLICATE
         val entry = entryFor(key) ?: return Update.CAPACITY_REACHED
         val existing = entry.decision
         if (existing != null) return if (existing == envelope.decision) Update.DUPLICATE else invalidate(key)
@@ -76,8 +80,9 @@ internal class TransferResumeExchangeTracker(
     fun recordDataPayload(endpointId: String, payloadId: Long): Update {
         val key = key(endpointId, payloadId) ?: return Update.INVALID_KEY
         pruneExpired()
+        if (terminalEntries.containsKey(key)) return Update.DUPLICATE
         val entry = entryFor(key) ?: return Update.CAPACITY_REACHED
-        if (entry.dataPayloadSeen) return Update.DUPLICATE
+        if (entry.dataPayloadSeen return Update.DUPLICATE
         entry.dataPayloadSeen = true
         return Update.STORED
     }
@@ -97,6 +102,7 @@ internal class TransferResumeExchangeTracker(
         val decision = entry.decision ?: return null
         entry.consumed = true
         entries.remove(key)
+        rememberTerminal(key)
         return ReadyExchange(key, proposal, decision)
     }
 
@@ -106,11 +112,16 @@ internal class TransferResumeExchangeTracker(
         while (iterator.hasNext()) {
             if (iterator.next().endpointId == endpointId) iterator.remove()
         }
+        val terminalIterator = terminalEntries.keys.iterator()
+        while (terminalIterator.hasNext()) {
+            if (terminalIterator.next().endpointId == endpointId) terminalIterator.remove()
+        }
     }
 
     @Synchronized
     fun clear() {
         entries.clear()
+        terminalEntries.clear()
     }
 
     @Synchronized
@@ -127,7 +138,17 @@ internal class TransferResumeExchangeTracker(
 
     private fun invalidate(key: Key): Update {
         entries.remove(key)
+        rememberTerminal(key)
         return Update.CONFLICT
+    }
+
+    private fun rememberTerminal(key: Key) {
+        terminalEntries[key] = nowMillis()
+        val maxTerminalEntries = (maxPendingExchanges * 2).coerceAtMost(MAX_ALLOWED_PENDING * 2)
+        while (terminalEntries.size > maxTerminalEntries) {
+            val oldest = terminalEntries.keys.iterator()
+            if (oldest.hasNext()) { oldest.next(); oldest.remove() } else break
+        }
     }
 
     private fun pruneExpired() {
@@ -136,6 +157,11 @@ internal class TransferResumeExchangeTracker(
         while (iterator.hasNext()) {
             val entry = iterator.next().value
             if (now - entry.updatedAtMillis >= entryTtlMillis || now < entry.updatedAtMillis) iterator.remove()
+        }
+        val terminalIterator = terminalEntries.entries.iterator()
+        while (terminalIterator.hasNext()) {
+            val createdAt = terminalIterator.next().value
+            if (now - createdAt >= entryTtlMillis || now < createdAt) terminalIterator.remove()
         }
     }
 
