@@ -53,6 +53,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private data class FileMeta(val endpointId: String, val name: String, val size: Long)
     private val incomingMetadata = ConcurrentHashMap<Long, FileMeta>()
     private val incomingPayloads = ConcurrentHashMap<Long, Payload>()
+    private val incomingPayloadEndpoints = ConcurrentHashMap<Long, String>()
     private val completedPayloads = ConcurrentHashMap<Long, Payload>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
     private val transferStartedAtNanos = ConcurrentHashMap<Long, Long>()
@@ -200,6 +201,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 Payload.Type.BYTES -> handleBytes(id, payload.asBytes())
                 Payload.Type.FILE -> {
                     incomingPayloads[payload.id] = payload
+                    incomingPayloadEndpoints[payload.id] = id
                     val meta = incomingMetadata[payload.id]
                     listener.onFileProgress(id, payload.id, meta?.name ?: "Incoming file", 0L, meta?.size ?: -1L, true)
                     processCompletedFile(payload.id)
@@ -243,6 +245,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 incomingMetadata.remove(payloadId)
                 incomingPayloads.remove(payloadId)?.close()
                 completedPayloads.remove(payloadId)?.close()
+                incomingPayloadEndpoints.remove(payloadId)
                 listener.onFileStatus("Nearby file transfer failed or was cancelled.")
             }
         }
@@ -313,8 +316,20 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private fun processCompletedFile(payloadId: Long) {
         val payload = completedPayloads[payloadId] ?: return
         val meta = incomingMetadata[payloadId] ?: return
+        val payloadEndpoint = incomingPayloadEndpoints[payloadId]
+        if (payloadEndpoint == null) return
+        if (payloadEndpoint != meta.endpointId) {
+            completedPayloads.remove(payloadId, payload)
+            incomingPayloads.remove(payloadId)
+            incomingPayloadEndpoints.remove(payloadId)
+            incomingMetadata.remove(payloadId)
+            try { payload.close() } catch (_: Exception) { }
+            listener.onFileStatus("File details did not match the sending phone. The transfer was rejected.")
+            return
+        }
         if (!completedPayloads.remove(payloadId, payload)) return
         incomingPayloads.remove(payloadId)
+        incomingPayloadEndpoints.remove(payloadId)
         incomingMetadata.remove(payloadId)
         try {
             fileIo.execute {
@@ -324,6 +339,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     val folder = File(appContext.filesDir, "received").apply {
                         if (!exists() && !mkdirs()) throw IllegalStateException("Could not create the received-files folder")
                         if (!isDirectory) throw IllegalStateException("Received-files location is not a folder")
+                    }
+                    val usableBytes = folder.usableSpace
+                    if (meta.size > usableBytes) {
+                        throw IllegalStateException("Not enough free storage for this file")
                     }
                     val uniquePrefix = "${System.currentTimeMillis()}-${UUID.randomUUID().toString().take(8)}"
                     val target = File(folder, "$uniquePrefix-${meta.name}")
