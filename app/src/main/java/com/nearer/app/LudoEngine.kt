@@ -45,9 +45,10 @@ object LudoEngine {
 
     fun newGame(
         names: Map<LudoColor, String> = emptyMap(),
-        computerPlayers: Set<LudoColor> = emptySet()
+        computerPlayers: Set<LudoColor> = emptySet(),
+        playerColors: List<LudoColor> = LudoColor.entries
     ): LudoGameState = LudoGameState(
-        players = LudoColor.entries.map { color ->
+        players = playerColors.distinct().map { color ->
             LudoPlayer(
                 color = color,
                 name = names[color]?.trim()?.take(20)?.ifBlank { color.name.lowercase().replaceFirstChar { it.uppercase() } }
