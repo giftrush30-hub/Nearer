@@ -1859,10 +1859,11 @@ private fun NeaRerHome(
         return
     }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
-        Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(pageScrollState).padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
+        Column(Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier.weight(1f).verticalScroll(pageScrollState).padding(horizontal = 18.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1883,30 +1884,7 @@ private fun NeaRerHome(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                listOf("Home" to "home", "Nearby" to "nearby", "Chats" to "chats", "Community" to "community").forEach { (label, key) ->
-                    Button(
-                        onClick = {
-                            activeSection = key
-                            navigationScope.launch {
-                                pageScrollState.animateScrollTo((sectionPositions[key] ?: 0).coerceAtLeast(0))
-                            }
-                        },
-                        modifier = Modifier.height(48.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 15.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(50),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (activeSection == key) Mint else Color(0xFF1C2E47),
-                            contentColor = if (activeSection == key) Midnight else White
-                        )
-                    ) { Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                }
-            }
-
+            if (activeSection == "home") {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Text("YOUR NEARER NAME", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -1969,6 +1947,9 @@ private fun NeaRerHome(
                 }
             }
 
+            }
+
+            if (activeSection == "games") {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF15315A), border = BorderStroke(1.dp, Color(0xFF42618B))) {
                 Column(modifier = Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1987,6 +1968,9 @@ private fun NeaRerHome(
                 }
             }
 
+            }
+
+            if (activeSection == "nearby") {
             Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
                 sectionPositions["nearby"] = it.positionInParent().y.toInt()
             }, shape = RoundedCornerShape(26.dp), color = Panel) {
@@ -2042,6 +2026,9 @@ private fun NeaRerHome(
                 }
             }
 
+            }
+
+            if (activeSection == "chats") {
             Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
                 sectionPositions["chats"] = it.positionInParent().y.toInt()
             }, shape = RoundedCornerShape(20.dp), color = Panel) {
@@ -2138,6 +2125,9 @@ private fun NeaRerHome(
                 }
             }
 
+            }
+
+            if (activeSection == "community") {
             androidx.compose.foundation.layout.Box(
                 Modifier.fillMaxWidth().onGloballyPositioned {
                     sectionPositions["community"] = it.positionInParent().y.toInt()
@@ -2149,6 +2139,9 @@ private fun NeaRerHome(
                     onRejectGameInvite, onGameMove, onGameChat, onEndGame)
             }
 
+            }
+
+            if (activeSection == "community") {
             if (incomingRequesterName != null) {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2174,6 +2167,9 @@ private fun NeaRerHome(
                 }
             }
 
+            }
+
+            if (activeSection == "nearby") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("NEARBY DEVICES", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
                 Spacer(modifier = Modifier.weight(1f))
@@ -2314,7 +2310,44 @@ private fun NeaRerHome(
             }
 
             Spacer(modifier = Modifier.weight(1f, fill = false))
+            }
+
             Text("NEARER  •  DIRECT DEVICE DISCOVERY", color = Muted, fontSize = 10.sp, letterSpacing = 1.sp)
+            }
+            Surface(color = Color(0xFF0D1E35), modifier = Modifier.fillMaxWidth(), shadowElevation = 14.dp) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    listOf(
+                        Triple("⌂", "Home", "home"),
+                        Triple("◎", "Nearby", "nearby"),
+                        Triple("✉", "Chats", "chats"),
+                        Triple("♟", "Community", "community"),
+                        Triple("♜", "Games", "games")
+                    ).forEach { item ->
+                        val selected = activeSection == item.third
+                        Surface(
+                            modifier = Modifier.weight(1f).clickable {
+                                activeSection = item.third
+                                navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                            },
+                            color = if (selected) Color(0xFF25466F) else Color.Transparent,
+                            shape = RoundedCornerShape(13.dp),
+                            border = if (selected) BorderStroke(1.dp, Gold.copy(alpha = 0.7f)) else null
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(vertical = 7.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(item.first, color = if (selected) Gold else Muted, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                Text(item.second, color = if (selected) White else Muted, fontSize = 8.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
