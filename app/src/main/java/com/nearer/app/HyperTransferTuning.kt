@@ -32,6 +32,7 @@ internal object HyperTransferTuning {
         }
         return chooseReceiveBufferBytes(
             availableMemoryBytes = memory.availMem,
+            lowMemory = memory.lowMemory,
             lowRamDevice = lowRamDevice,
             thermalStatus = thermalStatus
         )
@@ -43,11 +44,12 @@ internal object HyperTransferTuning {
      */
     internal fun chooseReceiveBufferBytes(
         availableMemoryBytes: Long,
+        lowMemory: Boolean,
         lowRamDevice: Boolean,
         thermalStatus: Int
     ): Int = when {
         thermalStatus >= 3 -> BUFFER_SMALL
-        lowRamDevice || availableMemoryBytes < LOW_MEMORY_BYTES -> BUFFER_BALANCED
+        lowMemory || lowRamDevice || availableMemoryBytes < LOW_MEMORY_BYTES -> BUFFER_BALANCED
         thermalStatus >= 2 -> BUFFER_BALANCED
         else -> BUFFER_FAST
     }
