@@ -2006,6 +2006,11 @@ private fun NeaRerHome(
                             Text("er", color = White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
                         }
                         Text("No Data? We Are NeaRer.", color = Muted, fontSize = 12.sp)
+                        Text(
+                            "Welcome back, ${displayName.trim().ifBlank { "friend" }}",
+                            color = Color(0xFFBFD8FF), fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     } else {
                         Text(
                             when (activeSection) {
@@ -2029,10 +2034,17 @@ private fun NeaRerHome(
                         )
                     }
                 }
-                Surface(shape = CircleShape, color = Color(0xFF123D7A),
-                    border = BorderStroke(1.dp, Color(0xFF347CEB)), modifier = Modifier.size(46.dp)) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF123D7A),
+                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.72f)),
+                    modifier = Modifier.size(46.dp)
+                ) {
                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                        Text("N", color = Gold, fontSize = 21.sp, fontWeight = FontWeight.Black)
+                        Text(
+                            displayName.trim().firstOrNull()?.uppercase() ?: "N",
+                            color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Black
+                        )
                     }
                 }
             }
@@ -2047,7 +2059,16 @@ private fun NeaRerHome(
                         border = BorderStroke(1.dp, Color(0xFF347CEB)),
                         shadowElevation = 12.dp
                     ) {
-                        Column(Modifier.padding(19.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                        Column(
+                            Modifier.fillMaxWidth()
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(Color(0xFF123F87), Color(0xFF0B2854), Color(0xFF102F65))
+                                    )
+                                )
+                                .padding(19.dp),
+                            verticalArrangement = Arrangement.spacedBy(13.dp)
+                        ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(42.dp)) {
                                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
@@ -2055,9 +2076,12 @@ private fun NeaRerHome(
                                     }
                                 }
                                 Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                                    Text("YOUR OFFLINE SHARING SPACE", color = Color(0xFFBFD8FF), fontSize = 9.sp,
-                                        fontWeight = FontWeight.Black, letterSpacing = 1.1.sp)
-                                    Text("Fast. Direct. NeaRer.", color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        "YOUR OFFLINE SHARING SPACE",
+                                        color = Color(0xFFFFDFA0), fontSize = 9.sp,
+                                        fontWeight = FontWeight.Black, letterSpacing = 1.35.sp
+                                    )
+                                    Text("Fast. Direct. NeaRer.", color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                 }
                                 Surface(shape = RoundedCornerShape(30.dp), color = if (chatReady) Color(0xFF155B4B) else Color(0xFF173F78)) {
                                     Text(if (chatReady) "● CONNECTED" else "● OFFLINE READY",
