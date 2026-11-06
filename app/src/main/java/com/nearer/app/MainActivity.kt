@@ -24,6 +24,9 @@ import android.os.Handler
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
+import java.io.FileInputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.net.InetSocketAddress
@@ -77,6 +80,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -1495,6 +1499,51 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun getShareableApps(): List<ShareableApp> {
+        return try {
+            val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            packageManager.queryIntentActivities(launcherIntent, 0)
+                .mapNotNull { resolve ->
+                    val appInfo = resolve.activityInfo?.applicationInfo ?: return@mapNotNull null
+                    if (appInfo.packageName == packageName) return@mapNotNull null
+                    val base = appInfo.sourceDir?.takeIf { File(it).isFile } ?: return@mapNotNull null
+                    val splits = appInfo.splitSourceDirs?.filter { File(it).isFile } ?: emptyList()
+                    ShareableApp(resolve.loadLabel(packageManager).toString(), appInfo.packageName, listOf(base) + splits)
+                }
+                .distinctBy { it.packageName }
+                .sortedBy { it.label.lowercase() }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    private fun prepareAppForSharing(app: ShareableApp): Uri? {
+        return try {
+            val outputDir = File(cacheDir, "nearer-apps").apply { mkdirs() }
+            val safeName = app.label.replace(Regex("[^A-Za-z0-9._-]"), "_").take(55).ifBlank { "Android-app" }
+            val output = if (app.apkPaths.size == 1) File(outputDir, safeName + ".apk") else File(outputDir, safeName + ".nearer-app.zip")
+            if (output.exists()) output.delete()
+            if (app.apkPaths.size == 1) {
+                FileInputStream(app.apkPaths.first()).use { input ->
+                    FileOutputStream(output).use { target -> input.copyTo(target) }
+                }
+            } else {
+                ZipOutputStream(FileOutputStream(output)).use { zip ->
+                    app.apkPaths.forEachIndexed { index, path ->
+                        zip.putNextEntry(ZipEntry(if (index == 0) "base.apk" else "split_" + index + ".apk"))
+                        FileInputStream(path).use { input -> input.copyTo(zip) }
+                        zip.closeEntry()
+                    }
+                    zip.putNextEntry(ZipEntry("README.txt"))
+                    zip.write(("NeaRer app package for " + app.label + " (" + app.packageName + "). Keep base.apk and every split_*.apk together. Installing requires an Android split-package installer.").toByteArray(Charsets.UTF_8))
+                    zip.closeEntry()
+                }
+            }
+            FileProvider.getUriForFile(this, packageName + ".files", output)
+        } catch (error: Exception) {
+            chatNotice = "Could not prepare " + app.label + " for sharing: " + (error.message ?: "file access failed")
+            null
+        }
+    }
+
     private fun openReceivedFile(item: ReceivedFile) {
         try {
             val uri = FileProvider.getUriForFile(this, "${packageName}.files", item.file)
@@ -1910,6 +1959,8 @@ private fun NeaRerHome(
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
     var pendingFileTypes by remember { mutableStateOf<Array<String>?>(null) }
     var receiveMode by remember { mutableStateOf(false) }
+    var showInstalledApps by remember { mutableStateOf(false) }
+    var installedApps by remember { mutableStateOf<List<ShareableApp>>(emptyList()) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
     }
@@ -1920,6 +1971,45 @@ private fun NeaRerHome(
             pendingFileTypes = null
             filePicker.launch(requestedTypes)
         }
+    }
+    if (showInstalledApps) {
+        AlertDialog(
+            onDismissRequest = { showInstalledApps = false },
+            containerColor = Color(0xFF102B50),
+            title = { Text("SHARE AN APP", color = White, fontWeight = FontWeight.Black) },
+            text = {
+                Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Choose an installed app. NeaRer prepares its APK files for offline sending.", color = Muted, fontSize = 11.sp)
+                    if (installedApps.isEmpty()) Text("No shareable apps were found on this phone.", color = White, fontSize = 13.sp)
+                    installedApps.forEach { app ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                showInstalledApps = false
+                                val uri = prepareAppForSharing(app)
+                                if (uri != null) onSendFile(uri)
+                            },
+                            color = Color(0xFF173F78), shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, Color(0xFF347CEB).copy(alpha = 0.55f))
+                        ) {
+                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Surface(shape = RoundedCornerShape(10.dp), color = Gold.copy(alpha = 0.16f)) {
+                                    Text("APK", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(9.dp))
+                                }
+                                Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                                    Text(app.label, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    Text(if (app.apkPaths.size > 1) "Multi-part app • " + app.apkPaths.size + " APK files" else "Ready to share • APK", color = Muted, fontSize = 10.sp)
+                                }
+                                Text("›", color = Gold, fontSize = 23.sp)
+                            }
+                        }
+                    }
+                    if (installedApps.any { it.apkPaths.size > 1 }) {
+                        Text("Some apps contain split APKs. NeaRer sends those together in a ZIP package; the receiver will need a compatible split-APK installer.", color = Color(0xFFFFDFA0), fontSize = 10.sp)
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showInstalledApps = false }) { Text("CLOSE", color = Gold) } }
+        )
     }
     if (!hasChosenName) {
         Surface(
@@ -2286,7 +2376,10 @@ private fun NeaRerHome(
                                     Surface(
                                         modifier = Modifier.weight(1f).height(108.dp).animateContentSize().clickable {
                                             receiveMode = false
-                                            if (chatReady) filePicker.launch(item.third)
+                                            if (item.second == "Apps") {
+                                                installedApps = getShareableApps()
+                                                showInstalledApps = true
+                                            } else if (chatReady) filePicker.launch(item.third)
                                             else {
                                                 pendingFileTypes = item.third
                                                 navigateToSection("nearby")
@@ -3605,6 +3698,7 @@ private data class ChatMessage(
 )
 
 private data class ReceivedFile(val displayName: String, val file: File)
+private data class ShareableApp(val label: String, val packageName: String, val apkPaths: List<String>)
 
 private data class IncomingTransfer(
     val name: String,
