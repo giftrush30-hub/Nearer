@@ -18,7 +18,7 @@ Make nearby Android file sharing as fast as the two phones and their wireless li
 - Incoming metadata, payload handles, completion state and timing are now keyed by both sender endpoint and payload ID, preventing transfers from different connected phones from sharing the same receive-state slot.
 - A UI callback failure after the final rename is reported as a screen-refresh problem; it no longer misleadingly labels an already-saved file as a failed save.
 - Nearby transfer callbacks for chat and metadata BYTES payloads are excluded from bulk-file progress accounting, and cancelling an outgoing file clears its endpoint-scoped timing state.
-- Incoming throughput timing begins with the bulk FILE payload's actual progress callback, not when its separate metadata message arrives, so the reported average is less distorted by control-message setup time.
+- Incoming and outgoing throughput timing begins with the bulk FILE payload's first actual IN_PROGRESS callback, not when metadata is sent or when `sendPayload` merely accepts the request, so setup/queue time is not misreported as radio-transfer time.
 - Unsupported incoming payload types are closed immediately so unused file/stream descriptors are not left open.
 - Disconnect cleanup removes only that endpoint's pending transfer metadata, timing and payload handles; app shutdown drains already-queued receive-save tasks instead of discarding them with `shutdownNow()`.
 - The receiver calculates SHA-256 while copying and reports a short digest prefix. This is a local digest calculation, not yet a sender-to-receiver checksum comparison; end-to-end integrity verification still needs a checksum in the negotiated transfer metadata.
