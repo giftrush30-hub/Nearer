@@ -5,7 +5,7 @@ import kotlin.random.Random
 enum class LudoDifficulty { EASY, NORMAL, HARD }
 
 enum class LudoColor(val startOffset: Int) {
-    RED(0), GREEN(39), YELLOW(26), BLUE(13)
+    RED(0), GREEN(13), YELLOW(26), BLUE(39)
 }
 
 data class LudoToken(val steps: Int = -1) {
