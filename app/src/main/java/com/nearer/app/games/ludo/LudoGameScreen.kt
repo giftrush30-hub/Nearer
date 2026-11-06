@@ -447,7 +447,16 @@ private fun positionForProgress(color: LudoColor, tokenIndex: Int, progress: Flo
         val start = ludoTrackCells[LudoEngine.globalSquare(color, 0)]
         return interpolateCell(base, start, progress + 1f)
     }
-    if (progress >= 56f) return 7f to 7f
+    if (progress >= 56f) {
+        // Give each completed token its own visible royal-home slot instead of
+        // drawing all four directly on top of one another.
+        return when (tokenIndex) {
+            0 -> 7.12f to 7.12f
+            1 -> 7.88f to 7.12f
+            2 -> 7.12f to 7.88f
+            else -> 7.88f to 7.88f
+        }
+    }
     if (progress < 52f) {
         val index = progress.toInt()
         val from = ludoTrackCells[LudoEngine.globalSquare(color, index)]
