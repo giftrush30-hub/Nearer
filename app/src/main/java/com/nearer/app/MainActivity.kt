@@ -2967,16 +2967,43 @@ private fun NeaRerHome(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("CONNECT WITH A NEARBY PERSON", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     hybridPeers.forEach { (id, name) ->
-                        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Color(0xFF1C3453)) {
-                            Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(38.dp)) {
-                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(name.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold) }
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(19.dp),
+                            color = Color(0xFF17365D),
+                            border = BorderStroke(1.dp, Color(0xFF3C72B2).copy(alpha = 0.72f)),
+                            shadowElevation = 5.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .background(Brush.linearGradient(listOf(Color(0xFF1B477A), Color(0xFF102747))))
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = BrandBlue,
+                                    border = BorderStroke(1.dp, Color(0xFF9BC4FF).copy(alpha = 0.7f)),
+                                    modifier = Modifier.size(44.dp),
+                                    shadowElevation = 5.dp
+                                ) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                        Text(name.trim().firstOrNull()?.uppercase() ?: "N", color = White, fontSize = 17.sp, fontWeight = FontWeight.Black)
+                                    }
                                 }
-                                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                                    Text(name, color = White, fontWeight = FontWeight.SemiBold)
-                                    Text("Active now • Nearby Connections", color = AccentBlue, fontSize = 10.sp)
+                                Column(modifier = Modifier.weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(name, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        Surface(shape = CircleShape, color = Color(0xFF6CE0B1), modifier = Modifier.size(6.dp)) {}
+                                        Text("ACTIVE NOW", color = Color(0xFF9DE9C9), fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp)
+                                    }
                                 }
-                                Button(onClick = { onHybridConnect(id) }, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)) { Text("Connect") }
+                                Button(
+                                    onClick = { onHybridConnect(id) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp)
+                                ) { Text("CONNECT", fontSize = 9.sp, fontWeight = FontWeight.Black) }
                             }
                         }
                     }
