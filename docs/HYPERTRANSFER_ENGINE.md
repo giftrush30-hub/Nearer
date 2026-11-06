@@ -118,3 +118,16 @@ It cannot promise a complete Android clone. Ordinary apps cannot copy arbitrary 
 - Android wireless connectivity and Wi-Fi P2P: https://developer.android.com/develop/connectivity/wifi
 - LocalSend protocol v2: https://github.com/localsend/protocol
 - Android thermal mitigation: https://source.android.com/docs/core/power/thermal-mitigation
+
+## Adaptive profile policy implementation status
+
+- A pure Kotlin `TransferProfilePolicy` now selects LITE, FAST or TURBO from both phones' reported available memory, low-RAM classification, measured sustained receiver write rate, thermal status and a measured/stable link rate.
+- The weaker endpoint controls the decision. A missing link measurement, unstable link, low-RAM endpoint or severe thermal pressure selects LITE; moderate constraints select FAST.
+- Thresholds are conservative initial heuristics, not universal hardware facts or promised throughput. They must be tuned against repeatable device benchmarks.
+- Unit tests cover strongest/weakest endpoint selection, low-RAM fallback, missing/unstable link, thermal pressure and invalid negative measurements.
+- **Integration boundary:** this policy is currently a tested decision component, not yet exchanged over the Nearby connection or wired to change live transfer concurrency/buffer settings. Do not label adaptive profiles as active in the user interface until capability exchange and runtime application are implemented and tested on two devices.
+
+## Nearby strategy constraint
+
+Google's current Nearby strategy documentation describes P2P_POINT_TO_POINT as the highest-throughput topology for one-to-one transfers, but it allows only one connection at a time. NeaRer's current live service advertises and discovers with P2P_CLUSTER so its existing multi-peer connection model remains intact. Nearby's strategy is chosen when advertising and discovering; the same strategy and service ID must be used by the peers for that discovery/connection flow. Therefore a point-to-point bulk path cannot safely be activated by changing only the sender or by switching strategy after a cluster connection is already established. A separate, negotiated connection lifecycle is required, and it must be validated on two physical Android devices before it replaces the current file path. The current cluster transfer path remains the compatibility fallback.
+
