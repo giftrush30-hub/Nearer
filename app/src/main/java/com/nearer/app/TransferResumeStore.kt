@@ -36,7 +36,7 @@ internal class TransferResumeStore(
         }
         require(partialDirectory.isDirectory) { "Partial-transfer path is not a folder" }
 
-        val partial = partialFile(transferId, item.id)
+        val partial = partialFileFor(transferId, item.id)
         require(partial.isFile && partial.length() >= bytesSynced) {
             "Partial file does not contain all reported synced bytes"
         }
@@ -79,13 +79,13 @@ internal class TransferResumeStore(
 
     @Synchronized
     fun discard(transferId: String, itemId: String): Boolean {
-        val partialDeleted = !partialFile(transferId, itemId).exists() ||
+        val partialDeleted = !partialFileFor(transferId, itemId).exists() ||
             partialFile(transferId, itemId).delete()
         val checkpointDeleted = journal.remove(transferId, itemId)
         return partialDeleted && checkpointDeleted
     }
 
-    private fun partialFile(transferId: String, itemId: String): File {
+    internal fun partialFileFor(transferId: String, itemId: String): File {
         require(transferId.isNotBlank() && itemId.isNotBlank())
         val key = MessageDigest.getInstance("SHA-256")
             .digest("$transferId\u0000$itemId".toByteArray(Charsets.UTF_8))
