@@ -98,12 +98,8 @@ internal class TransferResumeStreamWriter(
         return Result(partial, received, offset, digest.digest().toHex())
     }
 
-    private fun nextCheckpointAfter(offset: Long, size: Long): Long {
-        if (offset >= size) return size
-        val unit = TransferResumeCheckpoint.CHECKPOINT_GRANULARITY_BYTES
-        val next = ((offset / unit) + 1L) * unit
-        return minOf(next, size)
-    }
+    private fun nextCheckpointAfter(offset: Long, size: Long): Long =
+        TransferResumeCheckpoint.nextCheckpointOffset(offset, size)
 
     private fun checkCancelled(isCancelled: () -> Boolean) {
         if (Thread.currentThread().isInterrupted || isCancelled()) {
