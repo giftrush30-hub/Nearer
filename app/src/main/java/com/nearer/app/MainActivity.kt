@@ -629,7 +629,11 @@ class MainActivity : ComponentActivity() {
                         nearbyDevices.clear()
                         nearbyDevices.addAll(peers.deviceList)
                         finishDiscovery()
-                        statusMessage = if (nearbyDevices.isEmpty()) "No Wi-Fi Direct phones found in 20 seconds. Check Wi-Fi on both phones, Location for Wi-Fi Direct, and keep NeaRer open." else "${nearbyDevices.size} nearby phone(s) found. Choose one to connect."
+                        manager.stopPeerDiscovery(activeChannel, object : WifiP2pManager.ActionListener {
+                            override fun onSuccess() = Unit
+                            override fun onFailure(reason: Int) = Unit
+                        })
+                        statusMessage = if (nearbyDevices.isEmpty()) "No Wi-Fi Direct phones found in 20 seconds. Bluetooth discovery can continue; check Wi-Fi on both phones and Location for Wi-Fi Direct." else "${nearbyDevices.size} nearby phone(s) found. Choose one to connect. Bluetooth discovery can continue in the background."
                     }
                 } catch (_: SecurityException) {
                     finishDiscovery()
