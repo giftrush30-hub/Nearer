@@ -2,6 +2,8 @@ package com.nearer.app
 
 import kotlin.random.Random
 
+enum class LudoDifficulty { EASY, NORMAL, HARD }
+
 enum class LudoColor(val startOffset: Int) {
     RED(0), GREEN(39), YELLOW(26), BLUE(13)
 }
@@ -163,24 +165,37 @@ object LudoEngine {
         )
     }
 
-    fun chooseComputerMove(state: LudoGameState): Int? {
+    fun chooseComputerMove(state: LudoGameState, difficulty: LudoDifficulty = LudoDifficulty.NORMAL): Int? {
         val moves = legalMoves(state)
         if (moves.isEmpty()) return null
+        if (difficulty == LudoDifficulty.EASY) return moves.random()
         val player = state.currentPlayer
         val roll = state.diceValue ?: return null
-        return moves.maxWithOrNull(
-            compareBy<Int> { index ->
-                val old = player.tokens[index].steps
-                val destination = if (old == -1) 0 else old + roll
-                when {
-                    destination == 57 -> 1000
-                    old == -1 -> 100
-                    destination in 0..51 && wouldCapture(state, player.color, destination) -> 500
-                    destination >= 52 -> 200 + destination
-                    else -> destination
+        return moves.maxWithOrNull(compareBy<Int> { index ->
+            val old = player.tokens[index].steps
+            val destination = if (old == -1) 0 else old + roll
+            val landingSquare = if (destination in 0..51) (player.color.startOffset + destination) % 52 else -1
+            val base = when {
+                destination == 57 -> 10_000
+                old == -1 -> 120
+                destination in 52..56 -> 400 + destination
+                else -> 200 + destination
+            }
+            val capture = if (destination in 0..51 && wouldCapture(state, player.color, destination)) 650 else 0
+            val safe = if (landingSquare in safeSquares) 90 else 0
+            val danger = if (difficulty == LudoDifficulty.HARD && destination in 0..51 && landingSquare !in safeSquares) {
+                state.players.filter { it.color != player.color }.sumOf { opponent ->
+                    opponent.tokens.count { token ->
+                        token.steps in 0..51 && run {
+                            val opponentSquare = (opponent.color.startOffset + token.steps) % 52
+                            val distance = (landingSquare - opponentSquare + 52) % 52
+                            distance in 1..6
+                        }
+                    } * 55
                 }
-            }.thenBy { -it }
-        )
+            } else 0
+            base + capture + safe - danger
+        }.thenBy { -it })
     }
 
     private fun wouldCapture(state: LudoGameState, color: LudoColor, steps: Int): Boolean {
