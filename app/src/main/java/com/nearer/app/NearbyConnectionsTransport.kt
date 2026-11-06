@@ -501,6 +501,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     client.sendPayload(endpointId, payload)
                         .addOnFailureListener { error ->
                             outgoingFiles.remove(id)
+                            transferStartedAtNanos.remove(id)
                             try { payload.close() } catch (_: Exception) { }
                             listener.onFileStatus("Could not start file transfer: ${error.localizedMessage ?: "connection error"}")
                         }
@@ -524,6 +525,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     fun cancelFile(payloadId: Long) {
         try { client.cancelPayload(payloadId) } catch (_: Exception) { }
         outgoingFiles.remove(payloadId)
+        transferStartedAtNanos.remove(payloadId)
+        completedTransferRates.remove(payloadId)
     }
 
     private fun broadcast(content: String, excludeEndpoint: String?): Boolean {
