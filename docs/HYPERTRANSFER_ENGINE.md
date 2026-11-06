@@ -15,6 +15,7 @@ Make nearby Android file sharing as fast as the two phones and their wireless li
 - `TransferStreamIO` copies exactly the declared number of bytes with a fixed-size buffer, supports cancellation, detects premature EOF, and returns a SHA-256 digest for receiver-side verification.
 - Incoming Nearby FILE payloads now use the bounded exact-length stream copier when saved into NeaRer's private received-files area; the receiver syncs the temporary file, checks its declared size, and renames it into place only after the copy succeeds.
 - The receiver calculates SHA-256 while copying and reports a short digest prefix. This is a local digest calculation, not yet a sender-to-receiver checksum comparison; end-to-end integrity verification still needs a checksum in the negotiated transfer metadata.
+- Manifest path validation avoids a quadratic scan over all item pairs, keeping validation practical for large bundles near the 10,000-item protocol limit.
 - This is still single-file transfer plumbing: the bundle manifest has not yet been connected to a multi-file send/accept/receive session.
 - The stream copier now handles a zero-progress bulk read without spinning forever, and its SHA-256 hex formatter treats digest bytes as unsigned.
 - Google documents that `onPayloadReceived` for FILE/STREAM is an early notification, not proof that all bytes arrived; completion must be confirmed by the transfer-update SUCCESS event. STREAM input must be drained promptly on a background worker, and the owning `Payload` must be closed when finished or cancelled.
