@@ -1369,11 +1369,13 @@ class MainActivity : ComponentActivity() {
             sendLudoState(resumed)
         } else {
             activeGame = game.copy(ready = true)
-            val sent = sendCommunityToNames(
-                "NR_COMMUNITY:" + JSONObject().put("type", "ludo_sync")
-                    .put("matchId", game.matchId).put("revision", game.revision).put("sender", displayName),
-                setOf(game.opponentName)
-            ) == true
+            val syncPacket = JSONObject().put("type", "ludo_sync")
+                .put("matchId", game.matchId).put("revision", game.revision).put("sender", displayName)
+            val sent = if (hybridConnected) {
+                nearbyTransport?.sendToNames("NR_COMMUNITY:$syncPacket", setOf(game.opponentName)) == true
+            } else {
+                sendCommunityPacket(syncPacket)
+            }
             if (!sent) communityNotice = "Reconnected, but the host has not resumed the match yet."
         }
         communityNotice = "Reconnected to $peerName. Restoring your Ludo match…"
