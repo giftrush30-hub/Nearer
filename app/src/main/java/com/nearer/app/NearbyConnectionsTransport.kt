@@ -53,7 +53,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         return value.take(23) to ""
     }
 
-    private data class FileMeta(val endpointId: String, val name: String, val size: Long)
+    private data class FileMeta(
+        val endpointId: String, val name: String, val size: Long,
+        val bundleTransferId: String? = null, val bundleItemId: String? = null,
+        val relativePath: String? = null
+    )
+    private data class BundleSessionKey(val endpointId: String, val transferId: String)
+    private val incomingBundleSessions = ConcurrentHashMap<BundleSessionKey, TransferBundleSession>()
     private data class ManifestAssembly(
         val reassembler: TransferManifestReassembler,
         @Volatile var updatedAtMillis: Long
@@ -241,6 +247,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 transferStartedAtNanos.putIfAbsent(key, System.nanoTime())
             }
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
+                incoming?.bundleTransferId?.let { transferId ->
+                    incomingBundleSessions[BundleSessionKey(id, transferId)]?.let { session ->
+                        try { session.updateProgress(payloadId, update.bytesTransferred, update.totalBytes) }
+                        catch (_: Exception) { listener.onFileStatus("Bundle progress did not match its approved file details.") }
+                    }
+                }
                 listener.onFileProgress(id, payloadId, name, update.bytesTransferred, update.totalBytes, isIncoming)
                 return
             }
@@ -263,7 +275,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 transferStartedAtNanos.remove(key)
                 completedTransferRates.remove(key)
                 val failedOutgoing = outgoingFiles[payloadId]?.takeIf { it.first == id }?.also { outgoingFiles.remove(payloadId) }
-                incomingMetadata.remove(key)
+                incomingMetadata.remove(key)?.bundleTransferId?.let { transferId ->
+                    incomingBundleSessions[BundleSessionKey(id, transferId)]?.let { session ->
+                        try { session.fail(payloadId) } catch (_: Exception) { }
+                    }
+                }
                 incomingPayloads.remove(key)?.close()
                 completedPayloads.remove(key)?.close()
                 if (failedOutgoing != null) {
@@ -290,8 +306,37 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     listener.onFileStatus("A nearby phone sent invalid file information. The transfer was ignored.")
                     return
                 }
+                val transferId = envelope.optString("bundleTransferId").takeIf { it.isNotBlank() }
+                val itemId = envelope.optString("bundleItemId").takeIf { it.isNotBlank() }
+                val relativePath = envelope.optString("relativePath").takeIf { it.isNotBlank() }
+                if (listOf(transferId, itemId, relativePath).count { it != null } !in listOf(0, 3)) {
+                    listener.onFileStatus("A nearby phone sent incomplete bundle file details. The file was rejected.")
+                    return
+                }
                 val key = transferKey(endpointId, payloadId)
-                incomingMetadata[key] = FileMeta(endpointId, name, size)
+                if (transferId != null) {
+                    val sessionKey = BundleSessionKey(endpointId, transferId)
+                    val session = incomingBundleSessions[sessionKey]
+                    if (session == null || session.decision != TransferBundleSession.Decision.ACCEPTED) {
+                        listener.onFileStatus("A file arrived without an approved bundle. It was rejected.")
+                        return
+                    }
+                    val item = session.manifest.items.firstOrNull { it.id == itemId }
+                    if (item == null || item.kind != TransferBundleItem.Kind.FILE ||
+                        item.relativePath != relativePath || item.displayName != name || item.sizeBytes != size
+                    ) {
+                        listener.onFileStatus("A bundle file did not match its approved manifest. It was rejected.")
+                        return
+                    }
+                    try { session.attachPayload(item.id, payloadId) } catch (_: Exception) {
+                        listener.onFileStatus("A duplicate or unexpected bundle file was rejected.")
+                        return
+                    }
+                } else if (incomingBundleSessions.keys.any { it.endpointId == endpointId }) {
+                    listener.onFileStatus("A file without its approved bundle identity was rejected.")
+                    return
+                }
+                incomingMetadata[key] = FileMeta(endpointId, name, size, transferId, itemId, relativePath)
                 listener.onFileProgress(endpointId, payloadId, name, 0L, size, true)
                 processCompletedFile(key)
                 return
@@ -373,9 +418,14 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             require(manifest.transferId == fragment.transferId) {
                 "Manifest transfer ID does not match its fragment envelope"
             }
+            val sessionKey = BundleSessionKey(endpointId, manifest.transferId)
+            require(incomingBundleSessions.putIfAbsent(sessionKey, TransferBundleSession(manifest)) == null) {
+                "This bundle offer has already been received"
+            }
             listener.onBundleOffer(endpointId, manifest)
         } catch (error: Exception) {
             incomingManifestAssemblies.remove(endpointId)?.reassembler?.reset()
+        incomingBundleSessions.keys.filter { it.endpointId == endpointId }.forEach { incomingBundleSessions.remove(it) }
             listener.onFileStatus(
                 "A nearby bundle offer was invalid or incomplete and was rejected: " +
                     (error.localizedMessage ?: "invalid manifest")
@@ -431,6 +481,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     if (target.exists()) throw IllegalStateException("A file with this destination name already exists")
                     if (!temp.renameTo(target)) {
                         throw IllegalStateException("Could not safely finalize the received file")
+                    }
+                    if (meta.bundleTransferId != null) {
+                        val sessionKey = BundleSessionKey(meta.endpointId, meta.bundleTransferId)
+                        val session = incomingBundleSessions[sessionKey]
+                            ?: throw IllegalStateException("Approved bundle session expired")
+                        session.complete(key.payloadId, copied.bytesCopied, TransferStreamIO.sha256Hex(copied.sha256))
+                        if (session.isFinished()) incomingBundleSessions.remove(sessionKey, session)
                     }
                     temporary = null
                     destination = null // The final file is committed; later UI callbacks must not delete it.
@@ -588,6 +645,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
 
     fun sendBundleDecision(endpointId: String, transferId: String, accepted: Boolean) {
         if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return
+        val sessionKey = BundleSessionKey(endpointId, transferId)
+        val session = incomingBundleSessions[sessionKey] ?: run {
+            listener.onFileStatus("The bundle offer expired. Ask the sender to select the files again.")
+            return
+        }
+        try { if (accepted) session.accept() else session.reject() } catch (_: Exception) {
+            listener.onFileStatus("This bundle has already been reviewed.")
+            return
+        }
         val message = JSONObject()
             .put("kind", "bundle_decision")
             .put("version", 1)
@@ -603,7 +669,14 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
-    fun sendFile(endpointId: String, uri: Uri, displayName: String): Long? {
+    fun sendFile(
+        endpointId: String, uri: Uri, displayName: String,
+        bundleTransferId: String? = null, bundleItemId: String? = null, relativePath: String? = null
+    ): Long? {
+        require((bundleTransferId == null && bundleItemId == null && relativePath == null) ||
+            (!bundleTransferId.isNullOrBlank() && !bundleItemId.isNullOrBlank() && !relativePath.isNullOrBlank())) {
+            "Bundle file identity must be complete"
+        }
         if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
             listener.onFileStatus("The nearby connection is no longer active.")
             return null
@@ -635,6 +708,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             outgoingFiles[id] = endpointId to name
             val metadata = JSONObject().put("kind", "file_meta").put("payloadId", id)
                 .put("name", name).put("size", size)
+            if (bundleTransferId != null) {
+                metadata.put("bundleTransferId", bundleTransferId)
+                    .put("bundleItemId", bundleItemId).put("relativePath", relativePath)
+            }
             client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
                 .addOnSuccessListener {
                     // sendPayload acceptance is not the start of actual radio transfer.
