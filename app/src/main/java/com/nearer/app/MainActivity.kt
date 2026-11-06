@@ -416,6 +416,13 @@ class MainActivity : ComponentActivity() {
                     onGameChat = ::sendGameChat,
                     onEndGame = ::endGame,
                     onSendFile = ::sendFile,
+                    onLoadShareableApps = ::getShareableApps,
+                    onPrepareAppForSharing = { app, onPrepared ->
+                        io.execute {
+                            val uri = prepareAppForSharing(app)
+                            runOnUiThread { onPrepared(uri) }
+                        }
+                    },
                     onCancelTransfer = ::cancelOutgoingFileTransfer,
                     outgoingTransferId = outgoingTransferId,
                     outgoingProgress = outgoingProgress,
@@ -1903,6 +1910,8 @@ private fun NeaRerHome(
     onGameChat: (String) -> Unit,
     onEndGame: () -> Unit,
     onSendFile: (Uri) -> Unit,
+    onLoadShareableApps: () -> List<ShareableApp>,
+    onPrepareAppForSharing: (ShareableApp, (Uri?) -> Unit) -> Unit,
     onCancelTransfer: () -> Unit,
     outgoingTransferId: String?,
     outgoingProgress: Float,
@@ -1975,7 +1984,7 @@ private fun NeaRerHome(
     LaunchedEffect(chatReady, pendingAppPicker) {
         if (chatReady && pendingAppPicker) {
             pendingAppPicker = false
-            installedApps = getShareableApps()
+            installedApps = onLoadShareableApps()
             showInstalledApps = true
         }
     }
@@ -1993,12 +2002,9 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth().clickable {
                                 showInstalledApps = false
                                 chatNotice = "Preparing " + app.label + " for sharing…"
-                                io.execute {
-                                    val uri = prepareAppForSharing(app)
-                                    runOnUiThread {
-                                        if (uri != null) onSendFile(uri)
-                                        else chatNotice = "Could not prepare " + app.label + " for sharing."
-                                    }
+                                onPrepareAppForSharing(app) { uri ->
+                                    if (uri != null) onSendFile(uri)
+                                    else chatNotice = "Could not prepare " + app.label + " for sharing."
                                 }
                             },
                             color = Color(0xFF173F78), shape = RoundedCornerShape(14.dp),
@@ -2391,7 +2397,7 @@ private fun NeaRerHome(
                                             receiveMode = false
                                             if (item.second == "Apps") {
                                                 if (chatReady) {
-                                                    installedApps = getShareableApps()
+                                                    installedApps = onLoadShareableApps()
                                                     showInstalledApps = true
                                                 } else {
                                                     pendingAppPicker = true
