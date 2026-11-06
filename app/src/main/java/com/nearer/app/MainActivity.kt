@@ -1202,7 +1202,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun inviteToGame() {
-        if (!hybridConnected || activeGame != null) {
+        if ((!hybridConnected && !chatReady) || activeGame != null) {
             communityNotice = "Connect to a nearby NeaRer phone first, or finish the current match."
             return
         }
@@ -1987,7 +1987,7 @@ private fun NeaRerHome(
             }
 
             CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
-                activeGame, gameChatMessages, usingNearbyConnections, onCreateGroup, onJoinGroup, onSelectGroup,
+                activeGame, gameChatMessages, (usingNearbyConnections || chatReady), onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
                 onRejectGameInvite, onGameMove, onGameChat, onEndGame)
 
