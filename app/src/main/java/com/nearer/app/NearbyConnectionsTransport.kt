@@ -60,6 +60,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     )
     private data class BundleSessionKey(val endpointId: String, val transferId: String)
     private val incomingBundleSessions = ConcurrentHashMap<BundleSessionKey, TransferBundleSession>()
+    private val bundleDestinationFolders = ConcurrentHashMap<BundleSessionKey, File>()
     private data class ManifestAssembly(
         val reassembler: TransferManifestReassembler,
         @Volatile var updatedAtMillis: Long
@@ -425,7 +426,6 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             listener.onBundleOffer(endpointId, manifest)
         } catch (error: Exception) {
             incomingManifestAssemblies.remove(endpointId)?.reassembler?.reset()
-        incomingBundleSessions.keys.filter { it.endpointId == endpointId }.forEach { incomingBundleSessions.remove(it) }
             listener.onFileStatus(
                 "A nearby bundle offer was invalid or incomplete and was rejected: " +
                     (error.localizedMessage ?: "invalid manifest")
@@ -453,9 +453,32 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     if (meta.size > usableBytes) {
                         throw IllegalStateException("Not enough free storage for this file")
                     }
-                    val uniquePrefix = "${System.currentTimeMillis()}-${UUID.randomUUID().toString().take(8)}"
-                    val target = File(folder, "$uniquePrefix-${meta.name}")
-                    val temp = File(folder, ".$uniquePrefix.part")
+                    val bundleKey = meta.bundleTransferId?.let { BundleSessionKey(meta.endpointId, it) }
+                    val target: File
+                    val temp: File
+                    if (bundleKey != null) {
+                        val bundleRoot = bundleDestinationFolders.computeIfAbsent(bundleKey) {
+                            File(folder, "NeaRer-${System.currentTimeMillis()}-${UUID.randomUUID().toString().take(8)}")
+                                .also { root ->
+                                    if (!root.mkdirs() || !root.isDirectory) {
+                                        throw IllegalStateException("Could not create the received bundle folder")
+                                    }
+                                }
+                        }.canonicalFile
+                        val relative = meta.relativePath ?: throw IllegalStateException("Bundle file path is missing")
+                        target = File(bundleRoot, relative).canonicalFile
+                        if (!target.path.startsWith(bundleRoot.path + File.separator)) {
+                            throw IllegalStateException("Bundle path escaped its destination folder")
+                        }
+                        val parent = target.parentFile ?: throw IllegalStateException("Bundle destination folder is invalid")
+                        if (!parent.exists() && !parent.mkdirs()) throw IllegalStateException("Could not create a bundle subfolder")
+                        if (!parent.isDirectory) throw IllegalStateException("Bundle destination is not a folder")
+                        temp = File(parent, ".${target.name}.${UUID.randomUUID().toString().take(8)}.part")
+                    } else {
+                        val uniquePrefix = "${System.currentTimeMillis()}-${UUID.randomUUID().toString().take(8)}"
+                        target = File(folder, "$uniquePrefix-${meta.name}")
+                        temp = File(folder, ".$uniquePrefix.part")
+                    }
                     temporary = temp
                     destination = target
 
@@ -487,12 +510,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                         val session = incomingBundleSessions[sessionKey]
                             ?: throw IllegalStateException("Approved bundle session expired")
                         session.complete(key.payloadId, copied.bytesCopied, TransferStreamIO.sha256Hex(copied.sha256))
-                        if (session.isFinished()) incomingBundleSessions.remove(sessionKey, session)
+                        if (session.isFinished()) {
+                            incomingBundleSessions.remove(sessionKey, session)
+                            bundleDestinationFolders.remove(sessionKey)
+                        }
                     }
                     temporary = null
                     destination = null // The final file is committed; later UI callbacks must not delete it.
                     try {
-                        listener.onFileReceived(meta.endpointId, meta.name, target)
+                        listener.onFileReceived(meta.endpointId, meta.relativePath ?: meta.name, target)
                     } catch (_: Exception) {
                         listener.onFileStatus("File saved successfully, but NeaRer could not refresh the received-files screen.")
                     }
@@ -500,6 +526,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                         listener.onFileStatus("Received ${meta.name} • $rate MB/s average • SHA-256 ${TransferStreamIO.sha256Hex(copied.sha256).take(12)}")
                     }
                 } catch (error: Exception) {
+                    meta.bundleTransferId?.let { transferId ->
+                        val sessionKey = BundleSessionKey(meta.endpointId, transferId)
+                        incomingBundleSessions[sessionKey]?.let { session ->
+                            try { session.fail(key.payloadId) } catch (_: Exception) { }
+                            if (session.isFinished()) {
+                                incomingBundleSessions.remove(sessionKey, session)
+                                bundleDestinationFolders.remove(sessionKey)
+                            }
+                        }
+                    }
                     temporary?.delete()
                     destination?.takeIf { it.exists() }?.delete()
                     listener.onFileStatus("Could not save the received file: ${error.localizedMessage ?: "transfer error"}")
@@ -742,6 +778,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
 
     private fun cleanupEndpointTransfers(endpointId: String) {
         incomingManifestAssemblies.remove(endpointId)?.reassembler?.reset()
+        incomingBundleSessions.keys.filter { it.endpointId == endpointId }.forEach {
+            incomingBundleSessions.remove(it)
+            bundleDestinationFolders.remove(it)
+        }
         val keys = (incomingMetadata.keys + incomingPayloads.keys + completedPayloads.keys +
             transferStartedAtNanos.keys + completedTransferRates.keys)
             .filter { it.endpointId == endpointId }
