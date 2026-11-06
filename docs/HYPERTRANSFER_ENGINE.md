@@ -47,6 +47,7 @@ Make nearby Android file sharing as fast as the two phones and their wireless li
 - Google documents that `onPayloadReceived` for FILE/STREAM is an early notification, not proof that all bytes arrived; completion must be confirmed by the transfer-update SUCCESS event. STREAM input must be drained promptly on a background worker, and the owning `Payload` must be closed when finished or cancelled.
 - Filename sanitization preserves Unicode names while stripping path components and reserved/control characters.
 - The Android compile/test workflow does not assemble an APK.
+- A local resume-file verifier now re-hashes the committed prefix before reuse, rejects missing/short/oversized or modified partial files, and truncates only the uncommitted tail after the durable prefix matches. Unit tests cover valid recovery, corruption, length mismatches and zero-offset checkpoints. This is a tested safety primitive; active transport resume and peer offset negotiation are still not wired.
 
 These changes tune the local file-save stage and expose real measurements. They do not, by themselves, increase the Wi-Fi radio's throughput.
 
