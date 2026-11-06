@@ -2070,6 +2070,9 @@ private fun NeaRerHome(
                     animationSpec = infiniteRepeatable(tween(1250, easing = FastOutSlowInEasing), RepeatMode.Reverse),
                     label = "home-status-pulse"
                 )
+                val transferDotOne by homeMotion.animateFloat(0.22f, 1f, infiniteRepeatable(tween(760, delayMillis = 0), RepeatMode.Reverse), label = "transfer-dot-one")
+                val transferDotTwo by homeMotion.animateFloat(0.22f, 1f, infiniteRepeatable(tween(760, delayMillis = 180), RepeatMode.Reverse), label = "transfer-dot-two")
+                val transferDotThree by homeMotion.animateFloat(0.22f, 1f, infiniteRepeatable(tween(760, delayMillis = 360), RepeatMode.Reverse), label = "transfer-dot-three")
                 val homeGlow by homeMotion.animateFloat(
                     initialValue = 0.18f,
                     targetValue = 0.42f,
@@ -2335,6 +2338,11 @@ private fun NeaRerHome(
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                             Surface(shape = CircleShape, color = BrandBlue.copy(alpha = homePulse), modifier = Modifier.size(7.dp)) {}
                                             Text("Receiving $name", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                listOf(transferDotOne, transferDotTwo, transferDotThree).forEach { dotAlpha ->
+                                                    Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(4.dp).alpha(dotAlpha)) {}
+                                                }
+                                            }
                                         }
                                         if (incomingProgress <= 0f) {
                                             LinearProgressIndicator(
@@ -2358,6 +2366,11 @@ private fun NeaRerHome(
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                             Surface(shape = CircleShape, color = Gold.copy(alpha = homePulse), modifier = Modifier.size(7.dp)) {}
                                             Text("Sending file to nearby device", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                listOf(transferDotOne, transferDotTwo, transferDotThree).forEach { dotAlpha ->
+                                                    Surface(shape = CircleShape, color = Gold, modifier = Modifier.size(4.dp).alpha(dotAlpha)) {}
+                                                }
+                                            }
                                         }
                                         if (outgoingProgress <= 0f) {
                                             LinearProgressIndicator(
