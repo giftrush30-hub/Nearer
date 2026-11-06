@@ -21,34 +21,61 @@ class LudoEngineTest {
         assertEquals(null, passed.diceValue)
     }
 
-    @Test fun tokenMustReachFinishWithExactCount() {
+    @Test fun tokenFinishesOnTheExactFinalHomeSquare() {
         val players = LudoEngine.newGame().players.toMutableList()
-        players[0] = players[0].copy(tokens = listOf(LudoToken(57), LudoToken(), LudoToken(), LudoToken()))
+        players[0] = players[0].copy(tokens = listOf(LudoToken(56), LudoToken(), LudoToken(), LudoToken()))
         val state = LudoEngine.rollDice(LudoGameState(players = players), 1)
         val result = LudoEngine.moveToken(state, 0)
-        assertEquals(58, result.state.players[0].tokens[0].steps)
+        assertEquals(57, result.state.players[0].tokens[0].steps)
         assertTrue(result.tokenFinished)
     }
 
-    @Test fun landingOnUnsafeOpponentSquareCapturesToken() {
+    @Test fun overshootingHomeIsNotLegal() {
+        val players = LudoEngine.newGame().players.toMutableList()
+        players[0] = players[0].copy(tokens = listOf(LudoToken(56), LudoToken(), LudoToken(), LudoToken()))
+        val state = LudoEngine.rollDice(LudoGameState(players = players), 2)
+        assertTrue(LudoEngine.legalMoves(state).isEmpty())
+    }
+
+    @Test fun landingOnUnsafeOpponentSquareCapturesSingleTokenAndGrantsBonusTurn() {
         val players = LudoEngine.newGame().players.toMutableList()
         players[0] = players[0].copy(tokens = listOf(LudoToken(4), LudoToken(), LudoToken(), LudoToken()))
-        // Green's relative step 44 shares Red's global square 5.
-        players[1] = players[1].copy(tokens = listOf(LudoToken(44), LudoToken(), LudoToken(), LudoToken()))
+        // Green's start offset is 39; relative step 17 shares Red's global square 4.
+        players[1] = players[1].copy(tokens = listOf(LudoToken(17), LudoToken(), LudoToken(), LudoToken()))
         val state = LudoEngine.rollDice(LudoGameState(players = players), 1)
         val result = LudoEngine.moveToken(state, 0)
         assertEquals(LudoToken(), result.state.players[1].tokens[0])
         assertEquals(listOf(LudoColor.GREEN to 0), result.captured)
+        assertEquals(0, result.state.currentPlayerIndex)
     }
 
     @Test fun safeSquareDoesNotCapture() {
         val players = LudoEngine.newGame().players.toMutableList()
         players[0] = players[0].copy(tokens = listOf(LudoToken(7), LudoToken(), LudoToken(), LudoToken()))
-        // Green's relative step 47 shares Red's safe global square 8.
-        players[1] = players[1].copy(tokens = listOf(LudoToken(47), LudoToken(), LudoToken(), LudoToken()))
+        players[1] = players[1].copy(tokens = listOf(LudoToken(21), LudoToken(), LudoToken(), LudoToken()))
         val state = LudoEngine.rollDice(LudoGameState(players = players), 1)
         val result = LudoEngine.moveToken(state, 0)
-        assertEquals(47, result.state.players[1].tokens[0].steps)
+        assertEquals(LudoToken(21), result.state.players[1].tokens[0])
         assertTrue(result.captured.isEmpty())
+    }
+
+    @Test fun aPairOnOneSquareCannotBeCaptured() {
+        val players = LudoEngine.newGame().players.toMutableList()
+        players[0] = players[0].copy(tokens = listOf(LudoToken(3), LudoToken(), LudoToken(), LudoToken()))
+        players[1] = players[1].copy(tokens = listOf(LudoToken(17), LudoToken(17), LudoToken(), LudoToken()))
+        val state = LudoEngine.rollDice(LudoGameState(players = players), 1)
+        val result = LudoEngine.moveToken(state, 0)
+        assertTrue(result.captured.isEmpty())
+        assertEquals(LudoToken(17), result.state.players[1].tokens[0])
+        assertEquals(LudoToken(17), result.state.players[1].tokens[1])
+    }
+
+    @Test fun thirdConsecutiveSixForfeitsTurn() {
+        var state = LudoEngine.newGame()
+        repeat(3) { state = LudoEngine.rollDice(state, 6) }
+        assertTrue(LudoEngine.legalMoves(state).isEmpty())
+        state = LudoEngine.passTurn(state)
+        assertEquals(1, state.currentPlayerIndex)
+        assertEquals(0, state.consecutiveSixes)
     }
 }
