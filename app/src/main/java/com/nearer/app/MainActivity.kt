@@ -1949,7 +1949,7 @@ private fun NeaRerHome(
                                     Text("Fast. Direct. NeaRer.", color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                 }
                                 Surface(shape = RoundedCornerShape(30.dp), color = if (chatReady) Color(0xFF155B4B) else Color(0xFF173F78)) {
-                                    Text(if (chatReady) "● CONNECTED" else "● OFFLINE READY",
+                                    Text(if (chatReady) "● CONNECTED" else "● NO DATA NEEDED",
                                         color = if (chatReady) Color(0xFF8EF0C6) else Color(0xFFD5E6FF),
                                         fontSize = 8.sp, fontWeight = FontWeight.Black,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
@@ -1982,7 +1982,7 @@ private fun NeaRerHome(
                                     border = BorderStroke(1.dp, Color(0xFF8DBAFF)),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF174A9B), contentColor = White)
                                 ) {
-                                    Text("↓  RECEIVE", fontSize = 11.sp, fontWeight = FontWeight.Black)
+                                    Text("↓  RECEIVE FILES", fontSize = 10.sp, fontWeight = FontWeight.Black)
                                 }
                             }
                             Text(if (chatReady) "Connected to ${connectedDeviceName ?: "a nearby phone"} • ready to share"
@@ -2060,7 +2060,7 @@ private fun NeaRerHome(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("TRANSFER ACTIVITY", color = White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                                     Spacer(Modifier.weight(1f))
-                                    Text("LIVE", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                    Text(if (incomingTransferName != null || outgoingTransferId != null) "IN PROGRESS" else "RECENT", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
                                 }
                                 incomingTransferName?.let { name ->
                                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -2802,10 +2802,10 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     listOf(
-                        Triple("⌂", "Home", "home"),
+                        Triple("⇅", "Transfer", "home"),
                         Triple("◎", "Nearby", "nearby"),
                         Triple("✉", "Chats", "chats"),
-                        Triple("♟", "Community", "community"),
+                        Triple("♧", "Groups", "community"),
                         Triple("♜", "Games", "games")
                     ).forEach { item ->
                         val selected = activeSection == item.third
