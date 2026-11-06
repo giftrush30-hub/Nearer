@@ -60,6 +60,11 @@ class FlashActivity : ComponentActivity() {
                                         roleLauncher.launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING))
                                     else status = "Android 10 or later is required for call screening."
                                 }, modifier = Modifier.fillMaxWidth()) { Text("ENABLE FLASH RECEIVER") }
+                                OutlinedButton(onClick = {
+                                    getSharedPreferences(FlashCallScreeningService.PREFS, MODE_PRIVATE).edit()
+                                        .putBoolean(FlashCallScreeningService.KEY_ENABLED, false).apply()
+                                    status = "Flash receiving paused. Ordinary calls will pass through."
+                                }, modifier = Modifier.fillMaxWidth()) { Text("PAUSE FLASH RECEIVER") }
                                 Button(onClick = { requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), 740) }, modifier = Modifier.fillMaxWidth()) { Text("GRANT CONTACTS ACCESS") }
                         if (Build.VERSION.SDK_INT >= 33) OutlinedButton(onClick = { requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 741) }, modifier = Modifier.fillMaxWidth()) { Text("GRANT NOTIFICATION ACCESS") }
                         Text(status, color = Color.LightGray)
