@@ -16,7 +16,11 @@ class FlashCallScreeningService : CallScreeningService() {
     private val finishBurst = Runnable { publishDecodedBurst() }
 
     override fun onScreenCall(details: Call.Details) {
-        if (Build.VERSION.SDK_INT < 29 || details.callDirection != Call.Details.DIRECTION_INCOMING) return
+        if (Build.VERSION.SDK_INT < 29) {
+            respondToCall(details, CallResponse.Builder().build())
+            return
+        }
+        if (details.callDirection != Call.Details.DIRECTION_INCOMING) return
         val incoming = normalize(details.handle?.schemeSpecificPart.orEmpty())
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val trusted = incoming.isNotBlank() && incoming == normalize(prefs.getString(KEY_TRUSTED_NUMBER, "").orEmpty()) && prefs.getBoolean(KEY_ENABLED, false)
@@ -55,8 +59,8 @@ class FlashCallScreeningService : CallScreeningService() {
         const val KEY_BURST_COUNT = "burst_count"
         const val KEY_LAST_CALL = "last_call"
         const val CHANNEL_ID = "nearer_flash_messages"
-        const val BURST_WINDOW_MS = 60_000L
-        const val DEBOUNCE_MS = 12_000L
+        const val BURST_WINDOW_MS = 300_000L
+        const val DEBOUNCE_MS = 15_000L
         val BURST_LOCK = Any()
         val FLASH_CODES = mapOf(1 to "Call me when you can", 2 to "Come outside", 3 to "I'm on my way", 4 to "I'm waiting for you", 5 to "Come to Room 8", 6 to "Come to Room 10", 7 to "Food is ready", 8 to "Lecturer is coming", 9 to "I need help", 10 to "EMERGENCY — contact me now")
     }
