@@ -258,6 +258,9 @@ class MainActivity : ComponentActivity() {
                     hybridConnected = false
                     hybridConnectedEndpoint = null
                     val abandonedQueueCount = synchronized(pendingFileUris) { val count = pendingFileUris.size; pendingFileUris.clear(); count }
+                    val abandonedBundleOffer = pendingOutgoingBundle?.endpointId == id
+                    if (abandonedBundleOffer) pendingOutgoingBundle = null
+                    if (incomingBundleOffer?.endpointId == id) incomingBundleOffer = null
                     activeGame = activeGame?.let { it.copy(ready = false) }
                     incomingGameInvite = null
                     val lastName = hybridPeers.remove(id) ?: name
@@ -266,7 +269,7 @@ class MainActivity : ComponentActivity() {
                     connectedDeviceName = null
                     chatReady = false
                     connectionMessage = "Not connected"
-                    chatNotice = if (abandonedQueueCount > 0) "$abandonedQueueCount queued file(s) were not sent because the connection ended. Select them again after reconnecting." else if (activeGame != null) "Connection paused. Your Ludo match is saved here; reconnect to $lastName to continue." else "Nearby connection ended. Search again to reconnect."
+                    chatNotice = if (abandonedQueueCount > 0) "$abandonedQueueCount queued file(s) were not sent because the connection ended. Select them again after reconnecting." else if (abandonedBundleOffer) "The bundle offer was cancelled because the connection ended. Select the files again after reconnecting." else if (activeGame != null) "Connection paused. Your Ludo match is saved here; reconnect to $lastName to continue." else "Nearby connection ended. Search again to reconnect."
                     if (activeGame != null) communityNotice = "Ludo paused — waiting for $lastName to reconnect."
                 }
             }
