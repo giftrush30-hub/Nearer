@@ -1166,8 +1166,7 @@ class MainActivity : ComponentActivity() {
                 }
                 "ludo_reject" -> activeGame?.let { game ->
                     if (game.isHost && game.matchId == packet.optString("matchId")) {
-                        activeGame = null
-                        communityNotice = "$sender declined the Ludo invitation."
+                        communityNotice = "$sender declined the invitation. Your Ludo room remains open."
                     }
                 }
                 "ludo_accept" -> activeGame?.let { game ->
@@ -1256,15 +1255,57 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 "ludo_end" -> activeGame?.let { game ->
-                    if (game.matchId == packet.optString("matchId") &&
-                        (sender == game.opponentName || sender in game.remotePlayers.values)) {
-                        activeGame = null
-                        gameChatMessages.clear()
-                        communityNotice = "$sender ended the Ludo match."
+                    if (game.matchId == packet.optString("matchId")) {
+                        if (!game.isHost && sender == game.opponentName) {
+                            activeGame = null
+                            gameChatMessages.clear()
+                            communityNotice = "$sender ended the Ludo match."
+                        } else if (game.isHost && sender in game.remotePlayers.values) {
+                            removeLudoParticipant(game, sender)
+                        }
                     }
                 }
             }
         } catch (_: Exception) { communityNotice = "A community packet was invalid and ignored." }
+    }
+
+    private fun removeLudoParticipant(game: LudoNetworkMatch, sender: String) {
+        val leavingColor = game.remotePlayers.entries.firstOrNull { it.value == sender }?.key ?: return
+        val remainingPlayers = game.state.players.filterNot { it.color == leavingColor }
+        val remainingRemotes = game.remotePlayers.filterValues { it != sender }
+        if (remainingPlayers.size < 2) {
+            val others = remainingRemotes.values.toSet()
+            if (others.isNotEmpty()) {
+                sendCommunityToNames(
+                    "NR_COMMUNITY:" + JSONObject().put("type", "ludo_end").put("matchId", game.matchId),
+                    others
+                )
+            }
+            activeGame = null
+            gameChatMessages.clear()
+            communityNotice = "$sender left the table. The match has ended."
+            return
+        }
+        val removedIndex = game.state.players.indexOfFirst { it.color == leavingColor }
+        val currentWasRemoved = game.state.currentPlayer.color == leavingColor
+        var nextIndex = game.state.currentPlayerIndex
+        if (removedIndex < nextIndex) nextIndex -= 1
+        if (currentWasRemoved && nextIndex >= remainingPlayers.size) nextIndex = 0
+        val nextState = game.state.copy(
+            players = remainingPlayers,
+            currentPlayerIndex = nextIndex.coerceIn(0, remainingPlayers.lastIndex),
+            diceValue = if (currentWasRemoved) null else game.state.diceValue,
+            consecutiveSixes = if (currentWasRemoved) 0 else game.state.consecutiveSixes
+        )
+        val updated = game.copy(
+            state = nextState,
+            revision = game.revision + 1L,
+            remotePlayers = remainingRemotes,
+            opponentName = remainingRemotes.values.firstOrNull() ?: "Nearby player"
+        )
+        activeGame = updated
+        sendLudoState(updated)
+        communityNotice = "$sender left the table. The remaining players can continue."
     }
 
     private fun inviteToGame() {
