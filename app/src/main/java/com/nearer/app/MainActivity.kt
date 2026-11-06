@@ -1879,7 +1879,9 @@ private fun NeaRerHome(
             activeSection = sectionHistory.lastOrNull() ?: "home"
         }
     }
-    val pageScrollState = rememberScrollState()
+    // Keep each destination's scroll position independent when users move between tabs.
+    val pageScrollStates = remember { mutableStateMapOf<String, androidx.compose.foundation.ScrollState>() }
+    val pageScrollState = pageScrollStates.getOrPut(activeSection) { androidx.compose.foundation.ScrollState(0) }
     val sectionPositions = remember { mutableStateMapOf<String, Int>() }
     val navigationScope = rememberCoroutineScope()
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
