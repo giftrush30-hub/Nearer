@@ -204,6 +204,17 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                             color = if (game.activePlayer.isComputer) Muted else Gold, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
                     }
                     Text(game.message, color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF0B1D33))
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("LIVE", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                        Text(game.lastAction, color = Color(0xFFB8C9E1), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                         game.players.forEach { player ->
                             val active = player.id == game.activePlayer.id
@@ -415,15 +426,23 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
 
 @Composable
 private fun DiceFace(value: Int, rolling: Boolean, modifier: Modifier = Modifier) {
-    val spin by rememberInfiniteTransition(label = "dice-spin").animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(430, easing = LinearEasing), RepeatMode.Restart),
-        label = "dice-spin-angle"
-    )
+    // Run the dice rotation only while a roll is in progress; an idle game
+    // should not keep an infinite animation ticking in the background.
+    val rotation = remember { Animatable(0f) }
+    LaunchedEffect(rolling) {
+        if (rolling) {
+            rotation.snapTo(0f)
+            rotation.animateTo(
+                targetValue = 720f,
+                animationSpec = tween(560, easing = LinearEasing)
+            )
+        } else {
+            rotation.snapTo(0f)
+        }
+    }
     Canvas(
         modifier = modifier
-            .rotate(if (rolling) spin else 0f)
+            .rotate(rotation.value)
             .shadow(12.dp, RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp))
             .semantics { contentDescription = if (rolling) "Dice rolling" else "Dice showing $value" }
