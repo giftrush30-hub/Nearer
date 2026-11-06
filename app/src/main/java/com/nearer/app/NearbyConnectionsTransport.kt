@@ -117,9 +117,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val pending = pendingOutgoingMessages[messageId] ?: return
         pending.retryTask?.let(deliveryHandler::removeCallbacks)
         if (pending.attempts >= maxMessageAttempts) {
-            pendingOutgoingMessages.remove(messageId)
+            pending.endpointId = ""
+            pending.attempts = 0
             outgoingMessageTargets.remove(messageId)
-            listener.onMessageStatus(messageId, "Failed")
+            persistPendingOutbox()
+            listener.onMessageStatus(messageId, "Queued")
             return
         }
         val retry = Runnable { attemptOutgoingMessage(messageId) }
