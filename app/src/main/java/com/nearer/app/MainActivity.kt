@@ -235,7 +235,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(7, 26, 56)
-        window.navigationBarColor = android.graphics.Color.rgb(8, 20, 38)
+        window.navigationBarColor = android.graphics.Color.rgb(7, 26, 56)
         window.decorView.systemUiVisibility = 0
         wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
         channel = wifiManager?.initialize(this, mainLooper, null)
@@ -2100,6 +2100,15 @@ private fun NeaRerHome(
             }
 
             if (activeSection == "nearby") {
+            Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFF102B50), shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Color(0xFF28589A))) {
+                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("YOUR NEARER NAME", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                    OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(24); nameSaveFeedback = null }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Choose your nearby name", color = Muted) }, shape = RoundedCornerShape(13.dp))
+                    Button(onClick = { nameSaveFeedback = if (onSaveDisplayName(nameDraft)) "Your name is saved." else "Could not save your name." }, enabled = nameDraft.trim().isNotBlank(), modifier = Modifier.fillMaxWidth().height(43.dp), colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)) { Text("SAVE NEARBY NAME", fontWeight = FontWeight.Black) }
+                    Text(nameSaveFeedback ?: "This is the name other NeaRer users see nearby.", color = Muted, fontSize = 10.sp)
+                }
+            }
+
             Surface(
                 modifier = Modifier.fillMaxWidth().onGloballyPositioned {
                     sectionPositions["nearby"] = it.positionInParent().y.toInt()
@@ -2576,7 +2585,7 @@ private fun NeaRerHome(
 
             Text("NEARER  •  DIRECT DEVICE DISCOVERY", color = Muted, fontSize = 10.sp, letterSpacing = 1.sp)
             }
-            Surface(color = Color(0xFF0D1E35), modifier = Modifier.fillMaxWidth(), shadowElevation = 14.dp) {
+            Surface(color = Color(0xFF092653), modifier = Modifier.fillMaxWidth(), shadowElevation = 14.dp) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 7.dp),
                     horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -2594,7 +2603,7 @@ private fun NeaRerHome(
                                 activeSection = item.third
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                             },
-                            color = if (selected) Color(0xFF25466F) else Color.Transparent,
+                            color = if (selected) Color(0xFF1554A8) else Color.Transparent,
                             shape = RoundedCornerShape(13.dp),
                             border = if (selected) BorderStroke(1.dp, Gold.copy(alpha = 0.7f)) else null
                         ) {
