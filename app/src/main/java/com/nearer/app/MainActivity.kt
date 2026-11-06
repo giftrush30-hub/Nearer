@@ -271,6 +271,16 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            override fun onMessageStatus(messageId: String, status: String) {
+                runOnUiThread {
+                    val index = chatMessages.indexOfFirst { it.id == messageId }
+                    if (index >= 0) {
+                        chatMessages[index] = chatMessages[index].copy(delivery = status)
+                        persistMessages()
+                        chatNotice = "Your message was received by the other NeaRer phone."
+                    }
+                }
+            }
             override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {
                 runOnUiThread {
                     val fraction = if (total > 0L) (transferred.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
@@ -949,13 +959,13 @@ class MainActivity : ComponentActivity() {
         if (body.isEmpty() || !chatReady) return
         val id = UUID.randomUUID().toString()
         if (hybridConnected) {
-            if (nearbyTransport?.send(body) != true) {
+            if (nearbyTransport?.send(body, id) != true) {
                 chatNotice = "Message could not be sent. Check the nearby connection."
                 return
             }
-            chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sent"))
+            chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…"))
             persistMessages()
-            chatNotice = "Sent securely over the offline nearby connection."
+            chatNotice = "Sent over the offline link • waiting for the other phone to acknowledge receipt."
             return
         }
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
