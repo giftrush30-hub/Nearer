@@ -1,6 +1,8 @@
 package com.nearer.app
 
 import android.content.Context
+import android.bluetooth.BluetoothManager
+import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.net.Uri
@@ -628,15 +630,37 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         if (started) { client.stopAdvertising(); startAdvertising() }
     }
 
+    private fun radioReadinessMessage(): String? {
+        val bluetoothEnabled = try {
+            val manager = appContext.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            manager?.adapter?.isEnabled
+        } catch (_: SecurityException) {
+            null
+        } catch (_: RuntimeException) {
+            null
+        }
+        val wifiEnabled = try {
+            val manager = appContext.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            manager?.isWifiEnabled
+        } catch (_: SecurityException) {
+            null
+        } catch (_: RuntimeException) {
+            null
+        }
+        return TransferRadioReadiness.message(bluetoothEnabled, wifiEnabled)
+    }
+
     fun start() {
         if (started) return
         started = true
         val discovering = DiscoveryOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
         startAdvertising()
         client.startDiscovery(serviceId, discovery, discovering).addOnFailureListener {
-            listener.onStatus("Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}")
+            listener.onStatus("Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth and nearby-device permissions"}")
         }
-        listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
+        listener.onStatus(
+            radioReadinessMessage() ?: "Searching over Bluetooth and nearby Wi-Fi…"
+        )
     }
 
     fun request(id: String) {
