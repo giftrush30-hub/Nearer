@@ -125,7 +125,7 @@ fun LudoGamePanel(
     val myTurn = if (networkMode) ready && current.color == networkMatch!!.localColor else !current.isComputer
     val diceRotation by animateFloatAsState(if (rolling) 360f else 0f, spring(dampingRatio = .45f, stiffness = 500f), label = "diceRotation")
 
-    LaunchedEffect(networkMatch?.state?.turnNumber, networkMatch?.state?.currentPlayerIndex, networkMatch?.state?.diceValue, networkMatch?.state?.winner) {
+    LaunchedEffect(networkMatch?.state?.turnNumber, networkMatch?.state?.currentPlayerIndex, networkMatch?.state?.diceValue, networkMatch?.state?.winner, networkMatch?.revision) {
         networkActionPending = false
     }
 
