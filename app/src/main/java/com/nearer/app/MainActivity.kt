@@ -144,6 +144,7 @@ class MainActivity : ComponentActivity() {
     private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
     private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
     private var outgoingTransferId by mutableStateOf<String?>(null)
+    private val pendingFileUris = java.util.ArrayDeque<Uri>()
     private var outgoingProgress by mutableStateOf(0f)
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
@@ -333,6 +334,7 @@ class MainActivity : ComponentActivity() {
                         message.startsWith("File could not be prepared")) {
                         outgoingTransferId = null
                         outgoingProgress = 0f
+                        sendNextQueuedFile()
                     }
                     if (message.startsWith("Nearby file transfer failed")) {
                         incomingTransferName = null
@@ -405,7 +407,7 @@ class MainActivity : ComponentActivity() {
                     onGameChat = ::sendGameChat,
                     onGameRematch = ::requestGameRematch,
                     onEndGame = ::endGame,
-                    onSendFile = ::sendFile,
+                    onSendFile = ::sendFiles,
                     onCancelTransfer = ::cancelOutgoingFileTransfer,
                     outgoingTransferId = outgoingTransferId,
                     outgoingProgress = outgoingProgress,
@@ -1602,6 +1604,20 @@ class MainActivity : ComponentActivity() {
         chatNotice = "Cancelling file transfer…"
     }
 
+    private fun sendFiles(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        synchronized(pendingFileUris) { uris.forEach { pendingFileUris.addLast(it) } }
+        if (outgoingTransferId == null) sendNextQueuedFile()
+        else chatNotice = "${uris.size} file(s) added to the transfer queue."
+    }
+
+    private fun sendNextQueuedFile() {
+        if (outgoingTransferId != null) return
+        val next = synchronized(pendingFileUris) { if (pendingFileUris.isEmpty()) null else pendingFileUris.removeFirst() }
+        if (next != null) sendFile(next)
+        else chatNotice = "All selected files have been processed."
+    }
+
     private fun sendFile(uri: Uri) {
         if (hybridConnected) {
             val endpoint = hybridConnectedEndpoint
@@ -1845,6 +1861,7 @@ class MainActivity : ComponentActivity() {
                                 if (outgoingTransferId == transferId) {
                                     outgoingTransferId = null
                                     outgoingProgress = 0f
+                                    sendNextQueuedFile()
                                 }
                                 chatNotice = if (ok) "File delivered and verified by the nearby phone." else "The other phone could not verify the file."
                             }
@@ -1942,7 +1959,7 @@ private fun NeaRerHome(
     onGameChat: (String) -> Unit,
     onGameRematch: () -> Unit,
     onEndGame: () -> Unit,
-    onSendFile: (Uri) -> Unit,
+    onSendFile: (List<Uri>) -> Unit,
     onCancelTransfer: () -> Unit,
     outgoingTransferId: String?,
     outgoingProgress: Float,
@@ -1968,8 +1985,8 @@ private fun NeaRerHome(
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onSendFile(uri)
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) onSendFile(uris)
     }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(
@@ -2208,7 +2225,7 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26364D), contentColor = White)
-                        ) { Text("Share a photo or file") }
+                        ) { Text("Share files (select multiple)") }
                         Text(if (usingNearbyConnections) "Nearby Connections • no fixed file-size cap" else "Wi-Fi Direct • no fixed file-size cap", color = Muted, fontSize = 10.sp)
                     } else {
                         Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
