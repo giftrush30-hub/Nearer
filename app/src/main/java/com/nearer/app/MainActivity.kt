@@ -2381,6 +2381,34 @@ private fun NeaRerHome(
                                 }
                             }
                         }
+                    } else {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF0D2545),
+                            shape = RoundedCornerShape(19.dp),
+                            border = BorderStroke(1.dp, Color(0xFF31547E).copy(alpha = 0.75f))
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(11.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF1A3B64),
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                        Text("↗", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text("YOUR TRANSFER ACTIVITY", color = White, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                                    Text("Your sent and received files will appear here.", color = Muted, fontSize = 9.sp, lineHeight = 13.sp)
+                                }
+                                Text("READY", color = Color(0xFF8EF0C6), fontSize = 8.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
