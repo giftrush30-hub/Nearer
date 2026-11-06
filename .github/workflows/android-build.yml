@@ -3,6 +3,8 @@ name: NeaRer code validation
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
