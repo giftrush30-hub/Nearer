@@ -1,5 +1,6 @@
 package com.nearer.app
 
+import android.Manifest
 import android.app.role.RoleManager
 import android.os.Build
 import android.content.Intent
@@ -58,7 +59,9 @@ class FlashActivity : ComponentActivity() {
                                         roleLauncher.launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING))
                                     else status = "Android 10 or later is required for call screening."
                                 }, modifier = Modifier.fillMaxWidth()) { Text("ENABLE FLASH RECEIVER") }
-                                Text(status, color = Color.LightGray)
+                                Button(onClick = { requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), 740) }, modifier = Modifier.fillMaxWidth()) { Text("GRANT CONTACTS ACCESS") }
+                        if (Build.VERSION.SDK_INT >= 33) OutlinedButton(onClick = { requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 741) }, modifier = Modifier.fillMaxWidth()) { Text("GRANT NOTIFICATION ACCESS") }
+                        Text(status, color = Color.LightGray)
                             }
                         }
                     }
