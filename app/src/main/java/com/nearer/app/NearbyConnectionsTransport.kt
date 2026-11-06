@@ -357,7 +357,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     appContext.contentResolver.delete(uri, null, null)
                     listener.onFileReceived(meta.endpointId, meta.name, target)
                     completedTransferRates.remove(payloadId)?.let { rate ->
-                        listener.onFileStatus("Received ${meta.name} • $rate MB/s average • integrity digest calculated")
+                        listener.onFileStatus("Received ${meta.name} • $rate MB/s average • SHA-256 ${TransferStreamIO.sha256Hex(copied.sha256).take(12)}")
                     }
                 } catch (error: Exception) {
                     temporary?.delete()
