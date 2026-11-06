@@ -175,13 +175,21 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val messageId = envelope.optString("id")
             val body = envelope.optString("body")
             val ttl = envelope.optInt("ttl", 0)
-            if (messageId.isBlank() || body.isBlank() || body.length > 4000 || !seenMessageIds.add(messageId)) return
+            val hops = envelope.optInt("hops", 0)
+            // Nearby packets are untrusted input. Keep the envelope bounded so a
+            // malformed peer cannot inject oversized IDs or request unlimited relays.
+            if (bytes == null || bytes.size > 16 * 1024 ||
+                messageId.isBlank() || messageId.length > 80 ||
+                body.isBlank() || body.length > 4000 ||
+                ttl !in 0..4 || hops !in 0..4 ||
+                !seenMessageIds.add(messageId)
+            ) return
             if (seenMessageIds.size > 5000) seenMessageIds.remove(seenMessageIds.first())
             val senderDetails = synchronized(names) {
                 (names[endpointId] ?: "Nearby member") to stableIds[endpointId].orEmpty()
             }
             listener.onMessage(endpointId, senderDetails.first, senderDetails.second, body)
-            if (relayEnabled && ttl > 0) {
+            if (relayEnabled && ttl > 0 && hops < 4) {
                 val forwarded = JSONObject().put("id", messageId).put("body", body)
                     .put("ttl", ttl - 1).put("hops", envelope.optInt("hops", 0) + 1)
                     .put("origin", envelope.optString("origin", "nearby"))
