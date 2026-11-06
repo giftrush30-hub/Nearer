@@ -3518,9 +3518,24 @@ private fun NeaRerHome(
 
             if (activeSection == "nearby") {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("NEARBY DEVICES", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("NEARBY DEVICES", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+                    Text(
+                        if (scanning) "Discovery is active" else "Ready when you are",
+                        color = if (scanning) Color(0xFF8CE4C8) else Muted,
+                        fontSize = 9.sp
+                    )
+                }
                 Spacer(modifier = Modifier.weight(1f))
-                Text("${devices.size} found", color = AccentBlue, fontSize = 11.sp)
+                Text("${devices.size} found", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                if (!scanning && connectedDeviceName == null) {
+                    TextButton(
+                        onClick = onFindNearby,
+                        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp)
+                    ) {
+                        Text("SEARCH AGAIN", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                    }
+                }
             }
 
             Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Color(0xFF14243A)) {
@@ -3645,10 +3660,72 @@ private fun NeaRerHome(
             }
 
             if (devices.isEmpty()) {
-                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
-                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("No devices listed yet", color = White, fontWeight = FontWeight.SemiBold)
-                        Text("Scan with another Android phone nearby. For NeaRer chat, both phones will need the app installed.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                Surface(
+                    modifier = Modifier.fillMaxWidth().animateContentSize(),
+                    shape = RoundedCornerShape(19.dp),
+                    color = Color(0xFF102B50),
+                    border = BorderStroke(1.dp, Color(0xFF31547E))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFF1A4778),
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text(if (scanning) "⌕" else "◎", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    if (scanning) "Your radar is listening" else "No nearby phone has appeared yet",
+                                    color = White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    if (scanning) "Keep this screen open while the other phone searches too."
+                                    else "Start discovery on both phones and bring them closer.",
+                                    color = Muted,
+                                    fontSize = 10.sp,
+                                    lineHeight = 14.sp
+                                )
+                            }
+                            Surface(shape = CircleShape, color = if (scanning) Color(0xFF155B4B) else Color(0xFF253E5D)) {
+                                Text(
+                                    if (scanning) "LIVE" else "READY",
+                                    color = if (scanning) Color(0xFF8CE4C8) else Gold,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Black,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                        androidx.compose.material3.HorizontalDivider(color = Color(0xFF29496F))
+                        listOf(
+                            "Bluetooth and Wi-Fi should be switched on",
+                            "Both phones need NeaRer for chat and app sharing",
+                            "Keep NeaRer open and accept the connection on the other phone"
+                        ).forEachIndexed { index, tip ->
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("0${index + 1}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                Text(tip, color = Color(0xFFD1E0F4), fontSize = 10.sp, lineHeight = 14.sp)
+                            }
+                        }
+                        if (!scanning && connectedDeviceName == null) {
+                            Button(
+                                onClick = onFindNearby,
+                                modifier = Modifier.fillMaxWidth().height(43.dp),
+                                shape = RoundedCornerShape(13.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                            ) {
+                                Text("START NEARBY SEARCH", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
                     }
                 }
             } else {
