@@ -66,6 +66,42 @@ class LudoEngineTraditionalRulesTest {
     }
 
     @Test
+    fun sixCaptureDoesNotResetConsecutiveSixStreak() {
+        val red = LudoPlayer("red", "Hope", LudoColor.RED, false, listOf(4, -1, -1, -1))
+        val green = LudoPlayer("green", "Guest", LudoColor.GREEN, false, listOf(43, -1, -1, -1))
+        val state = LudoState(
+            players = listOf(red, green),
+            dice = 6,
+            legalTokenIndexes = listOf(0),
+            consecutiveSixes = 1
+        )
+
+        val moved = LudoEngine.move(state, 0)
+
+        assertEquals(-1, moved.players[1].tokens[0])
+        assertEquals(2, moved.consecutiveSixes)
+        assertEquals(0, moved.activePlayerIndex)
+    }
+
+    @Test
+    fun sixThatBringsTokenHomeDoesNotResetConsecutiveSixStreak() {
+        val red = LudoPlayer("red", "Hope", LudoColor.RED, false, listOf(50, -1, -1, -1))
+        val yellow = LudoPlayer("yellow", "Guest", LudoColor.YELLOW, false)
+        val state = LudoState(
+            players = listOf(red, yellow),
+            dice = 6,
+            legalTokenIndexes = listOf(0),
+            consecutiveSixes = 1
+        )
+
+        val moved = LudoEngine.move(state, 0)
+
+        assertEquals(56, moved.players[0].tokens[0])
+        assertEquals(2, moved.consecutiveSixes)
+        assertEquals(0, moved.activePlayerIndex)
+    }
+
+    @Test
     fun thirdConsecutiveSixForfeitsTheTurn() {
         var state = LudoEngine.newGame("Hope", playerCount = 2, computerOpponents = false)
 
