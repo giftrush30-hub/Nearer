@@ -32,7 +32,7 @@ class TransferResumeNegotiationTest {
 
     @Test fun rejectsUnsupportedPeersAndMalformedOffsets() {
         val proposal = TransferResumeNegotiation.propose(checkpoint, true, true, true)!!
-        val unsupported = TransferResumeNegotiation.decide(proposal, "transfer-1", item, 123L, true, false)
+        val unsupported = TransferResumeNegotiation.decide(proposal, "transfer-1", item, 123L, true, false, "a".repeat(64))
         assertEquals(TransferResumeNegotiation.Reason.PEER_UNSUPPORTED, unsupported.reason)
 
         val malformed = TransferResumeNegotiation.decide(
