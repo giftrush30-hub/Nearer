@@ -72,10 +72,22 @@ object LudoEngine {
         return state.currentPlayer.tokens.indices.filter { index ->
             val steps = state.currentPlayer.tokens[index].steps
             when {
-                steps == -1 -> roll == 6
+                steps == -1 -> roll == 6 && !pathBlocked(state, player.color, 0, 0)
                 steps == 57 -> false
-                else -> steps + roll <= 57
+                else -> steps + roll <= 57 && !pathBlocked(state, player.color, steps + 1, (steps + roll).coerceAtMost(51))
             }
+        }
+    }
+
+    private fun pathBlocked(state: LudoGameState, movingColor: LudoColor, fromStep: Int, toStep: Int): Boolean {
+        if (fromStep > toStep) return false
+        val opponentSquares = state.players.filter { it.color != movingColor }.flatMap { opponent ->
+            opponent.tokens.filter { it.steps in 0..51 }
+                .groupBy { (opponent.color.startOffset + it.steps) % 52 }
+                .filterValues { it.size >= 2 }.keys
+        }.toSet()
+        return (fromStep..toStep).any { relativeStep ->
+            ((movingColor.startOffset + relativeStep) % 52) in opponentSquares
         }
     }
 
