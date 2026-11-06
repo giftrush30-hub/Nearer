@@ -277,7 +277,7 @@ class MainActivity : ComponentActivity() {
                     if (index >= 0) {
                         chatMessages[index] = chatMessages[index].copy(delivery = status)
                         persistMessages()
-                        chatNotice = "Your message was received by the other NeaRer phone."
+                        chatNotice = if (status == "Delivered") "Your message was received by the other NeaRer phone." else "Message delivery failed. Reconnect and try again."
                     }
                 }
             }
