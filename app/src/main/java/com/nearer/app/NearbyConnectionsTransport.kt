@@ -27,6 +27,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
+        fun onOutgoingFileFinished(endpointId: String, payloadId: Long, name: String, success: Boolean, message: String)
     }
 
     private val appContext = context.applicationContext
@@ -247,16 +248,20 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 } else {
                     outgoingFiles.remove(payloadId)
                     listener.onFileProgress(id, payloadId, name, update.totalBytes, update.totalBytes, false)
-                    listener.onFileStatus("File sent to the nearby phone: $name • $rateLabel MB/s average")
+                    listener.onOutgoingFileFinished(id, payloadId, name, true, "File sent to the nearby phone: $name • $rateLabel MB/s average")
                 }
             } else {
                 transferStartedAtNanos.remove(key)
                 completedTransferRates.remove(key)
-                outgoingFiles[payloadId]?.takeIf { it.first == id }?.let { outgoingFiles.remove(payloadId) }
+                val failedOutgoing = outgoingFiles[payloadId]?.takeIf { it.first == id }?.also { outgoingFiles.remove(payloadId) }
                 incomingMetadata.remove(key)
                 incomingPayloads.remove(key)?.close()
                 completedPayloads.remove(key)?.close()
-                listener.onFileStatus("Nearby file transfer failed or was cancelled.")
+                if (failedOutgoing != null) {
+                    listener.onOutgoingFileFinished(id, payloadId, failedOutgoing.second, false, "Nearby file transfer failed or was cancelled.")
+                } else {
+                    listener.onFileStatus("Nearby file transfer failed or was cancelled.")
+                }
             }
         }
     }
@@ -545,14 +550,14 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                             outgoingFiles.remove(id)
                             transferStartedAtNanos.remove(transferKey(endpointId, id))
                             try { payload.close() } catch (_: Exception) { }
-                            listener.onFileStatus("Could not start file transfer: ${error.localizedMessage ?: "connection error"}")
+                            listener.onOutgoingFileFinished(endpointId, id, name, false, "Could not start file transfer: ${error.localizedMessage ?: "connection error"}")
                         }
                 }
                 .addOnFailureListener { error ->
                     outgoingFiles.remove(id)
                     try { client.cancelPayload(id) } catch (_: Exception) { }
                     try { payload.close() } catch (_: Exception) { }
-                    listener.onFileStatus("Could not send file details: ${error.localizedMessage ?: "connection error"}")
+                    listener.onOutgoingFileFinished(endpointId, id, name, false, "Could not send file details: ${error.localizedMessage ?: "connection error"}")
                 }
             listener.onFileProgress(endpointId, id, name, 0L, size, false)
             return id
