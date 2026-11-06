@@ -1239,8 +1239,20 @@ class MainActivity : ComponentActivity() {
                 "ludo_chat" -> activeGame?.let { game ->
                     if (game.matchId == packet.optString("matchId") &&
                         (sender == game.opponentName || sender in game.remotePlayers.values)) {
-                        gameChatMessages.add("$sender: " + packet.optString("body").take(300))
+                        val chatSender = packet.optString("sender").ifBlank { sender }.take(23)
+                        val body = packet.optString("body").take(300)
+                        gameChatMessages.add("$chatSender: $body")
                         while (gameChatMessages.size > 60) gameChatMessages.removeAt(0)
+                        if (game.isHost) {
+                            val otherPlayers = game.remotePlayers.values.filter { it != sender }.toSet()
+                            if (otherPlayers.isNotEmpty()) {
+                                sendCommunityToNames(
+                                    "NR_COMMUNITY:" + JSONObject().put("type", "ludo_chat")
+                                        .put("matchId", game.matchId).put("sender", chatSender).put("body", body),
+                                    otherPlayers
+                                )
+                            }
+                        }
                     }
                 }
                 "ludo_end" -> activeGame?.let { game ->
