@@ -1,6 +1,5 @@
 package com.nearer.app
 
-import android.app.ActivityManager
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
