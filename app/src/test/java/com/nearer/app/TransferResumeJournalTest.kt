@@ -85,6 +85,23 @@ class TransferResumeJournalTest {
         }
     }
 
+
+    @Test fun journalRejectsOversizedEntryBeforeReadingIt() {
+        val directory = Files.createTempDirectory("nearer-resume-oversized").toFile()
+        try {
+            val journal = TransferResumeJournal(directory)
+            journal.save(checkpoint())
+            val entry = directory.listFiles()!!.single()
+            // The normal codec envelope is only a few hundred bytes. A file
+            // larger than the journal's hard limit must never be decoded.
+            entry.writeBytes(ByteArray(7 * 1024) { 0x5a })
+            assertNull(journal.load("transfer-1", "item-1"))
+            assertTrue(journal.loadAll().isEmpty())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     @Test fun corruptJournalEntryIsIgnoredWithoutCrashing() {
         val directory = Files.createTempDirectory("nearer-resume-corrupt").toFile()
         try {
