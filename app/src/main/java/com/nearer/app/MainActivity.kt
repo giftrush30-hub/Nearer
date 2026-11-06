@@ -2124,7 +2124,7 @@ private fun NeaRerHome(
                                     shape = RoundedCornerShape(15.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = BrandBlue, contentColor = White)
                                 ) {
-                                    Text("↑  SEND FILES", fontSize = 11.sp, fontWeight = FontWeight.Black)
+                                    Text(if (chatReady) "↑  SEND NOW" else "↑  FIND & SEND", fontSize = 10.sp, fontWeight = FontWeight.Black)
                                 }
                                 Button(
                                     onClick = {
@@ -2137,7 +2137,7 @@ private fun NeaRerHome(
                                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.75f)),
                                     colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
                                 ) {
-                                    Text("↓  RECEIVE FILES", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                    Text("↓  RECEIVE", fontSize = 10.sp, fontWeight = FontWeight.Black)
                                 }
                             }
                             Text(if (chatReady) "Connected to ${connectedDeviceName ?: "a nearby phone"} • ready to share"
@@ -2300,15 +2300,28 @@ private fun NeaRerHome(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("TRANSFER ACTIVITY", color = White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                                     Spacer(Modifier.weight(1f))
-                                    Text(
-                                        if (incomingTransferName != null || outgoingTransferId != null) "IN PROGRESS" else "RECENT",
-                                        color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black,
-                                        modifier = Modifier.alpha(if (incomingTransferName != null || outgoingTransferId != null) pulse else 1f)
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (incomingTransferName != null || outgoingTransferId != null) Color(0xFF6BE0B0) else Gold,
+                                            modifier = Modifier.size(6.dp).alpha(if (incomingTransferName != null || outgoingTransferId != null) homePulse else 1f)
+                                        ) {}
+                                        Text(
+                                            if (incomingTransferName != null || outgoingTransferId != null) "LIVE TRANSFER" else "RECENT",
+                                            color = if (incomingTransferName != null || outgoingTransferId != null) Color(0xFF8EF0C6) else Gold,
+                                            fontSize = 9.sp, fontWeight = FontWeight.Black
+                                        )
+                                    }
                                 }
                                 incomingTransferName?.let { name ->
                                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                        Text("Receiving $name", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                            Surface(shape = CircleShape, color = BrandBlue.copy(alpha = homePulse), modifier = Modifier.size(7.dp)) {}
+                                            Text("Receiving $name", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        }
                                         if (incomingProgress <= 0f) {
                                             LinearProgressIndicator(
                                                 modifier = Modifier.fillMaxWidth(),
@@ -2328,7 +2341,10 @@ private fun NeaRerHome(
                                 }
                                 if (outgoingTransferId != null) {
                                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                        Text("Sending file to nearby device", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                            Surface(shape = CircleShape, color = Gold.copy(alpha = homePulse), modifier = Modifier.size(7.dp)) {}
+                                            Text("Sending file to nearby device", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        }
                                         if (outgoingProgress <= 0f) {
                                             LinearProgressIndicator(
                                                 modifier = Modifier.fillMaxWidth(),
