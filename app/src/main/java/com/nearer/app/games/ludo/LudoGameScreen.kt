@@ -341,7 +341,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                         Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
                             game.legalTokenIndexes.forEach { tokenIndex ->
                                 Surface(color = Color(0xFF1B3B65), shape = RoundedCornerShape(13.dp),
-                                    border = BorderStroke(1.dp, Gold.copy(alpha = pulse)),
+                                    border = BorderStroke(1.dp, Gold.copy(alpha = pulse.value)),
                                     modifier = Modifier.weight(1f).clickable {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         moveToken(tokenIndex)
