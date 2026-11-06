@@ -33,11 +33,6 @@ class LudoEngineTraditionalRulesTest {
     @Test
     fun tokenMustReachHomeWithAnExactRoll() {
         val red = LudoPlayer("red", "Hope", LudoColor.RED, false, listOf(55, -1, -1, -1))
-        val yellow = LudoPlayer("yellow", "Guest", LudoColor.YELLOW, false)
-        val state = LudoState(
-            players = listOf(red, yellow), dice = 2, legalTokenIndexes = emptyList()
-        )
-
         assertTrue(LudoEngine.legalMoves(red, 2).isEmpty())
         assertEquals(listOf(0), LudoEngine.legalMoves(red, 1))
     }
