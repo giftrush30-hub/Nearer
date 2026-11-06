@@ -2583,7 +2583,15 @@ private fun NeaRerHome(
                                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                             Surface(shape = CircleShape, color = Gold.copy(alpha = homePulse), modifier = Modifier.size(7.dp)) {}
-                                            Text("Sending file to nearby device", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                            Text(
+                                                when {
+                                                    chatNotice.startsWith("Sending ") && !chatNotice.startsWith("Sending complete") -> chatNotice.removePrefix("Sending ").substringBefore(" •")
+                                                    chatNotice.startsWith("Preparing to send ") -> chatNotice.removePrefix("Preparing to send ").substringBefore(" over ")
+                                                    else -> "File transfer in progress"
+                                                },
+                                                color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                                            )
                                             Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
                                                 listOf(transferDotOne, transferDotTwo, transferDotThree).forEach { dotAlpha ->
                                                     Surface(shape = CircleShape, color = Gold, modifier = Modifier.size(4.dp).alpha(dotAlpha)) {}
