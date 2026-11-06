@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -65,6 +66,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
     var rolling by remember { mutableStateOf(false) }
     var rollingFace by remember { mutableIntStateOf(1) }
     var soundEnabled by remember { mutableStateOf(true) }
+    var showRules by remember { mutableStateOf(false) }
     val tones = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 48) }
     DisposableEffect(tones) { onDispose { tones.release() } }
     val scope = rememberCoroutineScope()
@@ -97,11 +99,46 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
     }
 
     LaunchedEffect(game.activePlayerIndex, game.dice, game.turnNumber, game.winnerId, game.message) {
-        if (!game.isFinished && game.activePlayer.isComputer) {
+        if (!showRules && !game.isFinished && game.activePlayer.isComputer) {
             if (game.dice == null) animateRoll(computer = true)
             else {
                 delay(720)
                 LudoEngine.chooseComputerMove(game)?.let { game = LudoEngine.move(game, it) }
+            }
+        }
+    }
+
+    if (showRules) {
+        Dialog(onDismissRequest = { showRules = false }) {
+            Surface(
+                color = Panel,
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Gold.copy(alpha = 0.7f)),
+                shadowElevation = 18.dp
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(11.dp)
+                ) {
+                    Text("HOW TO PLAY", color = Gold, fontSize = 11.sp,
+                        fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                    Text("TRADITIONAL LUDO", color = White, fontSize = 23.sp, fontWeight = FontWeight.Black)
+                    Text("01  •  Roll a six to bring a token out of your yard.", color = White, fontSize = 12.sp)
+                    Text("02  •  Tap one of the highlighted tokens to move it.", color = White, fontSize = 12.sp)
+                    Text("03  •  Roll a six, capture an opponent, or reach home to earn another turn.", color = White, fontSize = 12.sp)
+                    Text("04  •  Safe squares protect tokens from capture.", color = White, fontSize = 12.sp)
+                    Text("05  •  You need the exact number to reach the centre. First to bring all four tokens home wins.", color = White, fontSize = 12.sp)
+                    Text("A third consecutive six forfeits your turn.", color = Color(0xFFFFD98A),
+                        fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Button(
+                        onClick = { showRules = false },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF14233A))
+                    ) {
+                        Text("LET'S PLAY", fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                    }
+                }
             }
         }
     }
@@ -122,6 +159,16 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                     Text("NEARER GAME ZONE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
                     Text("LUDO", color = White, fontSize = 29.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                 }
+                Surface(
+                    color = Color(0xFF17365A),
+                    shape = RoundedCornerShape(50),
+                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.75f)),
+                    modifier = Modifier.clickable { showRules = true }
+                ) {
+                    Text("RULES", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp))
+                }
+                Spacer(Modifier.width(6.dp))
                 Surface(color = Color(0xFF153D79), shape = RoundedCornerShape(50), border = BorderStroke(1.dp, Cobalt)) {
                     Text("OFFLINE", color = Color(0xFFBFD5FF), fontSize = 9.sp, fontWeight = FontWeight.ExtraBold,
                         modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp))
