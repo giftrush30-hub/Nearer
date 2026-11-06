@@ -80,4 +80,39 @@ class DeferredFileDigestTrackerTest {
             tracker.markFileCompleted("peer", 15L))
     }
 
+
+    @Test fun expiresAbandonedEntriesAndFreesCapacity() {
+        var now = 1_000L
+        val tracker = DeferredFileDigestTracker(
+            maxPendingEntries = 1,
+            entryTtlMillis = 50L,
+            nowMillis = { now }
+        )
+        tracker.recordDigest("stale-peer", 16L, digest)
+        assertEquals(1, tracker.pendingCount())
+
+        now += 50L
+        assertEquals(0, tracker.pendingCount())
+        assertNull(tracker.registerFile("active-peer", 17L, 42L))
+        assertEquals(1, tracker.pendingCount())
+    }
+
+    @Test fun expiresAcrossMonotonicClockWraparound() {
+        var now = Long.MAX_VALUE - 10L
+        val tracker = DeferredFileDigestTracker(
+            entryTtlMillis = 25L,
+            nowMillis = { now }
+        )
+        tracker.markFileCompleted("peer", 18L)
+
+        now = Long.MIN_VALUE + 14L
+        assertEquals(0, tracker.pendingCount())
+    }
+
+    @Test fun rejectsNonPositiveExpiryConfiguration() {
+        assertThrows(IllegalArgumentException::class.java) {
+            DeferredFileDigestTracker(entryTtlMillis = 0L)
+        }
+    }
+
 }
