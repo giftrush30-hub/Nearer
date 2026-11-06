@@ -37,7 +37,7 @@ class TransferResumeNegotiationTest {
 
         val malformed = TransferResumeNegotiation.decide(
             proposal.copy(committedOffsetBytes = chunk + 1L),
-            "transfer-1", item, 123L, true, true
+            "transfer-1", item, 123L, true, true, "a".repeat(64)
         )
         assertEquals(TransferResumeNegotiation.Reason.OFFSET_INVALID, malformed.reason)
         assertEquals(0L, malformed.acceptedOffsetBytes)
@@ -56,7 +56,7 @@ class TransferResumeNegotiationTest {
                 proposal.transferId, proposal.itemId, proposal.relativePath,
                 proposal.expectedSizeBytes, proposal.sourceModifiedAtMillis,
                 proposal.committedOffsetBytes, proposal.prefixSha256
-            ), "transfer-1", item, 123L, true, true
+            ), "transfer-1", item, 123L, true, true, "a".repeat(64)
         )
         assertEquals(TransferResumeNegotiation.Reason.ALREADY_COMPLETE, decision.reason)
         assertEquals(0L, decision.acceptedOffsetBytes)
