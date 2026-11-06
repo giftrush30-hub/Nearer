@@ -101,7 +101,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         @Volatile var attempts: Int = 0,
         @Volatile var retryTask: Runnable? = null
     )
-    private val pendingDeferredDigests = ConcurrentHashMap<Long, PendingDeferredDigest>()
+    private val pendingDeferredDigests = ConcurrentHashMap<TransferKey, PendingDeferredDigest>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
     private val outgoingAwaitingFirstByteSinceNanos = ConcurrentHashMap<Long, Long>()
     private val outgoingFirstByteLatencyNanos = ConcurrentHashMap<Long, Long>()
@@ -575,7 +575,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (kind == "file_digest_ack") {
                 val payloadId = envelope.optLong("payloadId", -1L)
                 if (payloadId >= 0L) {
-                    pendingDeferredDigests.remove(payloadId)?.retryTask?.let(deliveryHandler::removeCallbacks)
+                    pendingDeferredDigests.remove(transferKey(endpointId, payloadId))?.retryTask?.let(deliveryHandler::removeCallbacks)
                 }
                 return
             }
@@ -1058,14 +1058,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
 
     private fun sendDeferredFileDigest(endpointId: String, payloadId: Long, sha256: String) {
-        pendingDeferredDigests[payloadId] = PendingDeferredDigest(endpointId, sha256)
-        attemptDeferredFileDigest(payloadId)
+        val key = transferKey(endpointId, payloadId)
+        pendingDeferredDigests[key] = PendingDeferredDigest(endpointId, sha256)
+        attemptDeferredFileDigest(key)
     }
 
-    private fun attemptDeferredFileDigest(payloadId: Long) {
-        val pending = pendingDeferredDigests[payloadId] ?: return
+    private fun attemptDeferredFileDigest(key: TransferKey) {
+        val pending = pendingDeferredDigests[key] ?: return
+        val payloadId = key.payloadId
         if (synchronized(activeEndpoints) { !activeEndpoints.contains(pending.endpointId) }) {
-            pendingDeferredDigests.remove(payloadId, pending)
+            pendingDeferredDigests.remove(key, pending)
             listener.onFileStatus("The connection ended before the integrity confirmation was acknowledged.")
             return
         }
@@ -1079,18 +1081,18 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             .put("payloadId", payloadId).put("sha256", pending.sha256)
         try {
             client.sendPayload(pending.endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8)))
-                .addOnFailureListener { scheduleDeferredDigestRetry(payloadId, 400L) }
+                .addOnFailureListener { scheduleDeferredDigestRetry(key, 400L) }
         } catch (_: Exception) {
             scheduleDeferredDigestRetry(payloadId, 400L)
             return
         }
-        scheduleDeferredDigestRetry(payloadId, 1500L)
+        scheduleDeferredDigestRetry(key, 1500L)
     }
 
-    private fun scheduleDeferredDigestRetry(payloadId: Long, delayMillis: Long) {
-        val pending = pendingDeferredDigests[payloadId] ?: return
+    private fun scheduleDeferredDigestRetry(key: TransferKey, delayMillis: Long) {
+        val pending = pendingDeferredDigests[key] ?: return
         pending.retryTask?.let(deliveryHandler::removeCallbacks)
-        val retry = Runnable { attemptDeferredFileDigest(payloadId) }
+        val retry = Runnable { attemptDeferredFileDigest(key) }
         pending.retryTask = retry
         deliveryHandler.postDelayed(retry, delayMillis)
     }
@@ -1313,9 +1315,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         peerMaxParallelFiles.remove(endpointId)
         peerSupportsDeferredDigest.remove(endpointId)
         acknowledgedDeferredDigests.removeEndpoint(endpointId)
-        pendingDeferredDigests.entries.filter { it.value.endpointId == endpointId }.forEach { (id, pending) ->
+        pendingDeferredDigests.entries.filter { it.key.endpointId == endpointId }.forEach { (key, pending) ->
             pending.retryTask?.let(deliveryHandler::removeCallbacks)
-            pendingDeferredDigests.remove(id, pending)
+            pendingDeferredDigests.remove(key, pending)
         }
         val keys = (incomingMetadata.keys + incomingPayloads.keys + completedPayloads.keys +
             transferStartedAtNanos.keys + completedTransferRates.keys)
