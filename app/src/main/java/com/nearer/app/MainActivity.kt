@@ -1861,12 +1861,20 @@ private fun NeaRerHome(
     }
     var showLudo by remember { mutableStateOf(false) }
     var activeSection by remember { mutableStateOf("home") }
+    var sectionHistory by remember { mutableStateOf(listOf("home")) }
+    val navigateToSection: (String) -> Unit = { destination ->
+        if (destination != activeSection) {
+            sectionHistory = sectionHistory + destination
+            activeSection = destination
+        }
+    }
     var hasChosenName by remember { mutableStateOf(displayName != "NeaRer User") }
-    BackHandler(enabled = showLudo || activeSection != "home") {
+    BackHandler(enabled = showLudo || sectionHistory.size > 1) {
         if (showLudo) {
             showLudo = false
         } else {
-            activeSection = "home"
+            sectionHistory = sectionHistory.dropLast(1)
+            activeSection = sectionHistory.lastOrNull() ?: "home"
         }
     }
     val pageScrollState = rememberScrollState()
@@ -2051,7 +2059,7 @@ private fun NeaRerHome(
                                 Button(
                                     onClick = {
                                         if (chatReady) filePicker.launch(arrayOf("*/*"))
-                                        else { activeSection = "nearby"; onFindNearby(); navigationScope.launch { pageScrollState.animateScrollTo(0) } }
+                                        else { navigateToSection("nearby"); onFindNearby(); navigationScope.launch { pageScrollState.animateScrollTo(0) } }
                                     },
                                     modifier = Modifier.weight(1f).height(52.dp),
                                     shape = RoundedCornerShape(15.dp),
@@ -2061,7 +2069,7 @@ private fun NeaRerHome(
                                 }
                                 Button(
                                     onClick = {
-                                        activeSection = "nearby"
+                                        navigateToSection("nearby")
                                         onFindNearby()
                                         navigationScope.launch { pageScrollState.animateScrollTo(0) }
                                     },
@@ -2109,7 +2117,7 @@ private fun NeaRerHome(
                                         modifier = Modifier.weight(1f).height(94.dp).animateContentSize().clickable {
                                             if (chatReady) filePicker.launch(item.third)
                                             else {
-                                                activeSection = "nearby"
+                                                navigateToSection("nearby")
                                                 onFindNearby()
                                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                                             }
@@ -2224,7 +2232,7 @@ private fun NeaRerHome(
                         ).forEach { item ->
                             Surface(
                                 modifier = Modifier.weight(1f).clickable {
-                                    activeSection = item[2]
+                                    navigateToSection(item[2])
                                     if (item[2] == "nearby") onFindNearby()
                                     navigationScope.launch { pageScrollState.animateScrollTo(0) }
                                 },
@@ -2245,7 +2253,7 @@ private fun NeaRerHome(
                         Text("RECENT CHATS", color = White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
                         Spacer(Modifier.weight(1f))
                         TextButton(onClick = {
-                            activeSection = "chats"
+                            navigateToSection("chats")
                             navigationScope.launch { pageScrollState.animateScrollTo(0) }
                         }) { Text("VIEW ALL  →", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
                     }
@@ -2295,7 +2303,7 @@ private fun NeaRerHome(
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                         Surface(
                             modifier = Modifier.weight(1f).clickable {
-                                activeSection = "community"
+                                navigateToSection("community")
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                             },
                             color = Color(0xFF10294D), shape = RoundedCornerShape(17.dp),
@@ -2309,7 +2317,7 @@ private fun NeaRerHome(
                         }
                         Surface(
                             modifier = Modifier.weight(1f).clickable {
-                                activeSection = "games"
+                                navigateToSection("games")
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                             },
                             color = Color(0xFF10294D), shape = RoundedCornerShape(17.dp),
@@ -2524,7 +2532,7 @@ private fun NeaRerHome(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Surface(
                         modifier = Modifier.weight(1f).clickable {
-                            activeSection = "nearby"
+                            navigateToSection("nearby")
                             onFindNearby()
                             navigationScope.launch { pageScrollState.animateScrollTo(0) }
                         },
@@ -2542,7 +2550,7 @@ private fun NeaRerHome(
                     Surface(
                         modifier = Modifier.weight(1f).clickable {
                             if (chatReady) filePicker.launch(arrayOf("*/*"))
-                            else { activeSection = "nearby"; onFindNearby(); navigationScope.launch { pageScrollState.animateScrollTo(0) } }
+                            else { navigateToSection("nearby"); onFindNearby(); navigationScope.launch { pageScrollState.animateScrollTo(0) } }
                         },
                         color = Color(0xFF172F52), shape = RoundedCornerShape(15.dp),
                         border = BorderStroke(1.dp, Color(0xFF28589A))
@@ -2730,7 +2738,7 @@ private fun NeaRerHome(
                         }
                         Button(
                             onClick = {
-                                activeSection = "nearby"
+                                navigateToSection("nearby")
                                 onFindNearby()
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                             },
