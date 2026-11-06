@@ -39,6 +39,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1860,6 +1861,14 @@ private fun NeaRerHome(
     }
     var showLudo by remember { mutableStateOf(false) }
     var activeSection by remember { mutableStateOf("home") }
+    var hasChosenName by remember { mutableStateOf(displayName != "NeaRer User") }
+    BackHandler(enabled = showLudo || activeSection != "home") {
+        if (showLudo) {
+            showLudo = false
+        } else {
+            activeSection = "home"
+        }
+    }
     val pageScrollState = rememberScrollState()
     val sectionPositions = remember { mutableStateMapOf<String, Int>() }
     val navigationScope = rememberCoroutineScope()
@@ -1870,6 +1879,84 @@ private fun NeaRerHome(
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
+    }
+    if (!hasChosenName) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = Midnight
+        ) {
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Brush.verticalGradient(listOf(Color(0xFF102D56), Midnight, Color(0xFF061329))))
+                    .padding(horizontal = 25.dp, vertical = 30.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier.size(86.dp),
+                        shape = RoundedCornerShape(28.dp),
+                        color = Color(0xFF1554A8),
+                        border = BorderStroke(1.dp, Color(0xFF4A91FF))
+                    ) {
+                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("N", color = White, fontSize = 38.sp, fontWeight = FontWeight.Black)
+                                Text("R", color = Gold, fontSize = 38.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Nea", color = White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp)
+                            Text("R", color = Gold, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp)
+                            Text("er", color = White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp)
+                        }
+                        Text("YOUR WORLD. YOUR PEOPLE. CLOSER.", color = Color(0xFF7DB5FF), fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.8.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        Text("First, what should we call you?", color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 31.sp)
+                        Text("Choose the name people nearby will see when they find you on NeaRer.", color = Muted, fontSize = 13.sp, lineHeight = 20.sp)
+                    }
+                    OutlinedTextField(
+                        value = nameDraft,
+                        onValueChange = { nameDraft = it.take(24); nameSaveFeedback = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("Your NeaRer name", color = Muted) },
+                        shape = RoundedCornerShape(18.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(color = White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    )
+                    Button(
+                        onClick = {
+                            if (onSaveDisplayName(nameDraft.trim())) {
+                                hasChosenName = true
+                                activeSection = "home"
+                            } else {
+                                nameSaveFeedback = "Please choose a name before continuing."
+                            }
+                        },
+                        enabled = nameDraft.trim().isNotBlank(),
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(17.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                    ) {
+                        Text("LET'S GO  →", fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                    }
+                    nameSaveFeedback?.let { Text(it, color = Color(0xFFFFA7A7), fontSize = 11.sp) }
+                    Text("No account. No sign-up. Your name is saved on this phone.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                }
+            }
+        }
+        return
     }
     if (showLudo) {
         LudoGameScreen(playerName = playerName, onExit = { showLudo = false })
