@@ -289,7 +289,11 @@ class MainActivity : ComponentActivity() {
                     if (index >= 0) {
                         chatMessages[index] = chatMessages[index].copy(delivery = status)
                         persistMessages()
-                        chatNotice = if (status == "Delivered") "Your message was received by the other NeaRer phone." else "Message delivery failed. Reconnect and try again."
+                        chatNotice = when (status) {
+                            "Delivered" -> "Your message was received by the other NeaRer phone."
+                            "Queued" -> "Not delivered yet. NeaRer saved it and will retry when this person reconnects."
+                            else -> "Message delivery failed. Reconnect and try again."
+                        }
                     }
                 }
             }
