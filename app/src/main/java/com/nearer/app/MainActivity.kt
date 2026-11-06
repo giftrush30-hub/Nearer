@@ -2339,7 +2339,7 @@ private fun NeaRerHome(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             shape = CircleShape,
-                            color = if (chatReady) Color(0xFF1D6856) else Color(0xFF244B70),
+                            color = if (chatReady) Color(0xFF145A49) else Color(0xFF244B70),
                             modifier = Modifier.size(44.dp)
                         ) {
                             androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
@@ -2377,7 +2377,7 @@ private fun NeaRerHome(
                                         horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
                                     ) {
                                         Surface(
-                                            color = if (message.outgoing) Color(0xFF24564F) else Color(0xFF26364D),
+                                            color = if (message.outgoing) Color(0xFF174A9B) else Color(0xFF19375D),
                                             shape = RoundedCornerShape(14.dp)
                                         ) {
                                             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
@@ -2395,7 +2395,7 @@ private fun NeaRerHome(
                                 onClick = { onOpenFile(fileItem) },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26364D), contentColor = White)
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF19375D), contentColor = White)
                             ) { Text("Open ${fileItem.displayName}", maxLines = 1) }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2420,7 +2420,7 @@ private fun NeaRerHome(
                                 progress = { incomingProgress },
                                 modifier = Modifier.fillMaxWidth(),
                                 color = Mint,
-                                trackColor = Color(0xFF26364D)
+                                trackColor = Color(0xFF19375D)
                             )
                         }
                         if (outgoingTransferId != null) {
@@ -2428,20 +2428,20 @@ private fun NeaRerHome(
                                 progress = { outgoingProgress },
                                 modifier = Modifier.fillMaxWidth(),
                                 color = Mint,
-                                trackColor = Color(0xFF26364D)
+                                trackColor = Color(0xFF19375D)
                             )
                             Button(
                                 onClick = onCancelTransfer,
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF713D4A), contentColor = White)
                             ) { Text("Cancel file transfer") }
                         }
                         Button(
                             onClick = { filePicker.launch(arrayOf("*/*")) },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26364D), contentColor = White)
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF19375D), contentColor = White)
                         ) { Text("Share a photo or file") }
                         Text(if (usingNearbyConnections) "Nearby Connections • no fixed file-size cap" else "Wi-Fi Direct • no fixed file-size cap", color = Muted, fontSize = 10.sp)
                     } else {
@@ -2487,7 +2487,7 @@ private fun NeaRerHome(
                         Text("Compare the six-digit code on both phones. Accept only if it matches and you recognise this person.", color = Muted, fontSize = 12.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Button(onClick = onAccept, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Accept") }
-                            Button(onClick = onReject, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Reject") }
+                            Button(onClick = onReject, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF713D4A), contentColor = White)) { Text("Reject") }
                         }
                     }
                 }
