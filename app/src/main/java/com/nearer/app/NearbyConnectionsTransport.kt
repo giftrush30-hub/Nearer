@@ -1228,7 +1228,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                             try {
                                 val hashStartedAt = SystemClock.elapsedRealtimeNanos()
                                 val sourceSha256 = appContext.contentResolver.openInputStream(uri)?.use { input ->
-                                    TransferStreamIO.sha256Hex(TransferStreamIO.sha256Exactly(input, size, HyperTransferTuning.receiveBufferBytes(appContext)))
+                                    TransferStreamIO.sha256Hex(TransferStreamIO.sha256Exactly(input, size, HyperTransferTuning.receiveBufferBytes(appContext)) { preparingOutgoingFiles[id] !== payload || !isEndpointConnected(endpointId) })
                                 } ?: throw IllegalStateException("NeaRer could not read the selected file for its integrity check")
                                 val hashElapsedNanos = (SystemClock.elapsedRealtimeNanos() - hashStartedAt).coerceAtLeast(0L)
                                 if (preparingOutgoingFiles[id] !== payload) return@execute
