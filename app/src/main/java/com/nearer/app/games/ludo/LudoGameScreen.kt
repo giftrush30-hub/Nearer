@@ -165,6 +165,40 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                 }
             }
 
+            if (game.isFinished) {
+                val champion = game.players.firstOrNull { it.id == game.winnerId }?.name ?: "Player"
+                Surface(
+                    color = Color(0xFF18375D),
+                    shape = RoundedCornerShape(22.dp),
+                    border = BorderStroke(1.5.dp, Gold.copy(alpha = pulse)),
+                    shadowElevation = 12.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 19.dp, horizontal = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        Text("✦  VICTORY  ✦", color = Gold, fontSize = 11.sp,
+                            fontWeight = FontWeight.Black, letterSpacing = 2.2.sp)
+                        Text("🏆", fontSize = 38.sp)
+                        Text(champion.uppercase(), color = White, fontSize = 23.sp,
+                            fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
+                        Text("ROYAL CHAMPION", color = Color(0xFFFFE59A), fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold, letterSpacing = 1.8.sp)
+                        Text("All four tokens have reached home.", color = Muted, fontSize = 11.sp)
+                        Button(
+                            onClick = { game = LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents); rolling = false },
+                            modifier = Modifier.fillMaxWidth().padding(top = 5.dp).height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF14233A))
+                        ) {
+                            Text("PLAY AGAIN", fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                        }
+                    }
+                }
+            }
+
             Surface(color = Panel, shape = RoundedCornerShape(21.dp), border = BorderStroke(1.dp, Color(0xFF294D78)),
                 modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
@@ -228,11 +262,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                             }
                         }
                     }
-                    if (game.isFinished) {
-                        Text("🏆  " + (game.players.firstOrNull { it.id == game.winnerId }?.name ?: "Player") + " WINS!",
-                            color = Gold, fontSize = 18.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth())
-                    } else {
+                    if (!game.isFinished) {
                         Text(game.lastAction, color = Color(0xFF9FC1FF), fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                     }
