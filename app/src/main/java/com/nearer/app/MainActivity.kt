@@ -1949,7 +1949,7 @@ private fun NeaRerHome(
                                     Text("Fast. Direct. NeaRer.", color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                 }
                                 Surface(shape = RoundedCornerShape(30.dp), color = if (chatReady) Color(0xFF155B4B) else Color(0xFF173F78)) {
-                                    Text(if (chatReady) "● CONNECTED" else "● NO DATA NEEDED",
+                                    Text(if (chatReady) "● CONNECTED" else "● OFFLINE READY",
                                         color = if (chatReady) Color(0xFF8EF0C6) else Color(0xFFD5E6FF),
                                         fontSize = 8.sp, fontWeight = FontWeight.Black,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
@@ -1983,7 +1983,7 @@ private fun NeaRerHome(
                                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.75f)),
                                     colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
                                 ) {
-                                    Text("↓  RECEIVE FROM NEARBY", fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                    Text("↓  RECEIVE FILES", fontSize = 10.sp, fontWeight = FontWeight.Black)
                                 }
                             }
                             Text(if (chatReady) "Connected to ${connectedDeviceName ?: "a nearby phone"} • ready to share"
@@ -2838,21 +2838,21 @@ private fun NeaRerHome(
                     ).forEach { item ->
                         val selected = activeSection == item.third
                         Surface(
-                            modifier = Modifier.weight(1f).animateContentSize().clickable {
+                            modifier = Modifier.weight(1f).heightIn(min = 56.dp).animateContentSize().clickable {
                                 activeSection = item.third
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                             },
                             color = if (selected) Color(0xFF1554A8) else Color.Transparent,
-                            shape = RoundedCornerShape(13.dp),
-                            border = if (selected) BorderStroke(1.dp, Gold.copy(alpha = 0.7f)) else null
+                            shape = RoundedCornerShape(15.dp),
+                            border = if (selected) BorderStroke(1.dp, Gold.copy(alpha = 0.8f)) else null
                         ) {
                             Column(
-                                modifier = Modifier.padding(vertical = 7.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
-                                Text(item.first, color = if (selected) Gold else Muted, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                                Text(item.second, color = if (selected) White else Muted, fontSize = 8.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
+                                Text(item.first, color = if (selected) Gold else Muted, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                                Text(item.second, color = if (selected) White else Muted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
                             }
                         }
                     }
