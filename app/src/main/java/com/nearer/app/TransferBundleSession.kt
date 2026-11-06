@@ -49,7 +49,7 @@ internal class TransferBundleSession(
             manifest.items.filter { it.kind == TransferBundleItem.Kind.FILE }
                 .forEach { put(it.id, MutableItem(it)) }
         }
-        declaredTotalBytes = items.values.fold(0L) { total, entry -> Math.addExact(total, entry.item.size) }
+        declaredTotalBytes = items.values.fold(0L) { total, entry -> Math.addExact(total, entry.item.sizeBytes) }
     }
 
     @Synchronized
@@ -89,7 +89,7 @@ internal class TransferBundleSession(
     fun updateProgress(payloadId: Long, transferredBytes: Long, totalBytes: Long) {
         require(transferredBytes >= 0L && totalBytes >= 0L)
         val entry = findPayload(payloadId)
-        require(totalBytes == entry.item.size) { "Payload size differs from manifest" }
+        require(totalBytes == entry.item.sizeBytes) { "Payload size differs from manifest" }
         require(transferredBytes <= totalBytes) { "Progress exceeds declared file size" }
         require(transferredBytes >= entry.transferred) { "Progress moved backwards" }
         check(entry.state == ItemState.IN_PROGRESS) { "File is not in progress" }
@@ -100,7 +100,7 @@ internal class TransferBundleSession(
     fun complete(payloadId: Long, actualBytes: Long, sha256: String) {
         val entry = findPayload(payloadId)
         check(entry.state == ItemState.IN_PROGRESS) { "File is not in progress" }
-        require(actualBytes == entry.item.size) { "Received file size differs from manifest" }
+        require(actualBytes == entry.item.sizeBytes) { "Received file size differs from manifest" }
         require(sha256.matches(Regex("[0-9a-fA-F]{64}"))) { "Invalid SHA-256 digest" }
         entry.transferred = actualBytes
         entry.sha256 = sha256.lowercase()
