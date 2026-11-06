@@ -248,12 +248,14 @@ class MainActivity : ComponentActivity() {
                     approvalMessage = "Connection approved"
                     chatNotice = "Connected to $name. Offline chat is ready."
                     statusMessage = "Connected to $name using Bluetooth / nearby Wi-Fi."
+                    sendNextQueuedFile()
                 }
             }
             override fun onDisconnected(id: String, stableId: String, name: String) {
                 runOnUiThread {
                     hybridConnected = false
                     hybridConnectedEndpoint = null
+                    val abandonedQueueCount = synchronized(pendingFileUris) { val count = pendingFileUris.size; pendingFileUris.clear(); count }
                     activeGame = activeGame?.let { it.copy(ready = false) }
                     incomingGameInvite = null
                     val lastName = hybridPeers.remove(id) ?: name
@@ -262,7 +264,7 @@ class MainActivity : ComponentActivity() {
                     connectedDeviceName = null
                     chatReady = false
                     connectionMessage = "Not connected"
-                    chatNotice = if (activeGame != null) "Connection paused. Your Ludo match is saved here; reconnect to $lastName to continue." else "Nearby connection ended. Search again to reconnect."
+                    chatNotice = if (abandonedQueueCount > 0) "$abandonedQueueCount queued file(s) were not sent because the connection ended. Select them again after reconnecting." else if (activeGame != null) "Connection paused. Your Ludo match is saved here; reconnect to $lastName to continue." else "Nearby connection ended. Search again to reconnect."
                     if (activeGame != null) communityNotice = "Ludo paused — waiting for $lastName to reconnect."
                 }
             }
@@ -1597,6 +1599,7 @@ class MainActivity : ComponentActivity() {
             outgoingTransferId = null
             outgoingProgress = 0f
             chatNotice = "Cancelling nearby file transfer…"
+            sendNextQueuedFile()
             return
         }
         cancelledOutgoingTransfers.add(id)
@@ -1613,6 +1616,8 @@ class MainActivity : ComponentActivity() {
 
     private fun sendNextQueuedFile() {
         if (outgoingTransferId != null) return
+        if (!hybridConnected && !chatReady) return
+        if (hybridConnected && hybridConnectedEndpoint == null) return
         val next = synchronized(pendingFileUris) { if (pendingFileUris.isEmpty()) null else pendingFileUris.removeFirst() }
         if (next != null) sendFile(next)
         else chatNotice = "All selected files have been processed."
