@@ -34,7 +34,13 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      # Validation compiles the app and runs JVM tests, but deliberately does
-      # not run assembleDebug or create an APK.
-      - name: Compile app and run unit tests
-        run: gradle --no-daemon --stacktrace testDebugUnitTest
+      - name: Compile app, run unit tests, and assemble installable APK
+        run: gradle --no-daemon --stacktrace testDebugUnitTest assembleDebug
+
+      - name: Upload NeaRer debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeaRer-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
