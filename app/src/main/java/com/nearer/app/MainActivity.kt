@@ -1959,6 +1959,7 @@ private fun NeaRerHome(
     var pendingFileTypes by remember { mutableStateOf<Array<String>?>(null) }
     var receiveMode by remember { mutableStateOf(false) }
     var showInstalledApps by remember { mutableStateOf(false) }
+    var pendingAppPicker by remember { mutableStateOf(false) }
     var installedApps by remember { mutableStateOf<List<ShareableApp>>(emptyList()) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
@@ -1969,6 +1970,13 @@ private fun NeaRerHome(
         if (chatReady && requestedTypes != null) {
             pendingFileTypes = null
             filePicker.launch(requestedTypes)
+        }
+    }
+    LaunchedEffect(chatReady, pendingAppPicker) {
+        if (chatReady && pendingAppPicker) {
+            pendingAppPicker = false
+            installedApps = getShareableApps()
+            showInstalledApps = true
         }
     }
     if (showInstalledApps) {
@@ -2382,8 +2390,15 @@ private fun NeaRerHome(
                                         modifier = Modifier.weight(1f).height(108.dp).animateContentSize().clickable {
                                             receiveMode = false
                                             if (item.second == "Apps") {
-                                                installedApps = getShareableApps()
-                                                showInstalledApps = true
+                                                if (chatReady) {
+                                                    installedApps = getShareableApps()
+                                                    showInstalledApps = true
+                                                } else {
+                                                    pendingAppPicker = true
+                                                    navigateToSection("nearby")
+                                                    onFindNearby()
+                                                    navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                                                }
                                             } else if (chatReady) filePicker.launch(item.third)
                                             else {
                                                 pendingFileTypes = item.third
