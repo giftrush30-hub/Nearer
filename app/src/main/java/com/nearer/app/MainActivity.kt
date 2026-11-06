@@ -1538,8 +1538,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             FileProvider.getUriForFile(this, packageName + ".files", output)
-        } catch (error: Exception) {
-            chatNotice = "Could not prepare " + app.label + " for sharing: " + (error.message ?: "file access failed")
+        } catch (_: Exception) {
             null
         }
     }
@@ -1985,8 +1984,14 @@ private fun NeaRerHome(
                         Surface(
                             modifier = Modifier.fillMaxWidth().clickable {
                                 showInstalledApps = false
-                                val uri = prepareAppForSharing(app)
-                                if (uri != null) onSendFile(uri)
+                                chatNotice = "Preparing " + app.label + " for sharing…"
+                                io.execute {
+                                    val uri = prepareAppForSharing(app)
+                                    runOnUiThread {
+                                        if (uri != null) onSendFile(uri)
+                                        else chatNotice = "Could not prepare " + app.label + " for sharing."
+                                    }
+                                }
                             },
                             color = Color(0xFF173F78), shape = RoundedCornerShape(14.dp),
                             border = BorderStroke(1.dp, Color(0xFF347CEB).copy(alpha = 0.55f))
