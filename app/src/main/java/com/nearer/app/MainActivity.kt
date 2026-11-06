@@ -402,6 +402,7 @@ class MainActivity : ComponentActivity() {
                     onRejectGameInvite = ::rejectGameInvite,
                     onGameMove = ::playGameMove,
                     onGameChat = ::sendGameChat,
+                    onGameRematch = ::requestGameRematch,
                     onEndGame = ::endGame,
                     onSendFile = ::sendFile,
                     onCancelTransfer = ::cancelOutgoingFileTransfer,
@@ -1186,6 +1187,17 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                "ludo_rematch" -> activeGame?.let { game ->
+                    if (game.isHost && game.matchId == packet.optString("matchId") &&
+                        game.ready && game.state.isFinished && sender == game.opponentName &&
+                        packet.optLong("revision", -1L) == game.revision) {
+                        val reset = newNetworkLudoState(game)
+                        activeGame = reset
+                        gameChatMessages.clear()
+                        sendLudoState(reset)
+                        communityNotice = "$sender accepted a rematch. New game started!"
+                    }
+                }
                 "ludo_action" -> activeGame?.let { game ->
                     if (game.isHost && game.ready && game.matchId == packet.optString("matchId") && sender == game.opponentName) {
                         if (packet.optLong("revision", -1L) == game.revision &&
@@ -1333,6 +1345,37 @@ class MainActivity : ComponentActivity() {
                 setOf(game.opponentName)
             ) == true
             if (!sent) communityNotice = "Your move could not reach the host. Check the nearby connection."
+        }
+    }
+
+    private fun newNetworkLudoState(game: LudoNetworkMatch): LudoNetworkMatch {
+        val fresh = LudoEngine.newGame(
+            mapOf(
+                LudoColor.RED to if (game.isHost) displayName else game.opponentName,
+                LudoColor.YELLOW to if (game.isHost) game.opponentName else displayName
+            ),
+            playerColors = listOf(LudoColor.RED, LudoColor.YELLOW)
+        )
+        return game.copy(state = fresh, ready = true, revision = game.revision + 1L)
+    }
+
+    private fun requestGameRematch() {
+        val game = activeGame ?: return
+        if (!game.ready || !game.state.isFinished) return
+        if (game.isHost) {
+            val reset = newNetworkLudoState(game)
+            activeGame = reset
+            gameChatMessages.clear()
+            sendLudoState(reset)
+            communityNotice = "Rematch started. Good luck!"
+        } else {
+            val sent = sendCommunityToNames(
+                "NR_COMMUNITY:" + JSONObject().put("type", "ludo_rematch")
+                    .put("matchId", game.matchId).put("revision", game.revision).put("sender", displayName),
+                setOf(game.opponentName)
+            ) == true
+            communityNotice = if (sent) "Rematch request sent to ${game.opponentName}."
+                else "Could not request a rematch. Check the nearby connection."
         }
     }
 
@@ -1730,6 +1773,7 @@ private fun NeaRerHome(
     onRejectGameInvite: () -> Unit,
     onGameMove: (String, Int) -> Unit,
     onGameChat: (String) -> Unit,
+    onGameRematch: () -> Unit,
     onEndGame: () -> Unit,
     onSendFile: (Uri) -> Unit,
     onCancelTransfer: () -> Unit,
@@ -2008,7 +2052,7 @@ private fun NeaRerHome(
             CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
                 activeGame, gameChatMessages, (usingNearbyConnections || chatReady), onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
-                onRejectGameInvite, onGameMove, onGameChat, onEndGame)
+                onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame)
 
             if (incomingRequesterName != null) {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
@@ -2169,7 +2213,7 @@ private fun CommunityHub(
     invite: GameInvite?, game: LudoNetworkMatch?, gameChat: List<String>, nearbyConnected: Boolean,
     onCreate: (String) -> Unit, onJoin: (String) -> Unit, onSelect: (String) -> Unit,
     onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
-    onAccept: () -> Unit, onReject: () -> Unit, onMove: (String, Int) -> Unit, onGameChat: (String) -> Unit, onEndGame: () -> Unit
+    onAccept: () -> Unit, onReject: () -> Unit, onMove: (String, Int) -> Unit, onGameChat: (String) -> Unit, onGameRematch: () -> Unit, onEndGame: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
@@ -2212,7 +2256,7 @@ private fun CommunityHub(
             Text(notice, color = Mint, fontSize = 10.sp)
         }
     }
-    LudoGamePanel(game, invite, nearbyConnected, onInviteGame, onAccept, onReject, onMove, gameChat, onGameChat, onEndGame)
+    LudoGamePanel(game, invite, nearbyConnected, onInviteGame, onAccept, onReject, onMove, gameChat, onGameChat, onGameRematch, onEndGame)
 }
 private data class CommunityGroup(val code: String, val name: String, val members: List<String>)
 private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
