@@ -414,10 +414,10 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, onMove: (Int) 
             drawRoundRect(Color(0xFFD5DCE5), Offset(x * unit + unit * .035f, y * unit + unit * .035f), Size(unit * .93f, unit * .93f), androidx.compose.ui.geometry.CornerRadius(unit * .12f), style = Stroke(unit * .025f))
             if (index in setOf(0, 13, 26, 39)) {
                 val direction = when (index) {
-                    0 -> Offset(0f, 1f)
-                    13 -> Offset(-1f, 0f)
-                    26 -> Offset(0f, -1f)
-                    else -> Offset(1f, 0f)
+                    0 -> Offset(0f, -1f)
+                    13 -> Offset(1f, 0f)
+                    26 -> Offset(0f, 1f)
+                    else -> Offset(-1f, 0f)
                 }
                 val center = Offset((x + .5f) * unit, (y + .5f) * unit)
                 val tip = center + direction * (unit * .22f)
