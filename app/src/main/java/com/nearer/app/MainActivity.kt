@@ -53,6 +53,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -1901,7 +1903,11 @@ private fun NeaRerHome(
 
             Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
                 sectionPositions["home"] = it.positionInParent().y.toInt()
-            }, shape = RoundedCornerShape(24.dp), color = Color(0xFF142B4E), border = BorderStroke(1.dp, Color(0xFF315987))) {
+            }.background(
+                Brush.linearGradient(listOf(Color(0xFF174B91), Color(0xFF102746), Color(0xFF0B1A30))),
+                RoundedCornerShape(24.dp)
+            ), shape = RoundedCornerShape(24.dp), color = Color.Transparent,
+                shadowElevation = 16.dp, border = BorderStroke(1.dp, Color(0xFF4D83C8))) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = RoundedCornerShape(12.dp), color = BrandBlue, modifier = Modifier.size(42.dp)) {
@@ -1914,7 +1920,19 @@ private fun NeaRerHome(
                         Text("NEARER", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                     }
                     Text("Everything starts nearby.", color = White, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = 0.2.sp)
-                    Text("Connect without mobile data. Share directly. Build a local community with people around you.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+                    Text("Connect without mobile data. Share directly. Build a local community with people around you.", color = Color(0xFFD3E1F5), fontSize = 13.sp, lineHeight = 20.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(onClick = { activeSection = "nearby"; navigationScope.launch { pageScrollState.animateScrollTo(0) } },
+                            modifier = Modifier.weight(1f).height(46.dp), shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)) {
+                            Text("EXPLORE NEARBY", fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.3.sp)
+                        }
+                        Button(onClick = { activeSection = "games"; navigationScope.launch { pageScrollState.animateScrollTo(0) } },
+                            modifier = Modifier.weight(1f).height(46.dp), shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF234C80), contentColor = White)) {
+                            Text("GAME ZONE", fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.3.sp)
+                        }
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("PRIVATE CHAT" to "Ready after connection", "FILE SHARING" to "Ready after connection").forEach { item ->
                             Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
