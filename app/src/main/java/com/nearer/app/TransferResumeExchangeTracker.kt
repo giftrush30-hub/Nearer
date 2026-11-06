@@ -82,7 +82,7 @@ internal class TransferResumeExchangeTracker(
         pruneExpired()
         if (terminalEntries.containsKey(key)) return Update.DUPLICATE
         val entry = entryFor(key) ?: return Update.CAPACITY_REACHED
-        if (entry.dataPayloadSeen return Update.DUPLICATE
+        if (entry.dataPayloadSeen) return Update.DUPLICATE
         entry.dataPayloadSeen = true
         return Update.STORED
     }
