@@ -20,7 +20,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onRequest(id: String, name: String, token: String)
         fun onConnected(id: String, name: String, stableId: String)
         fun onDisconnected(id: String, stableId: String, name: String)
-        fun onMessage(id: String, senderName: String, body: String)
+        fun onMessage(id: String, senderName: String, messageId: String, body: String)
         fun onMessageStatus(messageId: String, status: String)
         fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
         fun onFileReceived(id: String, name: String, file: File)
@@ -54,7 +54,21 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val completedPayloads = ConcurrentHashMap<Long, Payload>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
     private val fileIo = Executors.newSingleThreadExecutor()
-    private val seenMessageIds = ConcurrentHashMap.newKeySet<String>()
+    private val seenMessageIds = ConcurrentHashMap.newKeySet<String>().apply {
+        appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            .getStringSet("nearby_seen_message_ids", emptySet()).orEmpty().forEach { add(it) }
+    }
+    private val outgoingMessageTargets = ConcurrentHashMap<String, String>()
+
+    private fun rememberMessageId(messageId: String) {
+        seenMessageIds.add(messageId)
+        while (seenMessageIds.size > 5000) {
+            val oldest = seenMessageIds.firstOrNull() ?: break
+            seenMessageIds.remove(oldest)
+        }
+        appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            .edit().putStringSet("nearby_seen_message_ids", HashSet(seenMessageIds)).apply()
+    }
     @Volatile private var relayEnabled = false
     private var started = false
     @Volatile private var localName = "NeaRer User"
@@ -157,7 +171,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val kind = envelope.optString("kind", "message")
             if (kind == "ack") {
                 val acknowledgedId = envelope.optString("id")
-                if (acknowledgedId.isNotBlank()) listener.onMessageStatus(acknowledgedId, "Delivered")
+                // Only the peer we actually sent this message to may confirm it.
+                if (acknowledgedId.isNotBlank() && outgoingMessageTargets.remove(acknowledgedId) == endpointId) {
+                    listener.onMessageStatus(acknowledgedId, "Delivered")
+                }
                 return
             }
             if (kind != "message") return
@@ -165,14 +182,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val body = envelope.optString("body")
             val ttl = envelope.optInt("ttl", 0)
             if (messageId.isBlank() || body.isBlank() || body.length > 4000) return
-            val isNewMessage = seenMessageIds.add(messageId)
-            if (seenMessageIds.size > 5000) seenMessageIds.remove(seenMessageIds.first())
+            if (messageId.length > 80 || ttl !in 0..4) return
+            val isNewMessage = !seenMessageIds.contains(messageId)
             // A duplicate is still acknowledged so a sender can recover from a lost receipt.
             sendAcknowledgement(endpointId, messageId)
             if (!isNewMessage) return
+            rememberMessageId(messageId)
             val senderName = synchronized(names) { names[endpointId] ?: "Nearby member" }
-            listener.onMessage(endpointId, senderName, body)
-            if (relayEnabled && ttl > 0) {
+            listener.onMessage(endpointId, senderName, messageId, body)
+            // Direct/private chat messages use ttl=0. Multi-hop forwarding stays disabled
+            // until recipient routing and end-to-end encryption are implemented.
                 val forwarded = JSONObject().put("kind", "message").put("version", 1)
                     .put("id", messageId).put("body", body)
                     .put("ttl", ttl - 1).put("hops", envelope.optInt("hops", 0) + 1)
@@ -270,15 +289,22 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         seenMessageIds.add(messageId)
         val envelope = JSONObject().put("kind", "message").put("version", 1)
             .put("id", messageId).put("body", body)
-            .put("ttl", 4).put("hops", 0).put("origin", localName)
+            .put("ttl", 0).put("hops", 0).put("origin", localName)
             .put("createdAt", System.currentTimeMillis()).toString()
         if (targetEndpointId != null) {
             if (synchronized(activeEndpoints) { !activeEndpoints.contains(targetEndpointId) }) return false
             return try {
+                outgoingMessageTargets[messageId] = targetEndpointId
                 client.sendPayload(targetEndpointId, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
-                    .addOnFailureListener { listener.onMessageStatus(messageId, "Failed") }
+                    .addOnFailureListener {
+                        outgoingMessageTargets.remove(messageId)
+                        listener.onMessageStatus(messageId, "Failed")
+                    }
                 true
-            } catch (_: Exception) { false }
+            } catch (_: Exception) {
+                outgoingMessageTargets.remove(messageId)
+                false
+            }
         }
         return broadcast(envelope, null)
     }
