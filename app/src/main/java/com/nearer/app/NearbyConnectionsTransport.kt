@@ -1,6 +1,8 @@
 package com.nearer.app
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.google.android.gms.nearby.Nearby
@@ -62,6 +64,59 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     // An ID becomes "seen" only after the UI confirms local persistence.
     private val pendingIncomingMessageIds = ConcurrentHashMap.newKeySet<String>()
     private val outgoingMessageTargets = ConcurrentHashMap<String, String>()
+    private data class PendingOutgoingMessage(
+        val endpointId: String,
+        val payload: ByteArray,
+        var attempts: Int = 0,
+        var retryTask: Runnable? = null
+    )
+    private val pendingOutgoingMessages = ConcurrentHashMap<String, PendingOutgoingMessage>()
+    private val deliveryHandler = Handler(Looper.getMainLooper())
+    private val maxMessageAttempts = 3
+
+    private fun attemptOutgoingMessage(messageId: String) {
+        val pending = pendingOutgoingMessages[messageId] ?: return
+        if (pending.attempts >= maxMessageAttempts) {
+            pendingOutgoingMessages.remove(messageId)
+            outgoingMessageTargets.remove(messageId)
+            listener.onMessageStatus(messageId, "Failed")
+            return
+        }
+        if (synchronized(activeEndpoints) { !activeEndpoints.contains(pending.endpointId) }) {
+            scheduleMessageRetry(messageId, 1800L)
+            return
+        }
+        pending.attempts += 1
+        val timeout = Runnable { scheduleMessageRetry(messageId, 1800L) }
+        pending.retryTask?.let(deliveryHandler::removeCallbacks)
+        pending.retryTask = timeout
+        deliveryHandler.postDelayed(timeout, 5000L)
+        try {
+            client.sendPayload(pending.endpointId, Payload.fromBytes(pending.payload))
+                .addOnFailureListener { scheduleMessageRetry(messageId, 1200L) }
+        } catch (_: Exception) {
+            scheduleMessageRetry(messageId, 1200L)
+        }
+    }
+
+    private fun scheduleMessageRetry(messageId: String, delayMs: Long) {
+        val pending = pendingOutgoingMessages[messageId] ?: return
+        pending.retryTask?.let(deliveryHandler::removeCallbacks)
+        if (pending.attempts >= maxMessageAttempts) {
+            pendingOutgoingMessages.remove(messageId)
+            outgoingMessageTargets.remove(messageId)
+            listener.onMessageStatus(messageId, "Failed")
+            return
+        }
+        val retry = Runnable { attemptOutgoingMessage(messageId) }
+        pending.retryTask = retry
+        deliveryHandler.postDelayed(retry, delayMs)
+    }
+
+    private fun clearPendingOutgoingMessage(messageId: String) {
+        pendingOutgoingMessages.remove(messageId)?.retryTask?.let(deliveryHandler::removeCallbacks)
+        outgoingMessageTargets.remove(messageId)
+    }
 
     private fun rememberMessageId(messageId: String) {
         seenMessageIds.add(messageId)
@@ -174,7 +229,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (kind == "ack") {
                 val acknowledgedId = envelope.optString("id")
                 // Only the peer we actually sent this message to may confirm it.
-                if (acknowledgedId.isNotBlank() && outgoingMessageTargets.remove(acknowledgedId) == endpointId) {
+                if (acknowledgedId.isNotBlank() && outgoingMessageTargets[acknowledgedId] == endpointId) {
+                    clearPendingOutgoingMessage(acknowledgedId)
                     listener.onMessageStatus(acknowledgedId, "Delivered")
                 }
                 return
@@ -304,15 +360,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         if (targetEndpointId != null) {
             if (synchronized(activeEndpoints) { !activeEndpoints.contains(targetEndpointId) }) return false
             return try {
+                val payload = envelope.toByteArray(Charsets.UTF_8)
                 outgoingMessageTargets[messageId] = targetEndpointId
-                client.sendPayload(targetEndpointId, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
-                    .addOnFailureListener {
-                        outgoingMessageTargets.remove(messageId)
-                        listener.onMessageStatus(messageId, "Failed")
-                    }
+                pendingOutgoingMessages[messageId] = PendingOutgoingMessage(targetEndpointId, payload)
+                attemptOutgoingMessage(messageId)
                 true
             } catch (_: Exception) {
-                outgoingMessageTargets.remove(messageId)
+                clearPendingOutgoingMessage(messageId)
                 false
             }
         }
@@ -433,6 +487,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     fun stop() {
         stopSearching()
         disconnect()
+        pendingOutgoingMessages.keys.toList().forEach(::clearPendingOutgoingMessage)
+        deliveryHandler.removeCallbacksAndMessages(null)
         fileIo.shutdownNow()
     }
 
