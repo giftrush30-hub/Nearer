@@ -1956,7 +1956,8 @@ private fun NeaRerHome(
                                 }
                             }
                             Text("Share anything.\nStay connected.", color = White, fontSize = 29.sp,
-                                lineHeight = 33.sp, fontWeight = FontWeight.Black)
+                                lineHeight = 33.sp, fontWeight = FontWeight.Black,
+                                modifier = Modifier.animateContentSize())
                             Text("Send photos, videos, music, apps and documents directly to people nearby — without mobile data.",
                                 color = Color(0xFFD7E5FA), fontSize = 12.sp, lineHeight = 18.sp)
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -1967,7 +1968,7 @@ private fun NeaRerHome(
                                     },
                                     modifier = Modifier.weight(1f).height(52.dp),
                                     shape = RoundedCornerShape(15.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue, contentColor = White)
                                 ) {
                                     Text("↑  SEND FILES", fontSize = 11.sp, fontWeight = FontWeight.Black)
                                 }
@@ -1979,8 +1980,8 @@ private fun NeaRerHome(
                                     },
                                     modifier = Modifier.weight(1f).height(52.dp),
                                     shape = RoundedCornerShape(15.dp),
-                                    border = BorderStroke(1.dp, Color(0xFF8DBAFF)),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF174A9B), contentColor = White)
+                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.75f)),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
                                 ) {
                                     Text("↓  RECEIVE FILES", fontSize = 10.sp, fontWeight = FontWeight.Black)
                                 }
@@ -2018,7 +2019,7 @@ private fun NeaRerHome(
                                         else -> Color(0xFF102F63)
                                     }
                                     Surface(
-                                        modifier = Modifier.weight(1f).height(94.dp).clickable {
+                                        modifier = Modifier.weight(1f).height(94.dp).animateContentSize().clickable {
                                             if (chatReady) filePicker.launch(item.third)
                                             else {
                                                 activeSection = "nearby"
