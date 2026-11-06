@@ -266,8 +266,8 @@ class MainActivity : ComponentActivity() {
                     var safelyStored = false
                     if (body.startsWith("NR_COMMUNITY:")) {
                         handleCommunityPacket(senderName, body.removePrefix("NR_COMMUNITY:"))
-                        // Community packet persistence is being consolidated with the message database.
-                        safelyStored = true
+                        // Acknowledge only after the updated community state reaches disk.
+                        safelyStored = persistCommunityData()
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
@@ -1020,13 +1020,15 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    private fun persistCommunityData() {
-        val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-        val groups = JSONArray()
-        communityGroups.forEach { groups.put(JSONObject().put("code", it.code).put("name", it.name).put("members", JSONArray(it.members))) }
-        val messages = JSONArray()
-        communityMessages.takeLast(300).forEach { messages.put(JSONObject().put("id", it.id).put("code", it.groupCode).put("sender", it.sender).put("body", it.body).put("time", it.time)) }
-        prefs.edit().putString("community_groups", groups.toString()).putString("community_messages", messages.toString()).apply()
+    private fun persistCommunityData(): Boolean {
+        return try {
+            val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            val groups = JSONArray()
+            communityGroups.forEach { groups.put(JSONObject().put("code", it.code).put("name", it.name).put("members", JSONArray(it.members))) }
+            val messages = JSONArray()
+            communityMessages.takeLast(300).forEach { messages.put(JSONObject().put("id", it.id).put("code", it.groupCode).put("sender", it.sender).put("body", it.body).put("time", it.time)) }
+            prefs.edit().putString("community_groups", groups.toString()).putString("community_messages", messages.toString()).commit()
+        } catch (_: Exception) { false }
     }
     private fun restoreCommunityData() {
         val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
