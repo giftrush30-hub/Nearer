@@ -1552,7 +1552,7 @@ class MainActivity : ComponentActivity() {
 
     private fun openReceivedFile(item: ReceivedFile) {
         val extension = item.file.extension.lowercase()
-        if (extension == "nearer-app") {
+        if (item.file.name.endsWith(".nearer-app.zip", ignoreCase = true)) {
             chatNotice = "This app package contains multiple APK parts. Keep the ZIP together and use a split-APK installer that supports installing all parts at once."
             return
         }
