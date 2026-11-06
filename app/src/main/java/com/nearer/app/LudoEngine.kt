@@ -215,5 +215,6 @@ data class LudoNetworkMatch(
     val localColor: LudoColor,
     val isHost: Boolean,
     val opponentName: String,
-    val ready: Boolean
+    val ready: Boolean,
+    val revision: Long = 0L
 )
