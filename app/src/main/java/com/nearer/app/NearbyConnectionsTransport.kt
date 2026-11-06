@@ -261,14 +261,25 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     fun reject(id: String) { client.rejectConnection(id).addOnFailureListener { listener.onStatus("Could not reject nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun setRelayEnabled(enabled: Boolean) { relayEnabled = enabled }
 
-    fun send(body: String, messageId: String = UUID.randomUUID().toString()): Boolean {
+    fun send(
+        body: String,
+        messageId: String = UUID.randomUUID().toString(),
+        targetEndpointId: String? = null
+    ): Boolean {
         if (body.isBlank() || body.length > 4000) return false
         seenMessageIds.add(messageId)
         val envelope = JSONObject().put("kind", "message").put("version", 1)
             .put("id", messageId).put("body", body)
             .put("ttl", 4).put("hops", 0).put("origin", localName)
-            .put("createdAt", System.currentTimeMillis())
-        return broadcast(envelope.toString(), null)
+            .put("createdAt", System.currentTimeMillis()).toString()
+        if (targetEndpointId != null) {
+            if (synchronized(activeEndpoints) { !activeEndpoints.contains(targetEndpointId) }) return false
+            return try {
+                client.sendPayload(targetEndpointId, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
+                true
+            } catch (_: Exception) { false }
+        }
+        return broadcast(envelope, null)
     }
 
     private fun sendAcknowledgement(endpointId: String, messageId: String) {
