@@ -578,18 +578,22 @@ class MainActivity : ComponentActivity() {
         }
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val bluetoothOn = try { bluetoothManager?.adapter?.isEnabled == true } catch (_: SecurityException) { false }
-        if (!bluetoothOn) {
+        val wifiOn = isWifiEnabled()
+        if (!bluetoothOn && !wifiOn) {
             finishDiscovery()
-            statusMessage = "Turn Bluetooth ON on both phones. Wi-Fi ON also helps with faster connections; hotspot and mobile data are not required."
+            statusMessage = "Turn Bluetooth or Wi-Fi ON on both phones. NeaRer does not need mobile data or an internet connection for nearby play."
             return
         }
+        // Start Nearby Connections whenever at least one suitable radio is already enabled.
+        // Android no longer silently enables radios for apps; the user stays in control.
         nearbyTransport?.start()
         hybridSearching = true
-        if (!isWifiEnabled()) {
+        if (!wifiOn) {
             finishDiscovery()
-            statusMessage = "Bluetooth discovery is active. Turn Wi-Fi ON on both phones for faster connections and file sharing. Hotspot and mobile data are not required."
+            statusMessage = "Bluetooth discovery is active. Turn Wi-Fi ON too for faster nearby play and file sharing. Hotspot and mobile data are not required."
             return
         }
+        if (!bluetoothOn) statusMessage = "Wi-Fi is active. Turn Bluetooth ON as well for the widest range of nearby connection options."
         if (!hasDiscoveryPermission()) {
             statusMessage = "Bluetooth discovery is running. Allow Nearby devices permission to add Wi-Fi Direct discovery."
             return
