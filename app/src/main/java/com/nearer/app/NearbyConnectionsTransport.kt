@@ -72,6 +72,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private fun transferKey(endpointId: String, payloadId: Long) = TransferKey(endpointId, payloadId)
     private val incomingMetadata = ConcurrentHashMap<TransferKey, FileMeta>()
     private val rejectedIncomingPayloads = ConcurrentHashMap.newKeySet<TransferKey>()
+    private val failedIncomingPayloads = ConcurrentHashMap.newKeySet<TransferKey>()
     private val incomingPayloads = ConcurrentHashMap<TransferKey, Payload>()
     private val completedPayloads = ConcurrentHashMap<TransferKey, Payload>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
@@ -282,8 +283,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 transferStartedAtNanos.remove(key)
                 completedTransferRates.remove(key)
                 val failedOutgoing = outgoingFiles[payloadId]?.takeIf { it.first == id }?.also { outgoingFiles.remove(payloadId) }
-                incomingMetadata.remove(key)?.bundleTransferId?.let { transferId ->
-                    val sessionKey = BundleSessionKey(id, transferId)
+                val failedMeta = incomingMetadata.remove(key)
+                if (failedMeta?.bundleTransferId != null) {
+                    val sessionKey = BundleSessionKey(id, failedMeta.bundleTransferId)
                     incomingBundleSessions[sessionKey]?.let { session ->
                         try { session.fail(payloadId) } catch (_: Exception) { }
                         if (session.isFinished()) {
@@ -291,6 +293,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                             bundleDestinationFolders.remove(sessionKey)
                         }
                     }
+                } else if (incomingPayloads.containsKey(key) || completedPayloads.containsKey(key)) {
+                    failedIncomingPayloads.add(key)
+                    if (failedIncomingPayloads.size > 4096) failedIncomingPayloads.clear()
                 }
                 incomingPayloads.remove(key)?.close()
                 completedPayloads.remove(key)?.close()
@@ -355,6 +360,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     }
                     try { session.attachPayload(item.id, payloadId) } catch (_: Exception) {
                         rejectIncomingPayload(key, "A duplicate or unexpected bundle file was rejected.")
+                        return
+                    }
+                    if (failedIncomingPayloads.remove(key)) {
+                        try { session.fail(payloadId) } catch (_: Exception) { }
+                        if (session.isFinished()) {
+                            incomingBundleSessions.remove(sessionKey, session)
+                            bundleDestinationFolders.remove(sessionKey)
+                        }
+                        listener.onFileStatus("A bundle file failed before its metadata arrived.")
                         return
                     }
                 } else if (incomingBundleSessions.keys.any { it.endpointId == endpointId }) {
@@ -813,6 +827,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         keys.forEach { key ->
             incomingMetadata.remove(key)
             rejectedIncomingPayloads.remove(key)
+            failedIncomingPayloads.remove(key)
             incomingPayloads.remove(key)?.let { try { it.close() } catch (_: Exception) { } }
             completedPayloads.remove(key)?.let { try { it.close() } catch (_: Exception) { } }
             transferStartedAtNanos.remove(key)
