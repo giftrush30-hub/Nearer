@@ -186,6 +186,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             } else listener.onStatus("Nearby connection was not approved. Try again.")
         }
         override fun onDisconnected(id: String) {
+            cleanupEndpointTransfers(id)
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
             if (empty) listener.onDisconnected(id, details.first, details.second)
@@ -207,7 +208,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     listener.onFileProgress(id, payload.id, meta?.name ?: "Incoming file", 0L, meta?.size ?: -1L, true)
                     processCompletedFile(key)
                 }
-                else -> listener.onFileStatus("NeaRer received an unsupported nearby transfer type.")
+                else -> {
+                    // FILE and STREAM payloads own descriptors/streams. Release an
+                    // unsupported payload immediately instead of leaking its resources.
+                    try { payload.close() } catch (_: Exception) { }
+                    listener.onFileStatus("NeaRer received an unsupported nearby transfer type.")
+                }
             }
         }
 
@@ -557,6 +563,28 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
+    private fun cleanupEndpointTransfers(endpointId: String) {
+        val keys = (incomingMetadata.keys + incomingPayloads.keys + completedPayloads.keys +
+            transferStartedAtNanos.keys + completedTransferRates.keys)
+            .filter { it.endpointId == endpointId }
+            .toSet()
+        keys.forEach { key ->
+            incomingMetadata.remove(key)
+            incomingPayloads.remove(key)?.let { try { it.close() } catch (_: Exception) { } }
+            completedPayloads.remove(key)?.let { try { it.close() } catch (_: Exception) { } }
+            transferStartedAtNanos.remove(key)
+            completedTransferRates.remove(key)
+        }
+        outgoingFiles.entries
+            .filter { it.value.first == endpointId }
+            .forEach { (payloadId, _) ->
+                outgoingFiles.remove(payloadId)
+                val key = transferKey(endpointId, payloadId)
+                transferStartedAtNanos.remove(key)
+                completedTransferRates.remove(key)
+            }
+    }
+
     private fun transferKeyForOutgoing(payloadId: Long): TransferKey? = outgoingFiles[payloadId]?.first?.let { transferKey(it, payloadId) }
 
     fun cancelFile(payloadId: Long) {
@@ -587,14 +615,17 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
 
     fun disconnect() {
         try { client.stopAllEndpoints() } catch (_: Exception) { }
-        synchronized(activeEndpoints) { activeEndpoints.clear() }
+        val endpoints = synchronized(activeEndpoints) { activeEndpoints.toSet().also { activeEndpoints.clear() } }
+        endpoints.forEach(::cleanupEndpointTransfers)
     }
     fun stop() {
         stopSearching()
         disconnect()
         pendingOutgoingMessages.values.forEach { it.retryTask?.let(deliveryHandler::removeCallbacks); it.retryTask = null }
         deliveryHandler.removeCallbacksAndMessages(null)
-        fileIo.shutdownNow()
+        // Drain already-accepted file saves. shutdownNow() can discard queued
+        // receive tasks before they close their Nearby payload descriptors.
+        fileIo.shutdown()
     }
 
 }
