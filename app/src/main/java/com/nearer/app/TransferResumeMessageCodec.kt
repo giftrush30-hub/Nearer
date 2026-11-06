@@ -9,7 +9,8 @@ import java.nio.charset.CodingErrorAction
 
 /** Bounded, versioned binary envelope for a receiver's resume-offset proposal. */
 internal object TransferResumeMessageCodec {
-    private const val MAGIC = 0x4E525253 // NRRS\n    private const val DECISION_MAGIC = 0x4E525244 // NRRD
+    private const val MAGIC = 0x4E525253 // NRRS
+    private const val DECISION_MAGIC = 0x4E525244 // NRRD
     private const val VERSION = 1
     private const val MAX_MESSAGE_BYTES = 4_096
     private const val MAX_ID_BYTES = 128
@@ -168,5 +169,6 @@ internal object TransferResumeMessageCodec {
             .decode(ByteBuffer.wrap(bytes)).toString()
     }
 
-    private const val MIN_MESSAGE_BYTES = 4 + 1 + 8 + 2 * 4 + 8 + 1 + 8 + 2 + 64\n    private const val MIN_DECISION_MESSAGE_BYTES = 4 + 1 + 8 + 8 + 1 + 1
+    private const val MIN_MESSAGE_BYTES = 4 + 1 + 8 + 2 * 4 + 8 + 1 + 8 + 2 + 64
+    private const val MIN_DECISION_MESSAGE_BYTES = 4 + 1 + 8 + 8 + 1 + 1
 }
