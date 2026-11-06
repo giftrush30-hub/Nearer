@@ -181,3 +181,12 @@ object LudoEngine {
         }
     }
 }
+
+data class LudoNetworkMatch(
+    val matchId: String,
+    val state: LudoGameState,
+    val localColor: LudoColor,
+    val isHost: Boolean,
+    val opponentName: String,
+    val ready: Boolean
+)
