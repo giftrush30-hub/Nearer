@@ -252,6 +252,9 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     hybridConnected = false
                     hybridConnectedEndpoint = null
+                    activeGame = null
+                    incomingGameInvite = null
+                    gameChatMessages.clear()
                     val lastName = hybridPeers.remove(id) ?: name
                     recordRecentlySeen(stableId.ifBlank { id }, lastName)
                     pendingHybridEndpoint = null
