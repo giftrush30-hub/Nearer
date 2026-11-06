@@ -1551,17 +1551,45 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openReceivedFile(item: ReceivedFile) {
+        val extension = item.file.extension.lowercase()
+        if (extension == "nearer-app") {
+            chatNotice = "This app package contains multiple APK parts. Keep the ZIP together and use a split-APK installer that supports installing all parts at once."
+            return
+        }
         try {
             val uri = FileProvider.getUriForFile(this, "${packageName}.files", item.file)
-            val extension = item.file.extension.lowercase()
+            if (extension == "apk") {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+                    chatNotice = "Allow NeaRer to install apps in Android settings, then tap this APK again. Android will still ask you to confirm installation."
+                    val settingsIntent = Intent(
+                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivity(settingsIntent)
+                    return
+                }
+                val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(installIntent)
+                chatNotice = "Opening Android's app installer. Review the app details and approve installation there."
+                return
+            }
             val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "*/*"
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, mime)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(intent)
+        } catch (_: android.content.ActivityNotFoundException) {
+            chatNotice = if (extension == "apk") {
+                "Android could not open the package installer for this APK."
+            } else {
+                "No app is available to open this file."
+            }
         } catch (_: Exception) {
-            chatNotice = "No app is available to open this file, or the file could not be accessed."
+            chatNotice = "The file could not be opened. Check that it was received completely and try again."
         }
     }
 
