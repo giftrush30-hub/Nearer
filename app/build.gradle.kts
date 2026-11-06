@@ -47,5 +47,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("com.google.android.gms:play-services-nearby:19.5.1")
 
+    testImplementation("junit:junit:4.13.2")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
