@@ -1218,7 +1218,7 @@ class MainActivity : ComponentActivity() {
                 }
                 "ludo_rematch" -> activeGame?.let { game ->
                     if (game.isHost && game.matchId == packet.optString("matchId") &&
-                        game.ready && game.state.isFinished && sender == game.opponentName &&
+                        game.ready && game.state.isFinished && sender in game.remotePlayers.values &&
                         packet.optLong("revision", -1L) == game.revision) {
                         val reset = newNetworkLudoState(game)
                         activeGame = reset
@@ -1417,13 +1417,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun newNetworkLudoState(game: LudoNetworkMatch): LudoNetworkMatch {
-        val fresh = LudoEngine.newGame(
-            mapOf(
-                LudoColor.RED to if (game.isHost) displayName else game.opponentName,
-                LudoColor.YELLOW to if (game.isHost) game.opponentName else displayName
-            ),
-            playerColors = listOf(LudoColor.RED, LudoColor.YELLOW)
-        )
+        val names = game.state.players.associate { it.color to it.name }.toMutableMap()
+        names[game.localColor] = if (game.isHost) displayName else names[game.localColor].orEmpty()
+        val fresh = LudoEngine.newGame(names, playerColors = game.state.players.map { it.color })
         return game.copy(state = fresh, ready = true, revision = game.revision + 1L)
     }
 
@@ -1451,7 +1447,7 @@ class MainActivity : ComponentActivity() {
         activeGame?.let { game ->
             sendCommunityToNames(
                 "NR_COMMUNITY:" + JSONObject().put("type", "ludo_end").put("matchId", game.matchId),
-                setOf(game.opponentName)
+                (if (game.isHost) game.remotePlayers.values.toSet() else setOf(game.opponentName))
             )
         }
         activeGame = null
