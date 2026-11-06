@@ -44,6 +44,9 @@ internal object TransferStreamIO {
             digest.update(buffer, 0, read)
             copied += read
         }
+        if (input.read() != -1) {
+            throw IllegalStateException("Received stream contains bytes beyond the declared file size")
+        }
         output.flush()
         return CopyResult(copied, digest.digest())
     }
