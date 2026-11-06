@@ -4,6 +4,8 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 
 /**
  * Compact, bounded binary wire codec for bundle metadata.
@@ -85,6 +87,14 @@ internal object TransferBundleManifestCodec {
         require(length in 0..maxBytes && length <= data.available()) { "Invalid transfer manifest text length" }
         val bytes = ByteArray(length)
         data.readFully(bytes)
-        return bytes.toString(Charsets.UTF_8)
+        return try {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString()
+        } catch (error: java.nio.charset.CharacterCodingException) {
+            throw IllegalArgumentException("Transfer manifest contains invalid UTF-8 text", error)
+        }
     }
 }
