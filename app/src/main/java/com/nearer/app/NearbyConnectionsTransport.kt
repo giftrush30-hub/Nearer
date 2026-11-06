@@ -79,6 +79,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val incomingPayloads = ConcurrentHashMap<TransferKey, Payload>()
     private val completedPayloads = ConcurrentHashMap<TransferKey, Payload>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
+    private val outgoingAwaitingFirstByteSinceNanos = ConcurrentHashMap<Long, Long>()
+    private val outgoingFirstByteLatencyNanos = ConcurrentHashMap<Long, Long>()
     // Bundle checksums are prepared off the UI thread. Keeping the payload here
     // lets cancellation/disconnect close its descriptor before it reaches the radio.
     private val preparingOutgoingFiles = ConcurrentHashMap<Long, Payload>()
@@ -260,6 +262,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val isIncoming = outgoing == null
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
                 transferStartedAtNanos.putIfAbsent(key, System.nanoTime())
+                if (outgoing != null && update.bytesTransferred > 0L &&
+                    !outgoingFirstByteLatencyNanos.containsKey(payloadId)) {
+                    outgoingAwaitingFirstByteSinceNanos.remove(payloadId)?.let { startedAt ->
+                        outgoingFirstByteLatencyNanos.putIfAbsent(
+                            payloadId,
+                            (SystemClock.elapsedRealtimeNanos() - startedAt).coerceAtLeast(0L)
+                        )
+                    }
+                }
             }
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
                 incoming?.bundleTransferId?.let { transferId ->
@@ -281,13 +292,19 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     processCompletedFile(key)
                 } else {
                     outgoingFiles.remove(payloadId)
+                    outgoingAwaitingFirstByteSinceNanos.remove(payloadId)
+                    val firstByteLabel = outgoingFirstByteLatencyNanos.remove(payloadId)?.let {
+                        " • ${TransferLatencyMetrics.firstByteLabel(it)}"
+                    }.orEmpty()
                     listener.onFileProgress(id, payloadId, name, update.totalBytes, update.totalBytes, false)
-                    listener.onOutgoingFileFinished(id, payloadId, name, true, "File sent to the nearby phone: $name • $rateLabel MiB/s average")
+                    listener.onOutgoingFileFinished(id, payloadId, name, true, "File sent to the nearby phone: $name • $rateLabel MiB/s average$firstByteLabel")
                 }
             } else {
                 transferStartedAtNanos.remove(key)
                 completedTransferRates.remove(key)
                 val failedOutgoing = outgoingFiles[payloadId]?.takeIf { it.first == id }?.also { outgoingFiles.remove(payloadId) }
+                outgoingAwaitingFirstByteSinceNanos.remove(payloadId)
+                outgoingFirstByteLatencyNanos.remove(payloadId)
                 val failedMeta = incomingMetadata.remove(key)
                 if (failedMeta?.bundleTransferId != null) {
                     val sessionKey = BundleSessionKey(id, failedMeta.bundleTransferId)
@@ -803,6 +820,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     ) {
         preparingOutgoingFiles.remove(payloadId, payload)
         outgoingFiles.remove(payloadId)
+        outgoingAwaitingFirstByteSinceNanos.remove(payloadId)
+        outgoingFirstByteLatencyNanos.remove(payloadId)
         transferStartedAtNanos.remove(transferKey(endpointId, payloadId))
         try { payload.close() } catch (_: Exception) { }
         listener.onOutgoingFileFinished(endpointId, payloadId, name, false, message)
@@ -895,6 +914,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             payload.setSensitive(true)
             val id = payload.id
             outgoingFiles[id] = endpointId to name
+            outgoingAwaitingFirstByteSinceNanos[id] = SystemClock.elapsedRealtimeNanos()
             val metadata = JSONObject().put("kind", "file_meta").put("payloadId", id)
                 .put("name", name).put("size", size)
             val isBundle = bundleTransferId != null
@@ -975,6 +995,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             .filter { it.value.first == endpointId }
             .forEach { (payloadId, _) ->
                 outgoingFiles.remove(payloadId)
+                outgoingAwaitingFirstByteSinceNanos.remove(payloadId)
+                outgoingFirstByteLatencyNanos.remove(payloadId)
                 preparingOutgoingFiles.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
                 val key = transferKey(endpointId, payloadId)
                 transferStartedAtNanos.remove(key)
@@ -988,6 +1010,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val key = transferKeyForOutgoing(payloadId)
         try { client.cancelPayload(payloadId) } catch (_: Exception) { }
         outgoingFiles.remove(payloadId)
+        outgoingAwaitingFirstByteSinceNanos.remove(payloadId)
+        outgoingFirstByteLatencyNanos.remove(payloadId)
         preparingOutgoingFiles.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
         key?.let { transferStartedAtNanos.remove(it); completedTransferRates.remove(it) }
     }
