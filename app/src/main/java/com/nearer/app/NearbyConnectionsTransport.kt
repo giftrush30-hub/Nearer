@@ -79,6 +79,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val incomingPayloads = ConcurrentHashMap<TransferKey, Payload>()
     private val completedPayloads = ConcurrentHashMap<TransferKey, Payload>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
+    // Bundle checksums are prepared off the UI thread. Keeping the payload here
+    // lets cancellation/disconnect close its descriptor before it reaches the radio.
+    private val preparingOutgoingFiles = ConcurrentHashMap<Long, Payload>()
+    private val filePreparationIo = Executors.newSingleThreadExecutor()
     private val transferStartedAtNanos = ConcurrentHashMap<TransferKey, Long>()
     private val completedTransferRates = ConcurrentHashMap<TransferKey, String>()
     private val fileIo = Executors.newSingleThreadExecutor()
@@ -791,6 +795,66 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
+    private fun failOutgoingPreparation(
+        endpointId: String, payloadId: Long, name: String, payload: Payload, message: String
+    ) {
+        preparingOutgoingFiles.remove(payloadId, payload)
+        outgoingFiles.remove(payloadId)
+        transferStartedAtNanos.remove(transferKey(endpointId, payloadId))
+        try { payload.close() } catch (_: Exception) { }
+        listener.onOutgoingFileFinished(endpointId, payloadId, name, false, message)
+    }
+
+    private fun dispatchPreparedFile(
+        endpointId: String,
+        payloadId: Long,
+        name: String,
+        size: Long,
+        payload: Payload,
+        metadata: JSONObject,
+        isBundle: Boolean
+    ) {
+        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
+            failOutgoingPreparation(endpointId, payloadId, name, payload, "The nearby connection ended before the file could be sent.")
+            return
+        }
+        try {
+            client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
+                .addOnSuccessListener {
+                    // A bundle may have been cancelled while its metadata was queued.
+                    if (isBundle && preparingOutgoingFiles[payloadId] !== payload) return@addOnSuccessListener
+                    try {
+                        client.sendPayload(endpointId, payload)
+                            .addOnSuccessListener {
+                                if (isBundle) preparingOutgoingFiles.remove(payloadId, payload)
+                            }
+                            .addOnFailureListener { error ->
+                                failOutgoingPreparation(
+                                    endpointId, payloadId, name, payload,
+                                    "Could not start file transfer: ${error.localizedMessage ?: "connection error"}"
+                                )
+                            }
+                    } catch (error: Exception) {
+                        failOutgoingPreparation(
+                            endpointId, payloadId, name, payload,
+                            "Could not start file transfer: ${error.localizedMessage ?: "connection error"}"
+                        )
+                    }
+                }
+                .addOnFailureListener { error ->
+                    failOutgoingPreparation(
+                        endpointId, payloadId, name, payload,
+                        "Could not send file details: ${error.localizedMessage ?: "connection error"}"
+                    )
+                }
+        } catch (error: Exception) {
+            failOutgoingPreparation(
+                endpointId, payloadId, name, payload,
+                "Could not send file details: ${error.localizedMessage ?: "connection error"}"
+            )
+        }
+    }
+
     fun sendFile(
         endpointId: String, uri: Uri, displayName: String,
         bundleTransferId: String? = null, bundleItemId: String? = null, relativePath: String? = null
@@ -820,20 +884,6 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             }
             if (reportedSize < 0L) throw IllegalStateException("NeaRer could not determine this file's size. Choose another file.")
             val size = reportedSize
-            val sourceSha256 = if (bundleTransferId != null) {
-                listener.onFileStatus("Checking bundle file integrity before sending…")
-                val hashStartedAt = SystemClock.elapsedRealtimeNanos()
-                val digest = appContext.contentResolver.openInputStream(uri)?.use { input ->
-                    TransferStreamIO.sha256Hex(
-                        TransferStreamIO.sha256Exactly(
-                            input, size, HyperTransferTuning.receiveBufferBytes(appContext)
-                        )
-                    )
-                } ?: throw IllegalStateException("NeaRer could not read the selected file for its integrity check")
-                val hashElapsedNanos = (SystemClock.elapsedRealtimeNanos() - hashStartedAt).coerceAtLeast(0L)
-                listener.onFileStatus(TransferPreparationMetrics.describe(size, hashElapsedNanos))
-                digest
-            } else null
             val payload = Payload.fromFile(openedDescriptor)
             filePayload = payload
             descriptor = null // The Payload now owns the descriptor.
@@ -844,30 +894,45 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             outgoingFiles[id] = endpointId to name
             val metadata = JSONObject().put("kind", "file_meta").put("payloadId", id)
                 .put("name", name).put("size", size)
-            if (bundleTransferId != null) {
+            val isBundle = bundleTransferId != null
+            if (isBundle) {
                 metadata.put("bundleTransferId", bundleTransferId)
                     .put("bundleItemId", bundleItemId).put("relativePath", relativePath)
-                    .put("sha256", sourceSha256)
-            }
-            client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
-                .addOnSuccessListener {
-                    // sendPayload acceptance is not the start of actual radio transfer.
-                    // The first IN_PROGRESS callback starts the throughput clock.
-                    client.sendPayload(endpointId, payload)
-                        .addOnFailureListener { error ->
-                            outgoingFiles.remove(id)
-                            transferStartedAtNanos.remove(transferKey(endpointId, id))
-                            try { payload.close() } catch (_: Exception) { }
-                            listener.onOutgoingFileFinished(endpointId, id, name, false, "Could not start file transfer: ${error.localizedMessage ?: "connection error"}")
+                preparingOutgoingFiles[id] = payload
+                listener.onFileProgress(endpointId, id, name, 0L, size, false)
+                listener.onFileStatus("Preparing the integrity check for $name in the background…")
+                filePreparationIo.execute {
+                    try {
+                        val hashStartedAt = SystemClock.elapsedRealtimeNanos()
+                        val sourceSha256 = appContext.contentResolver.openInputStream(uri)?.use { input ->
+                            TransferStreamIO.sha256Hex(
+                                TransferStreamIO.sha256Exactly(
+                                    input, size, HyperTransferTuning.receiveBufferBytes(appContext)
+                                )
+                            )
+                        } ?: throw IllegalStateException("NeaRer could not read the selected file for its integrity check")
+                        val hashElapsedNanos = (SystemClock.elapsedRealtimeNanos() - hashStartedAt).coerceAtLeast(0L)
+                        if (preparingOutgoingFiles[id] !== payload) return@execute
+                        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
+                            failOutgoingPreparation(endpointId, id, name, payload, "The nearby connection ended while the integrity check was running.")
+                            return@execute
                         }
+                        metadata.put("sha256", sourceSha256)
+                        listener.onFileStatus(TransferPreparationMetrics.describe(size, hashElapsedNanos))
+                        dispatchPreparedFile(endpointId, id, name, size, payload, metadata, true)
+                    } catch (error: Exception) {
+                        if (preparingOutgoingFiles[id] === payload) {
+                            failOutgoingPreparation(
+                                endpointId, id, name, payload,
+                                "File could not be prepared: ${error.localizedMessage ?: "integrity check failed"}"
+                            )
+                        }
+                    }
                 }
-                .addOnFailureListener { error ->
-                    outgoingFiles.remove(id)
-                    try { client.cancelPayload(id) } catch (_: Exception) { }
-                    try { payload.close() } catch (_: Exception) { }
-                    listener.onOutgoingFileFinished(endpointId, id, name, false, "Could not send file details: ${error.localizedMessage ?: "connection error"}")
-                }
-            listener.onFileProgress(endpointId, id, name, 0L, size, false)
+            } else {
+                dispatchPreparedFile(endpointId, id, name, size, payload, metadata, false)
+                listener.onFileProgress(endpointId, id, name, 0L, size, false)
+            }
             return id
         } catch (error: Exception) {
             try { filePayload?.close() } catch (_: Exception) { }
@@ -900,6 +965,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             .filter { it.value.first == endpointId }
             .forEach { (payloadId, _) ->
                 outgoingFiles.remove(payloadId)
+                preparingOutgoingFiles.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
                 val key = transferKey(endpointId, payloadId)
                 transferStartedAtNanos.remove(key)
                 completedTransferRates.remove(key)
@@ -912,6 +978,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val key = transferKeyForOutgoing(payloadId)
         try { client.cancelPayload(payloadId) } catch (_: Exception) { }
         outgoingFiles.remove(payloadId)
+        preparingOutgoingFiles.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
         key?.let { transferStartedAtNanos.remove(it); completedTransferRates.remove(it) }
     }
 
@@ -944,8 +1011,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         disconnect()
         pendingOutgoingMessages.values.forEach { it.retryTask?.let(deliveryHandler::removeCallbacks); it.retryTask = null }
         deliveryHandler.removeCallbacksAndMessages(null)
-        // Drain already-accepted file saves. shutdownNow() can discard queued
-        // receive tasks before they close their Nearby payload descriptors.
+        // Drain already-accepted file saves and queued checksum work. shutdownNow()
+        // could discard tasks before they release their descriptors.
+        filePreparationIo.shutdown()
         fileIo.shutdown()
     }
 
