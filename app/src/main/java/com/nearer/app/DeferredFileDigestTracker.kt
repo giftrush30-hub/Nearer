@@ -10,10 +10,13 @@ package com.nearer.app
  * endpoint + payload ID to avoid cross-peer association and unbounded state.
  */
 internal class DeferredFileDigestTracker(
-    private val maxPendingEntries: Int = DEFAULT_MAX_PENDING_ENTRIES
+    private val maxPendingEntries: Int = DEFAULT_MAX_PENDING_ENTRIES,
+    private val entryTtlMillis: Long = DEFAULT_ENTRY_TTL_MILLIS,
+    private val nowMillis: () -> Long = { System.nanoTime() / NANOS_PER_MILLI }
 ) {
     init {
         require(maxPendingEntries > 0) { "Pending digest capacity must be positive" }
+        require(entryTtlMillis > 0L) { "Pending digest TTL must be positive" }
     }
 
     data class Ready(
@@ -25,6 +28,7 @@ internal class DeferredFileDigestTracker(
     private data class Key(val endpointId: String, val payloadId: Long)
     private data class Entry(
         var expectedSizeBytes: Long?,
+        val createdAtMillis: Long,
         var digest: String? = null,
         var fileCompleted: Boolean = false
     )
@@ -33,6 +37,7 @@ internal class DeferredFileDigestTracker(
 
     @Synchronized
     fun registerFile(endpointId: String, payloadId: Long, expectedSizeBytes: Long): Ready? {
+        pruneExpired()
         require(endpointId.isNotBlank() && payloadId >= 0L && expectedSizeBytes >= 0L)
         val key = Key(endpointId, payloadId)
         val existing = entries[key]
@@ -44,19 +49,20 @@ internal class DeferredFileDigestTracker(
             return takeIfReady(key, existing)
         }
         require(entries.size < maxPendingEntries) { "Deferred-digest queue is full" }
-        val entry = Entry(expectedSizeBytes)
+        val entry = Entry(expectedSizeBytes, nowMillis())
         entries[key] = entry
         return takeIfReady(key, entry)
     }
 
     @Synchronized
     fun recordDigest(endpointId: String, payloadId: Long, sha256: String): Ready? {
+        pruneExpired()
         require(endpointId.isNotBlank() && payloadId >= 0L)
         require(SHA256.matches(sha256)) { "Invalid SHA-256 digest" }
         val key = Key(endpointId, payloadId)
         val entry = entries[key] ?: run {
             require(entries.size < maxPendingEntries) { "Deferred-digest queue is full" }
-            Entry(expectedSizeBytes = null).also { entries[key] = it }
+            Entry(expectedSizeBytes = null, createdAtMillis = nowMillis()).also { entries[key] = it }
         }
         val normalized = sha256.lowercase()
         require(entry.digest == null || entry.digest == normalized) {
@@ -68,29 +74,43 @@ internal class DeferredFileDigestTracker(
 
     @Synchronized
     fun markFileCompleted(endpointId: String, payloadId: Long): Ready? {
+        pruneExpired()
         require(endpointId.isNotBlank() && payloadId >= 0L)
         val key = Key(endpointId, payloadId)
         val entry = entries[key] ?: run {
             require(entries.size < maxPendingEntries) { "Deferred-digest queue is full" }
-            Entry(expectedSizeBytes = null).also { entries[key] = it }
+            Entry(expectedSizeBytes = null, createdAtMillis = nowMillis()).also { entries[key] = it }
         }
         entry.fileCompleted = true
         return takeIfReady(key, entry)
     }
 
     @Synchronized
-    fun remove(endpointId: String, payloadId: Long): Boolean =
-        entries.remove(Key(endpointId, payloadId)) != null
+    fun remove(endpointId: String, payloadId: Long): Boolean {
+        pruneExpired()
+        return entries.remove(Key(endpointId, payloadId)) != null
+    }
 
     @Synchronized
     fun removeEndpoint(endpointId: String): Int {
+        pruneExpired()
         val keys = entries.keys.filter { it.endpointId == endpointId }
         keys.forEach(entries::remove)
         return keys.size
     }
 
     @Synchronized
-    fun pendingCount(): Int = entries.size
+    fun pendingCount(): Int {
+        pruneExpired()
+        return entries.size
+    }
+
+    /** Expire abandoned callback pairs so a disconnected or buggy peer cannot pin capacity. */
+    private fun pruneExpired() {
+        val now = nowMillis()
+        val expired = entries.filterValues { now - it.createdAtMillis >= entryTtlMillis }.keys
+        expired.forEach(entries::remove)
+    }
 
     private fun takeIfReady(key: Key, entry: Entry): Ready? {
         val digest = entry.digest ?: return null
@@ -101,6 +121,8 @@ internal class DeferredFileDigestTracker(
 
     private companion object {
         const val DEFAULT_MAX_PENDING_ENTRIES = 16
+        const val DEFAULT_ENTRY_TTL_MILLIS = 120_000L
+        const val NANOS_PER_MILLI = 1_000_000L
         val SHA256 = Regex("^[a-fA-F0-9]{64}$")
     }
 }
