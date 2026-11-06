@@ -85,6 +85,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -1892,8 +1893,16 @@ private fun NeaRerHome(
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
+    var fastSendPending by remember { mutableStateOf(false) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
+    }
+    // Fast Send remembers the user's intent while nearby discovery establishes a connection.
+    LaunchedEffect(chatReady, fastSendPending) {
+        if (chatReady && fastSendPending) {
+            fastSendPending = false
+            filePicker.launch(arrayOf("*/*"))
+        }
     }
     if (!hasChosenName) {
         Surface(
@@ -2152,8 +2161,10 @@ private fun NeaRerHome(
 
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable {
-                            if (chatReady) filePicker.launch(arrayOf("*/*"))
-                            else {
+                            if (chatReady) {
+                                filePicker.launch(arrayOf("*/*"))
+                            } else {
+                                fastSendPending = true
                                 navigateToSection("nearby")
                                 onFindNearby()
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
@@ -2189,7 +2200,7 @@ private fun NeaRerHome(
                                 }
                                 Text(
                                     if (chatReady) "Pick anything and send straight away"
-                                    else "Skip categories. Choose files, then connect.",
+                                    else "Connect first — file selection opens automatically.",
                                     color = Color(0xFFD1E0F5), fontSize = 10.sp, lineHeight = 14.sp
                                 )
                             }
