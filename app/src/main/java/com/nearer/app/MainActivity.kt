@@ -263,15 +263,24 @@ class MainActivity : ComponentActivity() {
             }
             override fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
                 runOnUiThread {
+                    var safelyStored = false
                     if (body.startsWith("NR_COMMUNITY:")) {
                         handleCommunityPacket(senderName, body.removePrefix("NR_COMMUNITY:"))
-                    } else if (chatMessages.none { it.id == messageId }) {
+                        // Community packet persistence is being consolidated with the message database.
+                        safelyStored = true
+                    } else if (chatMessages.any { it.id == messageId }) {
+                        safelyStored = true
+                    } else {
                         chatMessages.add(ChatMessage(messageId, body, outgoing = false, delivery = "Received"))
-                        persistMessages()
-                        chatNotice = "New offline message received from $senderName."
+                        safelyStored = persistMessages()
+                        if (safelyStored) chatNotice = "New offline message received from $senderName."
+                        else {
+                            chatMessages.removeAll { it.id == messageId }
+                            chatNotice = "Message received, but could not be saved. Delivery was not confirmed."
+                        }
                     }
-                    // Receipt means this phone's app has stored the message, not merely received a radio packet.
-                    acknowledge()
+                    // Never tell the sender "Delivered" unless this phone saved the message.
+                    if (safelyStored) acknowledge()
                 }
             }
             override fun onMessageStatus(messageId: String, status: String) {
@@ -921,8 +930,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun persistMessages() {
-        try {
+    private fun persistMessages(): Boolean {
+        return try {
             val array = JSONArray()
             chatMessages.takeLast(500).forEach { message ->
                 array.put(JSONObject()
@@ -931,9 +940,11 @@ class MainActivity : ComponentActivity() {
                     .put("outgoing", message.outgoing)
                     .put("delivery", message.delivery))
             }
+            // commit() is intentional here: a delivery receipt must follow the disk write,
+            // not just an in-memory SharedPreferences update queued by apply().
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-                .edit().putString("messages", array.toString()).apply()
-        } catch (_: Exception) { }
+                .edit().putString("messages", array.toString()).commit()
+        } catch (_: Exception) { false }
     }
 
     private fun sha256(file: File): String {
