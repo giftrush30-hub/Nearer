@@ -12,7 +12,11 @@ class TransferRateMetricsTest {
 
     @Test
     fun zeroDurationIsSafelyClampedForTinyTransfers() {
-        assertEquals(1.0, TransferRateMetrics.averageMebibytesPerSecond(1L, 0L), 0.000001)
+        assertEquals(
+            1_000_000_000.0 / (1024.0 * 1024.0),
+            TransferRateMetrics.averageMebibytesPerSecond(1L, 0L),
+            0.000001
+        )
     }
 
     @Test
