@@ -24,11 +24,7 @@ class TransferResumeStoreTest {
         try {
             val store = store(root)
             val selected = item()
-            // Locate the opaque partial file through a first checkpoint attempt's
-            // deterministic private filename, without exposing that name in UI.
-            val partialDirectory = File(root, "partials").apply { mkdirs() }
-            val partial = partialDirectory.listFiles()?.firstOrNull()
-                ?: File(partialDirectory, "pending.part")
+            val partial = store.partialFileFor("transfer-1", selected.id).apply { parentFile?.mkdirs() }
             partial.writeBytes(ByteArray(chunk + 123) { (it % 251).toByte() })
             val checkpoint = store.checkpoint("transfer-1", selected, 100L, chunk.toLong() + 123L)
             assertEquals(chunk.toLong(), checkpoint.committedOffsetBytes)
@@ -45,8 +41,7 @@ class TransferResumeStoreTest {
         try {
             val store = store(root)
             val selected = item()
-            val partialDirectory = File(root, "partials").apply { mkdirs() }
-            val partial = File(partialDirectory, "partial.bin")
+            val partial = store.partialFileFor("transfer-1", selected.id).apply { parentFile?.mkdirs() }
             partial.writeBytes(ByteArray(chunk) { 4 })
             // Store derives its own filename, so use the checkpoint operation to
             // establish the canonical partial path.
@@ -67,10 +62,10 @@ class TransferResumeStoreTest {
         try {
             val store = store(root)
             val selected = item()
-            val directory = File(root, "partials").apply { mkdirs() }
-            // Use a store candidate to expose the generated private partial file.
-            val temp = File(directory, "unused")
-            temp.writeBytes(ByteArray(chunk) { 1 })
+            val partial = store.partialFileFor("transfer-1", selected.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(ByteArray(chunk) { 1 })
+            }
             store.checkpoint("transfer-1", selected, null, chunk.toLong())
             val candidate = store.findValid("transfer-1", selected, null)!!
             assertTrue(store.discard("transfer-1", selected.id))
