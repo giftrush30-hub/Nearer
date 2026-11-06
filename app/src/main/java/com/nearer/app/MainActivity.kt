@@ -261,16 +261,17 @@ class MainActivity : ComponentActivity() {
                     chatNotice = "Nearby connection ended. Search again to reconnect."
                 }
             }
-            override fun onMessage(id: String, senderName: String, messageId: String, body: String) {
+            override fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
                 runOnUiThread {
-                    if (body.startsWith("NR_COMMUNITY:")) handleCommunityPacket(senderName, body.removePrefix("NR_COMMUNITY:"))
-                    else {
-                        if (chatMessages.none { it.id == messageId }) {
-                            chatMessages.add(ChatMessage(messageId, body, outgoing = false, delivery = "Received"))
-                            persistMessages()
-                        }
+                    if (body.startsWith("NR_COMMUNITY:")) {
+                        handleCommunityPacket(senderName, body.removePrefix("NR_COMMUNITY:"))
+                    } else if (chatMessages.none { it.id == messageId }) {
+                        chatMessages.add(ChatMessage(messageId, body, outgoing = false, delivery = "Received"))
+                        persistMessages()
                         chatNotice = "New offline message received from $senderName."
                     }
+                    // Receipt means this phone's app has stored the message, not merely received a radio packet.
+                    acknowledge()
                 }
             }
             override fun onMessageStatus(messageId: String, status: String) {
@@ -329,8 +330,9 @@ class MainActivity : ComponentActivity() {
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
         nearbyTransport?.setDisplayName(displayName)
         restoreRecentlySeen()
-        meshRelayEnabled = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getBoolean("mesh_relay_enabled", false)
-        nearbyTransport?.setRelayEnabled(meshRelayEnabled)
+        // Multi-hop relay is paused until recipient routing and end-to-end encryption are ready.
+        meshRelayEnabled = false
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", false).apply()
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(
                 background = Midnight,
@@ -485,8 +487,8 @@ class MainActivity : ComponentActivity() {
     private fun updateMeshRelayEnabled(enabled: Boolean) {
         meshRelayEnabled = enabled
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", enabled).apply()
-        nearbyTransport?.setRelayEnabled(enabled)
-        statusMessage = if (enabled) "Community relay is ON. Your phone may forward nearby NeaRer text messages while connected." else "Community relay is OFF. Your phone only receives messages from its direct connections."
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", false).apply()
+        statusMessage = "Community relay is temporarily paused while recipient routing and end-to-end encryption are being built."
     }
 
     private fun saveDisplayName(rawName: String) {
@@ -960,10 +962,15 @@ class MainActivity : ComponentActivity() {
         if (body.isEmpty() || !chatReady) return
         val id = UUID.randomUUID().toString()
         if (hybridConnected) {
+            val targetEndpoint = hybridConnectedEndpoint
+            if (targetEndpoint.isNullOrBlank()) {
+                chatNotice = "Your private connection is not ready. Reconnect to the person before sending."
+                return
+            }
             // Add the pending bubble before dispatch so a very fast receipt cannot race the UI.
             chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…"))
             persistMessages()
-            if (nearbyTransport?.send(body, id, hybridConnectedEndpoint) != true) {
+            if (nearbyTransport?.send(body, id, targetEndpoint) != true) {
                 val index = chatMessages.indexOfFirst { it.id == id }
                 if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
                 persistMessages()
@@ -1802,10 +1809,10 @@ private fun NeaRerHome(
                 Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("COMMUNITY MESH RELAY", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        Text("Allow your phone to pass group text messages to other connected NeaRer phones.", color = White, fontSize = 12.sp, lineHeight = 17.sp)
-                        Text("Optional • up to 4 hops • off by default. Relaying phones can read message text, so use only with trusted groups.", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+                        Text("Multi-hop delivery is being upgraded with recipient routing and end-to-end encryption.", color = White, fontSize = 12.sp, lineHeight = 17.sp)
+                        Text("Temporarily paused for privacy. Direct phone-to-phone chat still works.", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
                     }
-                    androidx.compose.material3.Switch(checked = meshRelayEnabled, onCheckedChange = onMeshRelayChange)
+                    androidx.compose.material3.Switch(checked = false, onCheckedChange = { }, enabled = false)
                 }
             }
 
