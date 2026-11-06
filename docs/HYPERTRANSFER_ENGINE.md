@@ -23,6 +23,7 @@ Make nearby Android file sharing as fast as the two phones and their wireless li
 - Disconnect cleanup removes only that endpoint's pending transfer metadata, timing and payload handles; app shutdown drains already-queued receive-save tasks instead of discarding them with `shutdownNow()`.
 - The receiver calculates SHA-256 while copying and reports a short digest prefix. This is a local digest calculation, not yet a sender-to-receiver checksum comparison; end-to-end integrity verification still needs a checksum in the negotiated transfer metadata.
 - Manifest path validation avoids a quadratic scan over all item pairs, keeping validation practical for large bundles near the 10,000-item protocol limit.
+- Bundle manifests now have a standalone fragmentation/reassembly primitive: each BYTES fragment is capped at 24 KiB, carries transfer ID/index/count/total length, tolerates out-of-order arrival and identical duplicates, and rejects conflicting duplicates or mixed transfers. The reassembler is bounded by the existing 1 MiB manifest limit; it is not yet wired into the Nearby transport or UI.
 - This is still single-file transfer plumbing: the bundle manifest has not yet been connected to a multi-file send/accept/receive session.
 - The stream copier now handles a zero-progress bulk read without spinning forever, and its SHA-256 hex formatter treats digest bytes as unsigned.
 - Google documents that `onPayloadReceived` for FILE/STREAM is an early notification, not proof that all bytes arrived; completion must be confirmed by the transfer-update SUCCESS event. STREAM input must be drained promptly on a background worker, and the owning `Payload` must be closed when finished or cancelled.
@@ -103,6 +104,8 @@ It cannot promise a complete Android clone. Ordinary apps cannot copy arbitrary 
 ## External technical references
 
 - Google Nearby Connections overview: https://developers.google.com/nearby/connections/overview
+- Google Nearby Android exchange-data guide: https://developers.google.com/nearby/connections/android/exchange-data
+- Google Nearby ConnectionsClient reference (current BYTES payload size limit): https://developers.google.com/android/reference/com/google/android/gms/nearby/connection/ConnectionsClient
 - Google Nearby Connections strategies: https://developers.google.com/nearby/connections/strategies
 - Android wireless connectivity and Wi-Fi P2P: https://developer.android.com/develop/connectivity/wifi
 - LocalSend protocol v2: https://github.com/localsend/protocol
