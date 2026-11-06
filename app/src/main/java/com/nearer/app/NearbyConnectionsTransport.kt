@@ -1193,7 +1193,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                             try {
                                 val hashStartedAt = SystemClock.elapsedRealtimeNanos()
                                 val sourceSha256 = appContext.contentResolver.openInputStream(uri)?.use { input ->
-                                    TransferStreamIO.sha256Hex(TransferStreamIO.sha256Exactly(input, size, HyperTransferTuning.receiveBufferBytes(appContext)))
+                                    TransferStreamIO.sha256Hex(TransferStreamIO.sha256Exactly(input, size, HyperTransferTuning.receiveBufferBytes(appContext)) { !outgoingDeferredDigestPayloads.contains(id) || !isEndpointConnected(endpointId) })
                                 } ?: throw IllegalStateException("NeaRer could not read the selected file for its integrity check")
                                 val hashElapsedNanos = (SystemClock.elapsedRealtimeNanos() - hashStartedAt).coerceAtLeast(0L)
                                 if (!outgoingDeferredDigestPayloads.contains(id) && !outgoingBundleFileCompleted.contains(id)) return@execute
@@ -1202,12 +1202,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                                 if (outgoingBundleFileCompleted.remove(id)) outgoingBundleDigests.remove(id)?.let { sendDeferredFileDigest(it.first, id, it.second) }
                                 listener.onFileStatus(TransferPreparationMetrics.describe(size, hashElapsedNanos) + " • integrity checked in parallel")
                             } catch (error: Exception) {
-                                outgoingDeferredDigestPayloads.remove(id)
-                                outgoingBundleDigests.remove(id)
-                                outgoingBundleFileCompleted.remove(id)
-                                try { client.cancelPayload(id) } catch (_: Exception) { }
-                                sendDeferredFileDigestFailure(endpointId, id)
-                                listener.onFileStatus("Integrity check failed for $name: ${error.localizedMessage ?: "source read failed"}. The receiver was told not to save it.")
+                                // Cancellation/disconnect removes this marker first. Do not
+                                // report a false integrity failure after the user has cancelled.
+                                if (outgoingDeferredDigestPayloads.remove(id)) {
+                                    outgoingBundleDigests.remove(id)
+                                    outgoingBundleFileCompleted.remove(id)
+                                    try { client.cancelPayload(id) } catch (_: Exception) { }
+                                    sendDeferredFileDigestFailure(endpointId, id)
+                                    listener.onFileStatus("Integrity check failed for $name: ${error.localizedMessage ?: "source read failed"}. The receiver was told not to save it.")
+                                }
                             }
                         }
                         dispatchPreparedFile(endpointId, id, name, size, payload, metadata, true)
