@@ -1523,16 +1523,20 @@ class MainActivity : ComponentActivity() {
                         (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0
                 }
                 .mapNotNull { appInfo ->
-                    val base = appInfo.sourceDir?.takeIf { File(it).isFile } ?: return@mapNotNull null
-                    val splits = appInfo.splitSourceDirs?.filter { File(it).isFile } ?: emptyList()
-                    val drawable = packageManager.getApplicationIcon(appInfo)
-                    val iconSize = 96
-                    val bitmap = Bitmap.createBitmap(iconSize, iconSize, Bitmap.Config.ARGB_8888)
-                    val canvas = Canvas(bitmap)
-                    drawable.setBounds(0, 0, iconSize, iconSize)
-                    drawable.draw(canvas)
-                    val label = packageManager.getApplicationLabel(appInfo).toString()
-                    ShareableApp(label, appInfo.packageName, listOf(base) + splits, bitmap.asImageBitmap())
+                    try {
+                        val base = appInfo.sourceDir?.takeIf { File(it).isFile } ?: return@mapNotNull null
+                        val splits = appInfo.splitSourceDirs?.filter { File(it).isFile } ?: emptyList()
+                        val drawable = packageManager.getApplicationIcon(appInfo)
+                        val iconSize = 96
+                        val bitmap = Bitmap.createBitmap(iconSize, iconSize, Bitmap.Config.ARGB_8888)
+                        val canvas = Canvas(bitmap)
+                        drawable.setBounds(0, 0, iconSize, iconSize)
+                        drawable.draw(canvas)
+                        val label = packageManager.getApplicationLabel(appInfo).toString()
+                        ShareableApp(label, appInfo.packageName, listOf(base) + splits, bitmap.asImageBitmap())
+                    } catch (_: Exception) {
+                        null
+                    }
                 }
                 .distinctBy { it.packageName }
                 .sortedBy { it.label.lowercase() }
