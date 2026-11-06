@@ -108,3 +108,10 @@ The exchange tracker now keeps a bounded, short-lived tombstone for completed or
 A repeated identical proposal/decision/data callback does not refresh an incomplete exchange's lease. Only a newly accepted event advances its expiry timestamp, preventing a peer from keeping stale pending state alive indefinitely by replaying duplicates. Automated tests cover consumed-exchange replay, conflicted-exchange replay, tombstone expiry, endpoint cleanup, and duplicate retry expiry.
 
 This remains a transport-independent safeguard. The active transport still does not invoke the tracker, so it must not be mistaken for end-to-end resume integration.
+
+
+## Monotonic expiry and signed-clock wraparound
+
+Resume exchange entries and terminal replay tombstones use elapsed-time subtraction (now minus createdAt) rather than comparing absolute monotonic-clock readings. Java's monotonic clock has an arbitrary origin and its signed-long reading may wrap; the elapsed difference remains the valid comparison for realistic timeout windows. A negative elapsed difference is treated as an injected-clock rollback and expires the stale entry conservatively. Unit coverage exercises both pending entries and terminal tombstones across the signed-long boundary.
+
+Reference: Java System.nanoTime() documentation explains that readings have an arbitrary origin and recommends comparing elapsed differences rather than absolute values: https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/System.html#nanoTime()

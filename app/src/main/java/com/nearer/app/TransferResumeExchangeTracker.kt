@@ -159,12 +159,16 @@ internal class TransferResumeExchangeTracker(
         val iterator = entries.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next().value
-            if (now - entry.updatedAtMillis >= entryTtlMillis || now < entry.updatedAtMillis) iterator.remove()
+            // nanoTime values have an arbitrary origin and may wrap. Compare elapsed
+            // time by subtraction; absolute readings are not ordered across signed-long wrap.
+            val ageMillis = now - entry.updatedAtMillis
+            if (ageMillis < 0L || ageMillis >= entryTtlMillis) iterator.remove()
         }
         val terminalIterator = terminalEntries.entries.iterator()
         while (terminalIterator.hasNext()) {
             val createdAt = terminalIterator.next().value
-            if (now - createdAt >= entryTtlMillis || now < createdAt) terminalIterator.remove()
+            val ageMillis = now - createdAt
+            if (ageMillis < 0L || ageMillis >= entryTtlMillis) terminalIterator.remove()
         }
     }
 

@@ -171,6 +171,29 @@ class TransferResumeExchangeTrackerTest {
         assertEquals(0, tracker.pendingCount())
     }
 
+    @Test fun expiryUsesElapsedTimeAcrossSignedLongWraparound() {
+        var now = Long.MAX_VALUE - 10L
+        val tracker = TransferResumeExchangeTracker(nowMillis = { now }, entryTtlMillis = 50L)
+        tracker.recordDataPayload("peer", 41L)
+        now = Long.MIN_VALUE + 10L
+        assertEquals("Forward elapsed time remains valid across wraparound", 1, tracker.pendingCount())
+        now = Long.MIN_VALUE + 40L
+        assertEquals("Elapsed time past TTL expires after wraparound", 0, tracker.pendingCount())
+    }
+
+    @Test fun terminalTombstoneExpiryUsesElapsedTimeAcrossSignedLongWraparound() {
+        var now = Long.MAX_VALUE - 10L
+        val tracker = TransferResumeExchangeTracker(nowMillis = { now }, entryTtlMillis = 50L)
+        tracker.recordProposal("peer", proposalEnvelope())
+        tracker.recordDecision("peer", decisionEnvelope())
+        tracker.recordDataPayload("peer", 7L)
+        assertNotNull(tracker.takeReady("peer", 7L))
+        now = Long.MIN_VALUE + 10L
+        assertEquals(TransferResumeExchangeTracker.Update.DUPLICATE, tracker.recordDataPayload("peer", 7L))
+        now = Long.MIN_VALUE + 40L
+        assertEquals(TransferResumeExchangeTracker.Update.STORED, tracker.recordDataPayload("peer", 7L))
+    }
+
     @Test fun validatesConfiguredCapacity() {
         try {
             TransferResumeExchangeTracker(0)
