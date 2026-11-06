@@ -104,6 +104,7 @@ fun LudoGamePanel(
     var message by remember { mutableStateOf("Roll a six to bring your first token out.") }
     var rolling by remember { mutableStateOf(false) }
     var gameText by remember { mutableStateOf("") }
+    var networkActionPending by remember(networkMatch?.matchId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val game = networkMatch?.state ?: localGame
     val current = game.currentPlayer
@@ -112,6 +113,20 @@ fun LudoGamePanel(
     val ready = networkMatch?.ready ?: true
     val myTurn = if (networkMode) ready && current.color == networkMatch!!.localColor else !current.isComputer
     val diceRotation by animateFloatAsState(if (rolling) 360f else 0f, spring(dampingRatio = .45f, stiffness = 500f), label = "diceRotation")
+
+    LaunchedEffect(networkMatch?.state?.turnNumber, networkMatch?.state?.currentPlayerIndex, networkMatch?.state?.diceValue, networkMatch?.state?.winner) {
+        networkActionPending = false
+    }
+
+    fun requestNetworkAction(action: String, token: Int) {
+        if (networkActionPending) return
+        networkActionPending = true
+        onNetworkAction(action, token)
+        scope.launch {
+            delay(4000)
+            networkActionPending = false
+        }
+    }
 
     LaunchedEffect(networkMatch, game.currentPlayerIndex, game.diceValue, game.turnNumber, game.winner, game.consecutiveSixes) {
         if (!networkMode && !game.isFinished && game.currentPlayer.isComputer) {
@@ -164,7 +179,7 @@ fun LudoGamePanel(
             }
 
             LudoBoard(game = game, legalMoves = if (myTurn) moves else emptyList(), onMove = { index ->
-                if (networkMode) onNetworkAction("move", index) else {
+                if (networkMode) requestNetworkAction("move", index) else {
                     val result = LudoEngine.moveToken(localGame, index)
                     localGame = result.state
                     message = when {
@@ -179,13 +194,19 @@ fun LudoGamePanel(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Column(Modifier.weight(1f)) {
                     Text(if (game.isFinished) "${game.winner?.name} TAKES THE CROWN" else "${current.name.uppercase()}'S TURN", color = current.color.paint(), fontWeight = FontWeight.Black, fontSize = 15.sp)
-                    Text(if (networkMode && !ready) "Waiting for the host to synchronise the board…" else if (networkMode && !myTurn) "Waiting for ${current.name} to play…" else message, color = Color(0xFFD2DFEA), fontSize = 10.sp, lineHeight = 14.sp)
+                    Text(when {
+                        networkMode && !ready && networkMatch!!.isHost -> "Waiting for your opponent to accept…"
+                        networkMode && !ready -> "Waiting for the host to synchronise the board…"
+                        networkActionPending -> "Sending your move securely to the other phone…"
+                        networkMode && !myTurn -> "Waiting for ${current.name} to play…"
+                        else -> message
+                    }, color = Color(0xFFD2DFEA), fontSize = 10.sp, lineHeight = 14.sp)
                 }
                 DiceFace(value = game.diceValue ?: 0, rotation = diceRotation)
             }
             if (!game.isFinished && myTurn && ready && game.diceValue == null) {
                 Button(onClick = {
-                    if (networkMode) onNetworkAction("roll", -1) else {
+                    if (networkMode) requestNetworkAction("roll", -1) else {
                         rolling = true
                         scope.launch {
                             delay(380)
@@ -194,7 +215,7 @@ fun LudoGamePanel(
                             message = if (localGame.consecutiveSixes >= 3) "Third six! Your turn is forfeited." else "You rolled ${localGame.diceValue}. Choose a glowing token."
                         }
                     }
-                }, enabled = !rolling, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(15.dp),
+                }, enabled = !rolling && !networkActionPending, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(15.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = LudoGold, contentColor = LudoNavy)) {
                     Text(if (rolling) "ROLLING…" else "ROLL THE DICE", fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                 }
@@ -202,8 +223,8 @@ fun LudoGamePanel(
                 if (moves.isEmpty()) {
                     Text(if (game.consecutiveSixes >= 3) "Three sixes in a row — your turn ends." else "No legal move for this roll.", color = LudoGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Button(onClick = {
-                        if (networkMode) onNetworkAction("pass", -1) else localGame = LudoEngine.passTurn(localGame)
-                    }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF31516F))) { Text("CONTINUE") }
+                        if (networkMode) requestNetworkAction("pass", -1) else localGame = LudoEngine.passTurn(localGame)
+                    }, enabled = !networkActionPending, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF31516F))) { Text("CONTINUE") }
                 } else {
                     Text("Tap one of the glowing tokens on the board to move it.", color = LudoGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
