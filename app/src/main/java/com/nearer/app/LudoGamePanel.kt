@@ -29,6 +29,9 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.hypot
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 private val LudoGold = Color(0xFFFFC857)
 private val LudoNavy = Color(0xFF10243B)
@@ -327,8 +330,17 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, onMove: (Int) 
             drawRoundRect(fill, Offset(x * unit + unit * .035f, y * unit + unit * .035f), Size(unit * .93f, unit * .93f), androidx.compose.ui.geometry.CornerRadius(unit * .12f))
             drawRoundRect(Color(0xFFD5DCE5), Offset(x * unit + unit * .035f, y * unit + unit * .035f), Size(unit * .93f, unit * .93f), androidx.compose.ui.geometry.CornerRadius(unit * .12f), style = Stroke(unit * .025f))
             if (index in setOf(8, 21, 34, 47)) {
-                drawCircle(Color(0xFFB6C0CD), unit * .17f, Offset((x + .5f) * unit, (y + .5f) * unit))
-                drawCircle(Color.White, unit * .11f, Offset((x + .5f) * unit, (y + .5f) * unit))
+                val center = Offset((x + .5f) * unit, (y + .5f) * unit)
+                val star = Path()
+                repeat(10) { point ->
+                    val angle = -PI / 2.0 + point * PI / 5.0
+                    val radius = if (point % 2 == 0) unit * .22f else unit * .10f
+                    val px = center.x + cos(angle).toFloat() * radius
+                    val py = center.y + sin(angle).toFloat() * radius
+                    if (point == 0) star.moveTo(px, py) else star.lineTo(px, py)
+                }
+                star.close()
+                drawPath(star, Color(0xFFD5A33D))
             }
         }
 
