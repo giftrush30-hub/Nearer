@@ -366,7 +366,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     }
                     temporary = null
                     destination = null // The final file is committed; later UI callbacks must not delete it.
-                    listener.onFileReceived(meta.endpointId, meta.name, target)
+                    try {
+                        listener.onFileReceived(meta.endpointId, meta.name, target)
+                    } catch (_: Exception) {
+                        listener.onFileStatus("File saved successfully, but NeaRer could not refresh the received-files screen.")
+                    }
                     completedTransferRates.remove(key)?.let { rate ->
                         listener.onFileStatus("Received ${meta.name} • $rate MB/s average • SHA-256 ${TransferStreamIO.sha256Hex(copied.sha256).take(12)}")
                     }
