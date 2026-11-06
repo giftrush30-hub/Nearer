@@ -2502,18 +2502,55 @@ private fun NeaRerHome(
                         ) { Text("Share a photo or file") }
                         Text(if (usingNearbyConnections) "Nearby Connections • no fixed file-size cap" else "Wi-Fi Direct • no fixed file-size cap", color = Muted, fontSize = 10.sp)
                     } else {
-                        Text("Your conversations stay on the direct phone link. Find someone nearby and approve the matching security code to start chatting — no mobile data required.",
-                            color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFF123D7A),
+                                border = BorderStroke(1.dp, Color(0xFF347CEB)),
+                                modifier = Modifier.size(76.dp)
+                            ) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text("✉", color = Gold, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Text("Your next conversation starts nearby.", color = White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
+                            Text(
+                                "NeaRer connects phones directly. No account, mobile data or cloud chat server is needed for this local conversation.",
+                                color = Muted, fontSize = 11.sp, lineHeight = 17.sp
+                            )
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                            listOf(
+                                Pair("01", "Turn on Bluetooth and Wi-Fi"),
+                                Pair("02", "Find a nearby NeaRer user"),
+                                Pair("03", "Confirm the matching security code")
+                            ).forEach { step ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(shape = CircleShape, color = Color(0xFF174A9B), modifier = Modifier.size(30.dp)) {
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                            Text(step.first, color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                        }
+                                    }
+                                    Text(step.second, color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(start = 10.dp))
+                                }
+                            }
+                        }
                         Button(
                             onClick = {
                                 activeSection = "nearby"
+                                onFindNearby()
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                             },
-                            modifier = Modifier.fillMaxWidth().height(47.dp),
-                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            shape = RoundedCornerShape(15.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
                         ) {
-                            Text("FIND SOMEONE NEARBY  →", fontWeight = FontWeight.Black, fontSize = 10.sp)
+                            Text("FIND PEOPLE NEARBY  →", fontWeight = FontWeight.Black, fontSize = 11.sp)
                         }
                     }
                 }
