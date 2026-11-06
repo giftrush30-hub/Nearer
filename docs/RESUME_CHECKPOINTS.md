@@ -19,7 +19,9 @@ Before a future resume implementation trusts a checkpoint, it must:
 4. negotiate the offset with the peer;
 5. resume from that offset and verify the final full-file digest before finalisation.
 
-IMPORTANT: the local checkpoint journal is implemented and tested as a storage primitive, but it is not yet wired into the live file-receive pipeline. The application does not yet persist partial-file checkpoints during transfer, re-hash an on-disk retained prefix, negotiate offsets with another phone, call Nearby Payload.setOffset, or recover an interrupted transfer after process death. This is not yet a working pause/resume feature. No user-facing resume claim should be made until those steps are integrated and tested on two physical devices.
+IMPORTANT: the local checkpoint journal and prefix verifier are implemented and tested as storage primitives, but they are not yet wired into the live file-receive pipeline. The application does not yet persist partial-file checkpoints during transfer, re-hash an on-disk retained prefix, negotiate offsets with another phone, call Nearby Payload.setOffset, or recover an interrupted transfer after process death. This is not yet a working pause/resume feature. No user-facing resume claim should be made until those steps are integrated and tested on two physical devices.
+
+The receive pipeline also has an endpoint-scoped completion-order tracker: if Nearby reports a FILE payload's SUCCESS before delivering the corresponding FILE descriptor callback, the completion is retained and the later descriptor can still enter the save and verification path. The tracker is bounded to prevent stale callback state from growing indefinitely. This is callback-order resilience, not durable resume.
 
 References:
 - Google Nearby Payload API documents getOffset/setOffset for FILE and STREAM payloads: https://developers.google.com/android/reference/com/google/android/gms/nearby/connection/Payload
