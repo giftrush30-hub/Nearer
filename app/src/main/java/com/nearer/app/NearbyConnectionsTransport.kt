@@ -91,6 +91,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             }
         } catch (_: Exception) { listener.onStatus("Some queued messages could not be restored.") }
     }
+    fun pendingMessageIds(): Set<String> = pendingOutgoingMessages.keys.toSet()
+
     private fun retryQueuedMessagesForPeer(peerId: String, endpointId: String) {
         if (peerId.isBlank()) return
         pendingOutgoingMessages.forEach { (id, p) -> if (p.stablePeerId == peerId) { p.retryTask?.let(deliveryHandler::removeCallbacks); p.endpointId = endpointId; p.attempts = 0; outgoingMessageTargets[id] = endpointId; persistPendingOutbox(); attemptOutgoingMessage(id) } }
