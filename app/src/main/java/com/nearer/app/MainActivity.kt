@@ -326,14 +326,20 @@ class MainActivity : ComponentActivity() {
                     chatNotice = "Received and saved: $name. Tap it below to open."
                 }
             }
+            override fun onOutgoingFileFinished(endpointId: String, payloadId: Long, name: String, success: Boolean, message: String) {
+                runOnUiThread {
+                    if (hybridConnectedEndpoint == endpointId && outgoingTransferId == "nearby:$payloadId") {
+                        outgoingTransferId = null
+                        outgoingProgress = 0f
+                        chatNotice = message
+                        sendNextQueuedFile()
+                    }
+                }
+            }
             override fun onFileStatus(message: String) {
                 runOnUiThread {
                     chatNotice = message
-                    if (message.startsWith("File sent to the nearby phone") ||
-                        message.startsWith("Nearby file transfer failed") ||
-                        message.startsWith("Could not start file transfer") ||
-                        message.startsWith("Could not send file details") ||
-                        message.startsWith("File could not be prepared")) {
+                    if (message.startsWith("File could not be prepared") || message.startsWith("The nearby connection is no longer active.")) {
                         outgoingTransferId = null
                         outgoingProgress = 0f
                         sendNextQueuedFile()
