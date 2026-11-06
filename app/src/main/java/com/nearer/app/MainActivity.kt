@@ -1221,7 +1221,9 @@ class MainActivity : ComponentActivity() {
                 }
                 "ludo_sync" -> activeGame?.let { game ->
                     if (game.isHost && game.matchId == packet.optString("matchId") &&
-                        sender in game.remotePlayers.values && !game.ready) {
+                        sender in game.remotePlayers.values) {
+                        // A room may have several remote players. One player's reconnect
+                        // must not prevent another player from syncing later.
                         val resumed = game.copy(ready = true, revision = game.revision + 1L)
                         activeGame = resumed
                         sendLudoState(resumed)
