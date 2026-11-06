@@ -37,6 +37,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onOutgoingFileFinished(endpointId: String, payloadId: Long, name: String, success: Boolean, message: String)
         fun onBundleOffer(endpointId: String, manifest: TransferBundleManifest)
         fun onBundleDecision(endpointId: String, transferId: String, accepted: Boolean)
+        fun onTransferWindowChanged(endpointId: String)
     }
 
     private val appContext = context.applicationContext
@@ -45,6 +46,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val names = mutableMapOf<String, String>()
     private val stableIds = mutableMapOf<String, String>()
     private val activeEndpoints = mutableSetOf<String>()
+    private val peerMaxParallelFiles = ConcurrentHashMap<String, Int>()
     private val localStableId = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         .let { prefs ->
             prefs.getString("nearer_stable_id", null) ?: UUID.randomUUID().toString().replace("-", "").take(6).uppercase().also {
@@ -259,6 +261,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 synchronized(activeEndpoints) { activeEndpoints.add(id) }
                 val details = synchronized(names) { (names[id] ?: "Nearby NeaRer user") to stableIds[id].orEmpty() }
                 retryQueuedMessagesForPeer(details.second, id)
+                sendPeerTransferCapabilities(id)
                 listener.onConnected(id, details.first, details.second)
             } else listener.onStatus("Nearby connection was not approved. Try again.")
         }
@@ -506,6 +509,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 return
             }
             val kind = envelope.optString("kind", "message")
+            if (kind == "transfer_capabilities") {
+                val version = envelope.optInt("version", 0)
+                val maxParallel = envelope.optInt("maxParallelFiles", 0)
+                if (version == 1 && maxParallel in 1..TransferConcurrencyPolicy.NORMAL_WINDOW) {
+                    peerMaxParallelFiles[endpointId] = maxParallel
+                    listener.onTransferWindowChanged(endpointId)
+                }
+                return
+            }
             if (kind == "file_digest") {
                 val payloadId = envelope.optLong("payloadId", -1L)
                 if (payloadId < 0L) return
@@ -846,6 +858,35 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
 
     fun isEndpointConnected(endpointId: String): Boolean =
         synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }
+
+    fun recommendedParallelFiles(endpointId: String, localWindow: Int): Int =
+        TransferPeerWindowPolicy.recommended(localWindow, peerMaxParallelFiles[endpointId])
+
+    private fun localParallelFileCapacity(): Int {
+        val manager = appContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val memory = ActivityManager.MemoryInfo()
+        try { manager?.getMemoryInfo(memory) } catch (_: Exception) { }
+        val thermal = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            try { (appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.currentThermalStatus ?: 0 }
+            catch (_: Exception) { 0 }
+        } else 0
+        return TransferConcurrencyPolicy.maxParallelFiles(
+            availableMemoryBytes = memory.availMem.coerceAtLeast(0L),
+            lowMemory = memory.lowMemory,
+            lowRamDevice = manager?.isLowRamDevice ?: false,
+            thermalStatus = thermal.coerceIn(0, 6)
+        )
+    }
+
+    private fun sendPeerTransferCapabilities(endpointId: String) {
+        val envelope = JSONObject().put("kind", "transfer_capabilities").put("version", 1)
+            .put("maxParallelFiles", localParallelFileCapacity())
+        try {
+            client.sendPayload(endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8)))
+        } catch (_: Exception) {
+            // Older peers and transient control-channel failures safely use one file at a time.
+        }
+    }
 
     fun request(id: String) {
         client.requestConnection(encodedName(), id, lifecycle).addOnFailureListener {
@@ -1188,6 +1229,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
         incomingCompletionTracker.removeEndpoint(endpointId)
         deferredIncomingDigests.removeEndpoint(endpointId)
+        peerMaxParallelFiles.remove(endpointId)
         acknowledgedDeferredDigests.removeEndpoint(endpointId)
         pendingDeferredDigests.entries.filter { it.value.endpointId == endpointId }.forEach { (id, pending) ->
             pending.retryTask?.let(deliveryHandler::removeCallbacks)
