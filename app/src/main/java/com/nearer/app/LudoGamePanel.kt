@@ -84,6 +84,16 @@ private fun ludoTokenPosition(color: LudoColor, token: LudoToken, index: Int): O
     return Offset(p.first + .5f, p.second + .5f)
 }
 
+private fun ludoTokenTapPosition(player: LudoPlayer, index: Int): Offset {
+    val token = player.tokens[index]
+    val base = ludoTokenPosition(player.color, token, index)
+    if (token.steps < 0) return base
+    val same = player.tokens.withIndex().filter { it.value.steps == token.steps }.map { it.index }
+    if (same.size < 2) return base
+    val offsets = listOf(Offset(-.13f, -.13f), Offset(.13f, -.13f), Offset(-.13f, .13f), Offset(.13f, .13f))
+    return base + offsets[same.indexOf(index).coerceAtLeast(0) % offsets.size]
+}
+
 @Composable
 fun LudoGamePanel(
     networkMatch: LudoNetworkMatch?,
@@ -317,7 +327,7 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, onMove: (Int) 
                 if (game.currentPlayer.isComputer || game.diceValue == null) return@detectTapGestures
                 val unit = size.width / 15f
                 val playerIndex = game.currentPlayerIndex
-                val candidates = legalMoves.map { index -> index to ludoTokenPosition(game.currentPlayer.color, game.currentPlayer.tokens[index], index) }
+                val candidates = legalMoves.map { index -> index to ludoTokenTapPosition(game.currentPlayer, index) }
                 val selected = candidates.minByOrNull { (_, p) -> hypot((tap.x / unit - p.x).toDouble(), (tap.y / unit - p.y).toDouble()) }
                 if (selected != null && hypot((tap.x / unit - selected.second.x).toDouble(), (tap.y / unit - selected.second.y).toDouble()) < .85) onMove(selected.first)
             }
