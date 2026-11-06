@@ -1,11 +1,13 @@
 package com.nearer.app
 
 import android.content.Context
+import android.app.ActivityManager
 import android.bluetooth.BluetoothManager
 import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.SystemClock
 import android.os.Looper
+import android.os.PowerManager
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.google.android.gms.nearby.Nearby
@@ -16,6 +18,9 @@ import java.io.FileOutputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 class NearbyConnectionsTransport(context: Context, private val listener: Listener) {
     interface Listener {
@@ -87,7 +92,31 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val filePreparationIo = Executors.newSingleThreadExecutor()
     private val transferStartedAtNanos = ConcurrentHashMap<TransferKey, Long>()
     private val completedTransferRates = ConcurrentHashMap<TransferKey, String>()
-    private val fileIo = Executors.newSingleThreadExecutor()
+    // Receiving two FILE payloads concurrently is useful only if disk finalization
+    // can overlap too. Keep this pool small and its queue bounded: slow flash storage
+    // must apply back-pressure instead of accumulating an unbounded save backlog.
+    private val fileIo = createFileSaveExecutor()
+
+    private fun createFileSaveExecutor(): ThreadPoolExecutor {
+        val activityManager = appContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val memory = ActivityManager.MemoryInfo()
+        try { activityManager?.getMemoryInfo(memory) } catch (_: Exception) { }
+        val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val thermalStatus = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            try { powerManager?.currentThermalStatus ?: 0 } catch (_: Exception) { 0 }
+        } else 0
+        val window = TransferConcurrencyPolicy.maxParallelFiles(
+            availableMemoryBytes = memory.availMem.coerceAtLeast(0L),
+            lowMemory = memory.lowMemory,
+            lowRamDevice = activityManager?.isLowRamDevice ?: false,
+            thermalStatus = thermalStatus.coerceIn(0, 6)
+        )
+        return ThreadPoolExecutor(
+            window, window, 0L, TimeUnit.MILLISECONDS,
+            ArrayBlockingQueue(8),
+            ThreadPoolExecutor.AbortPolicy()
+        )
+    }
     private val seenMessageIds = ConcurrentHashMap.newKeySet<String>().apply {
         appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
             .getStringSet("nearby_seen_message_ids", HashSet<String>()).orEmpty().forEach { add(it) }
@@ -631,6 +660,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             }
         } catch (error: Exception) {
             completedTransferRates.remove(key)
+            meta.bundleTransferId?.let { transferId ->
+                val sessionKey = BundleSessionKey(meta.endpointId, transferId)
+                incomingBundleSessions[sessionKey]?.let { session ->
+                    try { session.fail(key.payloadId) } catch (_: Exception) { }
+                    if (session.isFinished()) {
+                        incomingBundleSessions.remove(sessionKey, session)
+                        bundleDestinationFolders.remove(sessionKey)
+                    }
+                }
+            }
             try { payload.close() } catch (_: Exception) { }
             listener.onFileStatus("Could not queue the received file for saving: ${error.localizedMessage ?: "storage busy"}")
         }
