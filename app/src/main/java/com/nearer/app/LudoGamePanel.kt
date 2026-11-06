@@ -412,6 +412,25 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, onMove: (Int) 
             val fill = color?.let { palette.getValue(it) } ?: Color.White
             drawRoundRect(fill, Offset(x * unit + unit * .035f, y * unit + unit * .035f), Size(unit * .93f, unit * .93f), androidx.compose.ui.geometry.CornerRadius(unit * .12f))
             drawRoundRect(Color(0xFFD5DCE5), Offset(x * unit + unit * .035f, y * unit + unit * .035f), Size(unit * .93f, unit * .93f), androidx.compose.ui.geometry.CornerRadius(unit * .12f), style = Stroke(unit * .025f))
+            if (index in setOf(0, 13, 26, 39)) {
+                val direction = when (index) {
+                    0 -> Offset(0f, 1f)
+                    13 -> Offset(-1f, 0f)
+                    26 -> Offset(0f, -1f)
+                    else -> Offset(1f, 0f)
+                }
+                val center = Offset((x + .5f) * unit, (y + .5f) * unit)
+                val tip = center + direction * (unit * .22f)
+                val side = Offset(-direction.y, direction.x)
+                drawLine(Color.White, center - direction * (unit * .18f), tip, strokeWidth = unit * .055f)
+                val arrow = Path().apply {
+                    moveTo(tip.x, tip.y)
+                    lineTo(tip.x - direction.x * unit * .16f + side.x * unit * .12f, tip.y - direction.y * unit * .16f + side.y * unit * .12f)
+                    lineTo(tip.x - direction.x * unit * .16f - side.x * unit * .12f, tip.y - direction.y * unit * .16f - side.y * unit * .12f)
+                    close()
+                }
+                drawPath(arrow, Color.White)
+            }
             if (index in setOf(8, 21, 34, 47)) {
                 val center = Offset((x + .5f) * unit, (y + .5f) * unit)
                 val star = Path()
