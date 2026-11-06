@@ -1201,11 +1201,14 @@ class MainActivity : ComponentActivity() {
         activeGame = LudoNetworkMatch(invite.matchId, initial, LudoColor.YELLOW, false, invite.sender, false)
         incomingGameInvite = null
         gameChatMessages.clear()
-        nearbyTransport?.sendToNames(
+        val sent = nearbyTransport?.sendToNames(
             "NR_COMMUNITY:" + JSONObject().put("type", "ludo_accept").put("matchId", invite.matchId).put("sender", displayName),
             setOf(invite.sender)
-        )
-        communityNotice = "Joining ${invite.sender}'s Ludo table…"
+        ) == true
+        if (!sent) {
+            activeGame = null
+            communityNotice = "The invitation could not reach the host. Reconnect and try again."
+        } else communityNotice = "Joining ${invite.sender}'s Ludo table…"
     }
 
     private fun sendLudoState(match: LudoNetworkMatch) {
@@ -1224,10 +1227,11 @@ class MainActivity : ComponentActivity() {
             .put("winner", match.state.winner?.name ?: "")
             .put("turn", match.state.turnNumber)
             .put("sixes", match.state.consecutiveSixes)
-        nearbyTransport?.sendToNames(
+        val sent = nearbyTransport?.sendToNames(
             "NR_COMMUNITY:" + JSONObject().put("type", "ludo_state").put("matchId", match.matchId).put("state", snapshot),
             setOf(match.opponentName)
-        )
+        ) == true
+        if (!sent) communityNotice = "The Ludo board could not sync. Check that both phones are still connected."
     }
 
     private fun parseLudoState(snapshot: JSONObject?): LudoGameState? {
@@ -1262,6 +1266,7 @@ class MainActivity : ComponentActivity() {
             sendLudoState(updated)
         } catch (_: Exception) {
             communityNotice = "That Ludo move was not legal. The board was not changed."
+            sendLudoState(game)
         }
     }
 
@@ -1271,11 +1276,12 @@ class MainActivity : ComponentActivity() {
         if (game.isHost) {
             applyHostLudoAction(game, action, token)
         } else {
-            nearbyTransport?.sendToNames(
+            val sent = nearbyTransport?.sendToNames(
                 "NR_COMMUNITY:" + JSONObject().put("type", "ludo_action").put("matchId", game.matchId)
                     .put("action", action).put("token", token).put("sender", displayName),
                 setOf(game.opponentName)
-            )
+            ) == true
+            if (!sent) communityNotice = "Your move could not reach the host. Check the nearby connection."
         }
     }
 
