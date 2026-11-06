@@ -2023,6 +2023,11 @@ private fun NeaRerHome(
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     if (activeSection == "home") {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            Image(
+                                painter = painterResource(R.drawable.ic_nearer_foreground),
+                                contentDescription = "NeaRer connected network symbol",
+                                modifier = Modifier.size(34.dp).padding(end = 5.dp)
+                            )
                             Text("Nea", color = White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
                             Text("R", color = Gold, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
                             Text("er", color = White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
