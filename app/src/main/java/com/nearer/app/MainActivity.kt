@@ -2034,8 +2034,10 @@ private fun NeaRerHome(
                                 showInstalledApps = false
                                 appShareNotice = "Preparing " + app.label + " for sharing…"
                                 onPrepareAppForSharing(app) { uri ->
-                                    if (uri != null) onSendFile(uri)
-                                    else appShareNotice = "Could not prepare " + app.label + " for sharing."
+                                    if (uri != null) {
+                                        appShareNotice = app.label + " is prepared. Starting the transfer…"
+                                        onSendFile(uri)
+                                    } else appShareNotice = "Could not prepare " + app.label + " for sharing."
                                 }
                             },
                             color = Color(0xFF173F78), shape = RoundedCornerShape(14.dp),
@@ -2298,6 +2300,23 @@ private fun NeaRerHome(
                                 modifier = Modifier.animateContentSize())
                             Text("Send photos, videos, music, apps and documents directly to people nearby — without mobile data.",
                                 color = Color(0xFFD7E5FA), fontSize = 12.sp, lineHeight = 18.sp)
+                            appShareNotice?.let { notice ->
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().animateContentSize(),
+                                    color = Color(0xFF0B2342),
+                                    shape = RoundedCornerShape(11.dp),
+                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text("▣", color = Gold, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                        Text(notice, color = Color(0xFFFFDFA0), fontSize = 10.sp, lineHeight = 15.sp)
+                                    }
+                                }
+                            }
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                                 Button(
                                     onClick = {
