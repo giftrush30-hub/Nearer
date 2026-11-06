@@ -23,6 +23,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import android.media.AudioManager
+import android.media.ToneGenerator
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,6 +64,9 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
     var game by remember(playerName) { mutableStateOf(LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents)) }
     var rolling by remember { mutableStateOf(false) }
     var rollingFace by remember { mutableIntStateOf(1) }
+    var soundEnabled by remember { mutableStateOf(true) }
+    val tones = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 48) }
+    DisposableEffect(tones) { onDispose { tones.release() } }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val pulse by rememberInfiniteTransition(label = "legal-pulse").animateFloat(
@@ -72,6 +77,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
     suspend fun animateRoll(computer: Boolean = false) {
         if (rolling || !game.canRoll) return
         rolling = true
+        if (soundEnabled && !computer) tones.startTone(ToneGenerator.TONE_PROP_BEEP, 90)
         repeat(if (computer) 7 else 10) {
             rollingFace = Random.nextInt(1, 7)
             delay(if (computer) 75 else 58)
@@ -79,6 +85,15 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
         game = LudoEngine.roll(game)
         rollingFace = game.dice ?: rollingFace
         rolling = false
+        if (soundEnabled && game.dice != null) tones.startTone(ToneGenerator.TONE_PROP_ACK, 110)
+    }
+
+    LaunchedEffect(game.winnerId) {
+        if (game.winnerId != null && soundEnabled) {
+            tones.startTone(ToneGenerator.TONE_PROP_PROMPT, 180)
+            delay(220)
+            tones.startTone(ToneGenerator.TONE_PROP_ACK, 300)
+        }
     }
 
     LaunchedEffect(game.activePlayerIndex, game.dice, game.turnNumber, game.winnerId, game.message) {
@@ -160,6 +175,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                     }
                     LudoBoard(game, pulse, Modifier.fillMaxWidth()) { token ->
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        if (soundEnabled) tones.startTone(ToneGenerator.TONE_PROP_ACK, 75)
                         game = LudoEngine.move(game, token)
                     }
                 }
@@ -181,6 +197,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                     ) {
                         Text("✦  VICTORY  ✦", color = Gold, fontSize = 11.sp,
                             fontWeight = FontWeight.Black, letterSpacing = 2.2.sp)
+                        VictoryConfetti(Modifier.fillMaxWidth().height(62.dp))
                         Text("🏆", fontSize = 38.sp)
                         Text(champion.uppercase(), color = White, fontSize = 23.sp,
                             fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
@@ -250,6 +267,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                                     border = BorderStroke(1.dp, Gold.copy(alpha = pulse)),
                                     modifier = Modifier.weight(1f).clickable {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        if (soundEnabled) tones.startTone(ToneGenerator.TONE_PROP_ACK, 75)
                                         game = LudoEngine.move(game, tokenIndex)
                                     }) {
                                     Column(Modifier.padding(vertical = 9.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -310,6 +328,26 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                                 modifier = Modifier.padding(horizontal = 17.dp, vertical = 10.dp))
                         }
                     }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = if (soundEnabled) Color(0xFF18375D) else Panel,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, if (soundEnabled) Gold.copy(alpha = 0.7f) else Color(0xFF294362)),
+                    modifier = Modifier.clickable { soundEnabled = !soundEnabled }
+                ) {
+                    Text(
+                        if (soundEnabled) "♫  GAME SOUNDS ON" else "♫  GAME SOUNDS OFF",
+                        color = if (soundEnabled) Gold else Muted,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp)
+                    )
                 }
             }
             Text(if (computerOpponents) "TRADITIONAL LUDO  •  YOU VS COMPUTER OPPONENTS  •  OFFLINE" else "TRADITIONAL LUDO  •  LOCAL PASS & PLAY  •  OFFLINE",
@@ -525,6 +563,37 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
                 )
                 drawCircle(Color(0xFFFFF8E3), cell * 0.105f, Offset(x, y - cell * 0.19f))
                 drawCircle(Color.White.copy(alpha = 0.76f), cell * 0.045f, Offset(x - cell * 0.045f, y - cell * 0.225f))
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun VictoryConfetti(modifier: Modifier = Modifier) {
+    val fall by rememberInfiniteTransition(label = "victory-confetti").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1900, easing = LinearEasing), RepeatMode.Restart),
+        label = "confetti-fall"
+    )
+    Canvas(modifier) {
+        val palette = listOf(Gold, Color(0xFF77B7FF), Color(0xFFFF7894), Color(0xFF7CE0B7), White)
+        repeat(34) { index ->
+            val x = ((index * 37 + 11) % 97) / 100f * size.width
+            val phase = (fall + index * 0.071f) % 1f
+            val y = phase * size.height
+            val radius = (2.2f + (index % 4) * 0.9f).dp.toPx()
+            val color = palette[index % palette.size].copy(alpha = 0.95f - phase * 0.35f)
+            if (index % 3 == 0) {
+                drawRoundRect(
+                    color,
+                    topLeft = Offset(x, y),
+                    size = Size(radius * 0.8f, radius * 2.2f),
+                    cornerRadius = CornerRadius(radius * 0.3f)
+                )
+            } else {
+                drawCircle(color, radius, Offset(x, y))
             }
         }
     }
