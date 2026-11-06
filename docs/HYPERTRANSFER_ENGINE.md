@@ -11,7 +11,7 @@ Make nearby Android file sharing as fast as the two phones and their wireless li
 - Nearby Connections payload completion is timed and the observed average MB/s is reported.
 - Existing P2P_CLUSTER discovery remains unchanged so current multi-device connections are not sacrificed.
 - JVM tests cover the buffer policy, Unicode-safe filename handling, bundle-manifest validation/codec round-trips, and bounded stream-copy integrity/cancellation.
-- A metadata-only bundle model and bounded binary wire codec validate IDs, destination paths, duplicate entries, item sizes, item kinds and protocol version before bulk data begins.
+- A metadata-only bundle model and bounded binary wire codec validate IDs, destination paths, duplicate entries, item sizes, item kinds and protocol version before bulk data begins; malformed UTF-8 is rejected rather than silently replaced.
 - Multi-select sends a manifest offer before file bytes; the receiver reviews and explicitly approves or declines the offer.
 - Manifest fragments are transported as bounded Nearby BYTES payloads, reassembled per endpoint, and checked against the completed manifest transfer ID.
 - Every bundle FILE metadata envelope carries its manifest transfer ID, item ID and relative path. The receiver requires an accepted per-endpoint session and exact item ID/path/name/size agreement before attaching the FILE payload.
