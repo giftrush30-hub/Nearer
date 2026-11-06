@@ -352,9 +352,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
-    private fun safeFileName(raw: String): String =
-        raw.substringAfterLast('/').substringAfterLast('\\')
-            .replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100).ifBlank { "shared-file" }
+    private fun safeFileName(raw: String): String = TransferFileName.safeLeafName(raw)
 
     private fun startAdvertising() {
         val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
