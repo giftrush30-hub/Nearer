@@ -71,6 +71,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -110,6 +111,7 @@ class MainActivity : ComponentActivity() {
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
     private var hybridSearching by mutableStateOf(false)
+    private var highSpeedOneToOne by mutableStateOf(false)
     private var pendingHybridEndpoint: String? = null
     private var hybridConnected = false
     private var hybridConnectedEndpoint: String? = null
@@ -431,6 +433,7 @@ class MainActivity : ComponentActivity() {
         }
         restoreCommunityData()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
+        highSpeedOneToOne = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getBoolean("high_speed_one_to_one", false)
         nearbyTransport?.setDisplayName(displayName)
         restoreRecentlySeen()
         // Multi-hop relay is paused until recipient routing and end-to-end encryption are ready.
@@ -500,6 +503,8 @@ class MainActivity : ComponentActivity() {
                     meshRelayEnabled = meshRelayEnabled,
                     onMeshRelayChange = ::updateMeshRelayEnabled,
                     onHybridConnect = { id -> nearbyTransport?.request(id) },
+                    highSpeedOneToOne = highSpeedOneToOne,
+                    onHighSpeedModeChange = ::setHighSpeedMode,
                     onFindNearby = ::startDiscovery,
                     onStopSearch = ::stopDiscovery,
                     onConnect = ::connectToDevice
@@ -650,6 +655,21 @@ class MainActivity : ComponentActivity() {
     private fun hasNearbyPermissions(): Boolean =
         nearbyPermissionList().all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
 
+    private fun setHighSpeedMode(enabled: Boolean) {
+        if (scanning || hybridSearching || hybridConnected) {
+            statusMessage = "Stop searching and disconnect before changing connection mode."
+            return
+        }
+        highSpeedOneToOne = enabled
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("high_speed_one_to_one", enabled).apply()
+        statusMessage = if (enabled) {
+            "High-Speed 1-to-1 selected. Both phones must enable this mode before searching."
+        } else {
+            "Multi-peer mode selected. NeaRer will use the standard nearby connection."
+        }
+    }
+
     private fun startDiscovery() {
         if (!hasNearbyPermissions()) {
             ActivityCompat.requestPermissions(this, nearbyPermissionList(), REQUEST_DISCOVERY_PERMISSION)
@@ -666,7 +686,7 @@ class MainActivity : ComponentActivity() {
         }
         // Start Nearby Connections whenever at least one suitable radio is already enabled.
         // Android no longer silently enables radios for apps; the user stays in control.
-        nearbyTransport?.start()
+        nearbyTransport?.start(highSpeedOneToOne)
         hybridSearching = true
         if (!wifiOn) {
             finishDiscovery()
@@ -2224,6 +2244,8 @@ private fun NeaRerHome(
     meshRelayEnabled: Boolean,
     onMeshRelayChange: (Boolean) -> Unit,
     onHybridConnect: (String) -> Unit,
+    highSpeedOneToOne: Boolean,
+    onHighSpeedModeChange: (Boolean) -> Unit,
     onFindNearby: () -> Unit,
     onStopSearch: () -> Unit,
     onConnect: (WifiP2pDevice) -> Unit
@@ -2342,6 +2364,13 @@ private fun NeaRerHome(
                         "NeaRer advertises your chosen name while searching for other NeaRer phones. Nearby Connections can use Bluetooth and nearby Wi-Fi automatically; Wi-Fi Direct is an additional discovery path. Hotspot and mobile data are not required.",
                         color = Muted, fontSize = 14.sp, lineHeight = 21.sp
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("HIGH-SPEED 1-TO-1", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Experimental faster link. Both phones must enable it before searching; only one peer can connect.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                        }
+                        Switch(checked = highSpeedOneToOne, onCheckedChange = onHighSpeedModeChange, enabled = !scanning && !chatReady)
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(onClick = onFindNearby, modifier = Modifier.weight(1f).height(52.dp), enabled = !scanning,
                             shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
