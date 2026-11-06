@@ -1998,6 +1998,7 @@ private fun NeaRerHome(
     var showInstalledApps by remember { mutableStateOf(false) }
     var pendingAppPicker by remember { mutableStateOf(false) }
     var installedApps by remember { mutableStateOf<List<ShareableApp>>(emptyList()) }
+    var appShareNotice by remember { mutableStateOf<String?>(null) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
     }
@@ -2029,10 +2030,10 @@ private fun NeaRerHome(
                         Surface(
                             modifier = Modifier.fillMaxWidth().clickable {
                                 showInstalledApps = false
-                                chatNotice = "Preparing " + app.label + " for sharing…"
+                                appShareNotice = "Preparing " + app.label + " for sharing…"
                                 onPrepareAppForSharing(app) { uri ->
                                     if (uri != null) onSendFile(uri)
-                                    else chatNotice = "Could not prepare " + app.label + " for sharing."
+                                    else appShareNotice = "Could not prepare " + app.label + " for sharing."
                                 }
                             },
                             color = Color(0xFF173F78), shape = RoundedCornerShape(14.dp),
