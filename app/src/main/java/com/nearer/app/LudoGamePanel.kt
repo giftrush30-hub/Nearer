@@ -56,7 +56,7 @@ private val ludoTrack = buildList {
     for (x in 13 downTo 9) add(x to 6)
     for (y in 5 downTo 0) add(8 to y)
     add(7 to 0); add(6 to 0)
-}
+}.let { path -> listOf(path.first()) + path.drop(1).asReversed() }
 
 private fun ludoTokenPosition(color: LudoColor, token: LudoToken, index: Int): Offset {
     if (token.isFinished) return Offset(7.5f, 7.5f)
@@ -379,9 +379,9 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, onMove: (Int) 
         ludoTrack.forEachIndexed { index, (x, y) ->
             val color = when (index) {
                 0 -> LudoColor.RED
-                13 -> LudoColor.BLUE
+                13 -> LudoColor.GREEN
                 26 -> LudoColor.YELLOW
-                39 -> LudoColor.GREEN
+                39 -> LudoColor.BLUE
                 else -> null
             }
             val fill = color?.let { palette.getValue(it) } ?: Color.White
