@@ -36,6 +36,37 @@ class TransferStreamIOTest {
     }
 
     @Test
+    fun hashesOnlyTheRequestedResumePrefix() {
+        val source = "NeaRer resume prefix and remaining bytes".toByteArray(Charsets.UTF_8)
+        val input = ByteArrayInputStream(source)
+        val prefixLength = 12L
+        val digest = TransferStreamIO.sha256PrefixExactly(input, prefixLength, 4096)
+        val expected = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(source.copyOfRange(0, prefixLength.toInt()))
+        assertArrayEquals(expected, digest)
+        assertEquals(source.size - prefixLength.toInt(), input.available())
+    }
+
+    @Test
+    fun prefixHashSupportsEmptyPrefixAndRejectsShortSource() {
+        val emptyDigest = TransferStreamIO.sha256PrefixExactly(ByteArrayInputStream(byteArrayOf(1)), 0L, 4096)
+        assertEquals(
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            TransferStreamIO.sha256Hex(emptyDigest)
+        )
+        assertThrows(EOFException::class.java) {
+            TransferStreamIO.sha256PrefixExactly(ByteArrayInputStream(byteArrayOf(1)), 2L, 4096)
+        }
+    }
+
+    @Test
+    fun prefixHashCanBeCancelled() {
+        assertThrows(TransferCancelledException::class.java) {
+            TransferStreamIO.sha256PrefixExactly(ByteArrayInputStream(ByteArray(8192)), 8192L, 4096) { true }
+        }
+    }
+
+    @Test
     fun checksumPreparationCanBeCancelledWithoutReadingSource() {
         assertThrows(TransferCancelledException::class.java) {
             TransferStreamIO.sha256Exactly(
