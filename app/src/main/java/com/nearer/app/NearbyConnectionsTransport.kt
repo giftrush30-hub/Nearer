@@ -47,6 +47,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val stableIds = mutableMapOf<String, String>()
     private val activeEndpoints = mutableSetOf<String>()
     private val peerMaxParallelFiles = ConcurrentHashMap<String, Int>()
+    private val peerSupportsDeferredDigest = ConcurrentHashMap<String, Boolean>()
     private val localStableId = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         .let { prefs ->
             prefs.getString("nearer_stable_id", null) ?: UUID.randomUUID().toString().replace("-", "").take(6).uppercase().also {
@@ -514,6 +515,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val maxParallel = envelope.optInt("maxParallelFiles", 0)
                 if (version == 1 && maxParallel in 1..TransferConcurrencyPolicy.NORMAL_WINDOW) {
                     peerMaxParallelFiles[endpointId] = maxParallel
+                    peerSupportsDeferredDigest[endpointId] = envelope.optBoolean("deferredDigest", false)
                     listener.onTransferWindowChanged(endpointId)
                 }
                 return
@@ -862,6 +864,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     fun recommendedParallelFiles(endpointId: String, localWindow: Int): Int =
         TransferPeerWindowPolicy.recommended(localWindow, peerMaxParallelFiles[endpointId])
 
+    private fun supportsDeferredDigest(endpointId: String): Boolean =
+        peerSupportsDeferredDigest[endpointId] == true
+
     private fun localParallelFileCapacity(): Int {
         val manager = appContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         val memory = ActivityManager.MemoryInfo()
@@ -881,6 +886,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private fun sendPeerTransferCapabilities(endpointId: String) {
         val envelope = JSONObject().put("kind", "transfer_capabilities").put("version", 1)
             .put("maxParallelFiles", localParallelFileCapacity())
+            .put("deferredDigest", true)
         try {
             client.sendPayload(endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8)))
         } catch (_: Exception) {
@@ -1176,37 +1182,71 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (isBundle) {
                 metadata.put("bundleTransferId", bundleTransferId)
                     .put("bundleItemId", bundleItemId).put("relativePath", relativePath)
-                    .put("sha256Pending", true)
-                preparingOutgoingFiles[id] = payload
-                outgoingDeferredDigestPayloads.add(id)
                 listener.onFileProgress(endpointId, id, name, 0L, size, false)
-                listener.onFileStatus("Sending $name while its integrity check runs in parallel…")
-                try {
-                    filePreparationIo.execute {
-                        try {
-                            val hashStartedAt = SystemClock.elapsedRealtimeNanos()
-                            val sourceSha256 = appContext.contentResolver.openInputStream(uri)?.use { input ->
-                                TransferStreamIO.sha256Hex(TransferStreamIO.sha256Exactly(input, size, HyperTransferTuning.receiveBufferBytes(appContext)))
-                            } ?: throw IllegalStateException("NeaRer could not read the selected file for its integrity check")
-                            val hashElapsedNanos = (SystemClock.elapsedRealtimeNanos() - hashStartedAt).coerceAtLeast(0L)
-                            if (!outgoingDeferredDigestPayloads.contains(id) && !outgoingBundleFileCompleted.contains(id)) return@execute
-                            if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return@execute
-                            outgoingBundleDigests[id] = endpointId to sourceSha256
-                            if (outgoingBundleFileCompleted.remove(id)) outgoingBundleDigests.remove(id)?.let { sendDeferredFileDigest(it.first, id, it.second) }
-                            listener.onFileStatus(TransferPreparationMetrics.describe(size, hashElapsedNanos) + " • integrity checked in parallel")
-                        } catch (error: Exception) {
-                            outgoingDeferredDigestPayloads.remove(id)
-                            outgoingBundleDigests.remove(id)
-                            outgoingBundleFileCompleted.remove(id)
-                            try { client.cancelPayload(id) } catch (_: Exception) { }
-                            sendDeferredFileDigestFailure(endpointId, id)
-                            listener.onFileStatus("Integrity check failed for $name: ${error.localizedMessage ?: "source read failed"}. The receiver was told not to save it.")
+                if (supportsDeferredDigest(endpointId)) {
+                    metadata.put("sha256Pending", true)
+                    preparingOutgoingFiles[id] = payload
+                    outgoingDeferredDigestPayloads.add(id)
+                    listener.onFileStatus("Sending $name while its integrity check runs in parallel…")
+                    try {
+                        filePreparationIo.execute {
+                            try {
+                                val hashStartedAt = SystemClock.elapsedRealtimeNanos()
+                                val sourceSha256 = appContext.contentResolver.openInputStream(uri)?.use { input ->
+                                    TransferStreamIO.sha256Hex(TransferStreamIO.sha256Exactly(input, size, HyperTransferTuning.receiveBufferBytes(appContext)))
+                                } ?: throw IllegalStateException("NeaRer could not read the selected file for its integrity check")
+                                val hashElapsedNanos = (SystemClock.elapsedRealtimeNanos() - hashStartedAt).coerceAtLeast(0L)
+                                if (!outgoingDeferredDigestPayloads.contains(id) && !outgoingBundleFileCompleted.contains(id)) return@execute
+                                if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return@execute
+                                outgoingBundleDigests[id] = endpointId to sourceSha256
+                                if (outgoingBundleFileCompleted.remove(id)) outgoingBundleDigests.remove(id)?.let { sendDeferredFileDigest(it.first, id, it.second) }
+                                listener.onFileStatus(TransferPreparationMetrics.describe(size, hashElapsedNanos) + " • integrity checked in parallel")
+                            } catch (error: Exception) {
+                                outgoingDeferredDigestPayloads.remove(id)
+                                outgoingBundleDigests.remove(id)
+                                outgoingBundleFileCompleted.remove(id)
+                                try { client.cancelPayload(id) } catch (_: Exception) { }
+                                sendDeferredFileDigestFailure(endpointId, id)
+                                listener.onFileStatus("Integrity check failed for $name: ${error.localizedMessage ?: "source read failed"}. The receiver was told not to save it.")
+                            }
                         }
+                        dispatchPreparedFile(endpointId, id, name, size, payload, metadata, true)
+                    } catch (error: Exception) {
+                        failOutgoingPreparation(endpointId, id, name, payload,
+                            "File could not be prepared: ${error.localizedMessage ?: "integrity worker unavailable"}")
                     }
-                    dispatchPreparedFile(endpointId, id, name, size, payload, metadata, true)
-                } catch (error: Exception) {
-                    failOutgoingPreparation(endpointId, id, name, payload,
-                        "File could not be prepared: ${error.localizedMessage ?: "integrity worker unavailable"}")
+                } else {
+                    // Older NeaRer builds do not understand the deferred-digest
+                    // control message, so preserve their metadata-with-digest flow.
+                    preparingOutgoingFiles[id] = payload
+                    listener.onFileStatus("Preparing integrity details for this older nearby connection…")
+                    try {
+                        filePreparationIo.execute {
+                            try {
+                                val hashStartedAt = SystemClock.elapsedRealtimeNanos()
+                                val sourceSha256 = appContext.contentResolver.openInputStream(uri)?.use { input ->
+                                    TransferStreamIO.sha256Hex(TransferStreamIO.sha256Exactly(input, size, HyperTransferTuning.receiveBufferBytes(appContext)))
+                                } ?: throw IllegalStateException("NeaRer could not read the selected file for its integrity check")
+                                val hashElapsedNanos = (SystemClock.elapsedRealtimeNanos() - hashStartedAt).coerceAtLeast(0L)
+                                if (preparingOutgoingFiles[id] !== payload) return@execute
+                                if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
+                                    failOutgoingPreparation(endpointId, id, name, payload, "The nearby connection ended during integrity preparation.")
+                                    return@execute
+                                }
+                                metadata.put("sha256", sourceSha256)
+                                listener.onFileStatus(TransferPreparationMetrics.describe(size, hashElapsedNanos))
+                                dispatchPreparedFile(endpointId, id, name, size, payload, metadata, true)
+                            } catch (error: Exception) {
+                                if (preparingOutgoingFiles[id] === payload) failOutgoingPreparation(
+                                    endpointId, id, name, payload,
+                                    "File could not be prepared: ${error.localizedMessage ?: "integrity check failed"}"
+                                )
+                            }
+                        }
+                    } catch (error: Exception) {
+                        failOutgoingPreparation(endpointId, id, name, payload,
+                            "File could not be prepared: ${error.localizedMessage ?: "integrity worker unavailable"}")
+                    }
                 }
             } else {
                 dispatchPreparedFile(endpointId, id, name, size, payload, metadata, false)
@@ -1230,6 +1270,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         incomingCompletionTracker.removeEndpoint(endpointId)
         deferredIncomingDigests.removeEndpoint(endpointId)
         peerMaxParallelFiles.remove(endpointId)
+        peerSupportsDeferredDigest.remove(endpointId)
         acknowledgedDeferredDigests.removeEndpoint(endpointId)
         pendingDeferredDigests.entries.filter { it.value.endpointId == endpointId }.forEach { (id, pending) ->
             pending.retryTask?.let(deliveryHandler::removeCallbacks)
