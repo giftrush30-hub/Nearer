@@ -105,7 +105,7 @@ import com.nearer.app.games.ludo.LudoGameScreen
 
 private val Midnight = Color(0xFF071A38)
 private val Panel = Color(0xFF102B50)
-private val Mint = Color(0xFF3B82F6)
+private val AccentBlue = Color(0xFF3B82F6)
 private val Muted = Color(0xFFAABBD4)
 private val White = Color(0xFFF6F8FF)
 private val BrandBlue = Color(0xFF1769FF)
@@ -355,7 +355,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme(
                 background = Midnight,
                 surface = Panel,
-                primary = Mint,
+                primary = AccentBlue,
                 onPrimary = Midnight,
                 onBackground = White,
                 onSurface = White
@@ -2224,7 +2224,7 @@ private fun NeaRerHome(
                         }
                     }
                     Text("Start with Ludo: traditional rules, colourful tokens and computer opponents. Nearby multiplayer is the next game milestone; online play will follow.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
-                    Button(onClick = { showLudo = true }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
+                    Button(onClick = { showLudo = true }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)) {
                         Text("PLAY LUDO", fontWeight = FontWeight.Black)
                     }
                 }
@@ -2367,21 +2367,21 @@ private fun NeaRerHome(
             Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(18.dp), color = if (chatReady) Color(0xFF173C3A) else Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("CONNECTION STATUS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("CONNECTION STATUS", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Spacer(modifier = Modifier.weight(1f))
                         if (chatReady) Surface(shape = RoundedCornerShape(30.dp), color = Color(0xFF174B43), modifier = Modifier.alpha(pulse)) {
                             Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text("✓", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Black)
-                                Text("CONNECTED", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Text("✓", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                                Text("CONNECTED", color = AccentBlue, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                     Text(connectedDeviceName?.let { "You are connected to $it" } ?: connectionMessage, color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     Text(connectionMessage, color = Muted, fontSize = 11.sp)
-                    Text(approvalMessage, color = if (chatReady) Mint else Muted, fontSize = 12.sp)
+                    Text(approvalMessage, color = if (chatReady) AccentBlue else Muted, fontSize = 12.sp)
                     pairingCode?.let { code ->
                         Text("PAIRING CODE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        Text(code, color = Mint, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
+                        Text(code, color = AccentBlue, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
                         Text("Check that both phones show the same code before approving.", color = Muted, fontSize = 10.sp)
                     }
                     if (connectedDeviceName != null || connectingAddress != null) {
@@ -2490,7 +2490,7 @@ private fun NeaRerHome(
                                         ) {
                                             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                                                 Text(message.body, color = White, fontSize = 14.sp)
-                                                Text(if (message.outgoing) message.delivery else "Received", color = Mint, fontSize = 9.sp)
+                                                Text(if (message.outgoing) message.delivery else "Received", color = AccentBlue, fontSize = 9.sp)
                                             }
                                         }
                                     }
@@ -2519,7 +2519,7 @@ private fun NeaRerHome(
                                 onClick = { onSendMessage(draft); draft = "" },
                                 enabled = draft.isNotBlank(),
                                 shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)
                             ) { Text("Send", fontWeight = FontWeight.Bold) }
                         }
                         incomingTransferName?.let { incomingName ->
@@ -2527,7 +2527,7 @@ private fun NeaRerHome(
                             LinearProgressIndicator(
                                 progress = { incomingProgress },
                                 modifier = Modifier.fillMaxWidth(),
-                                color = Mint,
+                                color = AccentBlue,
                                 trackColor = Color(0xFF19375D)
                             )
                         }
@@ -2535,7 +2535,7 @@ private fun NeaRerHome(
                             LinearProgressIndicator(
                                 progress = { outgoingProgress },
                                 modifier = Modifier.fillMaxWidth(),
-                                color = Mint,
+                                color = AccentBlue,
                                 trackColor = Color(0xFF19375D)
                             )
                             Button(
@@ -2627,11 +2627,11 @@ private fun NeaRerHome(
             if (incomingRequesterName != null) {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("NEARER CONNECTION REQUEST", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("NEARER CONNECTION REQUEST", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Text("$incomingRequesterName wants to connect with you.", color = White, fontWeight = FontWeight.SemiBold)
                         Text("Compare the six-digit code on both phones. Accept only if it matches and you recognise this person.", color = Muted, fontSize = 12.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Button(onClick = onAccept, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Accept") }
+                            Button(onClick = onAccept, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)) { Text("Accept") }
                             Button(onClick = onReject, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF713D4A), contentColor = White)) { Text("Reject") }
                         }
                     }
@@ -2641,7 +2641,7 @@ private fun NeaRerHome(
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
                 Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("COMMUNITY MESH RELAY", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("COMMUNITY MESH RELAY", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Text("Allow your phone to pass group text messages to other connected NeaRer phones.", color = White, fontSize = 12.sp, lineHeight = 17.sp)
                         Text("Optional • up to 4 hops • off by default. Relaying phones can read message text, so use only with trusted groups.", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
                     }
@@ -2655,12 +2655,12 @@ private fun NeaRerHome(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("NEARBY DEVICES", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
                 Spacer(modifier = Modifier.weight(1f))
-                Text("${devices.size} found", color = Mint, fontSize = 11.sp)
+                Text("${devices.size} found", color = AccentBlue, fontSize = 11.sp)
             }
 
             Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Color(0xFF14243A)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("PEOPLE AROUND YOU", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("PEOPLE AROUND YOU", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text(if (hybridPeers.isEmpty()) "Your nearby circle" else "${hybridPeers.size} active nearby", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     if (scanning && hybridPeers.isEmpty()) {
                         androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(142.dp), contentAlignment = Alignment.Center) {
@@ -2677,7 +2677,7 @@ private fun NeaRerHome(
                                 modifier = Modifier.size(104.dp).rotate(orbitRotation)
                             ) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.TopCenter) {
-                                    Surface(shape = CircleShape, color = Mint, modifier = Modifier.size(10.dp)) {}
+                                    Surface(shape = CircleShape, color = AccentBlue, modifier = Modifier.size(10.dp)) {}
                                 }
                             }
                             Surface(
@@ -2701,14 +2701,14 @@ private fun NeaRerHome(
                                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(entry.value.take(1).uppercase(), color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
                                     }
                                     Text(entry.value, color = White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                    Text("Active now", color = Mint, fontSize = 9.sp)
+                                    Text("Active now", color = AccentBlue, fontSize = 9.sp)
                                 }
                             }
                         }
                     } else {
                         androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(78.dp), contentAlignment = Alignment.Center) {
                             Surface(shape = CircleShape, color = Color(0xFF1C3554), modifier = Modifier.size(68.dp)) {
-                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("•••", color = Mint, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("•••", color = AccentBlue, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
                             }
                         }
                         Text("Nearby names will appear here as phones are discovered.", color = Muted, fontSize = 11.sp)
@@ -2735,7 +2735,7 @@ private fun NeaRerHome(
 
             if (hybridPeers.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("CONNECT WITH A NEARBY PERSON", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("CONNECT WITH A NEARBY PERSON", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     hybridPeers.forEach { (id, name) ->
                         Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Color(0xFF1C3453)) {
                             Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2744,9 +2744,9 @@ private fun NeaRerHome(
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
                                     Text(name, color = White, fontWeight = FontWeight.SemiBold)
-                                    Text("Active now • Nearby Connections", color = Mint, fontSize = 10.sp)
+                                    Text("Active now • Nearby Connections", color = AccentBlue, fontSize = 10.sp)
                                 }
-                                Button(onClick = { onHybridConnect(id) }, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Connect") }
+                                Button(onClick = { onHybridConnect(id) }, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)) { Text("Connect") }
                             }
                         }
                     }
@@ -2770,7 +2770,7 @@ private fun NeaRerHome(
                             ) {
                                 Surface(shape = CircleShape, color = Color(0xFF244B4A), modifier = Modifier.size(38.dp)) {
                                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                        Text("N", color = Mint, fontWeight = FontWeight.Bold)
+                                        Text("N", color = AccentBlue, fontWeight = FontWeight.Bold)
                                     }
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
@@ -2782,7 +2782,7 @@ private fun NeaRerHome(
                                     onClick = { onConnect(device) },
                                     enabled = connectingAddress == null && connectedDeviceName == null && device.status != WifiP2pDevice.UNAVAILABLE,
                                     shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
+                                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)
                                 ) {
                                     Text(if (connectingAddress == device.deviceAddress) "Requesting…" else "Connect", fontWeight = FontWeight.Bold)
                                 }
@@ -2811,7 +2811,7 @@ private fun NeaRerHome(
                     ).forEach { item ->
                         val selected = activeSection == item.third
                         Surface(
-                            modifier = Modifier.weight(1f).clickable {
+                            modifier = Modifier.weight(1f).animateContentSize().clickable {
                                 activeSection = item.third
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                             },
@@ -2855,7 +2855,7 @@ private fun CommunityHub(
     val selected = groups.firstOrNull { it.code == selectedCode }
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("NEARER COMMUNITY", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("NEARER COMMUNITY", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Text("Groups and nearby broadcasts", color = White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it.take(32) }, Modifier.weight(1f), singleLine = true, label = { Text("Group name") })
@@ -2873,7 +2873,7 @@ private fun CommunityHub(
             if (selected != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("GROUP CHAT • " + selected.name, color = Mint, fontWeight = FontWeight.Bold)
+                        Text("GROUP CHAT • " + selected.name, color = AccentBlue, fontWeight = FontWeight.Bold)
                         Text("Share code " + selected.code + " with connected members.", color = Muted, fontSize = 10.sp)
                     }
                     val context = androidx.compose.ui.platform.LocalContext.current
@@ -2890,7 +2890,7 @@ private fun CommunityHub(
                     Button(onClick = { onLeaveGroup(selected.code) },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Leave") }
                 }
-                Text("MEMBERS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("MEMBERS", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 selected.memberIds.forEach { (memberId, memberName) ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Column(Modifier.weight(1f)) {
@@ -2913,7 +2913,7 @@ private fun CommunityHub(
                     }
                 }
                 if (canModerate && selected.pendingMembers.isNotEmpty()) {
-                    Text("JOIN REQUESTS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("JOIN REQUESTS", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     selected.pendingMembers.forEach { (memberId, memberName) ->
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(memberName, color = White, fontSize = 12.sp, modifier = Modifier.weight(1f))
@@ -2930,18 +2930,18 @@ private fun CommunityHub(
                     Button(onClick = { onGroupMessage(groupText); groupText = "" }, enabled = groupText.isNotBlank()) { Text("Send") }
                 }
             }
-            Text("BROADCAST TO CONNECTED PEOPLE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text("BROADCAST TO CONNECTED PEOPLE", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(broadcastText, { broadcastText = it.take(500) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Announcement") })
                 Button(onClick = { onBroadcast(broadcastText); broadcastText = "" }, enabled = broadcastText.isNotBlank()) { Text("Send") }
             }
             Text("Only currently connected NeaRer devices receive these broadcasts.", color = Muted, fontSize = 10.sp)
-            Text(notice, color = Mint, fontSize = 10.sp)
+            Text(notice, color = AccentBlue, fontSize = 10.sp)
         }
     }
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF172A42)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Text("PLAY TOGETHER", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("PLAY TOGETHER", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Text("Tic-tac-toe • live nearby match", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Text("Invite a connected player. Board moves and game chat use the offline link.", color = Muted, fontSize = 11.sp)
             if (invite != null) {
@@ -2954,7 +2954,7 @@ private fun CommunityHub(
             if (game == null) Button(onClick = onInviteGame, Modifier.fillMaxWidth()) { Text("Challenge nearby players") }
             else {
                 Text("You are " + game.localSymbol + " • " + game.opponent, color = White, fontWeight = FontWeight.SemiBold)
-                Text(game.status, color = Mint)
+                Text(game.status, color = AccentBlue)
                 repeat(3) { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         repeat(3) { col ->
@@ -2967,7 +2967,7 @@ private fun CommunityHub(
                         }
                     }
                 }
-                Text("IN-GAME CHAT", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("IN-GAME CHAT", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 Column(Modifier.fillMaxWidth().height(80.dp).verticalScroll(rememberScrollState())) {
                     gameChat.takeLast(20).forEach { Text(it, color = White, fontSize = 11.sp) }
                 }
