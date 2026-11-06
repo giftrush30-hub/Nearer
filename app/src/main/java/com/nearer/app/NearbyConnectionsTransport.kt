@@ -28,6 +28,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
         fun onOutgoingFileFinished(endpointId: String, payloadId: Long, name: String, success: Boolean, message: String)
+        fun onBundleOffer(endpointId: String, manifest: TransferBundleManifest)
+        fun onBundleDecision(endpointId: String, transferId: String, accepted: Boolean)
     }
 
     private val appContext = context.applicationContext
@@ -52,6 +54,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
 
     private data class FileMeta(val endpointId: String, val name: String, val size: Long)
+    private data class ManifestAssembly(
+        val reassembler: TransferManifestReassembler,
+        @Volatile var updatedAtMillis: Long
+    )
+    private val incomingManifestAssemblies = ConcurrentHashMap<String, ManifestAssembly>()
+    private val manifestAssemblyTimeoutMillis = 60_000L
+
     private data class TransferKey(val endpointId: String, val payloadId: Long)
     private fun transferKey(endpointId: String, payloadId: Long) = TransferKey(endpointId, payloadId)
     private val incomingMetadata = ConcurrentHashMap<TransferKey, FileMeta>()
@@ -267,6 +276,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
 
     private fun handleBytes(endpointId: String, bytes: ByteArray?) {
+        if (TransferManifestFragments.isFragment(bytes)) {
+            handleManifestFragment(endpointId, bytes!!)
+            return
+        }
         try {
             val envelope = JSONObject(bytes?.toString(Charsets.UTF_8).orEmpty())
             if (envelope.optString("kind") == "file_meta") {
@@ -284,6 +297,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 return
             }
             val kind = envelope.optString("kind", "message")
+            if (kind == "bundle_decision") {
+                val transferId = envelope.optString("transferId")
+                if (transferId.isNotBlank() && transferId.length <= 128) {
+                    listener.onBundleDecision(endpointId, transferId, envelope.optBoolean("accepted", false))
+                }
+                return
+            }
             if (kind == "ack") {
                 val acknowledgedId = envelope.optString("id")
                 // Only the peer we actually sent this message to may confirm it.
@@ -325,6 +345,37 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             // until recipient routing and end-to-end encryption are implemented.
         } catch (_: Exception) {
             listener.onStatus("A nearby message could not be read and was ignored.")
+        }
+    }
+
+    private fun handleManifestFragment(endpointId: String, encodedFragment: ByteArray) {
+        try {
+            val now = System.currentTimeMillis()
+            incomingManifestAssemblies.entries.removeIf {
+                now - it.value.updatedAtMillis > manifestAssemblyTimeoutMillis
+            }
+            require(synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) {
+                "Manifest arrived from a disconnected phone"
+            }
+            val fragment = TransferManifestFragments.decode(encodedFragment)
+            val assembly = incomingManifestAssemblies.compute(endpointId) { _, existing ->
+                (existing ?: ManifestAssembly(TransferManifestReassembler(), now)).also {
+                    it.updatedAtMillis = now
+                }
+            } ?: throw IllegalStateException("Could not prepare manifest receiver")
+            val assembled = assembly.reassembler.accept(encodedFragment) ?: return
+            incomingManifestAssemblies.remove(endpointId, assembly)
+            val manifest = TransferBundleManifestCodec.decode(assembled)
+            require(manifest.transferId == fragment.transferId) {
+                "Manifest transfer ID does not match its fragment envelope"
+            }
+            listener.onBundleOffer(endpointId, manifest)
+        } catch (error: Exception) {
+            incomingManifestAssemblies.remove(endpointId)?.reassembler?.reset()
+            listener.onFileStatus(
+                "A nearby bundle offer was invalid or incomplete and was rejected: " +
+                    (error.localizedMessage ?: "invalid manifest")
+            )
         }
     }
 
@@ -509,6 +560,45 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         return true
     }
 
+    fun sendBundleManifest(endpointId: String, manifest: TransferBundleManifest): Boolean {
+        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
+            listener.onFileStatus("The nearby connection is no longer active.")
+            return false
+        }
+        return try {
+            val encoded = TransferBundleManifestCodec.encode(manifest)
+            val fragments = TransferManifestFragments.split(manifest.transferId, encoded)
+            fragments.forEach { fragment ->
+                client.sendPayload(endpointId, Payload.fromBytes(fragment))
+                    .addOnFailureListener {
+                        listener.onFileStatus("A bundle manifest fragment could not be queued. Reconnect and retry.")
+                    }
+            }
+            listener.onStatus("Bundle details sent. Waiting for the other phone to review the file list.")
+            true
+        } catch (error: Exception) {
+            listener.onFileStatus("Bundle could not be prepared: " + (error.localizedMessage ?: "invalid selection"))
+            false
+        }
+    }
+
+    fun sendBundleDecision(endpointId: String, transferId: String, accepted: Boolean) {
+        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return
+        val message = JSONObject()
+            .put("kind", "bundle_decision")
+            .put("version", 1)
+            .put("transferId", transferId)
+            .put("accepted", accepted)
+        try {
+            client.sendPayload(endpointId, Payload.fromBytes(message.toString().toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener {
+                    listener.onStatus("Could not send the bundle decision to the other phone.")
+                }
+        } catch (_: Exception) {
+            listener.onStatus("Could not send the bundle decision to the other phone.")
+        }
+    }
+
     fun sendFile(endpointId: String, uri: Uri, displayName: String): Long? {
         if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
             listener.onFileStatus("The nearby connection is no longer active.")
@@ -570,6 +660,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
 
     private fun cleanupEndpointTransfers(endpointId: String) {
+        incomingManifestAssemblies.remove(endpointId)?.reassembler?.reset()
         val keys = (incomingMetadata.keys + incomingPayloads.keys + completedPayloads.keys +
             transferStartedAtNanos.keys + completedTransferRates.keys)
             .filter { it.endpointId == endpointId }
