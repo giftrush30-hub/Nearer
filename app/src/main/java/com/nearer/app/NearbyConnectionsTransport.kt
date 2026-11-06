@@ -82,11 +82,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             listener.onMessageStatus(messageId, "Failed")
             return
         }
+        // Count unavailable-link attempts too, so a disconnected peer cannot cause
+        // an endless retry loop.
+        pending.attempts += 1
         if (synchronized(activeEndpoints) { !activeEndpoints.contains(pending.endpointId) }) {
             scheduleMessageRetry(messageId, 1800L)
             return
         }
-        pending.attempts += 1
         val timeout = Runnable { scheduleMessageRetry(messageId, 1800L) }
         pending.retryTask?.let(deliveryHandler::removeCallbacks)
         pending.retryTask = timeout
