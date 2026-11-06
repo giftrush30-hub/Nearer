@@ -56,7 +56,9 @@ class DeferredFileDigestTrackerTest {
         assertThrows(IllegalArgumentException::class.java) {
             tracker.registerFile("peer-c", 3L, 3L)
         }
-        assertEquals(2, tracker.removeEndpoint("peer-a"))
+        assertEquals(1, tracker.removeEndpoint("peer-a"))
+        assertEquals(1, tracker.pendingCount())
+        assertEquals(1, tracker.removeEndpoint("peer-b"))
         assertEquals(0, tracker.pendingCount())
     }
 }
