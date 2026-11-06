@@ -59,5 +59,24 @@ data class TransferResumeCheckpoint(
             if (bytesSynced == fileSizeBytes) return fileSizeBytes
             return (bytesSynced / CHECKPOINT_GRANULARITY_BYTES) * CHECKPOINT_GRANULARITY_BYTES
         }
+
+        /**
+         * Return the next durable boundary, or the file end when it comes first.
+         * Subtract before adding so a valid near-Long.MAX_VALUE file size cannot
+         * overflow while calculating the next checkpoint boundary.
+         */
+        fun nextCheckpointOffset(currentOffset: Long, fileSizeBytes: Long): Long {
+            require(currentOffset >= 0L) { "Current offset cannot be negative" }
+            require(fileSizeBytes >= 0L) { "File size cannot be negative" }
+            require(currentOffset <= fileSizeBytes) { "Current offset exceeds file size" }
+            if (currentOffset == fileSizeBytes) return fileSizeBytes
+            val distanceToBoundary = CHECKPOINT_GRANULARITY_BYTES -
+                (currentOffset % CHECKPOINT_GRANULARITY_BYTES)
+            return if (fileSizeBytes - currentOffset <= distanceToBoundary) {
+                fileSizeBytes
+            } else {
+                currentOffset + distanceToBoundary
+            }
+        }
     }
 }
