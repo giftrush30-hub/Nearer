@@ -1895,6 +1895,7 @@ private fun NeaRerHome(
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
     var pendingFileTypes by remember { mutableStateOf<Array<String>?>(null) }
+    var receiveMode by remember { mutableStateOf(false) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
     }
@@ -2144,6 +2145,7 @@ private fun NeaRerHome(
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                                 Button(
                                     onClick = {
+                                        receiveMode = false
                                         if (chatReady) filePicker.launch(arrayOf("*/*"))
                                         else {
                                             pendingFileTypes = arrayOf("*/*")
@@ -2160,6 +2162,7 @@ private fun NeaRerHome(
                                 }
                                 Button(
                                     onClick = {
+                                        receiveMode = true
                                         navigateToSection("nearby")
                                         onFindNearby()
                                         navigationScope.launch { pageScrollState.animateScrollTo(0) }
@@ -2172,9 +2175,13 @@ private fun NeaRerHome(
                                     Text("↓  RECEIVE", fontSize = 10.sp, fontWeight = FontWeight.Black)
                                 }
                             }
-                            Text(if (chatReady) "Connected to ${connectedDeviceName ?: "a nearby phone"} • ready to share"
-                                else "Receiving starts by discovering a nearby sender. No mobile data is used.",
-                                color = Color(0xFFB9D2F5), fontSize = 10.sp)
+                            Text(when {
+                                receiveMode && incomingTransferName != null -> "Receiving a file from a nearby phone…"
+                                receiveMode && chatReady -> "Receive mode is ready. Ask the nearby sender to choose and send a file."
+                                receiveMode -> "Receive mode: discover a nearby sender. Keep NeaRer open. No mobile data is used."
+                                chatReady -> "Connected to ${connectedDeviceName ?: "a nearby phone"} • ready to share"
+                                else -> "Discover a nearby phone to send or receive files. No mobile data is used."
+                            }, color = Color(0xFFB9D2F5), fontSize = 10.sp)
                         }
                     }
 
@@ -2325,6 +2332,10 @@ private fun NeaRerHome(
 
 
                     val hasTransferResult = chatNotice.startsWith("File delivered and verified") ||
+                        chatNotice.startsWith("The other phone could not verify") ||
+                        chatNotice.startsWith("The received file failed its integrity check") ||
+                        chatNotice.startsWith("The other phone cancelled the file transfer") ||
+                        chatNotice.startsWith("File transfer failed:") ||
                         chatNotice.startsWith("File sent to the nearby phone") ||
                         chatNotice.startsWith("Nearby file transfer failed") ||
                         chatNotice.startsWith("Could not start file transfer") ||
@@ -2681,7 +2692,14 @@ private fun NeaRerHome(
                         Column(Modifier.weight(1f)) {
                             Text("NEARBY RADAR", color = Gold, fontSize = 10.sp,
                                 fontWeight = FontWeight.Black, letterSpacing = 1.7.sp)
-                            Text(if (scanning) "Searching around you" else "Your people are closer",
+                            Text(when {
+                                receiveMode && incomingTransferName != null -> "Receiving a nearby file"
+                                receiveMode && chatReady -> "Ready for an incoming file"
+                                receiveMode && scanning -> "Looking for a nearby sender"
+                                receiveMode -> "Ready to receive nearby files"
+                                scanning -> "Searching around you"
+                                else -> "Your people are closer"
+                            },
                                 color = White, fontSize = 22.sp, fontWeight = FontWeight.Black)
                         }
                         Surface(color = if (scanning) Color(0xFF1D684F) else Color(0xFF1B3B61),
