@@ -40,8 +40,8 @@ class LudoEngineTest {
     @Test fun landingOnUnsafeOpponentSquareCapturesSingleTokenAndGrantsBonusTurn() {
         val players = LudoEngine.newGame().players.toMutableList()
         players[0] = players[0].copy(tokens = listOf(LudoToken(4), LudoToken(), LudoToken(), LudoToken()))
-        // Green's start offset is 39; relative step 17 shares Red's global square 4.
-        players[1] = players[1].copy(tokens = listOf(LudoToken(17), LudoToken(), LudoToken(), LudoToken()))
+        // Green's start offset is 39; relative step 18 shares Red's landing square 5.
+        players[1] = players[1].copy(tokens = listOf(LudoToken(18), LudoToken(), LudoToken(), LudoToken()))
         val state = LudoEngine.rollDice(LudoGameState(players = players), 1)
         val result = LudoEngine.moveToken(state, 0)
         assertEquals(LudoToken(), result.state.players[1].tokens[0])
@@ -61,7 +61,7 @@ class LudoEngineTest {
 
     @Test fun aPairOnOneSquareCannotBeCaptured() {
         val players = LudoEngine.newGame().players.toMutableList()
-        players[0] = players[0].copy(tokens = listOf(LudoToken(3), LudoToken(), LudoToken(), LudoToken()))
+        players[0] = players[0].copy(tokens = listOf(LudoToken(2), LudoToken(), LudoToken(), LudoToken()))
         players[1] = players[1].copy(tokens = listOf(LudoToken(16), LudoToken(16), LudoToken(), LudoToken()))
         val state = LudoEngine.rollDice(LudoGameState(players = players), 1)
         assertTrue(LudoEngine.legalMoves(state).isEmpty())
