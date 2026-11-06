@@ -27,6 +27,31 @@ class TransferResumeStreamWriterTest {
         MessageDigest.getInstance("SHA-256").digest(bytes)
             .joinToString("") { "%02x".format(it) }
 
+    @Test fun nextCheckpointBoundaryDoesNotOverflowNearMaximumFileSize() {
+        val size = Long.MAX_VALUE
+        val unit = TransferResumeCheckpoint.CHECKPOINT_GRANULARITY_BYTES
+        val lastAlignedBoundary = (size / unit) * unit
+
+        assertEquals(size, TransferResumeCheckpoint.nextCheckpointOffset(lastAlignedBoundary, size))
+        assertEquals(size, TransferResumeCheckpoint.nextCheckpointOffset(size - 1L, size))
+        assertEquals(
+            lastAlignedBoundary,
+            TransferResumeCheckpoint.nextCheckpointOffset(lastAlignedBoundary - 1L, size)
+        )
+    }
+
+    @Test fun nextCheckpointBoundaryAdvancesToTheNextAlignedBoundary() {
+        val unit = TransferResumeCheckpoint.CHECKPOINT_GRANULARITY_BYTES
+        assertEquals(
+            unit * 3L,
+            TransferResumeCheckpoint.nextCheckpointOffset(unit * 2L + 1L, unit * 4L)
+        )
+        assertEquals(
+            unit * 2L + 17L,
+            TransferResumeCheckpoint.nextCheckpointOffset(unit * 2L + 1L, unit * 2L + 17L)
+        )
+    }
+
     @Test fun writesAndVerifiesCompleteReceiverOwnedPartial() {
         val root = Files.createTempDirectory("nearer-resume-writer-complete").toFile()
         try {
