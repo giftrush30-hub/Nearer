@@ -145,6 +145,8 @@ class MainActivity : ComponentActivity() {
     private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
     private var outgoingTransferId by mutableStateOf<String?>(null)
     private val pendingFileUris = java.util.ArrayDeque<Uri>()
+    private val pendingBundleItemsByUri = HashMap<String, TransferBundleItem>()
+    private var activeOutgoingBundleTransferId: String? = null
     private var outgoingProgress by mutableStateOf(0f)
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
@@ -257,7 +259,13 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     hybridConnected = false
                     hybridConnectedEndpoint = null
-                    val abandonedQueueCount = synchronized(pendingFileUris) { val count = pendingFileUris.size; pendingFileUris.clear(); count }
+                    val abandonedQueueCount = synchronized(pendingFileUris) {
+                        val count = pendingFileUris.size
+                        pendingFileUris.clear()
+                        pendingBundleItemsByUri.clear()
+                        activeOutgoingBundleTransferId = null
+                        count
+                    }
                     val abandonedBundleOffer = pendingOutgoingBundle?.endpointId == id
                     if (abandonedBundleOffer) pendingOutgoingBundle = null
                     if (incomingBundleOffer?.endpointId == id) incomingBundleOffer = null
@@ -362,10 +370,14 @@ class MainActivity : ComponentActivity() {
                     }
                     pendingOutgoingBundle = null
                     if (accepted) {
+                        activeOutgoingBundleTransferId = pending.manifest.transferId
                         synchronized(pendingFileUris) {
-                            pending.uris.forEach { pendingFileUris.addLast(it) }
+                            pending.uris.forEachIndexed { index, uri ->
+                                pendingFileUris.addLast(uri)
+                                pendingBundleItemsByUri[uri.toString()] = pending.manifest.items[index]
+                            }
                         }
-                        chatNotice = "Recipient approved the bundle. Sending its files one by one while keeping the selected order."
+                        chatNotice = "Recipient approved the bundle. Sending its approved files in order."
                         if (outgoingTransferId == null) sendNextQueuedFile()
                     } else {
                         chatNotice = "The other phone declined the bundle. No files were sent."
@@ -1741,7 +1753,11 @@ class MainActivity : ComponentActivity() {
         if (hybridConnected && hybridConnectedEndpoint == null) return
         val next = synchronized(pendingFileUris) { if (pendingFileUris.isEmpty()) null else pendingFileUris.removeFirst() }
         if (next != null) sendFile(next)
-        else chatNotice = "All selected files have been processed."
+        else {
+            activeOutgoingBundleTransferId = null
+            synchronized(pendingFileUris) { pendingBundleItemsByUri.clear() }
+            chatNotice = "All selected files have been processed."
+        }
     }
 
     private fun sendFile(uri: Uri) {
@@ -1764,7 +1780,14 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             } catch (_: Exception) { }
-            val payloadId = nearbyTransport?.sendFile(endpoint, uri, fileName)
+            val bundleItem = synchronized(pendingFileUris) { pendingBundleItemsByUri.remove(uri.toString()) }
+            val bundleTransferId = activeOutgoingBundleTransferId
+            val payloadId = nearbyTransport?.sendFile(
+                endpoint, uri, fileName,
+                bundleTransferId = bundleItem?.let { bundleTransferId },
+                bundleItemId = bundleItem?.id,
+                relativePath = bundleItem?.relativePath
+            )
             if (payloadId != null) {
                 outgoingTransferId = "nearby:$payloadId"
                 outgoingProgress = 0f
