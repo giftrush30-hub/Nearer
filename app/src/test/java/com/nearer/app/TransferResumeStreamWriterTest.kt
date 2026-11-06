@@ -135,6 +135,40 @@ class TransferResumeStreamWriterTest {
         }
     }
 
+    @Test fun cancellationAfterResumeKeepsTheEarlierDurableCheckpoint() {
+        val root = Files.createTempDirectory("nearer-resume-writer-resumed-cancel").toFile()
+        try {
+            val selected = item((chunk * 2L) + 100L)
+            val data = ByteArray(selected.sizeBytes.toInt()) { (it % 173).toByte() }
+            val store = store(root)
+            val partial = store.partialFileFor("transfer-stream", selected.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(data.copyOfRange(0, chunk))
+            }
+            store.checkpoint("transfer-stream", selected, 789L, chunk.toLong())
+
+            var checks = 0
+            try {
+                TransferResumeStreamWriter(store).write(
+                    "transfer-stream", selected, 789L,
+                    ByteArrayInputStream(data.copyOfRange(chunk, data.size))
+                ) {
+                    checks++
+                    checks > 3
+                }
+                fail("Expected explicit cancellation after resuming")
+            } catch (_: java.io.InterruptedIOException) { }
+
+            val candidate = store.findValid("transfer-stream", selected, 789L)
+            assertNotNull(candidate)
+            assertEquals(chunk.toLong(), candidate!!.checkpoint.committedOffsetBytes)
+            assertEquals(chunk.toLong(), candidate.partialFile.length())
+            assertArrayEquals(data.copyOfRange(0, chunk), candidate.partialFile.readBytes())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun zeroByteFileProducesTheCorrectEmptyDigestWithoutAResumeCheckpoint() {
         val root = Files.createTempDirectory("nearer-resume-writer-empty").toFile()
         try {
