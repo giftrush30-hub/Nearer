@@ -1095,7 +1095,7 @@ class MainActivity : ComponentActivity() {
     private fun sendGroupMembers(code: String) {
         val group = communityGroups.firstOrNull { it.code == code } ?: return
         val packet = JSONObject().put("type", "group_members").put("code", code).put("members", JSONArray(group.members))
-        nearbyTransport?.sendToNames("NR_COMMUNITY:$packet", group.members.toSet())
+        sendCommunityToNames("NR_COMMUNITY:$packet", group.members.toSet())
     }
 
     private fun sendCommunityGroupMessage(raw: String) {
@@ -1105,7 +1105,7 @@ class MainActivity : ComponentActivity() {
         if (body.isBlank()) return
         val id = UUID.randomUUID().toString()
         val packet = JSONObject().put("type", "group_message").put("code", code).put("sender", displayName).put("body", body).put("id", id)
-        if (nearbyTransport?.sendToNames("NR_COMMUNITY:$packet", group.members.toSet()) == true) {
+        if (sendCommunityToNames("NR_COMMUNITY:$packet", group.members.toSet()) == true) {
             communityMessages.add(CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis()))
             persistCommunityData()
         } else communityNotice = "No connected member of this group is available right now."
@@ -1219,7 +1219,7 @@ class MainActivity : ComponentActivity() {
 
     private fun rejectGameInvite() {
         val invite = incomingGameInvite ?: return
-        nearbyTransport?.sendToNames(
+        sendCommunityToNames(
             "NR_COMMUNITY:" + JSONObject().put("type", "ludo_reject").put("matchId", invite.matchId).put("sender", displayName),
             setOf(invite.sender)
         )
@@ -1235,7 +1235,7 @@ class MainActivity : ComponentActivity() {
         activeGame = LudoNetworkMatch(invite.matchId, initial, LudoColor.YELLOW, false, invite.sender, false)
         incomingGameInvite = null
         gameChatMessages.clear()
-        val sent = nearbyTransport?.sendToNames(
+        val sent = sendCommunityToNames(
             "NR_COMMUNITY:" + JSONObject().put("type", "ludo_accept").put("matchId", invite.matchId).put("sender", displayName),
             setOf(invite.sender)
         ) == true
@@ -1261,7 +1261,7 @@ class MainActivity : ComponentActivity() {
             .put("winner", match.state.winner?.name ?: "")
             .put("turn", match.state.turnNumber)
             .put("sixes", match.state.consecutiveSixes)
-        val sent = nearbyTransport?.sendToNames(
+        val sent = sendCommunityToNames(
             "NR_COMMUNITY:" + JSONObject().put("type", "ludo_state").put("matchId", match.matchId).put("state", snapshot),
             setOf(match.opponentName)
         ) == true
@@ -1310,7 +1310,7 @@ class MainActivity : ComponentActivity() {
         if (game.isHost) {
             applyHostLudoAction(game, action, token)
         } else {
-            val sent = nearbyTransport?.sendToNames(
+            val sent = sendCommunityToNames(
                 "NR_COMMUNITY:" + JSONObject().put("type", "ludo_action").put("matchId", game.matchId)
                     .put("action", action).put("token", token).put("sender", displayName),
                 setOf(game.opponentName)
@@ -1321,7 +1321,7 @@ class MainActivity : ComponentActivity() {
 
     private fun endGame() {
         activeGame?.let { game ->
-            nearbyTransport?.sendToNames(
+            sendCommunityToNames(
                 "NR_COMMUNITY:" + JSONObject().put("type", "ludo_end").put("matchId", game.matchId),
                 setOf(game.opponentName)
             )
@@ -1335,7 +1335,7 @@ class MainActivity : ComponentActivity() {
     private fun sendGameChat(raw: String) {
         val game = activeGame ?: return
         val body = raw.trim().take(300)
-        if (body.isNotBlank() && nearbyTransport?.sendToNames(
+        if (body.isNotBlank() && sendCommunityToNames(
                 "NR_COMMUNITY:" + JSONObject().put("type", "ludo_chat").put("matchId", game.matchId).put("sender", displayName).put("body", body),
                 setOf(game.opponentName)
             ) == true) {
