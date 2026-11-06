@@ -64,16 +64,22 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     // An ID becomes "seen" only after the UI confirms local persistence.
     private val pendingIncomingMessageIds = ConcurrentHashMap.newKeySet<String>()
     private val outgoingMessageTargets = ConcurrentHashMap<String, String>()
-    private data class PendingOutgoingMessage(@Volatile var endpointId: String, val stablePeerId: String, val payload: ByteArray, var attempts: Int = 0, var retryTask: Runnable? = null)
+    private data class PendingOutgoingMessage(@field:Volatile var endpointId: String, val stablePeerId: String, val payload: ByteArray, var attempts: Int = 0, var retryTask: Runnable? = null)
     private val pendingOutgoingMessages = ConcurrentHashMap<String, PendingOutgoingMessage>()
     private val deliveryHandler = Handler(Looper.getMainLooper())
     private val maxMessageAttempts = 3
     init { restorePendingOutbox() }
-    private fun persistPendingOutbox() {
-        val array = org.json.JSONArray()
-        pendingOutgoingMessages.forEach { (id, p) -> array.put(JSONObject().put("id", id).put("peer", p.stablePeerId).put("payload", p.payload.toString(Charsets.UTF_8))) }
-        val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("nearby_outbox", array.toString()).commit()
-        if (!saved) listener.onStatus("NeaRer could not save its pending-message queue.")
+    private fun persistPendingOutbox(): Boolean {
+        return try {
+            val array = org.json.JSONArray()
+            pendingOutgoingMessages.forEach { (id, p) -> array.put(JSONObject().put("id", id).put("peer", p.stablePeerId).put("payload", p.payload.toString(Charsets.UTF_8))) }
+            val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("nearby_outbox", array.toString()).commit()
+            if (!saved) listener.onStatus("NeaRer could not save its pending-message queue.")
+            saved
+        } catch (_: Exception) {
+            listener.onStatus("NeaRer could not save its pending-message queue.")
+            false
+        }
     }
     private fun restorePendingOutbox() {
         try {
@@ -383,7 +389,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 if (stablePeerId.isBlank()) return false
                 outgoingMessageTargets[messageId] = targetEndpointId
                 pendingOutgoingMessages[messageId] = PendingOutgoingMessage(targetEndpointId, stablePeerId, payload)
-                persistPendingOutbox()
+                if (!persistPendingOutbox()) {
+                    pendingOutgoingMessages.remove(messageId)
+                    outgoingMessageTargets.remove(messageId)
+                    return false
+                }
                 attemptOutgoingMessage(messageId)
                 true
             } catch (_: Exception) {
