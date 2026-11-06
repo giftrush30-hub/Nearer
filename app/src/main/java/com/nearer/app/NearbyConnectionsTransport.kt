@@ -354,6 +354,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                         throw IllegalStateException("Could not safely finalize the received file")
                     }
                     temporary = null
+                    destination = null // The final file is committed; later UI callbacks must not delete it.
                     appContext.contentResolver.delete(uri, null, null)
                     listener.onFileReceived(meta.endpointId, meta.name, target)
                     completedTransferRates.remove(payloadId)?.let { rate ->
