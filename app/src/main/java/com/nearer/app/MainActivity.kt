@@ -2061,7 +2061,6 @@ private fun NeaRerHome(
                             trackColor = Color(0xFF24466F)
                         )
                     }
-                    Text(installedApps.size.toString() + " shareable apps found on this phone. This list is read on-device and is not uploaded.", color = Muted, fontSize = 10.sp)
                     var appSearch by remember { mutableStateOf("") }
                     OutlinedTextField(
                         value = appSearch,
@@ -2104,6 +2103,12 @@ private fun NeaRerHome(
                                 else -> true
                             }
                     }
+                    Text(
+                        if (isLoadingApps) "Scanning this phone's app library…" else
+                            "${visibleApps.size} of ${installedApps.size} shareable apps shown • Read on this phone only",
+                        color = if (isLoadingApps) Gold else Muted,
+                        fontSize = 10.sp
+                    )
                     if (isLoadingApps) {
                         Text("Please wait while NeaRer reads the app library on this phone.", color = White, fontSize = 12.sp)
                     } else if (installedApps.isEmpty()) {
