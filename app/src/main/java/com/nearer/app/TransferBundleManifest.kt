@@ -62,11 +62,8 @@ internal data class TransferBundleManifest(
                     break
                 }
             }
-            if (kind == TransferBundleItem.Kind.FILE &&
-                paths.keys.any { it.startsWith("$path/") }
-            ) {
-                errors += "A file entry cannot contain child paths"
-            }
+            // Child paths are already rejected by the parent lookup above:
+            // every descendant must visit this path as one of its parents.
         }
         return errors.distinct()
     }
