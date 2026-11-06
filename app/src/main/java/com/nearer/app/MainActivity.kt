@@ -1172,22 +1172,26 @@ class MainActivity : ComponentActivity() {
                             mapOf(LudoColor.RED to displayName, LudoColor.YELLOW to sender),
                             playerColors = listOf(LudoColor.RED, LudoColor.YELLOW)
                         )
-                        activeGame = game.copy(state = state, opponentName = sender, ready = true)
+                        activeGame = game.copy(state = state, opponentName = sender, ready = true, revision = 1L)
                         sendLudoState(activeGame!!)
                         communityNotice = "$sender joined your Ludo match."
                     }
                 }
                 "ludo_state" -> activeGame?.let { game ->
-                    if (!game.isHost && game.matchId == packet.optString("matchId") && sender == game.opponentName) {
+                    val revision = packet.optLong("revision", -1L)
+                    if (!game.isHost && game.matchId == packet.optString("matchId") &&
+                        sender == game.opponentName && revision > game.revision) {
                         parseLudoState(packet.optJSONObject("state"))?.let { state ->
-                            activeGame = game.copy(state = state, ready = true)
+                            activeGame = game.copy(state = state, ready = true, revision = revision)
                         }
                     }
                 }
                 "ludo_action" -> activeGame?.let { game ->
-                    if (game.isHost && game.ready && game.matchId == packet.optString("matchId") &&
-                        sender == game.opponentName && game.state.currentPlayer.color != game.localColor) {
-                        applyHostLudoAction(game, packet.optString("action"), packet.optInt("token", -1))
+                    if (game.isHost && game.ready && game.matchId == packet.optString("matchId") && sender == game.opponentName) {
+                        if (packet.optLong("revision", -1L) == game.revision &&
+                            game.state.currentPlayer.color != game.localColor) {
+                            applyHostLudoAction(game, packet.optString("action"), packet.optInt("token", -1))
+                        } else sendLudoState(game)
                     }
                 }
                 "ludo_chat" -> activeGame?.let { game ->
@@ -1269,7 +1273,7 @@ class MainActivity : ComponentActivity() {
             .put("turn", match.state.turnNumber)
             .put("sixes", match.state.consecutiveSixes)
         val sent = sendCommunityToNames(
-            "NR_COMMUNITY:" + JSONObject().put("type", "ludo_state").put("matchId", match.matchId).put("state", snapshot),
+            "NR_COMMUNITY:" + JSONObject().put("type", "ludo_state").put("matchId", match.matchId).put("revision", match.revision).put("state", snapshot),
             setOf(match.opponentName)
         ) == true
         if (!sent) communityNotice = "The Ludo board could not sync. Check that both phones are still connected."
@@ -1308,7 +1312,7 @@ class MainActivity : ComponentActivity() {
                 "pass" -> LudoEngine.passTurn(game.state)
                 else -> return
             }
-            val updated = game.copy(state = next, ready = true)
+            val updated = game.copy(state = next, ready = true, revision = game.revision + 1L)
             activeGame = updated
             sendLudoState(updated)
         } catch (_: Exception) {
@@ -1325,7 +1329,7 @@ class MainActivity : ComponentActivity() {
         } else {
             val sent = sendCommunityToNames(
                 "NR_COMMUNITY:" + JSONObject().put("type", "ludo_action").put("matchId", game.matchId)
-                    .put("action", action).put("token", token).put("sender", displayName),
+                    .put("action", action).put("token", token).put("revision", game.revision).put("sender", displayName),
                 setOf(game.opponentName)
             ) == true
             if (!sent) communityNotice = "Your move could not reach the host. Check the nearby connection."
