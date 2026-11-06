@@ -81,34 +81,48 @@ private fun ludoTokenPosition(color: LudoColor, token: LudoToken, index: Int): O
 }
 
 @Composable
-fun LudoGamePanel() {
-    var game by remember { mutableStateOf(LudoEngine.newGame(
+fun LudoGamePanel(
+    networkMatch: LudoNetworkMatch?,
+    incomingInvite: GameInvite?,
+    nearbyConnected: Boolean,
+    onInviteNearby: () -> Unit,
+    onAcceptInvite: () -> Unit,
+    onRejectInvite: () -> Unit,
+    onNetworkAction: (String, Int) -> Unit,
+    gameChat: List<String>,
+    onGameChat: (String) -> Unit,
+    onEndMatch: () -> Unit
+) {
+    var localGame by remember { mutableStateOf(LudoEngine.newGame(
         mapOf(LudoColor.RED to "You", LudoColor.GREEN to "Nova", LudoColor.YELLOW to "Atlas", LudoColor.BLUE to "Mira"),
         setOf(LudoColor.GREEN, LudoColor.YELLOW, LudoColor.BLUE)
     )) }
-    var message by remember { mutableStateOf("Your race to the centre begins here.") }
+    var message by remember { mutableStateOf("Roll a six to bring your first token out.") }
     var rolling by remember { mutableStateOf(false) }
-    var lastCaptured by remember { mutableStateOf("") }
+    var gameText by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    val game = networkMatch?.state ?: localGame
     val current = game.currentPlayer
     val moves = LudoEngine.legalMoves(game)
+    val networkMode = networkMatch != null
+    val ready = networkMatch?.ready ?: true
+    val myTurn = if (networkMode) ready && current.color == networkMatch!!.localColor else !current.isComputer
     val diceRotation by animateFloatAsState(if (rolling) 360f else 0f, spring(dampingRatio = .45f, stiffness = 500f), label = "diceRotation")
 
-    LaunchedEffect(game.currentPlayerIndex, game.diceValue, game.turnNumber, game.winner, game.consecutiveSixes) {
-        if (!game.isFinished && game.currentPlayer.isComputer) {
+    LaunchedEffect(networkMatch, game.currentPlayerIndex, game.diceValue, game.turnNumber, game.winner, game.consecutiveSixes) {
+        if (!networkMode && !game.isFinished && game.currentPlayer.isComputer) {
             delay(750)
-            if (game.diceValue == null) {
-                game = LudoEngine.rollDice(game)
-                message = "${current.name} rolled ${game.diceValue}"
+            if (localGame.diceValue == null) {
+                localGame = LudoEngine.rollDice(localGame)
+                message = "${current.name} rolled ${localGame.diceValue}"
             } else {
-                val choice = LudoEngine.chooseComputerMove(game)
+                val choice = LudoEngine.chooseComputerMove(localGame)
                 if (choice == null) {
-                    game = LudoEngine.passTurn(game)
-                    message = if (game.consecutiveSixes >= 3) "${current.name} rolled three sixes — turn forfeited" else "${current.name} has no legal move"
+                    localGame = LudoEngine.passTurn(localGame)
+                    message = if (localGame.consecutiveSixes >= 3) "${current.name} rolled three sixes — turn forfeited" else "${current.name} has no legal move"
                 } else {
-                    val result = LudoEngine.moveToken(game, choice)
-                    game = result.state
-                    lastCaptured = result.captured.joinToString { "${it.first.name} token" }
+                    val result = LudoEngine.moveToken(localGame, choice)
+                    localGame = result.state
                     message = when {
                         result.state.isFinished -> "${current.name} wins the match!"
                         result.captured.isNotEmpty() -> "${current.name} captured a token — bonus roll!"
@@ -126,54 +140,71 @@ fun LudoGamePanel() {
                 Column {
                     Text("NEARER • GAME ZONE", color = LudoGold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp)
                     Text("LUDO CLASSIC", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black)
-                    Text("Four players • One champion", color = Color(0xFFAFC1D4), fontSize = 10.sp)
+                    Text(if (networkMode) "PRIVATE NEARBY MATCH" else "Four players • One champion", color = Color(0xFFAFC1D4), fontSize = 10.sp)
                 }
                 Surface(color = Color(0xFF234463), shape = RoundedCornerShape(30.dp)) {
-                    Text("OFFLINE PLAY", color = Color(0xFF9FE6CD), fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp))
+                    Text(if (networkMode) "BLUETOOTH / WI-FI" else "OFFLINE VS BOTS", color = Color(0xFF9FE6CD), fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp))
                 }
             }
 
-            LudoBoard(game = game, legalMoves = moves, onMove = { index ->
-                val result = LudoEngine.moveToken(game, index)
-                game = result.state
-                lastCaptured = result.captured.joinToString { "${it.first.name} token" }
-                message = when {
-                    result.state.isFinished -> "Champion! You brought all four tokens home."
-                    result.captured.isNotEmpty() -> "Capture! ${result.captured.size} opponent token sent home — roll again."
-                    result.tokenFinished -> "Token reached the centre. Roll again!"
-                    else -> "Token ${index + 1} moved."
+            if (incomingInvite != null && networkMatch == null) {
+                Surface(color = Color(0xFF244B43), shape = RoundedCornerShape(15.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("${incomingInvite.sender} invited you to a Ludo match.", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = onAcceptInvite, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = LudoGold, contentColor = LudoNavy)) { Text("ACCEPT") }
+                            Button(onClick = onRejectInvite, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF38536A))) { Text("DECLINE") }
+                        }
+                    }
+                }
+            }
+
+            LudoBoard(game = game, legalMoves = if (myTurn) moves else emptyList(), onMove = { index ->
+                if (networkMode) onNetworkAction("move", index) else {
+                    val result = LudoEngine.moveToken(localGame, index)
+                    localGame = result.state
+                    message = when {
+                        result.state.isFinished -> "Champion! You brought all four tokens home."
+                        result.captured.isNotEmpty() -> "Capture! ${result.captured.size} opponent token sent home — bonus roll."
+                        result.tokenFinished -> "Token reached the centre. Roll again!"
+                        else -> "Token ${index + 1} moved."
+                    }
                 }
             }, modifier = Modifier.fillMaxWidth().aspectRatio(1f))
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Column(Modifier.weight(1f)) {
                     Text(if (game.isFinished) "${game.winner?.name} TAKES THE CROWN" else "${current.name.uppercase()}'S TURN", color = current.color.paint(), fontWeight = FontWeight.Black, fontSize = 15.sp)
-                    Text(message, color = Color(0xFFD2DFEA), fontSize = 10.sp, lineHeight = 14.sp)
+                    Text(if (networkMode && !ready) "Waiting for the host to synchronise the board…" else if (networkMode && !myTurn) "Waiting for ${current.name} to play…" else message, color = Color(0xFFD2DFEA), fontSize = 10.sp, lineHeight = 14.sp)
                 }
                 DiceFace(value = game.diceValue ?: 0, rotation = diceRotation)
             }
-            if (!game.isFinished && !current.isComputer && game.diceValue == null) {
+            if (!game.isFinished && myTurn && ready && game.diceValue == null) {
                 Button(onClick = {
-                    rolling = true
-                    scope.launch {
-                        delay(380)
-                        game = LudoEngine.rollDice(game)
-                        rolling = false
-                        message = if (game.consecutiveSixes >= 3) "Third six! Your turn is forfeited." else "You rolled ${game.diceValue}. Choose a glowing token."
+                    if (networkMode) onNetworkAction("roll", -1) else {
+                        rolling = true
+                        scope.launch {
+                            delay(380)
+                            localGame = LudoEngine.rollDice(localGame)
+                            rolling = false
+                            message = if (localGame.consecutiveSixes >= 3) "Third six! Your turn is forfeited." else "You rolled ${localGame.diceValue}. Choose a glowing token."
+                        }
                     }
                 }, enabled = !rolling, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(15.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = LudoGold, contentColor = LudoNavy)) {
                     Text(if (rolling) "ROLLING…" else "ROLL THE DICE", fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                 }
-            } else if (!game.isFinished && !current.isComputer && game.diceValue != null) {
+            } else if (!game.isFinished && myTurn && ready && game.diceValue != null) {
                 if (moves.isEmpty()) {
                     Text(if (game.consecutiveSixes >= 3) "Three sixes in a row — your turn ends." else "No legal move for this roll.", color = LudoGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Button(onClick = { game = LudoEngine.passTurn(game); message = "Turn passed." }, modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF31516F))) { Text("CONTINUE") }
+                    Button(onClick = {
+                        if (networkMode) onNetworkAction("pass", -1) else localGame = LudoEngine.passTurn(localGame)
+                    }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF31516F))) { Text("CONTINUE") }
                 } else {
                     Text("Tap one of the glowing tokens on the board to move it.", color = LudoGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
+
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
                 game.players.forEach { player ->
                     val active = player.color == current.color && !game.isFinished
@@ -188,21 +219,35 @@ fun LudoGamePanel() {
                     }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = {
-                    game = LudoEngine.newGame(
-                        mapOf(LudoColor.RED to "You", LudoColor.GREEN to "Nova", LudoColor.YELLOW to "Atlas", LudoColor.BLUE to "Mira"),
-                        setOf(LudoColor.GREEN, LudoColor.YELLOW, LudoColor.BLUE)
-                    )
-                    message = "New game. Roll a six to bring your first token out."
-                    lastCaptured = ""
-                }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF31516F))) {
-                    Text("NEW GAME", color = Color.White, fontWeight = FontWeight.Bold)
+
+            if (networkMode) {
+                Text("MATCH CHAT", color = LudoGold, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                Column(Modifier.fillMaxWidth().height(70.dp).background(Color(0xFF142A40), RoundedCornerShape(12.dp)).padding(8.dp)) {
+                    gameChat.takeLast(8).forEach { Text(it, color = Color.White, fontSize = 10.sp) }
+                    if (gameChat.isEmpty()) Text("Say hello while you play.", color = Color(0xFF91A9BE), fontSize = 10.sp)
                 }
-                Button(onClick = { message = "Nearby multiplayer is being connected to the same Ludo rules engine." }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF244B43))) {
-                    Text("PLAY NEARBY", color = Color(0xFF9FE6CD), fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    androidx.compose.material3.OutlinedTextField(gameText, { gameText = it.take(300) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Message your opponent") })
+                    Button(onClick = { onGameChat(gameText); gameText = "" }, enabled = gameText.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = LudoGold, contentColor = LudoNavy)) { Text("SEND") }
                 }
+                Button(onClick = onEndMatch, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6B3541))) { Text("LEAVE MATCH") }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = {
+                        localGame = LudoEngine.newGame(
+                            mapOf(LudoColor.RED to "You", LudoColor.GREEN to "Nova", LudoColor.YELLOW to "Atlas", LudoColor.BLUE to "Mira"),
+                            setOf(LudoColor.GREEN, LudoColor.YELLOW, LudoColor.BLUE)
+                        )
+                        message = "New game. Roll a six to bring your first token out."
+                    }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF31516F))) {
+                        Text("NEW GAME", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                    Button(onClick = onInviteNearby, enabled = nearbyConnected && incomingInvite == null, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF244B43))) {
+                        Text(if (nearbyConnected) "INVITE NEARBY" else "CONNECT FIRST", color = Color(0xFF9FE6CD), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                    }
+                }
+                if (!nearbyConnected) Text("Connect to another NeaRer phone above to invite them to a private no-data match.", color = Color(0xFF91A9BE), fontSize = 9.sp)
             }
             Text("CLASSIC RULES  •  SIX TO EXIT  •  SAFE STARS  •  CAPTURES  •  EXACT HOME FINISH", color = Color(0xFF8FA7BD), fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = .35.sp)
         }
