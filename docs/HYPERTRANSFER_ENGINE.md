@@ -6,6 +6,7 @@ Make nearby Android file sharing as fast as the two phones and their wireless li
 
 ## Current implementation in this branch
 
+- Nearby startup now checks Bluetooth and Wi-Fi readiness and gives a specific user instruction when either radio is off or its state cannot be read. It does not silently toggle radios or block the fallback connection path; users can enable radios in system settings and retry.
 - The receive-save copy buffer is selected from available memory, low-RAM classification and Android thermal status.
 - A capable, cool phone uses 256 KiB; constrained devices use 128 KiB; severe thermal pressure uses 32 KiB.
 - Nearby Connections payload completion is timed and the observed average MB/s is reported.
