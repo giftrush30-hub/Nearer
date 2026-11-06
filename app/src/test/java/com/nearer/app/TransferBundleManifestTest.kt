@@ -1,7 +1,7 @@
 package com.nearer.app
 
-import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TransferBundleManifestTest {
@@ -9,8 +9,10 @@ class TransferBundleManifestTest {
         id: String = "file-1",
         path: String = "Photos/Ọjà.jpg",
         name: String = "Ọjà.jpg",
-        size: Long = 1_024L
-    ) = TransferBundleItem(id, path, name, size, "image/jpeg")
+        size: Long = 1_024L,
+        kind: TransferBundleItem.Kind = TransferBundleItem.Kind.FILE,
+        mimeType: String? = "image/jpeg"
+    ) = TransferBundleItem(id, path, name, size, mimeType, kind)
 
     @Test
     fun acceptsValidUnicodeBundleManifest() {
@@ -20,10 +22,7 @@ class TransferBundleManifestTest {
 
     @Test
     fun rejectsPathTraversal() {
-        val manifest = TransferBundleManifest(
-            "transfer-1",
-            listOf(item(path = "../private/secret.txt", name = "secret.txt"))
-        )
+        val manifest = TransferBundleManifest("transfer-1", listOf(item(path = "../private/secret.txt", name = "secret.txt")))
         assertTrue(manifest.validationErrors().any { it.contains("unsafe relative path") })
     }
 
@@ -37,10 +36,7 @@ class TransferBundleManifestTest {
 
     @Test
     fun rejectsDuplicateIdsAndDestinationPaths() {
-        val manifest = TransferBundleManifest(
-            "transfer-1",
-            listOf(item(id = "same"), item(id = "same"))
-        )
+        val manifest = TransferBundleManifest("transfer-1", listOf(item(id = "same"), item(id = "same")))
         val errors = manifest.validationErrors()
         assertTrue(errors.any { it.contains("duplicate ID") })
         assertTrue(errors.any { it.contains("duplicates another destination path") })
@@ -56,15 +52,27 @@ class TransferBundleManifestTest {
 
     @Test
     fun rejectsDirectoryWithNonzeroSize() {
-        val directory = TransferBundleItem(
-            id = "folder-1",
-            relativePath = "Documents",
-            displayName = "Documents",
-            sizeBytes = 10L,
-            mimeType = null,
-            kind = TransferBundleItem.Kind.DIRECTORY
-        )
-        val manifest = TransferBundleManifest("transfer-1", listOf(directory))
+        val manifest = TransferBundleManifest("transfer-1", listOf(item(
+            path = "Documents", name = "Documents", size = 10L,
+            kind = TransferBundleItem.Kind.DIRECTORY, mimeType = null
+        )))
         assertTrue(manifest.validationErrors().any { it.contains("directory entries must have zero size") })
+    }
+
+    @Test
+    fun rejectsFileUsedAsParentDirectory() {
+        val manifest = TransferBundleManifest("transfer-1", listOf(
+            item(id = "parent", path = "Photos", name = "Photos"),
+            item(id = "child", path = "Photos/a.jpg", name = "a.jpg")
+        ))
+        assertTrue(manifest.validationErrors().any { it.contains("parent directory") || it.contains("child paths") })
+    }
+
+    @Test
+    fun rejectsControlCharactersInTransferMetadata() {
+        val manifest = TransferBundleManifest("bad\u0001id", listOf(item(mimeType = "image/jpeg\u0000")))
+        val errors = manifest.validationErrors()
+        assertTrue(errors.contains("Invalid transfer ID"))
+        assertTrue(errors.any { it.contains("invalid MIME metadata") })
     }
 }
