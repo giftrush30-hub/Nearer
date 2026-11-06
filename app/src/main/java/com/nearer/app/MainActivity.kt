@@ -1881,22 +1881,47 @@ private fun NeaRerHome(
                 modifier = Modifier.weight(1f).verticalScroll(pageScrollState).padding(horizontal = 18.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Nea", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                        Text("R", color = Color(0xFFFFD400), fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                        Text("er", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (activeSection == "home") {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Nea", color = White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("R", color = Gold, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("er", color = White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                        Text("No Data? We Are NeaRer.", color = Muted, fontSize = 12.sp)
+                    } else {
+                        Text(
+                            when (activeSection) {
+                                "nearby" -> "Nearby"
+                                "chats" -> "Messages"
+                                "community" -> "Communities"
+                                "games" -> "Game Zone"
+                                else -> "NeaRer"
+                            },
+                            color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            when (activeSection) {
+                                "nearby" -> "Find people around you"
+                                "chats" -> "Your private conversations"
+                                "community" -> "Your local circles"
+                                "games" -> "Play together, stay closer"
+                                else -> "No Data? We Are NeaRer."
+                            },
+                            color = Muted, fontSize = 11.sp
+                        )
                     }
-                    Text("No Data? We Are NeaRer.", color = Muted, fontSize = 13.sp)
                 }
-                Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(46.dp)) {
+                Surface(shape = CircleShape, color = Color(0xFF123D7A),
+                    border = BorderStroke(1.dp, Color(0xFF347CEB)), modifier = Modifier.size(46.dp)) {
                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                        Text("N", color = Mint, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                        Text("N", color = Gold, fontSize = 21.sp, fontWeight = FontWeight.Black)
                     }
                 }
             }
