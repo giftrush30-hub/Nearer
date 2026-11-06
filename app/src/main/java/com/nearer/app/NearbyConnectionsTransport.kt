@@ -151,7 +151,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 completedPayloads.remove(payloadId)?.close()
                 incomingPayloadEndpoints.remove(payloadId)
                 successfulIncomingPayloadIds.remove(payloadId)
-                listener.onFileStatus("Nearby file transfer failed or was cancelled.")
+                listener.onFileStatus(
+                    if (update.status == PayloadTransferUpdate.Status.CANCELED) {
+                        "Nearby file transfer cancelled."
+                    } else {
+                        "Nearby file transfer failed. Check the connection and try again."
+                    }
+                )
             }
         }
     }
