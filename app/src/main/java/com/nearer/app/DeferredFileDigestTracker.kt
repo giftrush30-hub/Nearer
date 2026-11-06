@@ -24,7 +24,7 @@ internal class DeferredFileDigestTracker(
 
     private data class Key(val endpointId: String, val payloadId: Long)
     private data class Entry(
-        val expectedSizeBytes: Long,
+        var expectedSizeBytes: Long?,
         var digest: String? = null,
         var fileCompleted: Boolean = false
     )
@@ -37,7 +37,8 @@ internal class DeferredFileDigestTracker(
         val key = Key(endpointId, payloadId)
         val existing = entries[key]
         if (existing != null) {
-            require(existing.expectedSizeBytes == expectedSizeBytes) {
+            if (existing.expectedSizeBytes == null) existing.expectedSizeBytes = expectedSizeBytes
+            else require(existing.expectedSizeBytes == expectedSizeBytes) {
                 "Conflicting size for deferred-digest file"
             }
             return takeIfReady(key, existing)
@@ -55,7 +56,7 @@ internal class DeferredFileDigestTracker(
         val key = Key(endpointId, payloadId)
         val entry = entries[key] ?: run {
             require(entries.size < maxPendingEntries) { "Deferred-digest queue is full" }
-            Entry(expectedSizeBytes = -1L).also { entries[key] = it }
+            Entry(expectedSizeBytes = null).also { entries[key] = it }
         }
         val normalized = sha256.lowercase()
         require(entry.digest == null || entry.digest == normalized) {
@@ -93,7 +94,7 @@ internal class DeferredFileDigestTracker(
 
     private fun takeIfReady(key: Key, entry: Entry): Ready? {
         val digest = entry.digest ?: return null
-        if (!entry.fileCompleted || entry.expectedSizeBytes < 0L) return null
+        if (!entry.fileCompleted || entry.expectedSizeBytes == null) return null
         entries.remove(key)
         return Ready(key.endpointId, key.payloadId, digest)
     }
