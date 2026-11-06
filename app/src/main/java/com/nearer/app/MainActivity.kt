@@ -1080,6 +1080,13 @@ class MainActivity : ComponentActivity() {
         }
         return false
     }
+
+    private fun sendLudoPacket(packet: JSONObject, targetNames: Set<String>): Boolean {
+        // The Wi-Fi Direct fallback has exactly one connected peer, but its Android
+        // device label may not match the NeaRer profile name used by the game room.
+        return if (!hybridConnected && chatReady) sendCommunityPacket(packet)
+        else sendCommunityToNames("NR_COMMUNITY:$packet", targetNames)
+    }
     private fun createCommunityGroup(raw: String) {
         val name = raw.trim().take(32)
         if (name.isBlank() || communityGroups.size >= 20) return
@@ -1364,8 +1371,8 @@ class MainActivity : ComponentActivity() {
 
     private fun rejectGameInvite() {
         val invite = incomingGameInvite ?: return
-        sendCommunityToNames(
-            "NR_COMMUNITY:" + JSONObject().put("type", "ludo_reject").put("matchId", invite.matchId).put("sender", displayName),
+        sendLudoPacket(
+            JSONObject().put("type", "ludo_reject").put("matchId", invite.matchId).put("sender", displayName),
             setOf(invite.sender)
         )
         incomingGameInvite = null
@@ -1380,10 +1387,10 @@ class MainActivity : ComponentActivity() {
         activeGame = LudoNetworkMatch(invite.matchId, initial, LudoColor.YELLOW, false, invite.sender, false)
         incomingGameInvite = null
         gameChatMessages.clear()
-        val sent = sendCommunityToNames(
-            "NR_COMMUNITY:" + JSONObject().put("type", "ludo_accept").put("matchId", invite.matchId).put("sender", displayName),
+        val sent = sendLudoPacket(
+            JSONObject().put("type", "ludo_accept").put("matchId", invite.matchId).put("sender", displayName),
             setOf(invite.sender)
-        ) == true
+        )
         if (!sent) {
             activeGame = null
             communityNotice = "The invitation could not reach the host. Reconnect and try again."
@@ -1473,11 +1480,11 @@ class MainActivity : ComponentActivity() {
         if (game.isHost) {
             applyHostLudoAction(game, action, token)
         } else {
-            val sent = sendCommunityToNames(
-                "NR_COMMUNITY:" + JSONObject().put("type", "ludo_action").put("matchId", game.matchId)
+            val sent = sendLudoPacket(
+                JSONObject().put("type", "ludo_action").put("matchId", game.matchId)
                     .put("action", action).put("token", token).put("revision", game.revision).put("sender", displayName),
                 setOf(game.opponentName)
-            ) == true
+            )
             if (!sent) communityNotice = "Your move could not reach the host. Check the nearby connection."
         }
     }
@@ -1529,11 +1536,11 @@ class MainActivity : ComponentActivity() {
             sendLudoState(reset)
             communityNotice = "Rematch started. Good luck!"
         } else {
-            val sent = sendCommunityToNames(
-                "NR_COMMUNITY:" + JSONObject().put("type", "ludo_rematch")
+            val sent = sendLudoPacket(
+                JSONObject().put("type", "ludo_rematch")
                     .put("matchId", game.matchId).put("revision", game.revision).put("sender", displayName),
                 setOf(game.opponentName)
-            ) == true
+            )
             communityNotice = if (sent) "Rematch request sent to ${game.opponentName}."
                 else "Could not request a rematch. Check the nearby connection."
         }
@@ -1541,8 +1548,8 @@ class MainActivity : ComponentActivity() {
 
     private fun endGame() {
         activeGame?.let { game ->
-            sendCommunityToNames(
-                "NR_COMMUNITY:" + JSONObject().put("type", "ludo_end").put("matchId", game.matchId),
+            sendLudoPacket(
+                JSONObject().put("type", "ludo_end").put("matchId", game.matchId),
                 (if (game.isHost) game.remotePlayers.values.toSet() else setOf(game.opponentName))
             )
         }
@@ -1555,10 +1562,10 @@ class MainActivity : ComponentActivity() {
     private fun sendGameChat(raw: String) {
         val game = activeGame ?: return
         val body = raw.trim().take(300)
-        if (body.isNotBlank() && sendCommunityToNames(
-                "NR_COMMUNITY:" + JSONObject().put("type", "ludo_chat").put("matchId", game.matchId).put("sender", displayName).put("body", body),
+        if (body.isNotBlank() && sendLudoPacket(
+                JSONObject().put("type", "ludo_chat").put("matchId", game.matchId).put("sender", displayName).put("body", body),
                 (if (game.isHost) game.remotePlayers.values.toSet() else setOf(game.opponentName))
-            ) == true) {
+            )) {
             gameChatMessages.add("$displayName: $body")
             while (gameChatMessages.size > 60) gameChatMessages.removeAt(0)
         }
