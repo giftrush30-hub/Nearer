@@ -1,7 +1,9 @@
 package com.nearer.app
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateOffsetAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -82,6 +84,31 @@ private fun ludoTokenPosition(color: LudoColor, token: LudoToken, index: Int): O
     val square = (color.startOffset + token.steps) % 52
     val p = ludoTrack[square]
     return Offset(p.first + .5f, p.second + .5f)
+}
+
+@Composable
+private fun rememberLudoAnimatedPosition(color: LudoColor, token: LudoToken, index: Int): Offset {
+    val target = ludoTokenPosition(color, token, index)
+    val position = remember(color, index) { Animatable(target, Offset.VectorConverter) }
+    var previousSteps by remember(color, index) { mutableIntStateOf(token.steps) }
+    LaunchedEffect(token.steps) {
+        val from = previousSteps
+        val to = token.steps
+        if (from >= 0 && to > from) {
+            for (step in (from + 1)..to) {
+                position.animateTo(
+                    ludoTokenPosition(color, LudoToken(step), index),
+                    tween(durationMillis = 105, easing = LinearOutSlowInEasing)
+                )
+            }
+        } else {
+            val spec = if (from == -1 && to == 0) tween<Offset>(durationMillis = 260, easing = LinearOutSlowInEasing)
+                else spring(dampingRatio = .78f, stiffness = 480f)
+            position.animateTo(target, spec)
+        }
+        previousSteps = to
+    }
+    return position.value
 }
 
 private fun ludoTokenTapPosition(player: LudoPlayer, index: Int): Offset {
@@ -342,9 +369,7 @@ private fun DiceFace(value: Int, rotation: Float) {
 private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, onMove: (Int) -> Unit, modifier: Modifier = Modifier) {
     val animatedPositions = game.players.map { player ->
         player.tokens.mapIndexed { index, token ->
-            key(player.color, index) {
-                animateOffsetAsState(ludoTokenPosition(player.color, token, index), spring(dampingRatio = .72f, stiffness = 420f), label = "token-${player.color}-$index").value
-            }
+            key(player.color, index) { rememberLudoAnimatedPosition(player.color, token, index) }
         }
     }
     Canvas(modifier
