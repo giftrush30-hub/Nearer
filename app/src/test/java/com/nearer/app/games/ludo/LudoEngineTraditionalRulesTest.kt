@@ -53,7 +53,7 @@ class LudoEngineTraditionalRulesTest {
 
     @Test
     fun sixWithNoLegalMoveKeepsTheTurnAndStreak() {
-        val red = LudoPlayer("red", "Hope", LudoColor.RED, false, listOf(50, 50, 50, 50))
+        val red = LudoPlayer("red", "Hope", LudoColor.RED, false, listOf(51, 51, 51, 51))
         val yellow = LudoPlayer("yellow", "Guest", LudoColor.YELLOW, false, listOf(50, 50, 50, 50))
         val state = LudoState(players = listOf(red, yellow))
 
