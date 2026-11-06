@@ -118,7 +118,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.nearer.app.games.ludo.LudoGameScreen
 
 private val Midnight = Color(0xFF071A38)
@@ -2014,6 +2016,7 @@ private fun NeaRerHome(
     var showInstalledApps by remember { mutableStateOf(false) }
     var pendingAppPicker by remember { mutableStateOf(false) }
     var installedApps by remember { mutableStateOf<List<ShareableApp>>(emptyList()) }
+    var isLoadingApps by remember { mutableStateOf(false) }
     var appShareNotice by remember { mutableStateOf<String?>(null) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
@@ -2029,8 +2032,10 @@ private fun NeaRerHome(
     LaunchedEffect(chatReady, pendingAppPicker) {
         if (chatReady && pendingAppPicker) {
             pendingAppPicker = false
-            installedApps = onLoadShareableApps()
             showInstalledApps = true
+            isLoadingApps = true
+            installedApps = withContext(Dispatchers.IO) { onLoadShareableApps() }
+            isLoadingApps = false
         }
     }
     if (showInstalledApps) {
@@ -2041,6 +2046,9 @@ private fun NeaRerHome(
             text = {
                 Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Your installed apps", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    if (isLoadingApps) {
+                        Text("Scanning installed apps and preparing their icons…", color = Gold, fontSize = 11.sp)
+                    }
                     Text(installedApps.size.toString() + " shareable apps found on this phone. This list is read on-device and is not uploaded.", color = Muted, fontSize = 10.sp)
                     var appSearch by remember { mutableStateOf("") }
                     OutlinedTextField(
@@ -2054,12 +2062,14 @@ private fun NeaRerHome(
                         appSearch.isBlank() || it.label.contains(appSearch, ignoreCase = true) ||
                             it.packageName.contains(appSearch, ignoreCase = true)
                     }
-                    if (installedApps.isEmpty()) {
+                    if (isLoadingApps) {
+                        Text("Please wait while NeaRer reads the app library on this phone.", color = White, fontSize = 12.sp)
+                    } else if (installedApps.isEmpty()) {
                         Text("No shareable apps were found. Check that this phone has apps installed.", color = White, fontSize = 13.sp)
                     } else if (visibleApps.isEmpty()) {
                         Text("No apps match that search.", color = White, fontSize = 13.sp)
                     }
-                    visibleApps.forEach { app ->
+                    if (!isLoadingApps) visibleApps.forEach { app ->
                         Surface(
                             modifier = Modifier.fillMaxWidth().clickable {
                                 showInstalledApps = false
@@ -2480,8 +2490,12 @@ private fun NeaRerHome(
                                             receiveMode = false
                                             if (item.second == "Apps") {
                                                 if (chatReady) {
-                                                    installedApps = onLoadShareableApps()
                                                     showInstalledApps = true
+                                                    isLoadingApps = true
+                                                    navigationScope.launch {
+                                                        installedApps = withContext(Dispatchers.IO) { onLoadShareableApps() }
+                                                        isLoadingApps = false
+                                                    }
                                                 } else {
                                                     pendingAppPicker = true
                                                     navigateToSection("nearby")
