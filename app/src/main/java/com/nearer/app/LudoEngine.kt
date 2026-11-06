@@ -2,24 +2,14 @@ package com.nearer.app
 
 import kotlin.random.Random
 
-/**
- * Traditional four-colour Ludo rules engine.
- *
- * Token positions:
- * -1 = yard, 0..51 = shared track (relative to that player's start),
- * 52..57 = private home lane, 58 = finished.
- *
- * The engine is UI-independent so the same rules can power local play,
- * computer opponents and a future online/local multiplayer transport.
- */
 enum class LudoColor(val startOffset: Int) {
-    RED(0), GREEN(13), YELLOW(26), BLUE(39)
+    RED(0), GREEN(39), YELLOW(26), BLUE(13)
 }
 
 data class LudoToken(val steps: Int = -1) {
-    init { require(steps in -1..58) }
+    init { require(steps in -1..57) }
     val isInYard: Boolean get() = steps == -1
-    val isFinished: Boolean get() = steps == 58
+    val isFinished: Boolean get() = steps == 57
 }
 
 data class LudoPlayer(
@@ -36,7 +26,8 @@ data class LudoGameState(
     val currentPlayerIndex: Int = 0,
     val diceValue: Int? = null,
     val winner: LudoColor? = null,
-    val turnNumber: Long = 1L
+    val turnNumber: Long = 1L,
+    val consecutiveSixes: Int = 0
 ) {
     val currentPlayer: LudoPlayer get() = players[currentPlayerIndex]
     val isFinished: Boolean get() = winner != null
@@ -49,6 +40,7 @@ data class LudoMoveResult(
 )
 
 object LudoEngine {
+    // Four coloured start squares plus the four star squares.
     private val safeSquares = setOf(0, 8, 13, 21, 26, 34, 39, 47)
 
     fun newGame(
@@ -69,18 +61,19 @@ object LudoEngine {
         require(!state.isFinished) { "The game has already ended." }
         require(state.diceValue == null) { "Move or pass before rolling again." }
         require(value in 1..6) { "A Ludo die must show 1 through 6." }
-        return state.copy(diceValue = value)
+        val sixes = if (value == 6) state.consecutiveSixes + 1 else 0
+        return state.copy(diceValue = value, consecutiveSixes = sixes)
     }
 
     fun legalMoves(state: LudoGameState): List<Int> {
         val roll = state.diceValue ?: return emptyList()
-        if (state.isFinished) return emptyList()
+        if (state.isFinished || state.consecutiveSixes >= 3) return emptyList()
         return state.currentPlayer.tokens.indices.filter { index ->
             val steps = state.currentPlayer.tokens[index].steps
             when {
                 steps == -1 -> roll == 6
-                steps == 58 -> false
-                else -> steps + roll <= 58
+                steps == 57 -> false
+                else -> steps + roll <= 57
             }
         }
     }
@@ -106,23 +99,27 @@ object LudoEngine {
             if (landingSquare !in safeSquares) {
                 players.indices.filter { it != state.currentPlayerIndex }.forEach { opponentIndex ->
                     val opponent = players[opponentIndex]
-                    val resetTokens = opponent.tokens.mapIndexed { index, token ->
-                        if (token.steps in 0..51 &&
+                    val occupants = opponent.tokens.withIndex().filter { (_, token) ->
+                        token.steps in 0..51 &&
                             (opponent.color.startOffset + token.steps) % 52 == landingSquare
-                        ) {
-                            captured += opponent.color to index
-                            LudoToken()
-                        } else token
                     }
-                    if (resetTokens != opponent.tokens) players[opponentIndex] = opponent.copy(tokens = resetTokens)
+                    // A pair is a blockade: it cannot be captured as a single token.
+                    if (occupants.size == 1) {
+                        val capturedIndex = occupants.single().index
+                        val resetTokens = opponent.tokens.toMutableList()
+                        resetTokens[capturedIndex] = LudoToken()
+                        players[opponentIndex] = opponent.copy(tokens = resetTokens)
+                        captured += opponent.color to capturedIndex
+                    }
                 }
             }
         }
 
         val winner = updatedPlayer.takeIf { it.tokens.all(LudoToken::isFinished) }?.color
+        val earnsBonus = roll == 6 || captured.isNotEmpty() || newSteps == 57
         val nextIndex = when {
             winner != null -> state.currentPlayerIndex
-            roll == 6 -> state.currentPlayerIndex
+            earnsBonus -> state.currentPlayerIndex
             else -> (state.currentPlayerIndex + 1) % players.size
         }
         val nextState = state.copy(
@@ -130,26 +127,29 @@ object LudoEngine {
             currentPlayerIndex = nextIndex,
             diceValue = null,
             winner = winner,
-            turnNumber = if (nextIndex == state.currentPlayerIndex) state.turnNumber else state.turnNumber + 1
+            turnNumber = if (nextIndex == state.currentPlayerIndex) state.turnNumber else state.turnNumber + 1,
+            consecutiveSixes = if (nextIndex == state.currentPlayerIndex && roll == 6) state.consecutiveSixes else 0
         )
-        return LudoMoveResult(nextState, captured, newSteps == 58)
+        return LudoMoveResult(nextState, captured, newSteps == 57)
     }
 
-    /** Skip is only valid after a roll when no token can legally move. */
     fun passTurn(state: LudoGameState): LudoGameState {
         require(!state.isFinished) { "The game has already ended." }
         require(state.diceValue != null) { "Roll the dice before passing." }
         require(legalMoves(state).isEmpty()) { "A legal token move is available." }
-        val nextIndex = if (state.diceValue == 6) state.currentPlayerIndex
-            else (state.currentPlayerIndex + 1) % state.players.size
+        val nextIndex = if (state.consecutiveSixes < 3 && state.diceValue == 6) {
+            state.currentPlayerIndex
+        } else {
+            (state.currentPlayerIndex + 1) % state.players.size
+        }
         return state.copy(
             currentPlayerIndex = nextIndex,
             diceValue = null,
-            turnNumber = if (nextIndex == state.currentPlayerIndex) state.turnNumber else state.turnNumber + 1
+            turnNumber = if (nextIndex == state.currentPlayerIndex) state.turnNumber else state.turnNumber + 1,
+            consecutiveSixes = if (nextIndex == state.currentPlayerIndex) state.consecutiveSixes else 0
         )
     }
 
-    /** Simple deterministic move choice for a computer player. */
     fun chooseComputerMove(state: LudoGameState): Int? {
         val moves = legalMoves(state)
         if (moves.isEmpty()) return null
@@ -160,7 +160,7 @@ object LudoEngine {
                 val old = player.tokens[index].steps
                 val destination = if (old == -1) 0 else old + roll
                 when {
-                    destination == 58 -> 1000
+                    destination == 57 -> 1000
                     old == -1 -> 100
                     destination in 0..51 && wouldCapture(state, player.color, destination) -> 500
                     destination >= 52 -> 200 + destination
@@ -174,9 +174,9 @@ object LudoEngine {
         val square = (color.startOffset + steps) % 52
         if (square in safeSquares) return false
         return state.players.any { opponent ->
-            opponent.color != color && opponent.tokens.any { token ->
+            opponent.color != color && opponent.tokens.count { token ->
                 token.steps in 0..51 && (opponent.color.startOffset + token.steps) % 52 == square
-            }
+            } == 1
         }
     }
 }
