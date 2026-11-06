@@ -294,7 +294,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val incoming = incomingMetadata[key]
             // Chat and file-metadata BYTES payloads also produce transfer callbacks.
             // Only track the bulk FILE payload whose ID has a matching file record.
-            if (outgoing == null && incoming == null && incomingPayloads[key] == null) return
+            if (outgoing == null && incoming == null && incomingPayloads[key] == null) {
+                // Metadata BYTES, FILE descriptor and transfer callbacks are not
+                // guaranteed to arrive in order. Preserve an otherwise-unmatched
+                // SUCCESS marker: if this ID later proves to be a FILE payload,
+                // its descriptor callback can still complete the receive path.
+                if (update.status == PayloadTransferUpdate.Status.SUCCESS) {
+                    incomingCompletionTracker.markCompleted(id, payloadId)
+                }
+                return
+            }
             val name = outgoing?.second ?: incoming?.name ?: "Incoming file"
             val isIncoming = outgoing == null
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
