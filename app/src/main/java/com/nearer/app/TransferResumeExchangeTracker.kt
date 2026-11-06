@@ -61,6 +61,7 @@ internal class TransferResumeExchangeTracker(
         val existing = entry.proposal
         if (existing != null) return if (existing == envelope.proposal) Update.DUPLICATE else invalidate(key)
         entry.proposal = envelope.proposal
+        entry.updatedAtMillis = nowMillis()
         return Update.STORED
     }
 
@@ -73,6 +74,7 @@ internal class TransferResumeExchangeTracker(
         val existing = entry.decision
         if (existing != null) return if (existing == envelope.decision) Update.DUPLICATE else invalidate(key)
         entry.decision = envelope.decision
+        entry.updatedAtMillis = nowMillis()
         return Update.STORED
     }
 
@@ -84,6 +86,7 @@ internal class TransferResumeExchangeTracker(
         val entry = entryFor(key) ?: return Update.CAPACITY_REACHED
         if (entry.dataPayloadSeen) return Update.DUPLICATE
         entry.dataPayloadSeen = true
+        entry.updatedAtMillis = nowMillis()
         return Update.STORED
     }
 
@@ -131,7 +134,7 @@ internal class TransferResumeExchangeTracker(
     }
 
     private fun entryFor(key: Key): Entry? {
-        entries[key]?.let { it.updatedAtMillis = nowMillis(); return it }
+        entries[key]?.let { return it }
         if (entries.size >= maxPendingExchanges) return null
         return Entry(updatedAtMillis = nowMillis()).also { entries[key] = it }
     }
