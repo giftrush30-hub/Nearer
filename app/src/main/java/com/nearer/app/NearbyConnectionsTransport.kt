@@ -423,10 +423,21 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             }
         }
         if (targets.isEmpty()) return false
-        val envelope = JSONObject().put("id", UUID.randomUUID().toString()).put("body", body)
-            .put("ttl", 0).put("hops", 0).put("origin", localName).toString()
+        // Use the exact versioned envelope understood by handleBytes(). Sending the
+        // community packet as raw JSON here caused receivers to reject it as malformed.
+        val envelope = JSONObject()
+            .put("kind", "message")
+            .put("version", 1)
+            .put("id", UUID.randomUUID().toString())
+            .put("body", body)
+            .put("ttl", 0)
+            .put("hops", 0)
+            .put("origin", localName)
+            .put("createdAt", System.currentTimeMillis())
+            .toString()
+            .toByteArray(Charsets.UTF_8)
         targets.forEach { endpoint ->
-            client.sendPayload(endpoint, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
+            client.sendPayload(endpoint, Payload.fromBytes(envelope))
                 .addOnFailureListener { listener.onStatus("A group message could not be sent to one nearby member.") }
         }
         return true
