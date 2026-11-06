@@ -267,9 +267,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (update.status == PayloadTransferUpdate.Status.SUCCESS) {
                 val startedAt = transferStartedAtNanos.remove(key) ?: System.nanoTime()
                 val elapsedNanos = (System.nanoTime() - startedAt).coerceAtLeast(1L)
-                val averageMbps = update.totalBytes.toDouble() * 1_000_000_000.0 /
-                    elapsedNanos.toDouble() / (1024.0 * 1024.0)
-                val rateLabel = String.format(java.util.Locale.US, "%.1f", averageMbps)
+                val rateLabel = TransferRateMetrics.label(update.totalBytes, elapsedNanos)
                 if (isIncoming) {
                     completedTransferRates[key] = rateLabel
                     incomingPayloads[key]?.let { completedPayloads[key] = it }
