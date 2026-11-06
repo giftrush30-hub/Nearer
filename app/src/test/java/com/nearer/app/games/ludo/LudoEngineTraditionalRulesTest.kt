@@ -16,7 +16,7 @@ class LudoEngineTraditionalRulesTest {
         var state = LudoEngine.newGame("Hope", playerCount = 2, computerOpponents = false)
 
         repeat(2) {
-            state = LudoEngine.roll(state, AlwaysSixRandom)
+            state = LudoEngine.roll(state, AlwaysSixRandom())
             assertEquals(6, state.dice)
             assertTrue(state.legalTokenIndexes.isNotEmpty())
             state = LudoEngine.move(state, state.legalTokenIndexes.first())
@@ -24,7 +24,7 @@ class LudoEngineTraditionalRulesTest {
             assertEquals(it + 1, state.consecutiveSixes)
         }
 
-        state = LudoEngine.roll(state, AlwaysSixRandom)
+        state = LudoEngine.roll(state, AlwaysSixRandom())
 
         assertEquals(1, state.activePlayerIndex)
         assertNull(state.dice)
