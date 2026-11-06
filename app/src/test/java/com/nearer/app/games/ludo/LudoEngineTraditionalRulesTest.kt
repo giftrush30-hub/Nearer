@@ -16,6 +16,33 @@ class LudoEngineTraditionalRulesTest {
     }
 
     @Test
+    fun nonSafeLandingCapturesAnOpponentToken() {
+        val red = LudoPlayer("red", "Hope", LudoColor.RED, false, listOf(4, -1, -1, -1))
+        val green = LudoPlayer("green", "Guest", LudoColor.GREEN, false, listOf(44, -1, -1, -1))
+        val state = LudoState(
+            players = listOf(red, green), dice = 1, legalTokenIndexes = listOf(0)
+        )
+
+        val moved = LudoEngine.move(state, 0)
+
+        assertEquals(-1, moved.players[1].tokens[0])
+        assertTrue(moved.message.contains("another turn"))
+        assertEquals(0, moved.activePlayerIndex)
+    }
+
+    @Test
+    fun tokenMustReachHomeWithAnExactRoll() {
+        val red = LudoPlayer("red", "Hope", LudoColor.RED, false, listOf(55, -1, -1, -1))
+        val yellow = LudoPlayer("yellow", "Guest", LudoColor.YELLOW, false)
+        val state = LudoState(
+            players = listOf(red, yellow), dice = 2, legalTokenIndexes = emptyList()
+        )
+
+        assertTrue(LudoEngine.legalMoves(red, 2).isEmpty())
+        assertEquals(listOf(0), LudoEngine.legalMoves(red, 1))
+    }
+
+    @Test
     fun thirdConsecutiveSixForfeitsTheTurn() {
         var state = LudoEngine.newGame("Hope", playerCount = 2, computerOpponents = false)
 
