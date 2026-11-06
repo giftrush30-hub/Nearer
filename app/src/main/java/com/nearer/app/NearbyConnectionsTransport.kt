@@ -668,6 +668,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         )
     }
 
+    fun isEndpointConnected(endpointId: String): Boolean =
+        synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }
+
     fun request(id: String) {
         client.requestConnection(encodedName(), id, lifecycle).addOnFailureListener {
             listener.onStatus("Connection request failed: ${it.localizedMessage ?: "try again"}")
