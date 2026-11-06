@@ -72,7 +72,7 @@ internal class DeferredFileDigestTracker(
         val key = Key(endpointId, payloadId)
         val entry = entries[key] ?: run {
             require(entries.size < maxPendingEntries) { "Deferred-digest queue is full" }
-            Entry(expectedSizeBytes = -1L).also { entries[key] = it }
+            Entry(expectedSizeBytes = null).also { entries[key] = it }
         }
         entry.fileCompleted = true
         return takeIfReady(key, entry)
