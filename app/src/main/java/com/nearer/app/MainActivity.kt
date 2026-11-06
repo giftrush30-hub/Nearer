@@ -2264,7 +2264,49 @@ private fun NeaRerHome(
 
             }
 
+
             if (activeSection == "chats") {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("MESSAGES", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp)
+                    Text("Your conversations", color = White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("Private chats and shared files, kept close.", color = Muted, fontSize = 12.sp)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Surface(
+                        modifier = Modifier.weight(1f).clickable {
+                            activeSection = "nearby"
+                            onFindNearby()
+                            navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                        },
+                        color = Color(0xFF123D7A), shape = RoundedCornerShape(15.dp),
+                        border = BorderStroke(1.dp, Color(0xFF347CEB))
+                    ) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("+", color = Gold, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                            Column(Modifier.padding(start = 9.dp)) {
+                                Text("New chat", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Find someone nearby", color = Color(0xFFB9D2F5), fontSize = 9.sp)
+                            }
+                        }
+                    }
+                    Surface(
+                        modifier = Modifier.weight(1f).clickable {
+                            if (chatReady) filePicker.launch(arrayOf("*/*"))
+                            else { activeSection = "nearby"; onFindNearby(); navigationScope.launch { pageScrollState.animateScrollTo(0) } }
+                        },
+                        color = Color(0xFF172F52), shape = RoundedCornerShape(15.dp),
+                        border = BorderStroke(1.dp, Color(0xFF28589A))
+                    ) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("↥", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                            Column(Modifier.padding(start = 9.dp)) {
+                                Text("Share a file", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Photos, videos & more", color = Muted, fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
+
             Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
                 sectionPositions["chats"] = it.positionInParent().y.toInt()
             }, shape = RoundedCornerShape(20.dp), color = Panel) {
