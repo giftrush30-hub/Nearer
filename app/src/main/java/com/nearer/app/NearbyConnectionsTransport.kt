@@ -51,13 +51,14 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
 
     private data class FileMeta(val endpointId: String, val name: String, val size: Long)
-    private val incomingMetadata = ConcurrentHashMap<Long, FileMeta>()
-    private val incomingPayloads = ConcurrentHashMap<Long, Payload>()
-    private val incomingPayloadEndpoints = ConcurrentHashMap<Long, String>()
-    private val completedPayloads = ConcurrentHashMap<Long, Payload>()
+    private data class TransferKey(val endpointId: String, val payloadId: Long)
+    private fun transferKey(endpointId: String, payloadId: Long) = TransferKey(endpointId, payloadId)
+    private val incomingMetadata = ConcurrentHashMap<TransferKey, FileMeta>()
+    private val incomingPayloads = ConcurrentHashMap<TransferKey, Payload>()
+    private val completedPayloads = ConcurrentHashMap<TransferKey, Payload>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
-    private val transferStartedAtNanos = ConcurrentHashMap<Long, Long>()
-    private val completedTransferRates = ConcurrentHashMap<Long, String>()
+    private val transferStartedAtNanos = ConcurrentHashMap<TransferKey, Long>()
+    private val completedTransferRates = ConcurrentHashMap<TransferKey, String>()
     private val fileIo = Executors.newSingleThreadExecutor()
     private val seenMessageIds = ConcurrentHashMap.newKeySet<String>().apply {
         appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
@@ -200,11 +201,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             when (payload.type) {
                 Payload.Type.BYTES -> handleBytes(id, payload.asBytes())
                 Payload.Type.FILE -> {
-                    incomingPayloads[payload.id] = payload
-                    incomingPayloadEndpoints[payload.id] = id
-                    val meta = incomingMetadata[payload.id]
+                    val key = transferKey(id, payload.id)
+                    incomingPayloads[key] = payload
+                    val meta = incomingMetadata[key]
                     listener.onFileProgress(id, payload.id, meta?.name ?: "Incoming file", 0L, meta?.size ?: -1L, true)
-                    processCompletedFile(payload.id)
+                    processCompletedFile(key)
                 }
                 else -> listener.onFileStatus("NeaRer received an unsupported nearby transfer type.")
             }
@@ -212,40 +213,40 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
 
         override fun onPayloadTransferUpdate(id: String, update: PayloadTransferUpdate) {
             val payloadId = update.payloadId
-            val outgoing = outgoingFiles[payloadId]
-            val incoming = incomingMetadata[payloadId]
+            val key = transferKey(id, payloadId)
+            val outgoing = outgoingFiles[payloadId]?.takeIf { it.first == id }
+            val incoming = incomingMetadata[key]
             val name = outgoing?.second ?: incoming?.name ?: "Incoming file"
             val isIncoming = outgoing == null
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
-                transferStartedAtNanos.putIfAbsent(payloadId, System.nanoTime())
+                transferStartedAtNanos.putIfAbsent(key, System.nanoTime())
             }
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
                 listener.onFileProgress(id, payloadId, name, update.bytesTransferred, update.totalBytes, isIncoming)
                 return
             }
             if (update.status == PayloadTransferUpdate.Status.SUCCESS) {
-                val startedAt = transferStartedAtNanos.remove(payloadId) ?: System.nanoTime()
+                val startedAt = transferStartedAtNanos.remove(key) ?: System.nanoTime()
                 val elapsedNanos = (System.nanoTime() - startedAt).coerceAtLeast(1L)
                 val averageMbps = update.totalBytes.toDouble() * 1_000_000_000.0 /
                     elapsedNanos.toDouble() / (1024.0 * 1024.0)
                 val rateLabel = String.format(java.util.Locale.US, "%.1f", averageMbps)
                 if (isIncoming) {
-                    completedTransferRates[payloadId] = rateLabel
-                    incomingPayloads[payloadId]?.let { completedPayloads[payloadId] = it }
-                    processCompletedFile(payloadId)
+                    completedTransferRates[key] = rateLabel
+                    incomingPayloads[key]?.let { completedPayloads[key] = it }
+                    processCompletedFile(key)
                 } else {
                     outgoingFiles.remove(payloadId)
                     listener.onFileProgress(id, payloadId, name, update.totalBytes, update.totalBytes, false)
                     listener.onFileStatus("File sent to the nearby phone: $name • $rateLabel MB/s average")
                 }
             } else {
-                transferStartedAtNanos.remove(payloadId)
-                completedTransferRates.remove(payloadId)
-                outgoingFiles.remove(payloadId)
-                incomingMetadata.remove(payloadId)
-                incomingPayloads.remove(payloadId)?.close()
-                completedPayloads.remove(payloadId)?.close()
-                incomingPayloadEndpoints.remove(payloadId)
+                transferStartedAtNanos.remove(key)
+                completedTransferRates.remove(key)
+                outgoingFiles[payloadId]?.takeIf { it.first == id }?.let { outgoingFiles.remove(payloadId) }
+                incomingMetadata.remove(key)
+                incomingPayloads.remove(key)?.close()
+                completedPayloads.remove(key)?.close()
                 listener.onFileStatus("Nearby file transfer failed or was cancelled.")
             }
         }
@@ -262,10 +263,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     listener.onFileStatus("A nearby phone sent invalid file information. The transfer was ignored.")
                     return
                 }
-                incomingMetadata[payloadId] = FileMeta(endpointId, name, size)
-                transferStartedAtNanos[payloadId] = System.nanoTime()
+                val key = transferKey(endpointId, payloadId)
+                incomingMetadata[key] = FileMeta(endpointId, name, size)
+                transferStartedAtNanos[key] = System.nanoTime()
                 listener.onFileProgress(endpointId, payloadId, name, 0L, size, true)
-                processCompletedFile(payloadId)
+                processCompletedFile(key)
                 return
             }
             val kind = envelope.optString("kind", "message")
@@ -313,24 +315,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
-    private fun processCompletedFile(payloadId: Long) {
-        val payload = completedPayloads[payloadId] ?: return
-        val meta = incomingMetadata[payloadId] ?: return
-        val payloadEndpoint = incomingPayloadEndpoints[payloadId]
-        if (payloadEndpoint == null) return
-        if (payloadEndpoint != meta.endpointId) {
-            completedPayloads.remove(payloadId, payload)
-            incomingPayloads.remove(payloadId)
-            incomingPayloadEndpoints.remove(payloadId)
-            incomingMetadata.remove(payloadId)
-            try { payload.close() } catch (_: Exception) { }
-            listener.onFileStatus("File details did not match the sending phone. The transfer was rejected.")
-            return
-        }
-        if (!completedPayloads.remove(payloadId, payload)) return
-        incomingPayloads.remove(payloadId)
-        incomingPayloadEndpoints.remove(payloadId)
-        incomingMetadata.remove(payloadId)
+    private fun processCompletedFile(key: TransferKey) {
+        val payload = completedPayloads[key] ?: return
+        val meta = incomingMetadata[key] ?: return
+        if (!completedPayloads.remove(key, payload)) return
+        incomingPayloads.remove(key)
+        incomingMetadata.remove(key)
         try {
             fileIo.execute {
                 var temporary: File? = null
@@ -377,7 +367,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     temporary = null
                     destination = null // The final file is committed; later UI callbacks must not delete it.
                     listener.onFileReceived(meta.endpointId, meta.name, target)
-                    completedTransferRates.remove(payloadId)?.let { rate ->
+                    completedTransferRates.remove(key)?.let { rate ->
                         listener.onFileStatus("Received ${meta.name} • $rate MB/s average • SHA-256 ${TransferStreamIO.sha256Hex(copied.sha256).take(12)}")
                     }
                 } catch (error: Exception) {
@@ -390,7 +380,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 }
             }
         } catch (error: Exception) {
-            completedTransferRates.remove(payloadId)
+            completedTransferRates.remove(key)
             try { payload.close() } catch (_: Exception) { }
             listener.onFileStatus("Could not queue the received file for saving: ${error.localizedMessage ?: "storage busy"}")
         }
@@ -561,11 +551,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
+    private fun transferKeyForOutgoing(payloadId: Long): TransferKey? = outgoingFiles[payloadId]?.first?.let { transferKey(it, payloadId) }
+
     fun cancelFile(payloadId: Long) {
         try { client.cancelPayload(payloadId) } catch (_: Exception) { }
         outgoingFiles.remove(payloadId)
         transferStartedAtNanos.remove(payloadId)
-        completedTransferRates.remove(payloadId)
+        completedTransferRates.remove(transferKeyForOutgoing(payloadId))
     }
 
     private fun broadcast(content: String, excludeEndpoint: String?): Boolean {
