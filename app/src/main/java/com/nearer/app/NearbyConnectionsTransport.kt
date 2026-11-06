@@ -17,7 +17,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -89,7 +88,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     // Bundle checksums are prepared off the UI thread. Keeping the payload here
     // lets cancellation/disconnect close its descriptor before it reaches the radio.
     private val preparingOutgoingFiles = ConcurrentHashMap<Long, Payload>()
-    private val filePreparationIo = Executors.newSingleThreadExecutor()
+    // Keep checksum preparation bounded. A burst of queued selections must not
+    // retain an unbounded number of open descriptors and payload objects.
+    private val filePreparationIo = ThreadPoolExecutor(
+        1, 1, 0L, TimeUnit.MILLISECONDS,
+        ArrayBlockingQueue(8),
+        ThreadPoolExecutor.AbortPolicy()
+    )
     private val transferStartedAtNanos = ConcurrentHashMap<TransferKey, Long>()
     private val completedTransferRates = ConcurrentHashMap<TransferKey, String>()
     // Receiving two FILE payloads concurrently is useful only if disk finalization
