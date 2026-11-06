@@ -1,6 +1,8 @@
 package com.nearer.app
 
 import android.Manifest
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -62,6 +64,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -1511,17 +1514,27 @@ class MainActivity : ComponentActivity() {
 
     private fun getShareableApps(): List<ShareableApp> {
         return try {
-            val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-            packageManager.queryIntentActivities(launcherIntent, 0)
-                .mapNotNull { resolve ->
-                    val appInfo = resolve.activityInfo?.applicationInfo ?: return@mapNotNull null
-                    if (appInfo.packageName == packageName) return@mapNotNull null
+            packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+                .asSequence()
+                .filter { appInfo ->
+                    appInfo.packageName != packageName &&
+                        (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0
+                }
+                .mapNotNull { appInfo ->
                     val base = appInfo.sourceDir?.takeIf { File(it).isFile } ?: return@mapNotNull null
                     val splits = appInfo.splitSourceDirs?.filter { File(it).isFile } ?: emptyList()
-                    ShareableApp(resolve.loadLabel(packageManager).toString(), appInfo.packageName, listOf(base) + splits)
+                    val drawable = packageManager.getApplicationIcon(appInfo)
+                    val iconSize = 96
+                    val bitmap = Bitmap.createBitmap(iconSize, iconSize, Bitmap.Config.ARGB_8888)
+                    val canvas = Canvas(bitmap)
+                    drawable.setBounds(0, 0, iconSize, iconSize)
+                    drawable.draw(canvas)
+                    val label = packageManager.getApplicationLabel(appInfo).toString()
+                    ShareableApp(label, appInfo.packageName, listOf(base) + splits, bitmap.asImageBitmap())
                 }
                 .distinctBy { it.packageName }
                 .sortedBy { it.label.lowercase() }
+                .toList()
         } catch (_: Exception) { emptyList() }
     }
 
@@ -2027,9 +2040,26 @@ private fun NeaRerHome(
             title = { Text("SHARE AN APP", color = White, fontWeight = FontWeight.Black) },
             text = {
                 Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Choose an installed app. NeaRer prepares its APK files for offline sending.", color = Muted, fontSize = 11.sp)
-                    if (installedApps.isEmpty()) Text("No shareable apps were found on this phone.", color = White, fontSize = 13.sp)
-                    installedApps.forEach { app ->
+                    Text("Your installed apps", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(installedApps.size.toString() + " shareable apps found on this phone. This list is read on-device and is not uploaded.", color = Muted, fontSize = 10.sp)
+                    var appSearch by remember { mutableStateOf("") }
+                    OutlinedTextField(
+                        value = appSearch,
+                        onValueChange = { appSearch = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Search apps", color = Muted) }
+                    )
+                    val visibleApps = installedApps.filter {
+                        appSearch.isBlank() || it.label.contains(appSearch, ignoreCase = true) ||
+                            it.packageName.contains(appSearch, ignoreCase = true)
+                    }
+                    if (installedApps.isEmpty()) {
+                        Text("No shareable apps were found. Check that this phone has apps installed.", color = White, fontSize = 13.sp)
+                    } else if (visibleApps.isEmpty()) {
+                        Text("No apps match that search.", color = White, fontSize = 13.sp)
+                    }
+                    visibleApps.forEach { app ->
                         Surface(
                             modifier = Modifier.fillMaxWidth().clickable {
                                 showInstalledApps = false
@@ -2044,13 +2074,15 @@ private fun NeaRerHome(
                             color = Color(0xFF173F78), shape = RoundedCornerShape(14.dp),
                             border = BorderStroke(1.dp, Color(0xFF347CEB).copy(alpha = 0.55f))
                         ) {
-                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Surface(shape = RoundedCornerShape(10.dp), color = Gold.copy(alpha = 0.16f)) {
-                                    Text("APK", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(9.dp))
-                                }
-                                Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                                    Text(app.label, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                    Text(if (app.apkPaths.size > 1) "Multi-part app • " + app.apkPaths.size + " APK files" else "Ready to share • APK", color = Muted, fontSize = 10.sp)
+                            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Image(
+                                    bitmap = app.icon,
+                                    contentDescription = app.label,
+                                    modifier = Modifier.size(46.dp).clip(RoundedCornerShape(11.dp))
+                                )
+                                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                                    Text(app.label, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(if (app.apkPaths.size > 1) "Split app • " + app.apkPaths.size + " APK parts" else "App • APK ready", color = Muted, fontSize = 10.sp)
                                 }
                                 Text("›", color = Gold, fontSize = 23.sp)
                             }
@@ -3796,7 +3828,7 @@ private data class ChatMessage(
 )
 
 private data class ReceivedFile(val displayName: String, val file: File)
-private data class ShareableApp(val label: String, val packageName: String, val apkPaths: List<String>)
+private data class ShareableApp(val label: String, val packageName: String, val apkPaths: List<String>, val icon: androidx.compose.ui.graphics.ImageBitmap)
 
 private data class IncomingTransfer(
     val name: String,
