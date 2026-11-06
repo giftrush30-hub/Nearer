@@ -2493,9 +2493,20 @@ private fun NeaRerHome(
                             border = BorderStroke(1.dp, Color(0xFF477CB8)),
                             modifier = Modifier.size(76.dp)
                         ) {}
-                        Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(54.dp), shadowElevation = 14.dp) {
+                        Surface(
+                            shape = CircleShape,
+                            color = BrandBlue,
+                            border = BorderStroke(1.dp, Color(0xFF8DBBFF).copy(alpha = 0.65f)),
+                            modifier = Modifier.size(58.dp),
+                            shadowElevation = 16.dp
+                        ) {
                             androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                Text("N", color = White, fontSize = 25.sp, fontWeight = FontWeight.Black)
+                                Text(
+                                    displayName.trim().firstOrNull()?.uppercase() ?: "N",
+                                    color = White,
+                                    fontSize = 25.sp,
+                                    fontWeight = FontWeight.Black
+                                )
                             }
                         }
                         if (hybridPeers.isNotEmpty()) {
