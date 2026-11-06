@@ -79,6 +79,16 @@ class TransferManifestFragmentsTest {
     }
 
     @Test
+    fun normalizesTruncatedFragmentFailuresAsInvalidArguments() {
+        val valid = TransferManifestFragments.split("bundle-a", byteArrayOf(1, 2, 3)).single()
+        for (length in 0 until 12) {
+            assertThrows(IllegalArgumentException::class.java) {
+                TransferManifestFragments.decode(valid.copyOf(length))
+            }
+        }
+    }
+
+    @Test
     fun rejectsMalformedUtf8InTransferIdentity() {
         val encoded = TransferManifestFragments.split("bundle-a", byteArrayOf(1, 2, 3)).single()
         // Fragment header stores the UTF-8 transfer-ID length at bytes 4..5,
