@@ -2429,12 +2429,46 @@ private fun NeaRerHome(
             
 
             AnimatedVisibility(visible = activeSection == "nearby", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
-            Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFF102B50), shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Color(0xFF28589A))) {
-                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text("YOUR NEARER NAME", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                    OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(24); nameSaveFeedback = null }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Choose your nearby name", color = Muted) }, shape = RoundedCornerShape(13.dp))
-                    Button(onClick = { nameSaveFeedback = if (onSaveDisplayName(nameDraft)) "Your name is saved." else "Could not save your name." }, enabled = nameDraft.trim().isNotBlank(), modifier = Modifier.fillMaxWidth().height(43.dp), colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)) { Text("SAVE NEARBY NAME", fontWeight = FontWeight.Black) }
-                    Text(nameSaveFeedback ?: "This is the name other NeaRer users see nearby.", color = Muted, fontSize = 10.sp)
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Color(0xFF102B50),
+                shape = RoundedCornerShape(22.dp),
+                border = BorderStroke(1.dp, Color(0xFF477FC0).copy(alpha = 0.65f)),
+                shadowElevation = 8.dp
+            ) {
+                Column(
+                    Modifier.fillMaxWidth()
+                        .background(Brush.linearGradient(listOf(Color(0xFF163D70), Color(0xFF102B50), Color(0xFF0B203D))))
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("YOUR NEARER IDENTITY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.25.sp)
+                            Text("The name people recognise", color = White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                        Surface(shape = CircleShape, color = Color(0xFF244D7A), border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f)), modifier = Modifier.size(38.dp)) {
+                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                Text(nameDraft.trim().firstOrNull()?.uppercase() ?: "N", color = Gold, fontSize = 17.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = nameDraft,
+                        onValueChange = { nameDraft = it.take(24); nameSaveFeedback = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("Choose your nearby name", color = Muted) },
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    Button(
+                        onClick = { nameSaveFeedback = if (onSaveDisplayName(nameDraft)) "Your name is saved." else "Could not save your name." },
+                        enabled = nameDraft.trim().isNotBlank(),
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                    ) { Text("SAVE MY NAME", fontWeight = FontWeight.Black, letterSpacing = 0.4.sp) }
+                    Text(nameSaveFeedback ?: "Your chosen name is shown to people discovering nearby phones.", color = Color(0xFFB8CBE3), fontSize = 10.sp, lineHeight = 15.sp)
                 }
             }
 
