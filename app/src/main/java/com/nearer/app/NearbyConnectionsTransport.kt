@@ -538,7 +538,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 .put("name", name).put("size", size)
             client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
                 .addOnSuccessListener {
-                    transferStartedAtNanos[transferKey(endpointId, payload.id)] = System.nanoTime()
+                    // sendPayload acceptance is not the start of actual radio transfer.
+                    // The first IN_PROGRESS callback starts the throughput clock.
                     client.sendPayload(endpointId, payload)
                         .addOnFailureListener { error ->
                             outgoingFiles.remove(id)
