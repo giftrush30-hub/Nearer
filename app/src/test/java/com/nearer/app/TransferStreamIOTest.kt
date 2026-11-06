@@ -36,6 +36,18 @@ class TransferStreamIOTest {
     }
 
     @Test
+    fun hashesEmptyFilesAndRejectsUnexpectedBytesAfterDeclaredLength() {
+        val emptyDigest = TransferStreamIO.sha256Exactly(ByteArrayInputStream(byteArrayOf()), 0L, 4096)
+        assertEquals(
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            TransferStreamIO.sha256Hex(emptyDigest)
+        )
+        assertThrows(IllegalStateException::class.java) {
+            TransferStreamIO.sha256Exactly(ByteArrayInputStream(byteArrayOf(7)), 0L, 4096)
+        }
+    }
+
+    @Test
     fun recoversWhenBulkReadMakesNoProgress() {
         val source = byteArrayOf(10, 20, 30, 40)
         val input = object : InputStream() {
