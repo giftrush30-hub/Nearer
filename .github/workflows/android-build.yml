@@ -2,11 +2,13 @@ name: NeaRer code validation
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   workflow_dispatch:
 
 concurrency:
-  group: nearer-validation-${{ github.ref }}
+  # Branch pushes already validate the exact commit that a PR will propose.
+  # Avoid a duplicate pull_request job for the same branch revision.
+  group: nearer-validation-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
