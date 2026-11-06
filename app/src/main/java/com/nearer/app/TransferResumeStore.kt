@@ -72,7 +72,7 @@ internal class TransferResumeStore(
     ): Candidate? {
         val checkpoint = journal.load(transferId, item.id) ?: return null
         if (!checkpoint.matches(transferId, item, sourceModifiedAtMillis)) return null
-        val partial = partialFile(transferId, item.id)
+        val partial = partialFileFor(transferId, item.id)
         if (!TransferResumeFileVerifier.verifyAndTrim(partial, checkpoint)) return null
         return Candidate(checkpoint, partial)
     }
@@ -80,7 +80,7 @@ internal class TransferResumeStore(
     @Synchronized
     fun discard(transferId: String, itemId: String): Boolean {
         val partialDeleted = !partialFileFor(transferId, itemId).exists() ||
-            partialFile(transferId, itemId).delete()
+            partialFileFor(transferId, itemId).delete()
         val checkpointDeleted = journal.remove(transferId, itemId)
         return partialDeleted && checkpointDeleted
     }
