@@ -1520,7 +1520,10 @@ class MainActivity : ComponentActivity() {
                 .asSequence()
                 .filter { appInfo ->
                     appInfo.packageName != packageName &&
-                        (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0
+                        (
+                            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 ||
+                            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                        )
                 }
                 .mapNotNull { appInfo ->
                     try {
