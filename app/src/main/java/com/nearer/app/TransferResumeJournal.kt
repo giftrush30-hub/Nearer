@@ -62,7 +62,8 @@ internal class TransferResumeJournal(private val directory: File) {
             ?.mapNotNull { file ->
                 try {
                     TransferResumeCheckpointCodec.decode(file.readBytes()).takeIf { checkpoint ->
-                        checkpointFile(checkpoint.transferId, checkpoint.itemId).name == file.name
+                        checkpointFile(checkpoint.transferId, checkpoint.itemId).name == file.name &&
+                            checkpoint.validationError() == null
                     }
                 } catch (_: Exception) {
                     null
