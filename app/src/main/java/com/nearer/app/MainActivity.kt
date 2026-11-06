@@ -179,11 +179,10 @@ class MainActivity : ComponentActivity() {
                         wifiManager?.requestPeers(channel) { peers ->
                             nearbyDevices.clear()
                             nearbyDevices.addAll(peers.deviceList)
-                            finishDiscovery()
                             statusMessage = if (nearbyDevices.isEmpty()) {
-                                "No nearby Wi-Fi Direct devices found yet. Keep both phones nearby and scan again."
+                                if (scanning) "Searching… keep NeaRer open on both phones." else "No nearby Wi-Fi Direct devices are currently visible. Search again when ready."
                             } else {
-                                "${nearbyDevices.size} nearby device(s) found. Select one to request a connection."
+                                "${nearbyDevices.size} nearby device(s) found. You can select one now or keep searching."
                             }
                         }
                     }
@@ -681,7 +680,7 @@ class MainActivity : ComponentActivity() {
         }
 
         connectingAddress = device.deviceAddress
-        statusMessage = "Sending a connection invitation to ${"nearby device"}…"
+        statusMessage = "Sending a connection invitation to ${device.deviceName.takeIf { it.isNotBlank() } ?: "nearby phone"}…"
         connectionMessage = "Waiting for the other phone to approve"
 
         val config = WifiP2pConfig().apply {
@@ -708,7 +707,7 @@ class MainActivity : ComponentActivity() {
     private fun updateConnectionState(info: WifiP2pInfo) {
         if (info.groupFormed) {
             val active = nearbyDevices.firstOrNull { it.deviceAddress == connectingAddress }
-            connectedDeviceName = "Nearby device"
+            connectedDeviceName = active?.deviceName?.takeIf { it.isNotBlank() } ?: connectedDeviceName ?: "Nearby device"
             connectingAddress = null
             connectionMessage = if (info.isGroupOwner) {
                 "Connected • this phone hosts the local link"
