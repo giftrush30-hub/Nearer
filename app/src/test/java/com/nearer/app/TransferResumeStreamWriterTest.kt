@@ -120,7 +120,7 @@ class TransferResumeStreamWriterTest {
                     "transfer-stream", selected, 456L, ByteArrayInputStream(data)
                 ) {
                     checks++
-                    checks > 1
+                    checks > (chunk / (256 * 1024)) + 1
                 }
                 fail("Expected explicit cancellation")
             } catch (_: java.io.InterruptedIOException) { }
