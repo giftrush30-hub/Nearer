@@ -79,6 +79,18 @@ class TransferManifestFragmentsTest {
     }
 
     @Test
+    fun rejectsMalformedUtf8InTransferIdentity() {
+        val encoded = TransferManifestFragments.split("bundle-a", byteArrayOf(1, 2, 3)).single()
+        // Fragment header stores the UTF-8 transfer-ID length at bytes 4..5,
+        // followed immediately by the ID. Replace its first byte with an
+        // incomplete two-byte UTF-8 lead byte.
+        encoded[6] = 0xC3.toByte()
+        assertThrows(IllegalArgumentException::class.java) {
+            TransferManifestFragments.decode(encoded)
+        }
+    }
+
+    @Test
     fun rejectsOversizedFragment() {
         assertThrows(IllegalArgumentException::class.java) {
             TransferManifestFragments.decode(ByteArray(TransferManifestFragments.MAX_FRAGMENT_BYTES + 1))
