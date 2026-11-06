@@ -90,7 +90,7 @@ class LudoEngineTest {
     @Test fun computerOnlySelectsLegalMoves() {
         val state = LudoEngine.rollDice(LudoEngine.newGame(computerPlayers = setOf(LudoColor.RED)), 6)
         val choice = LudoEngine.chooseComputerMove(state, LudoDifficulty.HARD)
-        assertTrue(choice in LudoEngine.legalMoves(state))
+        assertTrue(choice != null && choice in LudoEngine.legalMoves(state))
     }
 
     @Test fun thirdConsecutiveSixForfeitsTurn() {
