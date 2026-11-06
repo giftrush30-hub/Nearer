@@ -25,7 +25,7 @@ class TransferStreamIOTest {
     fun hashesExactSourceBytesAndRejectsSizeChanges() {
         val source = "NeaRer integrity".toByteArray(Charsets.UTF_8)
         val digest = TransferStreamIO.sha256Exactly(ByteArrayInputStream(source), source.size.toLong(), 4096)
-        assertEquals("f70e0e6b7f7c46d6e9d8f4c0baf64e4c0c8e93e7b0bfa3c1b8a0b37a0d3e4c0d",
+        assertEquals("643857634ad8611fd8d95e6dc4c2ce409a6784efb5d5b782f1ada4d80759da4e",
             TransferStreamIO.sha256Hex(digest))
         assertThrows(EOFException::class.java) {
             TransferStreamIO.sha256Exactly(ByteArrayInputStream(byteArrayOf(1)), 2L, 4096)
