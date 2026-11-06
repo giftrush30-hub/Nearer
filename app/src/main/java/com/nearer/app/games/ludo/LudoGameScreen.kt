@@ -318,7 +318,7 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
                     )
                 }
             }
-            progress.value
+            progress
         }
     }
     Canvas(
@@ -407,7 +407,7 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
 
         game.players.forEachIndexed { pIndex, player ->
             player.tokens.forEachIndexed { tokenIndex, target ->
-                val point = positionForProgress(player.color, tokenIndex, animated[pIndex][tokenIndex])
+                val point = positionForProgress(player.color, tokenIndex, animated[pIndex][tokenIndex].value)
                 val x = (point.first + 0.5f) * cell
                 val y = (point.second + 0.5f) * cell
                 val tokenColor = colors[player.color.ordinal]
