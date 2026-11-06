@@ -55,7 +55,7 @@ class TransferResumeStreamWriterTest {
                 writeBytes(data.copyOfRange(0, chunk + 50))
             }
             store.checkpoint("transfer-stream", selected, 123L, (chunk + 50).toLong())
-            assertEquals((chunk + 50).toLong(), partial.length())
+            assertEquals(chunk.toLong(), partial.length())
 
             val result = TransferResumeStreamWriter(store).write(
                 "transfer-stream", selected, 123L,
