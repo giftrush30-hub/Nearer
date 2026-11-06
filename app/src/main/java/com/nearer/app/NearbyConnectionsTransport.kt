@@ -216,6 +216,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val key = transferKey(id, payloadId)
             val outgoing = outgoingFiles[payloadId]?.takeIf { it.first == id }
             val incoming = incomingMetadata[key]
+            // Chat and file-metadata BYTES payloads also produce transfer callbacks.
+            // Only track the bulk FILE payload whose ID has a matching file record.
+            if (outgoing == null && incoming == null && incomingPayloads[key] == null) return
             val name = outgoing?.second ?: incoming?.name ?: "Incoming file"
             val isIncoming = outgoing == null
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
@@ -558,9 +561,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private fun transferKeyForOutgoing(payloadId: Long): TransferKey? = outgoingFiles[payloadId]?.first?.let { transferKey(it, payloadId) }
 
     fun cancelFile(payloadId: Long) {
+        val key = transferKeyForOutgoing(payloadId)
         try { client.cancelPayload(payloadId) } catch (_: Exception) { }
         outgoingFiles.remove(payloadId)
-        transferKeyForOutgoing(payloadId)?.let { transferStartedAtNanos.remove(it); completedTransferRates.remove(it) }
+        key?.let { transferStartedAtNanos.remove(it); completedTransferRates.remove(it) }
     }
 
     private fun broadcast(content: String, excludeEndpoint: String?): Boolean {
