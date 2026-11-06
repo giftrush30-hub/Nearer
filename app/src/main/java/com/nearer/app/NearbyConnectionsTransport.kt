@@ -233,10 +233,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     val averageMbps = update.totalBytes.toDouble() * 1_000_000_000.0 /
                         elapsedNanos.toDouble() / (1024.0 * 1024.0)
                     val rateLabel = String.format(java.util.Locale.US, "%.1f", averageMbps)
-                    if (isIncoming) completedTransferRates[payloadId] = rateLabel
-                    listener.onFileStatus("File sent to the nearby phone: $name • $rateLabel MB/s average")
+                    if (isIncoming) {
+                        completedTransferRates[payloadId] = rateLabel
+                    } else {
+                        listener.onFileStatus("File sent to the nearby phone: $name • $rateLabel MB/s average")
+                    }
                 }
             } else {
+                transferStartedAtNanos.remove(payloadId)
+                completedTransferRates.remove(payloadId)
                 outgoingFiles.remove(payloadId)
                 incomingMetadata.remove(payloadId)
                 incomingPayloads.remove(payloadId)?.close()
