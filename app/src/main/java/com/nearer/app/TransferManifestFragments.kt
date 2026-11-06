@@ -23,6 +23,14 @@ internal object TransferManifestFragments {
         val bytes: ByteArray
     )
 
+    fun isFragment(bytes: ByteArray?): Boolean {
+        if (bytes == null || bytes.size < 4) return false
+        return bytes[0] == 0x4E.toByte() &&
+            bytes[1] == 0x52.toByte() &&
+            bytes[2] == 0x46.toByte() &&
+            bytes[3] == 0x31.toByte()
+    }
+
     fun split(transferId: String, manifestBytes: ByteArray): List<ByteArray> {
         require(transferId.isNotBlank() && transferId.length <= MAX_TRANSFER_ID_BYTES)
         require(manifestBytes.isNotEmpty() && manifestBytes.size <= MAX_MANIFEST_BYTES)
