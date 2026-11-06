@@ -86,6 +86,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     // Nearby may report FILE completion before its FILE descriptor callback.
     private val incomingCompletionTracker = IncomingPayloadCompletionTracker()
     private val deferredIncomingDigests = DeferredFileDigestTracker()
+    private val acknowledgedDeferredDigests = IncomingPayloadCompletionTracker()
     private val outgoingDeferredDigestPayloads = ConcurrentHashMap.newKeySet<Long>()
     private val outgoingBundleDigests = ConcurrentHashMap<Long, Pair<String, String>>()
     private val outgoingBundleFileCompleted = ConcurrentHashMap.newKeySet<Long>()
@@ -508,6 +509,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (kind == "file_digest") {
                 val payloadId = envelope.optLong("payloadId", -1L)
                 if (payloadId < 0L) return
+                if (acknowledgedDeferredDigests.isCompleted(endpointId, payloadId)) {
+                    sendDeferredFileDigestAck(endpointId, payloadId)
+                    return
+                }
                 val ready = deferredIncomingDigests.recordDigest(endpointId, payloadId, envelope.optString("sha256"))
                 if (ready != null) {
                     val key = transferKey(endpointId, payloadId)
@@ -1008,6 +1013,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
 
     private fun sendDeferredFileDigestAck(endpointId: String, payloadId: Long) {
+        acknowledgedDeferredDigests.markCompleted(endpointId, payloadId)
         val ack = JSONObject().put("kind", "file_digest_ack").put("version", 1).put("payloadId", payloadId)
         try { client.sendPayload(endpointId, Payload.fromBytes(ack.toString().toByteArray(Charsets.UTF_8))) }
         catch (_: Exception) { listener.onFileStatus("The sender may retry the integrity confirmation because its receipt could not be sent.") }
@@ -1182,6 +1188,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
         incomingCompletionTracker.removeEndpoint(endpointId)
         deferredIncomingDigests.removeEndpoint(endpointId)
+        acknowledgedDeferredDigests.removeEndpoint(endpointId)
+        pendingDeferredDigests.entries.filter { it.value.endpointId == endpointId }.forEach { (id, pending) ->
+            pending.retryTask?.let(deliveryHandler::removeCallbacks)
+            pendingDeferredDigests.remove(id, pending)
+        }
         val keys = (incomingMetadata.keys + incomingPayloads.keys + completedPayloads.keys +
             transferStartedAtNanos.keys + completedTransferRates.keys)
             .filter { it.endpointId == endpointId }
