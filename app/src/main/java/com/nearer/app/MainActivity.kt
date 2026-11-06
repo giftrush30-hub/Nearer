@@ -138,7 +138,7 @@ class MainActivity : ComponentActivity() {
     private var selectedCommunityCode by mutableStateOf<String?>(null)
     private var communityNotice by mutableStateOf("Create or join a nearby group.")
     private var incomingGameInvite by mutableStateOf<GameInvite?>(null)
-    private var activeGame by mutableStateOf<TicTacToeMatch?>(null)
+    private var activeGame by mutableStateOf<LudoNetworkMatch?>(null)
     private val gameChatMessages = mutableStateListOf<String>()
     private val receivedFiles = mutableStateListOf<ReceivedFile>()
     private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
@@ -1543,7 +1543,7 @@ private fun NeaRerHome(
     selectedGroupCode: String?,
     communityNotice: String,
     incomingGameInvite: GameInvite?,
-    activeGame: TicTacToeMatch?,
+    activeGame: LudoNetworkMatch?,
     gameChatMessages: List<String>,
     onCreateGroup: (String) -> Unit,
     onJoinGroup: (String) -> Unit,
@@ -1553,7 +1553,7 @@ private fun NeaRerHome(
     onGameInvite: () -> Unit,
     onAcceptGameInvite: () -> Unit,
     onRejectGameInvite: () -> Unit,
-    onGameMove: (Int) -> Unit,
+    onGameMove: (String, Int) -> Unit,
     onGameChat: (String) -> Unit,
     onEndGame: () -> Unit,
     onSendFile: (Uri) -> Unit,
@@ -1831,9 +1831,9 @@ private fun NeaRerHome(
             }
 
             CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
-                activeGame, gameChatMessages, onCreateGroup, onJoinGroup, onSelectGroup,
+                activeGame, gameChatMessages, usingNearbyConnections, onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
-                onRejectGameInvite, onGameMove, onGameChat, onEndGame)
+                onRejectGameInvite, onGameMove, onGameChat, onEndGame, onGameInvite)
 
             if (incomingRequesterName != null) {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
@@ -1991,10 +1991,10 @@ private fun NeaRerHome(
 @androidx.compose.runtime.Composable
 private fun CommunityHub(
     groups: List<CommunityGroup>, messages: List<CommunityChatMessage>, selectedCode: String?, notice: String,
-    invite: GameInvite?, game: TicTacToeMatch?, gameChat: List<String>,
+    invite: GameInvite?, game: LudoNetworkMatch?, gameChat: List<String>, nearbyConnected: Boolean,
     onCreate: (String) -> Unit, onJoin: (String) -> Unit, onSelect: (String) -> Unit,
     onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
-    onAccept: () -> Unit, onReject: () -> Unit, onMove: (Int) -> Unit, onGameChat: (String) -> Unit, onEndGame: () -> Unit
+    onAccept: () -> Unit, onReject: () -> Unit, onMove: (String, Int) -> Unit, onGameChat: (String) -> Unit, onEndGame: () -> Unit, onInviteGame: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
