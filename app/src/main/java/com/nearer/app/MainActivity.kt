@@ -522,13 +522,23 @@ class MainActivity : ComponentActivity() {
         statusMessage = if (enabled) "Community relay is ON. Your phone may forward nearby NeaRer text messages while connected." else "Community relay is OFF. Your phone only receives messages from its direct connections."
     }
 
-    private fun saveDisplayName(rawName: String) {
+    private fun saveDisplayName(rawName: String): Boolean {
         val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
-        if (cleanName.isBlank()) { statusMessage = "Choose a name so nearby people know what to call you."; return }
+        if (cleanName.isBlank()) {
+            statusMessage = "Choose a name so nearby people know what to call you."
+            return false
+        }
+        val preferences = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val saved = preferences.edit().putString("display_name", cleanName).commit()
+        val verified = saved && preferences.getString("display_name", null) == cleanName
+        if (!verified) {
+            statusMessage = "Your name could not be saved. Please try again."
+            return false
+        }
         displayName = cleanName
-        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("display_name", cleanName).apply()
         nearbyTransport?.setDisplayName(cleanName)
-        statusMessage = "Your nearby name is now $cleanName."
+        statusMessage = "Your nearby name is saved as $cleanName."
+        return true
     }
 
     private fun recordRecentlySeen(id: String, name: String) {
@@ -1818,7 +1828,7 @@ private fun NeaRerHome(
     hybridPeers: Map<String, String>,
     recentlySeenPeers: Map<String, NearbyPerson>,
     displayName: String,
-    onSaveDisplayName: (String) -> Unit,
+    onSaveDisplayName: (String) -> Boolean,
     meshRelayEnabled: Boolean,
     onMeshRelayChange: (Boolean) -> Unit,
     onHybridConnect: (String) -> Unit,
@@ -1837,6 +1847,7 @@ private fun NeaRerHome(
     val sectionPositions = remember { mutableStateMapOf<String, Int>() }
     val navigationScope = rememberCoroutineScope()
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
+    var nameSaveFeedback by remember { mutableStateOf<String?>(null) }
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
@@ -1902,9 +1913,10 @@ private fun NeaRerHome(
                     Text("What should people around you call you?", color = White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(24) }, modifier = Modifier.weight(1f), singleLine = true, placeholder = { Text("e.g. Hope, Jay Flex, Mimi", color = Muted) }, shape = RoundedCornerShape(14.dp))
-                        Button(onClick = { onSaveDisplayName(nameDraft) }, enabled = nameDraft.trim().isNotBlank(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Save") }
+                        Button(onClick = { nameSaveFeedback = if (onSaveDisplayName(nameDraft)) "Your name is saved on this phone and ready for nearby discovery." else "Could not save your name. Please try again." }, enabled = nameDraft.trim().isNotBlank(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Save") }
                     }
                     Text("This is your public nearby name, not your phone model.", color = Muted, fontSize = 10.sp)
+                    nameSaveFeedback?.let { feedback -> Text(feedback, color = if (feedback.startsWith("Your name is saved")) Mint else Color(0xFFFF9A9A), fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
                 }
             }
 
