@@ -2684,8 +2684,21 @@ private fun NeaRerHome(
 
             Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
                 sectionPositions["chats"] = it.positionInParent().y.toInt()
-            }, shape = RoundedCornerShape(20.dp), color = Panel) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            }, shape = RoundedCornerShape(23.dp), color = Panel,
+                border = BorderStroke(1.dp, if (chatReady) Color(0xFF3A9B7B) else Color(0xFF315B8D)),
+                shadowElevation = 9.dp) {
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                        .background(Brush.linearGradient(
+                            listOf(
+                                if (chatReady) Color(0xFF16453F) else Color(0xFF173A67),
+                                Color(0xFF10294A),
+                                Color(0xFF0C203B)
+                            )
+                        ))
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             shape = CircleShape,
