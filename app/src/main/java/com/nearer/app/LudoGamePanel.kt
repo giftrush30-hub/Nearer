@@ -218,6 +218,21 @@ fun LudoGamePanel(
                 }
             }
 
+            if (networkMode && networkMatch!!.isHost && game.players.size < 4 &&
+                game.turnNumber == 1L && game.diceValue == null && !game.isFinished) {
+                Surface(color = Color(0xFF244B43), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text("NEARBY TABLE • ${game.players.size}/4 PLAYERS", color = LudoGold, fontWeight = FontWeight.Black, fontSize = 10.sp)
+                            Text("Invite more people before the first roll.", color = Color.White, fontSize = 9.sp)
+                        }
+                        Button(onClick = onInviteNearby, enabled = nearbyConnected, colors = ButtonDefaults.buttonColors(containerColor = LudoGold, contentColor = LudoNavy)) {
+                            Text("INVITE", fontWeight = FontWeight.Black, fontSize = 10.sp)
+                        }
+                    }
+                }
+            }
+
             if (incomingInvite != null && networkMatch == null) {
                 Surface(color = Color(0xFF244B43), shape = RoundedCornerShape(15.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
