@@ -1692,7 +1692,9 @@ class MainActivity : ComponentActivity() {
                             if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) reportedSize = cursor.getLong(sizeIndex)
                         }
                     }
-                    val descriptorSize = contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
+                    val descriptor = contentResolver.openFileDescriptor(uri, "r")
+                        ?: throw IllegalStateException("NeaRer could not open " + originalName)
+                    val descriptorSize = descriptor.use { it.statSize }
                     val size = if (descriptorSize >= 0L) descriptorSize else reportedSize
                     require(size >= 0L) { "NeaRer could not read the size of " + originalName }
                     val safeName = TransferFileName.safeLeafName(originalName)
