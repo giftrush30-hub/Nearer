@@ -2149,7 +2149,7 @@ private fun ticTacToeWinner(board: String): String? {
 }
 private data class CommunityGroup(val code: String, val name: String, val members: List<String>)
 private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
-private data class GameInvite(val matchId: String, val sender: String)
+data class GameInvite(val matchId: String, val sender: String)
 
 private data class NearbyPerson(val name: String, val lastSeenAt: Long)
 
