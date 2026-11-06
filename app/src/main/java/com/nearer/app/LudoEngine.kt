@@ -74,9 +74,9 @@ object LudoEngine {
         return state.currentPlayer.tokens.indices.filter { index ->
             val steps = state.currentPlayer.tokens[index].steps
             when {
-                steps == -1 -> roll == 6 && !pathBlocked(state, player.color, 0, 0)
+                steps == -1 -> roll == 6 && !pathBlocked(state, state.currentPlayer.color, 0, 0)
                 steps == 57 -> false
-                else -> steps + roll <= 57 && !pathBlocked(state, player.color, steps + 1, (steps + roll).coerceAtMost(51))
+                else -> steps + roll <= 57 && !pathBlocked(state, state.currentPlayer.color, steps + 1, (steps + roll).coerceAtMost(51))
             }
         }
     }
