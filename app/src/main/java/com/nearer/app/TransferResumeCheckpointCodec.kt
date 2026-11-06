@@ -14,7 +14,7 @@ import java.nio.charset.CodingErrorAction
 internal object TransferResumeCheckpointCodec {
     private const val MAGIC = 0x4E524331 // "NRC1"
     private const val VERSION = 1
-    private const val MAX_ENCODED_BYTES = 4_096
+    private const val MAX_ENCODED_BYTES = 6_144
     private const val MAX_ID_BYTES = 512
     private const val MAX_PATH_BYTES = TransferBundleManifest.MAX_PATH_LENGTH * 4
 
