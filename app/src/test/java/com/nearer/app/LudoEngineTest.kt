@@ -87,6 +87,19 @@ class LudoEngineTest {
         assertTrue(result.tokenFinished)
     }
 
+    @Test fun fourPlayerMatchCyclesThroughAllFourColours() {
+        var state = LudoEngine.newGame(playerColors = listOf(
+            LudoColor.RED, LudoColor.GREEN, LudoColor.YELLOW, LudoColor.BLUE
+        ))
+        val expected = listOf(LudoColor.RED, LudoColor.GREEN, LudoColor.YELLOW, LudoColor.BLUE)
+        expected.forEachIndexed { index, color ->
+            assertEquals(color, state.currentPlayer.color)
+            state = LudoEngine.passTurn(LudoEngine.rollDice(state, 3))
+            assertEquals((index + 1) % 4, state.currentPlayerIndex)
+        }
+        assertEquals(LudoColor.RED, state.currentPlayer.color)
+    }
+
     @Test fun computerOnlySelectsLegalMoves() {
         val state = LudoEngine.rollDice(LudoEngine.newGame(computerPlayers = setOf(LudoColor.RED)), 6)
         val choice = LudoEngine.chooseComputerMove(state, LudoDifficulty.HARD)
