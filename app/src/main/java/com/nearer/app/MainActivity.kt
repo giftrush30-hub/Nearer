@@ -53,6 +53,8 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.background
@@ -2021,7 +2023,7 @@ private fun NeaRerHome(
                 }
             }
 
-            AnimatedVisibility(visible = activeSection == "home", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
+            AnimatedVisibility(visible = activeSection == "home", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
                 // File sharing is the primary purpose of NeaRer: make Send and Receive the first actions.
                 Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
                     Surface(
@@ -2334,7 +2336,7 @@ private fun NeaRerHome(
             }
             
 
-            AnimatedVisibility(visible = activeSection == "games", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
+            AnimatedVisibility(visible = activeSection == "games", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF15315A), border = BorderStroke(1.dp, Color(0xFF42618B))) {
                 Column(modifier = Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2356,7 +2358,7 @@ private fun NeaRerHome(
             }
             
 
-            AnimatedVisibility(visible = activeSection == "nearby", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
+            AnimatedVisibility(visible = activeSection == "nearby", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
             Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFF102B50), shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Color(0xFF28589A))) {
                 Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("YOUR NEARER NAME", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
@@ -2523,7 +2525,7 @@ private fun NeaRerHome(
             
 
 
-            AnimatedVisibility(visible = activeSection == "chats", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
+            AnimatedVisibility(visible = activeSection == "chats", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("MESSAGES", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp)
                     Text("Your conversations", color = White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
@@ -2755,7 +2757,7 @@ private fun NeaRerHome(
             }
             
 
-            AnimatedVisibility(visible = activeSection == "community", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
+            AnimatedVisibility(visible = activeSection == "community", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
             androidx.compose.foundation.layout.Box(
                 Modifier.fillMaxWidth().onGloballyPositioned {
                     sectionPositions["community"] = it.positionInParent().y.toInt()
