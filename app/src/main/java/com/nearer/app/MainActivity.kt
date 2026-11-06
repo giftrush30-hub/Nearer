@@ -2316,8 +2316,9 @@ private fun NeaRerHome(
                                     }
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                                    Text("Nearby Wi-Fi Direct phone", color = White, fontWeight = FontWeight.SemiBold)
-                                    Text(deviceStatus(device.status), color = Muted, fontSize = 11.sp)
+                                    Text(device.deviceName.takeIf { it.isNotBlank() } ?: "Nearby Wi-Fi Direct phone",
+                                        color = White, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    Text("Wi-Fi Direct • " + deviceStatus(device.status), color = Muted, fontSize = 11.sp)
                                 }
                                 Button(
                                     onClick = { onConnect(device) },
