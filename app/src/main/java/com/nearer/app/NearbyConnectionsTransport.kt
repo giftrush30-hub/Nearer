@@ -583,6 +583,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val payloadId = envelope.optLong("payloadId", -1L)
                 if (payloadId < 0L) return
                 val key = transferKey(endpointId, payloadId)
+                // A negative receipt can refer to our outgoing bundle file. Stop
+                // its retry loop before treating the same control message as an
+                // incoming-file failure; both directions share this BYTES handler.
+                val rejectedOutgoingDigest = pendingDeferredDigests.remove(key)
+                rejectedOutgoingDigest?.retryTask?.let(deliveryHandler::removeCallbacks)
+                if (rejectedOutgoingDigest != null) {
+                    listener.onFileStatus("The receiver rejected the bundle file's integrity confirmation. Send that file again.")
+                    return
+                }
                 deferredIncomingDigests.remove(endpointId, payloadId)
                 val meta = incomingMetadata.remove(key)
                 if (meta?.bundleTransferId != null) {
