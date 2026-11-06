@@ -176,15 +176,20 @@ class MainActivity : ComponentActivity() {
                 }
                 WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
                     if (hasDiscoveryPermission()) {
-                        wifiManager?.requestPeers(channel) { peers ->
-                            nearbyDevices.clear()
-                            nearbyDevices.addAll(peers.deviceList)
-                            finishDiscovery()
-                            statusMessage = if (nearbyDevices.isEmpty()) {
-                                "No nearby Wi-Fi Direct devices found yet. Keep both phones nearby and scan again."
-                            } else {
-                                "${nearbyDevices.size} nearby device(s) found. Select one to request a connection."
+                        try {
+                            wifiManager?.requestPeers(channel) { peers ->
+                                nearbyDevices.clear()
+                                nearbyDevices.addAll(peers.deviceList)
+                                finishDiscovery()
+                                statusMessage = if (nearbyDevices.isEmpty()) {
+                                    "No nearby Wi-Fi Direct devices found yet. Keep both phones nearby and scan again."
+                                } else {
+                                    "${nearbyDevices.size} nearby device(s) found. Select one to request a connection."
+                                }
                             }
+                        } catch (_: SecurityException) {
+                            finishDiscovery()
+                            statusMessage = "Android blocked Wi-Fi Direct peer discovery. Check NeaRer's Nearby devices permission."
                         }
                     }
                 }
@@ -195,15 +200,20 @@ class MainActivity : ComponentActivity() {
                         statusMessage = "Searching nearby…"
                     } else if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STOPPED && scanning) {
                         if (hasDiscoveryPermission()) {
-                            wifiManager?.requestPeers(channel) { peers ->
-                                nearbyDevices.clear()
-                                nearbyDevices.addAll(peers.deviceList)
-                                finishDiscovery()
-                                if (nearbyDevices.isEmpty() && hybridPeers.isEmpty()) {
-                                    statusMessage = "No nearby phones found yet. Keep Bluetooth and Wi-Fi ON on both phones, then search again."
-                                } else {
-                                    statusMessage = "Nearby search finished. Select a phone below to connect."
+                            try {
+                                wifiManager?.requestPeers(channel) { peers ->
+                                    nearbyDevices.clear()
+                                    nearbyDevices.addAll(peers.deviceList)
+                                    finishDiscovery()
+                                    if (nearbyDevices.isEmpty() && hybridPeers.isEmpty()) {
+                                        statusMessage = "No nearby phones found yet. Keep Bluetooth and Wi-Fi ON on both phones, then search again."
+                                    } else {
+                                        statusMessage = "Nearby search finished. Select a phone below to connect."
+                                    }
                                 }
+                            } catch (_: SecurityException) {
+                                finishDiscovery()
+                                statusMessage = "Android blocked Wi-Fi Direct peer discovery. Check NeaRer's Nearby devices permission."
                             }
                         } else {
                             finishDiscovery()
@@ -213,8 +223,12 @@ class MainActivity : ComponentActivity() {
                 }
                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
                     if (hasDiscoveryPermission()) {
-                        wifiManager?.requestConnectionInfo(channel) { info ->
-                            updateConnectionState(info)
+                        try {
+                            wifiManager?.requestConnectionInfo(channel) { info ->
+                                updateConnectionState(info)
+                            }
+                        } catch (_: SecurityException) {
+                            statusMessage = "Android blocked Wi-Fi Direct connection details. Check NeaRer's Nearby devices permission."
                         }
                     }
                 }
@@ -775,21 +789,27 @@ class MainActivity : ComponentActivity() {
             deviceAddress = device.deviceAddress
             wps.setup = WpsInfo.PBC
         }
-        manager.connect(activeChannel, config, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                statusMessage = "Invitation sent. The other phone may need to accept the Wi-Fi Direct prompt."
-            }
-
-            override fun onFailure(reason: Int) {
-                connectingAddress = null
-                connectionMessage = "Not connected"
-                statusMessage = when (reason) {
-                    WifiP2pManager.BUSY -> "Wi-Fi is busy. Wait a moment, then try again."
-                    WifiP2pManager.P2P_UNSUPPORTED -> "This phone does not support Wi-Fi Direct."
-                    else -> "Could not send the connection request (code $reason). Try again."
+        try {
+            manager.connect(activeChannel, config, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    statusMessage = "Invitation sent. The other phone may need to accept the Wi-Fi Direct prompt."
                 }
-            }
-        })
+
+                override fun onFailure(reason: Int) {
+                    connectingAddress = null
+                    connectionMessage = "Not connected"
+                    statusMessage = when (reason) {
+                        WifiP2pManager.BUSY -> "Wi-Fi is busy. Wait a moment, then try again."
+                        WifiP2pManager.P2P_UNSUPPORTED -> "This phone does not support Wi-Fi Direct."
+                        else -> "Could not send the connection request (code $reason). Try again."
+                    }
+                }
+            })
+        } catch (_: SecurityException) {
+            connectingAddress = null
+            connectionMessage = "Not connected"
+            statusMessage = "Android denied the Wi-Fi Direct connection request. Check NeaRer's Nearby devices permission."
+        }
     }
 
     private fun updateConnectionState(info: WifiP2pInfo) {
