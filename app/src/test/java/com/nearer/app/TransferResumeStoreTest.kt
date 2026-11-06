@@ -1,0 +1,83 @@
+package com.nearer.app
+
+import java.io.File
+import java.nio.file.Files
+import org.junit.Assert.*
+import org.junit.Test
+
+class TransferResumeStoreTest {
+    private val chunk = TransferResumeCheckpoint.CHECKPOINT_GRANULARITY_BYTES.toInt()
+
+    private fun item(size: Long = chunk.toLong() * 2) = TransferBundleItem(
+        id = "item-1",
+        relativePath = "Videos/clip.mp4",
+        displayName = "clip.mp4",
+        sizeBytes = size,
+        mimeType = "video/mp4"
+    )
+
+    private fun store(root: File): TransferResumeStore =
+        TransferResumeStore(File(root, "partials"), TransferResumeJournal(File(root, "journal")))
+
+    @Test fun syncsAndPersistsOnlyAlignedCheckpointThenFindsIt() {
+        val root = Files.createTempDirectory("nearer-resume-store").toFile()
+        try {
+            val store = store(root)
+            val selected = item()
+            // Locate the opaque partial file through a first checkpoint attempt's
+            // deterministic private filename, without exposing that name in UI.
+            val partialDirectory = File(root, "partials").apply { mkdirs() }
+            val partial = partialDirectory.listFiles()?.firstOrNull()
+                ?: File(partialDirectory, "pending.part")
+            partial.writeBytes(ByteArray(chunk + 123) { (it % 251).toByte() })
+            val checkpoint = store.checkpoint("transfer-1", selected, 100L, chunk.toLong() + 123L)
+            assertEquals(chunk.toLong(), checkpoint.committedOffsetBytes)
+            val candidate = store.findValid("transfer-1", selected, 100L)
+            assertNotNull(candidate)
+            assertEquals(chunk.toLong(), candidate!!.partialFile.length())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun refusesChangedSourceIdentityAndCorruptPrefix() {
+        val root = Files.createTempDirectory("nearer-resume-store-identity").toFile()
+        try {
+            val store = store(root)
+            val selected = item()
+            val partialDirectory = File(root, "partials").apply { mkdirs() }
+            val partial = File(partialDirectory, "partial.bin")
+            partial.writeBytes(ByteArray(chunk) { 4 })
+            // Store derives its own filename, so use the checkpoint operation to
+            // establish the canonical partial path.
+            val checkpoint = store.checkpoint("transfer-1", selected, 100L, chunk.toLong())
+            assertNull(store.findValid("transfer-1", selected, 101L))
+            val candidate = store.findValid("transfer-1", selected, 100L)
+            assertNotNull(candidate)
+            candidate!!.partialFile.writeBytes(ByteArray(chunk) { 9 })
+            assertNull(store.findValid("transfer-1", selected, 100L))
+            assertEquals(chunk.toLong(), checkpoint.committedOffsetBytes)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun discardRemovesPartialAndJournalEntry() {
+        val root = Files.createTempDirectory("nearer-resume-store-discard").toFile()
+        try {
+            val store = store(root)
+            val selected = item()
+            val directory = File(root, "partials").apply { mkdirs() }
+            // Use a store candidate to expose the generated private partial file.
+            val temp = File(directory, "unused")
+            temp.writeBytes(ByteArray(chunk) { 1 })
+            store.checkpoint("transfer-1", selected, null, chunk.toLong())
+            val candidate = store.findValid("transfer-1", selected, null)!!
+            assertTrue(store.discard("transfer-1", selected.id))
+            assertFalse(candidate.partialFile.exists())
+            assertNull(store.findValid("transfer-1", selected, null))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+}
