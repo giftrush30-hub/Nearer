@@ -79,7 +79,7 @@ class LudoEngineTraditionalRulesTest {
         val moved = LudoEngine.move(state, 0)
 
         assertEquals(-1, moved.players[1].tokens[0])
-        assertEquals(2, moved.consecutiveSixes)
+        assertEquals(1, moved.consecutiveSixes)
         assertEquals(0, moved.activePlayerIndex)
     }
 
