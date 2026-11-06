@@ -22,6 +22,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 class FlashActivity : ComponentActivity() {
+    @androidx.annotation.RequiresApi(29)
+    private fun getCallScreeningRoleManager(): RoleManager? = getSystemService(RoleManager::class.java)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(8, 20, 38)
@@ -32,7 +35,7 @@ class FlashActivity : ComponentActivity() {
             var code by remember { mutableIntStateOf(5) }
             var step by remember { mutableIntStateOf(0) }
             var status by remember { mutableStateOf("Enable Flash receiving on this phone before receiving signals.") }
-            val roleManager = getSystemService(RoleManager::class.java)
+            val roleManager = if (Build.VERSION.SDK_INT >= 29) getCallScreeningRoleManager() else null
             val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
                 status = if (Build.VERSION.SDK_INT >= 29 && roleManager?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true) "Flash receiver is enabled." else "Call screening was not enabled."
             }
