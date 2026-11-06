@@ -17,6 +17,7 @@ Make nearby Android file sharing as fast as the two phones and their wireless li
 - The receiver now also binds the file metadata to the endpoint that supplied the FILE payload, checks currently available destination storage before copying, and deletes Nearby's temporary received-file URI on both success and failure paths.
 - Incoming metadata, payload handles, completion state and timing are now keyed by both sender endpoint and payload ID, preventing transfers from different connected phones from sharing the same receive-state slot.
 - A UI callback failure after the final rename is reported as a screen-refresh problem; it no longer misleadingly labels an already-saved file as a failed save.
+- Nearby transfer callbacks for chat and metadata BYTES payloads are excluded from bulk-file progress accounting, and cancelling an outgoing file clears its endpoint-scoped timing state.
 - The receiver calculates SHA-256 while copying and reports a short digest prefix. This is a local digest calculation, not yet a sender-to-receiver checksum comparison; end-to-end integrity verification still needs a checksum in the negotiated transfer metadata.
 - Manifest path validation avoids a quadratic scan over all item pairs, keeping validation practical for large bundles near the 10,000-item protocol limit.
 - This is still single-file transfer plumbing: the bundle manifest has not yet been connected to a multi-file send/accept/receive session.
