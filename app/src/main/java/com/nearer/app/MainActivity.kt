@@ -2141,27 +2141,125 @@ private fun NeaRerHome(
             }
 
             if (activeSection == "nearby") {
-            Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
-                sectionPositions["nearby"] = it.positionInParent().y.toInt()
-            }, shape = RoundedCornerShape(26.dp), color = Panel) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("NEARBY CONNECTION", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                    Text("Bring nearby people closer.", color = White, fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        "NeaRer advertises your chosen name while searching for other NeaRer phones. Nearby Connections can use Bluetooth and nearby Wi-Fi automatically; Wi-Fi Direct is an additional discovery path. Hotspot and mobile data are not required.",
-                        color = Muted, fontSize = 14.sp, lineHeight = 21.sp
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(onClick = onFindNearby, modifier = Modifier.weight(1f).height(52.dp), enabled = !scanning,
-                            shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
-                            Text(if (scanning) "Searching…" else "Find people", fontWeight = FontWeight.Bold)
+            Surface(
+                modifier = Modifier.fillMaxWidth().onGloballyPositioned {
+                    sectionPositions["nearby"] = it.positionInParent().y.toInt()
+                },
+                shape = RoundedCornerShape(27.dp),
+                color = Color(0xFF102A4A),
+                border = BorderStroke(1.dp, Color(0xFF345D8D)),
+                shadowElevation = 14.dp
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("NEARBY RADAR", color = Gold, fontSize = 10.sp,
+                                fontWeight = FontWeight.Black, letterSpacing = 1.7.sp)
+                            Text(if (scanning) "Searching around you" else "Your people are closer",
+                                color = White, fontSize = 22.sp, fontWeight = FontWeight.Black)
                         }
-                        if (scanning) {
-                            Button(onClick = onStopSearch, modifier = Modifier.height(52.dp), shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35445B), contentColor = White)) { Text("Stop") }
+                        Surface(color = if (scanning) Color(0xFF1D684F) else Color(0xFF1B3B61),
+                            shape = RoundedCornerShape(50)) {
+                            Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Surface(shape = CircleShape, color = if (scanning) Color(0xFF7CE0B7) else Color(0xFF8FB9F4),
+                                    modifier = Modifier.size(6.dp)) {}
+                                Text(if (scanning) "LIVE SCAN" else "READY",
+                                    color = White, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                            }
                         }
                     }
-                    Text(status, color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    androidx.compose.foundation.layout.Box(
+                        Modifier.fillMaxWidth().height(156.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Transparent,
+                            border = BorderStroke(1.dp, Color(0xFF315A83).copy(alpha = if (scanning) pulse else 0.55f)),
+                            modifier = Modifier.size(148.dp).alpha(if (scanning) pulse else 0.75f)
+                        ) {}
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Transparent,
+                            border = BorderStroke(1.dp, Color(0xFF3C6D9E)),
+                            modifier = Modifier.size(112.dp).rotate(if (scanning) orbitRotation else 0f)
+                        ) {
+                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.TopCenter) {
+                                Surface(shape = CircleShape, color = Gold, modifier = Modifier.size(8.dp)) {}
+                            }
+                        }
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Transparent,
+                            border = BorderStroke(1.dp, Color(0xFF477CB8)),
+                            modifier = Modifier.size(76.dp)
+                        ) {}
+                        Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(54.dp), shadowElevation = 14.dp) {
+                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                Text("N", color = White, fontSize = 25.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                        if (hybridPeers.isNotEmpty()) {
+                            Text("${hybridPeers.size} FOUND", color = Gold, fontSize = 9.sp,
+                                fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.BottomCenter))
+                        }
+                    }
+                    Text(
+                        if (scanning) "NeaRer is looking for nearby phones. Keep the app open on both devices."
+                        else "Discover nearby NeaRer users without mobile data. Bluetooth and nearby Wi-Fi work together; hotspot is not required.",
+                        color = Color(0xFFD0DDF0), fontSize = 12.sp, lineHeight = 18.sp
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = onFindNearby,
+                            modifier = Modifier.weight(1f).height(49.dp),
+                            enabled = !scanning,
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                        ) {
+                            Text(if (scanning) "SEARCHING…" else "START DISCOVERING", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                        }
+                        if (scanning) {
+                            Button(
+                                onClick = onStopSearch,
+                                modifier = Modifier.height(49.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF344A66), contentColor = White)
+                            ) { Text("STOP", fontWeight = FontWeight.Bold) }
+                        }
+                    }
+                    Surface(color = Color(0xFF0B1D34), shape = RoundedCornerShape(12.dp)) {
+                        Text(status, color = Muted, fontSize = 10.sp, lineHeight = 15.sp,
+                            modifier = Modifier.fillMaxWidth().padding(11.dp))
+                    }
+                    if (incomingRequesterName != null) {
+                        Surface(
+                            color = Color(0xFF1B3858),
+                            shape = RoundedCornerShape(15.dp),
+                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.65f))
+                        ) {
+                            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("CONNECTION REQUEST", color = Gold, fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                                Text("$incomingRequesterName wants to connect.", color = White,
+                                    fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("Compare the six-digit code on both phones before accepting.",
+                                    color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = onAccept, modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)) {
+                                        Text("ACCEPT", fontWeight = FontWeight.Black)
+                                    }
+                                    Button(onClick = onReject, modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) {
+                                        Text("DECLINE", fontWeight = FontWeight.Black)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
