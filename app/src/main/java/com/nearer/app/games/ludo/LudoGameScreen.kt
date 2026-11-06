@@ -36,6 +36,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -61,6 +63,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
     var rolling by remember { mutableStateOf(false) }
     var rollingFace by remember { mutableIntStateOf(1) }
     val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
     val pulse by rememberInfiniteTransition(label = "legal-pulse").animateFloat(
         0.72f, 1f, infiniteRepeatable(tween(850, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "legal-pulse"
@@ -155,7 +158,10 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                         Spacer(Modifier.weight(1f))
                         Text("4 TOKENS EACH", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
-                    LudoBoard(game, pulse, Modifier.fillMaxWidth()) { token -> game = LudoEngine.move(game, token) }
+                    LudoBoard(game, pulse, Modifier.fillMaxWidth()) { token ->
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        game = LudoEngine.move(game, token)
+                    }
                 }
             }
 
@@ -174,10 +180,16 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                                 else -> "Choose a token to move"
                             }, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                         }
-                        DiceFace(if (rolling) rollingFace else game.dice ?: rollingFace, rolling, Modifier.size(66.dp).clickable(enabled = game.canRoll && !game.activePlayer.isComputer && !rolling) { scope.launch { animateRoll() } })
+                        DiceFace(if (rolling) rollingFace else game.dice ?: rollingFace, rolling, Modifier.size(66.dp).clickable(enabled = game.canRoll && !game.activePlayer.isComputer && !rolling) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            scope.launch { animateRoll() }
+                        })
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Button(onClick = { scope.launch { animateRoll() } },
+                        Button(onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            scope.launch { animateRoll() }
+                        },
                             enabled = game.canRoll && !game.activePlayer.isComputer && !rolling,
                             modifier = Modifier.weight(1f).height(54.dp), shape = RoundedCornerShape(15.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF14233A),
@@ -202,7 +214,10 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                             game.legalTokenIndexes.forEach { tokenIndex ->
                                 Surface(color = Color(0xFF1B3B65), shape = RoundedCornerShape(13.dp),
                                     border = BorderStroke(1.dp, Gold.copy(alpha = pulse)),
-                                    modifier = Modifier.weight(1f).clickable { game = LudoEngine.move(game, tokenIndex) }) {
+                                    modifier = Modifier.weight(1f).clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        game = LudoEngine.move(game, tokenIndex)
+                                    }) {
                                     Column(Modifier.padding(vertical = 9.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                         Box(Modifier.size(20.dp).clip(CircleShape).background(Color(game.activePlayer.color.hex)).shadow(4.dp, CircleShape))
                                         Text("TOKEN " + (tokenIndex + 1), color = White, fontSize = 9.sp,
