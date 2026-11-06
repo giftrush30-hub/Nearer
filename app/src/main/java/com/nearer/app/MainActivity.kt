@@ -1271,6 +1271,17 @@ class MainActivity : ComponentActivity() {
 
     private fun removeLudoParticipant(game: LudoNetworkMatch, sender: String) {
         val leavingColor = game.remotePlayers.entries.firstOrNull { it.value == sender }?.key ?: return
+        if (game.state.isFinished) {
+            val others = game.remotePlayers.values.filter { it != sender }.toSet()
+            if (others.isNotEmpty()) sendCommunityToNames(
+                "NR_COMMUNITY:" + JSONObject().put("type", "ludo_end").put("matchId", game.matchId),
+                others
+            )
+            activeGame = null
+            gameChatMessages.clear()
+            communityNotice = "$sender left after the match ended. The table is now closed."
+            return
+        }
         val remainingPlayers = game.state.players.filterNot { it.color == leavingColor }
         val remainingRemotes = game.remotePlayers.filterValues { it != sender }
         if (remainingPlayers.size < 2) {
