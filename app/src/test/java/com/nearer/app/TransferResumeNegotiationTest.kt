@@ -21,11 +21,11 @@ class TransferResumeNegotiationTest {
 
     @Test fun acceptsOnlyMatchingSourceAndAlignedOffset() {
         val proposal = TransferResumeNegotiation.propose(checkpoint, true, true, true)
-        val accepted = TransferResumeNegotiation.decide(proposal, "transfer-1", item, 123L, true, true)
+        val accepted = TransferResumeNegotiation.decide(proposal, "transfer-1", item, 123L, true, true, "a".repeat(64))
         assertEquals(chunk, accepted.acceptedOffsetBytes)
         assertEquals(TransferResumeNegotiation.Reason.RESUME_ACCEPTED, accepted.reason)
 
-        val changed = TransferResumeNegotiation.decide(proposal, "transfer-1", item, 124L, true, true)
+        val changed = TransferResumeNegotiation.decide(proposal, "transfer-1", item, 124L, true, true, "a".repeat(64))
         assertEquals(0L, changed.acceptedOffsetBytes)
         assertEquals(TransferResumeNegotiation.Reason.SOURCE_CHANGED, changed.reason)
     }
@@ -41,6 +41,12 @@ class TransferResumeNegotiationTest {
         )
         assertEquals(TransferResumeNegotiation.Reason.OFFSET_INVALID, malformed.reason)
         assertEquals(0L, malformed.acceptedOffsetBytes)
+
+        val mismatchedPrefix = TransferResumeNegotiation.decide(
+            proposal, "transfer-1", item, 123L, true, true, "b".repeat(64)
+        )
+        assertEquals(TransferResumeNegotiation.Reason.OFFSET_INVALID, mismatchedPrefix.reason)
+        assertEquals(0L, mismatchedPrefix.acceptedOffsetBytes)
     }
 
     @Test fun neverTreatsACompleteCheckpointAsAnAppendOffset() {
