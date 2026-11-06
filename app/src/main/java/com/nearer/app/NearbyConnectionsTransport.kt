@@ -1072,7 +1072,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             return
         }
         if (pending.attempts >= 3) {
-            pendingDeferredDigests.remove(payloadId, pending)
+            pendingDeferredDigests.remove(key, pending)
             listener.onFileStatus("The receiver did not acknowledge the file's integrity confirmation. Reconnect and retry this file.")
             return
         }
@@ -1083,7 +1083,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             client.sendPayload(pending.endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8)))
                 .addOnFailureListener { scheduleDeferredDigestRetry(key, 400L) }
         } catch (_: Exception) {
-            scheduleDeferredDigestRetry(payloadId, 400L)
+            scheduleDeferredDigestRetry(key, 400L)
             return
         }
         scheduleDeferredDigestRetry(key, 1500L)
