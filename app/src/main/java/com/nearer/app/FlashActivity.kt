@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +24,8 @@ import androidx.compose.ui.unit.dp
 class FlashActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.statusBarColor = android.graphics.Color.rgb(8, 20, 38)
+        window.navigationBarColor = android.graphics.Color.rgb(8, 20, 38)
         setContent {
             var recipientNumber by remember { mutableStateOf("") }
             var trustedNumber by remember { mutableStateOf(getSharedPreferences(FlashCallScreeningService.PREFS, MODE_PRIVATE).getString(FlashCallScreeningService.KEY_TRUSTED_NUMBER, "") ?: "") }
@@ -34,11 +37,11 @@ class FlashActivity : ComponentActivity() {
                 status = if (Build.VERSION.SDK_INT >= 29 && roleManager?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true) "Flash receiver is enabled." else "Call screening was not enabled."
             }
             MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFFFD45A), background = Color(0xFF081426), surface = Color(0xFF142640))) {
-                LazyColumn(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyColumn(Modifier.fillMaxSize().background(Color(0xFF081426)).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     item {
-                        Text("NEARER FLASH", color = Color(0xFFFFD45A), fontWeight = FontWeight.Bold)
-                        Text("Messages beyond distance", color = Color.White, style = MaterialTheme.typography.headlineSmall)
-                        Text("Preset missed-call signals. Both phones need cellular coverage and NeaRer.", color = Color.LightGray)
+                        Text("NEARER FLASH  •  LONG-DISTANCE SIGNALS", color = Color(0xFFFFD45A), fontWeight = FontWeight.Bold)
+                        Text("A message can travel farther.", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text("Send simple preset messages through cellular call signals. No mobile data required. Both phones need NeaRer and cellular coverage.", color = Color.LightGray)
                         OutlinedTextField(value = recipientNumber, onValueChange = { recipientNumber = it }, label = { Text("Receiver phone number") }, modifier = Modifier.fillMaxWidth())
                     }
                     item {
@@ -78,6 +81,7 @@ class FlashActivity : ComponentActivity() {
                     item {
                         Text("Selected: ${FlashCallScreeningService.FLASH_CODES[code]}", color = Color.White)
                         Text("Signal $step of $code", color = Color.LightGray)
+                        LinearProgressIndicator(progress = { step.toFloat() / code }, modifier = Modifier.fillMaxWidth(), color = Color(0xFFFFD45A))
                         Button(onClick = {
                             if (recipientNumber.isNotBlank() && step < code) {
                                 step += 1
