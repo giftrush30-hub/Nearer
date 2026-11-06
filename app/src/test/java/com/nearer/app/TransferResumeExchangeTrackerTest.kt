@@ -61,29 +61,41 @@ class TransferResumeExchangeTrackerTest {
     }
 
     @Test fun treatsIdenticalDuplicatesAsIdempotentAndRejectsConflicts() {
-        val tracker = TransferResumeExchangeTracker()
+        val proposalTracker = TransferResumeExchangeTracker()
         assertEquals(
             TransferResumeExchangeTracker.Update.STORED,
-            tracker.recordProposal("peer", proposalEnvelope())
+            proposalTracker.recordProposal("peer", proposalEnvelope())
         )
         assertEquals(
             TransferResumeExchangeTracker.Update.DUPLICATE,
-            tracker.recordProposal("peer", proposalEnvelope())
+            proposalTracker.recordProposal("peer", proposalEnvelope())
         )
         assertEquals(
             TransferResumeExchangeTracker.Update.CONFLICT,
-            tracker.recordProposal("peer", proposalEnvelope().copy(
+            proposalTracker.recordProposal("peer", proposalEnvelope().copy(
                 proposal = proposal.copy(prefixSha256 = "c".repeat(64))
             ))
         )
-        tracker.recordDecision("peer", decisionEnvelope())
+        assertEquals(
+            "A conflicting proposal terminally invalidates this exchange",
+            TransferResumeExchangeTracker.Update.DUPLICATE,
+            proposalTracker.recordDecision("peer", decisionEnvelope())
+        )
+        assertEquals(0, proposalTracker.pendingCount())
+
+        val decisionTracker = TransferResumeExchangeTracker()
+        decisionTracker.recordProposal("peer", proposalEnvelope())
+        assertEquals(
+            TransferResumeExchangeTracker.Update.STORED,
+            decisionTracker.recordDecision("peer", decisionEnvelope())
+        )
         assertEquals(
             TransferResumeExchangeTracker.Update.DUPLICATE,
-            tracker.recordDecision("peer", decisionEnvelope())
+            decisionTracker.recordDecision("peer", decisionEnvelope())
         )
         assertEquals(
             TransferResumeExchangeTracker.Update.CONFLICT,
-            tracker.recordDecision("peer", decisionEnvelope().copy(
+            decisionTracker.recordDecision("peer", decisionEnvelope().copy(
                 decision = TransferResumeNegotiation.Decision(
                     0L, TransferResumeNegotiation.Reason.SOURCE_CHANGED
                 )
@@ -97,6 +109,8 @@ class TransferResumeExchangeTrackerTest {
         tracker.recordDecision("peer-a", decisionEnvelope())
         tracker.recordDataPayload("peer-b", 7L)
         assertNull(tracker.takeReady("peer-b", 7L))
+        assertNull("The peer-a exchange still needs its own data callback", tracker.takeReady("peer-a", 7L))
+        tracker.recordDataPayload("peer-a", 7L)
         assertNotNull(tracker.takeReady("peer-a", 7L))
     }
 
@@ -122,6 +136,7 @@ class TransferResumeExchangeTrackerTest {
     @Test fun endpointCleanupRemovesOnlyItsPendingExchanges() {
         val tracker = TransferResumeExchangeTracker()
         tracker.recordProposal("peer-a", proposalEnvelope(1L))
+        tracker.recordProposal("peer-b", proposalEnvelope(2L))
         tracker.recordDecision("peer-b", decisionEnvelope(2L))
         tracker.recordDataPayload("peer-b", 2L)
         tracker.clearEndpoint("peer-a")
