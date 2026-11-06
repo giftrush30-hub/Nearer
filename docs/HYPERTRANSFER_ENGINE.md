@@ -79,6 +79,10 @@ Negotiate from both endpoints, not the sender alone.
 
 The profile is a policy choice, not a marketing speed label. Re-evaluate during the transfer.
 
+## Competitor baseline note
+
+Xender's current support page advertises transfer speeds of up to 40 Mb/s (megabits per second) and describes Wi-Fi Direct/hotspot-based local transfer. This is a vendor-stated upper claim, not an independently verified result or a fair comparison for every phone. The benchmark protocol below must measure NeaRer and Xender on the same two devices and conditions; do not convert this advertised figure into a promise or target without measuring real throughput.
+
 ## Benchmark protocol
 
 Compare NeaRer with Xender, LocalSend and Android Quick Share where available.
