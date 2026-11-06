@@ -322,7 +322,7 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
         }
     }
     Canvas(
-        modifier.aspectRatio(1f).clip(RoundedCornerShape(16.dp)).background(Color(0xFFE9EFF8))
+        modifier.aspectRatio(1f).clip(RoundedCornerShape(16.dp)).background(Night)
             .pointerInput(game.activePlayer.id, game.legalTokenIndexes, game.activePlayer.tokens) {
                 detectTapGestures { tap ->
                     if (game.activePlayer.isComputer || game.legalTokenIndexes.isEmpty()) return@detectTapGestures
@@ -343,16 +343,16 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
             }
     ) {
         val cell = size.width / 15f
-        val colors = listOf(Color(0xFFD94C62), Color(0xFF23A879), Color(0xFFE5A923), Color(0xFF3978E8))
+        val colors = listOf(Color(0xFFE64B68), Color(0xFF19B58A), Color(0xFFFFC247), Color(0xFF347CF5))
         fun tile(x: Int, y: Int, color: Color) {
             drawRoundRect(color, Offset(x * cell + 1.5f, y * cell + 1.5f),
                 Size(cell - 3f, cell - 3f), CornerRadius(cell * 0.13f))
         }
-        drawRoundRect(Color(0xFFF8FAFF), cornerRadius = CornerRadius(cell * 0.3f))
-        for (y in 0..5) for (x in 0..5) tile(x, y, Color(0xFFF5DCE2))
-        for (y in 9..14) for (x in 0..5) tile(x, y, Color(0xFFD9F1E7))
-        for (y in 9..14) for (x in 9..14) tile(x, y, Color(0xFFFFEFCB))
-        for (y in 0..5) for (x in 9..14) tile(x, y, Color(0xFFDCE8FF))
+        drawRoundRect(Brush.linearGradient(listOf(Color(0xFF1A3558), Color(0xFF0D1E35))), cornerRadius = CornerRadius(cell * 0.3f))
+        for (y in 0..5) for (x in 0..5) tile(x, y, Color(0xFF3B2036))
+        for (y in 9..14) for (x in 0..5) tile(x, y, Color(0xFF173D3B))
+        for (y in 9..14) for (x in 9..14) tile(x, y, Color(0xFF49391F))
+        for (y in 0..5) for (x in 9..14) tile(x, y, Color(0xFF1D3458))
         val yards = listOf(Offset(0f, 0f), Offset(0f, 9f), Offset(9f, 9f), Offset(9f, 0f))
         yards.forEachIndexed { i, p ->
             val yardTopLeft = Offset((p.x + 1f) * cell, (p.y + 1f) * cell)
@@ -363,10 +363,10 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
                 Brush.linearGradient(listOf(colors[i].copy(alpha = 0.28f), colors[i].copy(alpha = 0.12f))),
                 yardTopLeft, Size(4f * cell, 4f * cell), CornerRadius(cell * 0.42f)
             )
-            drawRoundRect(Color.White.copy(alpha = 0.92f),
+            drawRoundRect(Color(0xFFEAF1FC).copy(alpha = 0.98f),
                 Offset(yardTopLeft.x + cell * 0.48f, yardTopLeft.y + cell * 0.48f),
                 Size(3.04f * cell, 3.04f * cell), CornerRadius(cell * 0.32f))
-            drawRoundRect(colors[i].copy(alpha = 0.72f),
+            drawRoundRect(colors[i].copy(alpha = 0.92f),
                 Offset(yardTopLeft.x + cell * 0.48f, yardTopLeft.y + cell * 0.48f),
                 Size(3.04f * cell, 3.04f * cell), CornerRadius(cell * 0.32f),
                 style = Stroke(cell * 0.045f))
@@ -374,7 +374,7 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
                 val socket = Offset((x + 0.5f) * cell, (y + 0.5f) * cell)
                 drawCircle(colors[i].copy(alpha = 0.14f), cell * 0.39f, socket)
                 drawCircle(colors[i].copy(alpha = 0.8f), cell * 0.34f, socket, style = Stroke(cell * 0.055f))
-                drawCircle(Color(0xFFF0F4FA), cell * 0.25f, socket)
+                drawCircle(Color(0xFF172A45), cell * 0.25f, socket)
             }
         }
         ludoTrackCells.forEachIndexed { index, point ->
@@ -383,7 +383,7 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
             tile(point.first, point.second, when {
                 start -> colors[index / 13]
                 safe -> Color(0xFFFFD96A)
-                else -> Color.White
+                else -> Color(0xFFEAF0FA)
             })
             if (safe && !start) {
                 val center = Offset((point.first + 0.5f) * cell, (point.second + 0.5f) * cell)
