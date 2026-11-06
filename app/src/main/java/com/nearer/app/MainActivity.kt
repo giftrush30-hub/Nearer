@@ -1692,6 +1692,9 @@ class MainActivity : ComponentActivity() {
             }
             try {
                 val endpoint = hybridConnectedEndpoint ?: throw IllegalStateException("Nearby phone is no longer connected")
+                require(uris.map { it.toString() }.distinct().size == uris.size) {
+                    "The same file was selected more than once. Remove duplicates and try again."
+                }
                 val manifestItems = ArrayList<TransferBundleItem>(uris.size)
                 val usedPaths = HashSet<String>()
                 uris.forEach { uri ->
@@ -1782,6 +1785,11 @@ class MainActivity : ComponentActivity() {
             } catch (_: Exception) { }
             val bundleItem = synchronized(pendingFileUris) { pendingBundleItemsByUri.remove(uri.toString()) }
             val bundleTransferId = activeOutgoingBundleTransferId
+            if (bundleTransferId != null && bundleItem == null) {
+                chatNotice = "A selected bundle item lost its manifest link. That item was skipped safely."
+                sendNextQueuedFile()
+                return
+            }
             val payloadId = nearbyTransport?.sendFile(
                 endpoint, uri, fileName,
                 bundleTransferId = bundleItem?.let { bundleTransferId },
