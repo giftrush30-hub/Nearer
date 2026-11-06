@@ -64,10 +64,9 @@ class LudoEngineTest {
         players[0] = players[0].copy(tokens = listOf(LudoToken(3), LudoToken(), LudoToken(), LudoToken()))
         players[1] = players[1].copy(tokens = listOf(LudoToken(16), LudoToken(16), LudoToken(), LudoToken()))
         val state = LudoEngine.rollDice(LudoGameState(players = players), 1)
-        val result = LudoEngine.moveToken(state, 0)
-        assertTrue(result.captured.isEmpty())
-        assertEquals(LudoToken(16), result.state.players[1].tokens[0])
-        assertEquals(LudoToken(16), result.state.players[1].tokens[1])
+        assertTrue(LudoEngine.legalMoves(state).isEmpty())
+        assertEquals(LudoToken(16), state.players[1].tokens[0])
+        assertEquals(LudoToken(16), state.players[1].tokens[1])
     }
 
     @Test fun thirdConsecutiveSixForfeitsTurn() {
