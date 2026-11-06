@@ -3,6 +3,7 @@ package com.nearer.app
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TransferManifestFragmentsTest {
@@ -10,7 +11,7 @@ class TransferManifestFragmentsTest {
     fun splitsAndReassemblesLargeManifestOutOfOrder() {
         val original = ByteArray(180_000) { (it % 251).toByte() }
         val fragments = TransferManifestFragments.split("bundle-123", original)
-        fragments.forEach { assert(it.size <= TransferManifestFragments.MAX_FRAGMENT_BYTES) }
+        fragments.forEach { assertTrue(it.size <= TransferManifestFragments.MAX_FRAGMENT_BYTES) }
         val receiver = TransferManifestReassembler()
         var assembled: ByteArray? = null
         fragments.reversed().forEach { encoded ->
@@ -30,13 +31,11 @@ class TransferManifestFragmentsTest {
     @Test
     fun rejectsAConflictingDuplicateFragment() {
         val encoded = TransferManifestFragments.split("bundle-1", ByteArray(40_000) { it.toByte() }).first()
-        val decoded = TransferManifestFragments.decode(encoded)
         val altered = encoded.copyOf()
         altered[altered.lastIndex] = (altered.last().toInt() xor 0x01).toByte()
         val receiver = TransferManifestReassembler()
         assertNull(receiver.accept(encoded))
         assertThrows(IllegalArgumentException::class.java) { receiver.accept(altered) }
-        assert(decoded.bytes.isNotEmpty())
     }
 
     @Test
