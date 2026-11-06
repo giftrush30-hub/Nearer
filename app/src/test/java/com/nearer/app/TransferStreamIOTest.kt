@@ -92,9 +92,24 @@ class TransferStreamIOTest {
     @Test
     fun zeroByteFileIsSupported() {
         val output = ByteArrayOutputStream()
-        val result = TransferStreamIO.copyExactly(ByteArrayInputStream(byteArrayOf(1)), output, 0L, 4096)
+        val result = TransferStreamIO.copyExactly(ByteArrayInputStream(byteArrayOf()), output, 0L, 4096)
         assertEquals(0L, result.bytesCopied)
         assertEquals(0, output.size())
+    }
+
+    @Test
+    fun copyRejectsUnexpectedBytesAfterDeclaredLength() {
+        val output = ByteArrayOutputStream()
+        assertThrows(IllegalStateException::class.java) {
+            TransferStreamIO.copyExactly(ByteArrayInputStream(byteArrayOf(1, 2)), output, 1L, 4096)
+        }
+    }
+
+    @Test
+    fun zeroByteCopyRejectsNonEmptySource() {
+        assertThrows(IllegalStateException::class.java) {
+            TransferStreamIO.copyExactly(ByteArrayInputStream(byteArrayOf(1)), ByteArrayOutputStream(), 0L, 4096)
+        }
     }
 
     @Test
