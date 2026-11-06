@@ -2154,7 +2154,7 @@ private fun NeaRerHome(
                                         else -> Color(0xFF102F63)
                                     }
                                     Surface(
-                                        modifier = Modifier.weight(1f).height(94.dp).animateContentSize().clickable {
+                                        modifier = Modifier.weight(1f).height(108.dp).animateContentSize().clickable {
                                             if (chatReady) filePicker.launch(item.third)
                                             else {
                                                 navigateToSection("nearby")
@@ -2163,15 +2163,47 @@ private fun NeaRerHome(
                                             }
                                         },
                                         color = tileBlue,
-                                        shape = RoundedCornerShape(17.dp),
-                                        border = BorderStroke(1.dp, Color(0xFF347CEB).copy(alpha = 0.55f))
+                                        shape = RoundedCornerShape(19.dp),
+                                        border = BorderStroke(1.dp, Color(0xFF5B9BFA).copy(alpha = 0.42f)),
+                                        shadowElevation = 5.dp
                                     ) {
                                         Column(
-                                            modifier = Modifier.fillMaxSize().padding(11.dp),
+                                            modifier = Modifier.fillMaxSize()
+                                                .background(
+                                                    Brush.linearGradient(
+                                                        listOf(tileBlue.copy(alpha = 0.98f), Color(0xFF0B2347))
+                                                    )
+                                                )
+                                                .padding(12.dp),
                                             verticalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Text(item.first, color = Gold, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                                            Text(item.second, color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(11.dp),
+                                                    color = Gold.copy(alpha = 0.13f),
+                                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.24f))
+                                                ) {
+                                                    Text(
+                                                        item.first,
+                                                        color = Gold,
+                                                        fontSize = 21.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                                    )
+                                                }
+                                                Spacer(Modifier.weight(1f))
+                                                Text("↗", color = Color(0xFF9FC5FF), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                                Text(item.second, color = White, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                                                Text(
+                                                    if (chatReady) "Choose files" else "Connect to share",
+                                                    color = Color(0xFFB8D2F5), fontSize = 9.sp, fontWeight = FontWeight.Medium
+                                                )
+                                            }
                                         }
                                     }
                                 }
