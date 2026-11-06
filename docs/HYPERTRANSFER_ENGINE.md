@@ -10,8 +10,10 @@ Make nearby Android file sharing as fast as the two phones and their wireless li
 - A capable, cool phone uses 256 KiB; constrained devices use 128 KiB; severe thermal pressure uses 32 KiB.
 - Nearby Connections payload completion is timed and the observed average MB/s is reported.
 - Existing P2P_CLUSTER discovery remains unchanged so current multi-device connections are not sacrificed.
-- JVM tests cover the buffer policy, Unicode-safe filename handling and bundle-manifest validation.
-- A metadata-only bundle model validates IDs, destination paths, duplicate entries, item sizes and protocol version before a future streaming sender accepts a bundle.
+- JVM tests cover the buffer policy, Unicode-safe filename handling, bundle-manifest validation/codec round-trips, and bounded stream-copy integrity/cancellation.
+- A metadata-only bundle model and bounded binary wire codec validate IDs, destination paths, duplicate entries, item sizes, item kinds and protocol version before bulk data begins.
+- `TransferStreamIO` copies exactly the declared number of bytes with a fixed-size buffer, supports cancellation, detects premature EOF, and returns a SHA-256 digest for receiver-side verification.
+- The stream copier is a tested building block, not yet wired into Nearby Connections as a complete multi-file send/receive session.
 - Filename sanitization preserves Unicode names while stripping path components and reserved/control characters.
 - The Android compile/test workflow does not assemble an APK.
 
