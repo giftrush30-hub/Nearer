@@ -63,7 +63,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private data class FileMeta(
         val endpointId: String, val name: String, val size: Long,
         val bundleTransferId: String? = null, val bundleItemId: String? = null,
-        val relativePath: String? = null, val expectedSha256: String? = null
+        val relativePath: String? = null, var expectedSha256: String? = null,
+        val digestPending: Boolean = false
     )
     private data class BundleSessionKey(val endpointId: String, val transferId: String)
     private val incomingBundleSessions = ConcurrentHashMap<BundleSessionKey, TransferBundleSession>()
@@ -84,6 +85,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val completedPayloads = ConcurrentHashMap<TransferKey, Payload>()
     // Nearby may report FILE completion before its FILE descriptor callback.
     private val incomingCompletionTracker = IncomingPayloadCompletionTracker()
+    private val deferredIncomingDigests = DeferredFileDigestTracker()
+    private val outgoingDeferredDigestPayloads = ConcurrentHashMap.newKeySet<Long>()
+    private val outgoingBundleDigests = ConcurrentHashMap<Long, Pair<String, String>>()
+    private val outgoingBundleFileCompleted = ConcurrentHashMap.newKeySet<Long>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
     private val outgoingAwaitingFirstByteSinceNanos = ConcurrentHashMap<Long, Long>()
     private val outgoingFirstByteLatencyNanos = ConcurrentHashMap<Long, Long>()
@@ -301,6 +306,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 // its descriptor callback can still complete the receive path.
                 if (update.status == PayloadTransferUpdate.Status.SUCCESS) {
                     incomingCompletionTracker.markCompleted(id, payloadId)
+                    deferredIncomingDigests.markFileCompleted(id, payloadId)?.let { ready -> incomingMetadata[key]?.expectedSha256 = ready.sha256 }
                 }
                 return
             }
@@ -336,9 +342,17 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     completedTransferRates[key] = rateLabel
                     incomingCompletionTracker.markCompleted(id, payloadId)
                     incomingPayloads.remove(key)?.let { completedPayloads[key] = it }
+                    incoming?.takeIf { it.digestPending }?.let { meta -> deferredIncomingDigests.markFileCompleted(id, payloadId)?.let { ready -> meta.expectedSha256 = ready.sha256 } }
                     processCompletedFile(key)
                 } else {
                     outgoingFiles.remove(payloadId)
+                    if (outgoingDeferredDigestPayloads.remove(payloadId)) {
+                        outgoingBundleFileCompleted.add(payloadId)
+                        outgoingBundleDigests.remove(payloadId)?.let { prepared ->
+                            outgoingBundleFileCompleted.remove(payloadId)
+                            sendDeferredFileDigest(prepared.first, payloadId, prepared.second)
+                        }
+                    }
                     outgoingAwaitingFirstByteSinceNanos.remove(payloadId)
                     val firstByteLabel = outgoingFirstByteLatencyNanos.remove(payloadId)?.let {
                         " • ${TransferLatencyMetrics.firstByteLabel(it)}"
@@ -350,6 +364,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 transferStartedAtNanos.remove(key)
                 completedTransferRates.remove(key)
                 incomingCompletionTracker.remove(id, payloadId)
+                deferredIncomingDigests.remove(id, payloadId)
+                outgoingDeferredDigestPayloads.remove(payloadId)
+                outgoingBundleDigests.remove(payloadId)
+                outgoingBundleFileCompleted.remove(payloadId)
                 val failedOutgoing = outgoingFiles[payloadId]?.takeIf { it.first == id }?.also { outgoingFiles.remove(payloadId) }
                 outgoingAwaitingFirstByteSinceNanos.remove(payloadId)
                 outgoingFirstByteLatencyNanos.remove(payloadId)
@@ -415,13 +433,14 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val transferId = envelope.optString("bundleTransferId").takeIf { it.isNotBlank() }
                 val itemId = envelope.optString("bundleItemId").takeIf { it.isNotBlank() }
                 val relativePath = envelope.optString("relativePath").takeIf { it.isNotBlank() }
+                val digestPending = envelope.optBoolean("sha256Pending", false)
                 val expectedSha256 = envelope.optString("sha256").takeIf { it.isNotBlank() }
                 if (listOf(transferId, itemId, relativePath).count { it != null } !in listOf(0, 3)) {
                     rejectIncomingPayload(key, "A nearby phone sent incomplete bundle file details. The file was rejected.")
                     return
                 }
                 if (transferId != null) {
-                    if (expectedSha256 == null || !expectedSha256.matches(Regex("[0-9a-fA-F]{64}"))) {
+                    if (!digestPending && (expectedSha256 == null || !expectedSha256.matches(Regex("[0-9a-fA-F]{64}")))) {
                         rejectIncomingPayload(key, "The bundle file did not include a valid SHA-256 integrity code.")
                         return
                     }
@@ -455,12 +474,28 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     rejectIncomingPayload(key, "A file without its approved bundle identity was rejected.")
                     return
                 }
-                incomingMetadata[key] = FileMeta(endpointId, name, size, transferId, itemId, relativePath, expectedSha256?.lowercase())
+                val fileMeta = FileMeta(endpointId, name, size, transferId, itemId, relativePath, expectedSha256?.lowercase(), digestPending)
+                incomingMetadata[key] = fileMeta
+                if (digestPending && transferId != null) {
+                    val ready = deferredIncomingDigests.registerFile(endpointId, payloadId, size)
+                    val completedReady = if (incomingCompletionTracker.isCompleted(endpointId, payloadId)) deferredIncomingDigests.markFileCompleted(endpointId, payloadId) else null
+                    (ready ?: completedReady)?.let { fileMeta.expectedSha256 = it.sha256 }
+                }
                 listener.onFileProgress(endpointId, payloadId, name, 0L, size, true)
                 processCompletedFile(key)
                 return
             }
             val kind = envelope.optString("kind", "message")
+            if (kind == "file_digest") {
+                val payloadId = envelope.optLong("payloadId", -1L)
+                if (payloadId < 0L) return
+                val ready = deferredIncomingDigests.recordDigest(endpointId, payloadId, envelope.optString("sha256"))
+                if (ready != null) {
+                    val key = transferKey(endpointId, payloadId)
+                    incomingMetadata[key]?.let { meta -> meta.expectedSha256 = ready.sha256; processCompletedFile(key) }
+                }
+                return
+            }
             if (kind == "bundle_decision") {
                 val transferId = envelope.optString("transferId")
                 if (transferId.isNotBlank() && transferId.length <= 128) {
@@ -565,6 +600,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private fun processCompletedFile(key: TransferKey) {
         val payload = completedPayloads[key] ?: return
         val meta = incomingMetadata[key] ?: return
+        if (meta.digestPending && meta.expectedSha256 == null) return
         if (!completedPayloads.remove(key, payload)) return
         incomingCompletionTracker.remove(key.endpointId, key.payloadId)
         incomingPayloads.remove(key)
@@ -878,6 +914,18 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
+    private fun sendDeferredFileDigest(endpointId: String, payloadId: Long, sha256: String) {
+        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return
+        val envelope = JSONObject().put("kind", "file_digest").put("version", 1)
+            .put("payloadId", payloadId).put("sha256", sha256)
+        try {
+            client.sendPayload(endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener { listener.onFileStatus("The file arrived, but its integrity confirmation could not be sent. Reconnect and retry this file.") }
+        } catch (_: Exception) {
+            listener.onFileStatus("The file arrived, but its integrity confirmation could not be sent. Reconnect and retry this file.")
+        }
+    }
+
     private fun failOutgoingPreparation(
         endpointId: String, payloadId: Long, name: String, payload: Payload, message: String
     ) {
@@ -984,43 +1032,32 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (isBundle) {
                 metadata.put("bundleTransferId", bundleTransferId)
                     .put("bundleItemId", bundleItemId).put("relativePath", relativePath)
+                    .put("sha256Pending", true)
                 preparingOutgoingFiles[id] = payload
+                outgoingDeferredDigestPayloads.add(id)
                 listener.onFileProgress(endpointId, id, name, 0L, size, false)
-                listener.onFileStatus("Preparing the integrity check for $name in the background…")
+                listener.onFileStatus("Sending $name while its integrity check runs in parallel…")
                 try {
                     filePreparationIo.execute {
-                    try {
-                        val hashStartedAt = SystemClock.elapsedRealtimeNanos()
-                        val sourceSha256 = appContext.contentResolver.openInputStream(uri)?.use { input ->
-                            TransferStreamIO.sha256Hex(
-                                TransferStreamIO.sha256Exactly(
-                                    input, size, HyperTransferTuning.receiveBufferBytes(appContext)
-                                )
-                            )
-                        } ?: throw IllegalStateException("NeaRer could not read the selected file for its integrity check")
-                        val hashElapsedNanos = (SystemClock.elapsedRealtimeNanos() - hashStartedAt).coerceAtLeast(0L)
-                        if (preparingOutgoingFiles[id] !== payload) return@execute
-                        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
-                            failOutgoingPreparation(endpointId, id, name, payload, "The nearby connection ended while the integrity check was running.")
-                            return@execute
-                        }
-                        metadata.put("sha256", sourceSha256)
-                        listener.onFileStatus(TransferPreparationMetrics.describe(size, hashElapsedNanos))
-                        dispatchPreparedFile(endpointId, id, name, size, payload, metadata, true)
-                    } catch (error: Exception) {
-                        if (preparingOutgoingFiles[id] === payload) {
-                            failOutgoingPreparation(
-                                endpointId, id, name, payload,
-                                "File could not be prepared: ${error.localizedMessage ?: "integrity check failed"}"
-                            )
+                        try {
+                            val hashStartedAt = SystemClock.elapsedRealtimeNanos()
+                            val sourceSha256 = appContext.contentResolver.openInputStream(uri)?.use { input ->
+                                TransferStreamIO.sha256Hex(TransferStreamIO.sha256Exactly(input, size, HyperTransferTuning.receiveBufferBytes(appContext)))
+                            } ?: throw IllegalStateException("NeaRer could not read the selected file for its integrity check")
+                            val hashElapsedNanos = (SystemClock.elapsedRealtimeNanos() - hashStartedAt).coerceAtLeast(0L)
+                            if (!outgoingDeferredDigestPayloads.contains(id) && !outgoingBundleFileCompleted.contains(id)) return@execute
+                            if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return@execute
+                            outgoingBundleDigests[id] = endpointId to sourceSha256
+                            if (outgoingBundleFileCompleted.remove(id)) outgoingBundleDigests.remove(id)?.let { sendDeferredFileDigest(it.first, id, it.second) }
+                            listener.onFileStatus(TransferPreparationMetrics.describe(size, hashElapsedNanos) + " • integrity checked in parallel")
+                        } catch (error: Exception) {
+                            listener.onFileStatus("Integrity check failed for $name: ${error.localizedMessage ?: "source read failed"}. Do not trust this bundle item.")
                         }
                     }
-                    }
+                    dispatchPreparedFile(endpointId, id, name, size, payload, metadata, true)
                 } catch (error: Exception) {
-                    failOutgoingPreparation(
-                        endpointId, id, name, payload,
-                        "File could not be prepared: ${error.localizedMessage ?: "integrity worker unavailable"}"
-                    )
+                    failOutgoingPreparation(endpointId, id, name, payload,
+                        "File could not be prepared: ${error.localizedMessage ?: "integrity worker unavailable"}")
                 }
             } else {
                 dispatchPreparedFile(endpointId, id, name, size, payload, metadata, false)
@@ -1042,6 +1079,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             bundleDestinationFolders.remove(it)
         }
         incomingCompletionTracker.removeEndpoint(endpointId)
+        deferredIncomingDigests.removeEndpoint(endpointId)
         val keys = (incomingMetadata.keys + incomingPayloads.keys + completedPayloads.keys +
             transferStartedAtNanos.keys + completedTransferRates.keys)
             .filter { it.endpointId == endpointId }
