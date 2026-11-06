@@ -344,8 +344,13 @@ class MainActivity : ComponentActivity() {
             override fun onBundleOffer(endpointId: String, manifest: TransferBundleManifest) {
                 runOnUiThread {
                     if (hybridConnectedEndpoint == endpointId) {
-                        incomingBundleOffer = IncomingBundleOffer(endpointId, manifest)
-                        chatNotice = "A nearby phone wants to send " + manifest.items.count { it.kind == TransferBundleItem.Kind.FILE } + " files. Review the list before accepting."
+                        if (incomingBundleOffer != null) {
+                            nearbyTransport?.sendBundleDecision(endpointId, manifest.transferId, false)
+                            chatNotice = "Another bundle is already waiting for review. The new offer was declined."
+                        } else {
+                            incomingBundleOffer = IncomingBundleOffer(endpointId, manifest)
+                            chatNotice = "A nearby phone wants to send " + manifest.items.count { it.kind == TransferBundleItem.Kind.FILE } + " files. Review the list before accepting."
+                        }
                     }
                 }
             }
