@@ -64,26 +64,38 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     // An ID becomes "seen" only after the UI confirms local persistence.
     private val pendingIncomingMessageIds = ConcurrentHashMap.newKeySet<String>()
     private val outgoingMessageTargets = ConcurrentHashMap<String, String>()
-    private data class PendingOutgoingMessage(
-        val endpointId: String,
-        val payload: ByteArray,
-        var attempts: Int = 0,
-        var retryTask: Runnable? = null
-    )
+    private data class PendingOutgoingMessage(@Volatile var endpointId: String, val stablePeerId: String, val payload: ByteArray, var attempts: Int = 0, var retryTask: Runnable? = null)
     private val pendingOutgoingMessages = ConcurrentHashMap<String, PendingOutgoingMessage>()
     private val deliveryHandler = Handler(Looper.getMainLooper())
     private val maxMessageAttempts = 3
+    init { restorePendingOutbox() }
+    private fun persistPendingOutbox() {
+        val array = org.json.JSONArray()
+        pendingOutgoingMessages.forEach { (id, p) -> array.put(JSONObject().put("id", id).put("peer", p.stablePeerId).put("payload", p.payload.toString(Charsets.UTF_8))) }
+        val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("nearby_outbox", array.toString()).commit()
+        if (!saved) listener.onStatus("NeaRer could not save its pending-message queue.")
+    }
+    private fun restorePendingOutbox() {
+        try {
+            val raw = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("nearby_outbox", "[]") ?: "[]"
+            val array = org.json.JSONArray(raw)
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i); val id = item.optString("id"); val peer = item.optString("peer"); val payload = item.optString("payload")
+                if (id.isNotBlank() && peer.isNotBlank() && payload.isNotBlank() && payload.length <= 12000) pendingOutgoingMessages[id] = PendingOutgoingMessage("", peer, payload.toByteArray(Charsets.UTF_8))
+            }
+        } catch (_: Exception) { listener.onStatus("Some queued messages could not be restored.") }
+    }
+    private fun retryQueuedMessagesForPeer(peerId: String, endpointId: String) {
+        if (peerId.isBlank()) return
+        pendingOutgoingMessages.forEach { (id, p) -> if (p.stablePeerId == peerId) { p.retryTask?.let(deliveryHandler::removeCallbacks); p.endpointId = endpointId; p.attempts = 0; outgoingMessageTargets[id] = endpointId; persistPendingOutbox(); attemptOutgoingMessage(id) } }
+    }
 
     private fun attemptOutgoingMessage(messageId: String) {
         val pending = pendingOutgoingMessages[messageId] ?: return
-        if (pending.attempts >= maxMessageAttempts) {
-            pendingOutgoingMessages.remove(messageId)
-            outgoingMessageTargets.remove(messageId)
-            listener.onMessageStatus(messageId, "Failed")
-            return
-        }
+        if (pending.attempts >= maxMessageAttempts) { pending.endpointId = ""; pending.attempts = 0; outgoingMessageTargets.remove(messageId); persistPendingOutbox(); listener.onMessageStatus(messageId, "Queued"); return }
         // Count unavailable-link attempts too, so a disconnected peer cannot cause
         // an endless retry loop.
+        if (pending.endpointId.isBlank()) return
         pending.attempts += 1
         if (synchronized(activeEndpoints) { !activeEndpoints.contains(pending.endpointId) }) {
             scheduleMessageRetry(messageId, 1800L)
@@ -118,6 +130,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private fun clearPendingOutgoingMessage(messageId: String) {
         pendingOutgoingMessages.remove(messageId)?.retryTask?.let(deliveryHandler::removeCallbacks)
         outgoingMessageTargets.remove(messageId)
+        persistPendingOutbox()
     }
 
     private fun rememberMessageId(messageId: String) {
@@ -154,6 +167,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (result.status.isSuccess) {
                 synchronized(activeEndpoints) { activeEndpoints.add(id) }
                 val details = synchronized(names) { (names[id] ?: "Nearby NeaRer user") to stableIds[id].orEmpty() }
+                retryQueuedMessagesForPeer(details.second, id)
                 listener.onConnected(id, details.first, details.second)
             } else listener.onStatus("Nearby connection was not approved. Try again.")
         }
@@ -363,8 +377,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (synchronized(activeEndpoints) { !activeEndpoints.contains(targetEndpointId) }) return false
             return try {
                 val payload = envelope.toByteArray(Charsets.UTF_8)
+                val stablePeerId = synchronized(names) { stableIds[targetEndpointId].orEmpty() }
+                if (stablePeerId.isBlank()) return false
                 outgoingMessageTargets[messageId] = targetEndpointId
-                pendingOutgoingMessages[messageId] = PendingOutgoingMessage(targetEndpointId, payload)
+                pendingOutgoingMessages[messageId] = PendingOutgoingMessage(targetEndpointId, stablePeerId, payload)
+                persistPendingOutbox()
                 attemptOutgoingMessage(messageId)
                 true
             } catch (_: Exception) {
@@ -489,7 +506,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     fun stop() {
         stopSearching()
         disconnect()
-        pendingOutgoingMessages.keys.toList().forEach(::clearPendingOutgoingMessage)
+        pendingOutgoingMessages.values.forEach { it.retryTask?.let(deliveryHandler::removeCallbacks); it.retryTask = null }
         deliveryHandler.removeCallbacksAndMessages(null)
         fileIo.shutdownNow()
     }
