@@ -56,7 +56,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private data class FileMeta(
         val endpointId: String, val name: String, val size: Long,
         val bundleTransferId: String? = null, val bundleItemId: String? = null,
-        val relativePath: String? = null
+        val relativePath: String? = null, val expectedSha256: String? = null
     )
     private data class BundleSessionKey(val endpointId: String, val transferId: String)
     private val incomingBundleSessions = ConcurrentHashMap<BundleSessionKey, TransferBundleSession>()
@@ -345,11 +345,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val transferId = envelope.optString("bundleTransferId").takeIf { it.isNotBlank() }
                 val itemId = envelope.optString("bundleItemId").takeIf { it.isNotBlank() }
                 val relativePath = envelope.optString("relativePath").takeIf { it.isNotBlank() }
+                val expectedSha256 = envelope.optString("sha256").takeIf { it.isNotBlank() }
                 if (listOf(transferId, itemId, relativePath).count { it != null } !in listOf(0, 3)) {
                     rejectIncomingPayload(key, "A nearby phone sent incomplete bundle file details. The file was rejected.")
                     return
                 }
                 if (transferId != null) {
+                    if (expectedSha256 == null || !expectedSha256.matches(Regex("[0-9a-fA-F]{64}"))) {
+                        rejectIncomingPayload(key, "The bundle file did not include a valid SHA-256 integrity code.")
+                        return
+                    }
                     val sessionKey = BundleSessionKey(endpointId, transferId)
                     val session = incomingBundleSessions[sessionKey]
                     if (session == null || session.decision != TransferBundleSession.Decision.ACCEPTED) {
@@ -380,7 +385,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     rejectIncomingPayload(key, "A file without its approved bundle identity was rejected.")
                     return
                 }
-                incomingMetadata[key] = FileMeta(endpointId, name, size, transferId, itemId, relativePath)
+                incomingMetadata[key] = FileMeta(endpointId, name, size, transferId, itemId, relativePath, expectedSha256?.lowercase())
                 listener.onFileProgress(endpointId, payloadId, name, 0L, size, true)
                 processCompletedFile(key)
                 return
@@ -547,6 +552,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     if (copied.bytesCopied != meta.size || temp.length() != meta.size) {
                         throw IllegalStateException("Received file size did not match")
                     }
+                    val receivedSha256 = TransferStreamIO.sha256Hex(copied.sha256)
+                    if (meta.expectedSha256 != null && !receivedSha256.equals(meta.expectedSha256, ignoreCase = true)) {
+                        throw IllegalStateException("File integrity check failed: SHA-256 does not match the sender's file")
+                    }
                     if (target.exists()) throw IllegalStateException("A file with this destination name already exists")
                     if (!temp.renameTo(target)) {
                         throw IllegalStateException("Could not safely finalize the received file")
@@ -555,7 +564,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                         val sessionKey = BundleSessionKey(meta.endpointId, meta.bundleTransferId)
                         val session = incomingBundleSessions[sessionKey]
                             ?: throw IllegalStateException("Approved bundle session expired")
-                        session.complete(key.payloadId, copied.bytesCopied, TransferStreamIO.sha256Hex(copied.sha256))
+                        session.complete(key.payloadId, copied.bytesCopied, receivedSha256)
                         if (session.isFinished()) {
                             incomingBundleSessions.remove(sessionKey, session)
                             bundleDestinationFolders.remove(sessionKey)
@@ -780,6 +789,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             }
             if (reportedSize < 0L) throw IllegalStateException("NeaRer could not determine this file's size. Choose another file.")
             val size = reportedSize
+            val sourceSha256 = if (bundleTransferId != null) {
+                appContext.contentResolver.openInputStream(uri)?.use { input ->
+                    TransferStreamIO.sha256Hex(
+                        TransferStreamIO.sha256Exactly(
+                            input, size, HyperTransferTuning.receiveBufferBytes(appContext)
+                        )
+                    )
+                } ?: throw IllegalStateException("NeaRer could not read the selected file for its integrity check")
+            } else null
             val payload = Payload.fromFile(openedDescriptor)
             filePayload = payload
             descriptor = null // The Payload now owns the descriptor.
@@ -793,6 +811,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (bundleTransferId != null) {
                 metadata.put("bundleTransferId", bundleTransferId)
                     .put("bundleItemId", bundleItemId).put("relativePath", relativePath)
+                    .put("sha256", sourceSha256)
             }
             client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
                 .addOnSuccessListener {
