@@ -1080,13 +1080,18 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val envelope = JSONObject().put("kind", "file_digest").put("version", 1)
             .put("payloadId", payloadId).put("sha256", pending.sha256)
         try {
-            client.sendPayload(pending.endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8)))
-                .addOnFailureListener { scheduleDeferredDigestRetry(key, 400L) }
+            val sendTask = client.sendPayload(
+                pending.endpointId,
+                Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8))
+            )
+            // Schedule exactly one retry after the send task resolves. Scheduling
+            // the normal acknowledgement timeout immediately after registering the
+            // failure listener could overwrite a fast failure's shorter retry.
+            sendTask.addOnFailureListener { scheduleDeferredDigestRetry(key, 400L) }
+            sendTask.addOnSuccessListener { scheduleDeferredDigestRetry(key, 1500L) }
         } catch (_: Exception) {
             scheduleDeferredDigestRetry(key, 400L)
-            return
         }
-        scheduleDeferredDigestRetry(key, 1500L)
     }
 
     private fun scheduleDeferredDigestRetry(key: TransferKey, delayMillis: Long) {
