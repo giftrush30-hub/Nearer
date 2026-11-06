@@ -2084,7 +2084,13 @@ private fun NeaRerHome(
                                             color = Gold,
                                             trackColor = Color(0xFF24436D)
                                         )
-                                        Text("${(outgoingProgress * 100).toInt().coerceIn(0, 100)}% sent", color = Muted, fontSize = 9.sp)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("${(outgoingProgress * 100).toInt().coerceIn(0, 100)}% sent", color = Muted, fontSize = 9.sp)
+                                            Spacer(Modifier.weight(1f))
+                                            TextButton(onClick = onCancelTransfer) {
+                                                Text("CANCEL", color = Color(0xFFFFA5AE), fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                            }
+                                        }
                                     }
                                 }
                                 receivedFiles.take(2).forEach { fileItem ->
