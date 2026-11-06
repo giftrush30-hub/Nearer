@@ -44,9 +44,13 @@ internal object TransferStreamIO {
             digest.update(buffer, 0, read)
             copied += read
         }
+        // Recheck after the final expected byte: cancellation can race with the
+        // last read, and must not turn a cancelled transfer into a successful one.
+        if (isCancelled()) throw TransferCancelledException()
         if (input.read() != -1) {
             throw IllegalStateException("Received stream contains bytes beyond the declared file size")
         }
+        if (isCancelled()) throw TransferCancelledException()
         output.flush()
         return CopyResult(copied, digest.digest())
     }
