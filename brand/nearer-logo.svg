@@ -1,8 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
 <title id="title">NeaRer</title><desc id="desc">NeaRer — No Data? We Are NeaRer.</desc>
-<defs><linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071b91"/><stop offset=".5" stop-color="#0758ff"/><stop offset="1" stop-color="#071b91"/></linearGradient><radialGradient id="glow"><stop stop-color="#fff"/><stop offset=".45" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+<defs><linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071b91"/><stop offset=".5" stop-color="#0758ff"/><stop offset="1" stop-color="#071b91"/></linearGradient><filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="8" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
 <rect width="1200" height="420" rx="28" fill="url(#blue)"/>
-<g transform="translate(60 50)"><rect width="320" height="320" rx="70" fill="#0648ef" stroke="#37dcff" stroke-width="5"/><path d="M65 160 Q160 35 255 75 M65 160 Q160 200 255 250 M255 75 Q205 160 255 250" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-dasharray="1 17"/><circle cx="65" cy="160" r="27" fill="url(#glow)"/><circle cx="255" cy="75" r="27" fill="url(#glow)"/><circle cx="255" cy="250" r="27" fill="url(#glow)"/><g fill="#fff"><circle cx="65" cy="160" r="15"/><circle cx="255" cy="75" r="15"/><circle cx="255" cy="250" r="15"/></g></g>
-<text x="430" y="210" font-family="Arial,Helvetica,sans-serif" font-size="132" font-weight="700" fill="#fff">Nea<tspan fill="#ffd400">R</tspan>er</text>
-<text x="440" y="278" font-family="Arial,Helvetica,sans-serif" font-size="34" font-weight="600" fill="#fff">No Data? We Are NeaRer.</text>
-</svg>
+<g transform="translate(42 28)"><rect width="364" height="364" rx="70" fill="#0648ef" stroke="#37dcff" stroke-width="5"/>
+<path d="M91 286 V78 L273 286 V78" fill="none" stroke="#1769ff" stroke-width="45" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+<path d="M91 286 V78 L273 286 V78" fill="none" stroke="#35dcff" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M91 286 V78 L273 286 V78" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+<g fill="#ffd34e" filter="url(#glow)"><circle cx="91" cy="286" r="22"/><circle cx="91" cy="78" r="22"/><circle cx="273" cy="286" r="22"/><circle cx="273" cy="78" r="22"/></g>
+<g fill="#fff"><circle cx="91" cy="286" r="11"/><circle cx="91" cy="78" r="11"/><circle cx="273" cy="286" r="11"/><circle cx="273" cy="78" r="11"/></g></g>
+<text x="455" y="210" font-family="Arial,Helvetica,sans-serif" font-size="132" font-weight="700" fill="#fff">Nea<tspan fill="#ffd400">R</tspan>er</text>
+<text x="465" y="278" font-family="Arial,Helvetica,sans-serif" font-size="34" font-weight="600" fill="#fff">No Data? We Are NeaRer.</text></svg>
