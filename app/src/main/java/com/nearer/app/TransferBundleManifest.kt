@@ -25,7 +25,7 @@ internal data class TransferBundleManifest(
         val ids = HashSet<String>()
         val paths = HashSet<String>()
         items.forEachIndexed { index, item ->
-            val prefix = "Item \${index + 1}"
+            val prefix = "Item " + (index + 1)
             if (item.id.isBlank() || item.id.length > 128 || !ids.add(item.id)) {
                 errors += "$prefix has a missing, oversized or duplicate ID"
             }
