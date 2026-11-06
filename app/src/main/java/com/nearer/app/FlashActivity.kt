@@ -24,7 +24,8 @@ class FlashActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            var number by remember { mutableStateOf("") }
+            var recipientNumber by remember { mutableStateOf("") }
+            var trustedNumber by remember { mutableStateOf(getSharedPreferences(FlashCallScreeningService.PREFS, MODE_PRIVATE).getString(FlashCallScreeningService.KEY_TRUSTED_NUMBER, "") ?: "") }
             var code by remember { mutableIntStateOf(5) }
             var step by remember { mutableIntStateOf(0) }
             var status by remember { mutableStateOf("Enable Flash receiving on this phone before receiving signals.") }
@@ -38,18 +39,18 @@ class FlashActivity : ComponentActivity() {
                         Text("NEARER FLASH", color = Color(0xFFFFD45A), fontWeight = FontWeight.Bold)
                         Text("Messages beyond distance", color = Color.White, style = MaterialTheme.typography.headlineSmall)
                         Text("Preset missed-call signals. Both phones need cellular coverage and NeaRer.", color = Color.LightGray)
-                        OutlinedTextField(value = number, onValueChange = { number = it }, label = { Text("Receiver phone number") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = recipientNumber, onValueChange = { recipientNumber = it }, label = { Text("Receiver phone number") }, modifier = Modifier.fillMaxWidth())
                     }
                     item {
                         Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF142640))) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("RECEIVER SETUP", color = Color(0xFFFFD45A), fontWeight = FontWeight.Bold)
-                                OutlinedTextField(value = number, onValueChange = { number = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Trusted sender number") })
+                                OutlinedTextField(value = trustedNumber, onValueChange = { trustedNumber = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Trusted sender number") })
                                 Button(onClick = {
-                                    if (number.filter(Char::isDigit).length < 10) status = "Enter a valid phone number."
+                                    if (trustedNumber.filter(Char::isDigit).length < 10) status = "Enter a valid trusted sender number."
                                     else {
                                         getSharedPreferences(FlashCallScreeningService.PREFS, MODE_PRIVATE).edit()
-                                            .putString(FlashCallScreeningService.KEY_TRUSTED_NUMBER, number)
+                                            .putString(FlashCallScreeningService.KEY_TRUSTED_NUMBER, trustedNumber)
                                             .putBoolean(FlashCallScreeningService.KEY_ENABLED, true).apply()
                                         status = "Trusted sender saved."
                                     }
@@ -73,9 +74,9 @@ class FlashActivity : ComponentActivity() {
                         Text("Selected: ${FlashCallScreeningService.FLASH_CODES[code]}", color = Color.White)
                         Text("Signal $step of $code", color = Color.LightGray)
                         Button(onClick = {
-                            if (number.isNotBlank() && step < code) {
+                            if (recipientNumber.isNotBlank() && step < code) {
                                 step += 1
-                                startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number))))
+                                startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(recipientNumber))))
                             }
                         }, modifier = Modifier.fillMaxWidth()) { Text("OPEN DIALER FOR NEXT SIGNAL") }
                         Text("Place one call, hang up, return here and repeat. Calls may cost airtime.", color = Color.LightGray)
