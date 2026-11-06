@@ -6,9 +6,9 @@ package com.nearer.app
  */
 internal object TransferFileName {
     fun safeLeafName(raw: String): String {
-        val leaf = raw.substringAfterLast('/').substringAfterLast('\\\\')
+        val leaf = raw.substringAfterLast('/').substringAfterLast('\\')
         val cleaned = leaf.map { character ->
-            if (character.isISOControl() || character in "/\\\\:*?\"<>|") '_' else character
+            if (character.isISOControl() || character in "/\\:*?\"<>|") '_' else character
         }.joinToString("")
             .trim()
             .trim('.')
