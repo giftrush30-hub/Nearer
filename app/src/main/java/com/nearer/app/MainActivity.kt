@@ -344,13 +344,15 @@ class MainActivity : ComponentActivity() {
                     chatNotice = message
                     if (message.startsWith("File sent to the nearby phone") ||
                         message.startsWith("Nearby file transfer failed") ||
+                        message.startsWith("Nearby file transfer cancelled") ||
                         message.startsWith("Could not start file transfer") ||
                         message.startsWith("Could not send file details") ||
                         message.startsWith("File could not be prepared")) {
                         outgoingTransferId = null
                         outgoingProgress = 0f
                     }
-                    if (message.startsWith("Nearby file transfer failed")) {
+                    if (message.startsWith("Nearby file transfer failed") ||
+                        message.startsWith("Nearby file transfer cancelled")) {
                         incomingTransferName = null
                         incomingProgress = 0f
                     }
@@ -2505,6 +2507,7 @@ private fun NeaRerHome(
                         chatNotice.startsWith("File transfer cancelled") ||
                         chatNotice.startsWith("File sent to the nearby phone") ||
                         chatNotice.startsWith("Nearby file transfer failed") ||
+                        chatNotice.startsWith("Nearby file transfer cancelled") ||
                         chatNotice.startsWith("Could not start file transfer") ||
                         chatNotice.startsWith("Could not send file details") ||
                         chatNotice.startsWith("File could not be prepared") ||
