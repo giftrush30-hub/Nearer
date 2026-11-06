@@ -69,6 +69,30 @@ class LudoEngineTest {
         assertEquals(LudoToken(16), state.players[1].tokens[1])
     }
 
+    @Test fun blockadeCannotBePassedThrough() {
+        val players = LudoEngine.newGame().players.toMutableList()
+        players[0] = players[0].copy(tokens = listOf(LudoToken(1), LudoToken(), LudoToken(), LudoToken()))
+        players[1] = players[1].copy(tokens = listOf(LudoToken(16), LudoToken(16), LudoToken(), LudoToken()))
+        val state = LudoEngine.rollDice(LudoGameState(players = players), 3)
+        assertTrue(LudoEngine.legalMoves(state).isEmpty())
+    }
+
+    @Test fun reachingHomeGrantsAnotherRoll() {
+        val players = LudoEngine.newGame().players.toMutableList()
+        players[0] = players[0].copy(tokens = listOf(LudoToken(56), LudoToken(), LudoToken(), LudoToken()))
+        val state = LudoEngine.rollDice(LudoGameState(players = players), 1)
+        val result = LudoEngine.moveToken(state, 0)
+        assertEquals(0, result.state.currentPlayerIndex)
+        assertEquals(null, result.state.diceValue)
+        assertTrue(result.tokenFinished)
+    }
+
+    @Test fun computerOnlySelectsLegalMoves() {
+        val state = LudoEngine.rollDice(LudoEngine.newGame(computerPlayers = setOf(LudoColor.RED)), 6)
+        val choice = LudoEngine.chooseComputerMove(state, LudoDifficulty.HARD)
+        assertTrue(choice in LudoEngine.legalMoves(state))
+    }
+
     @Test fun thirdConsecutiveSixForfeitsTurn() {
         var state = LudoEngine.newGame()
         state = LudoEngine.moveToken(LudoEngine.rollDice(state, 6), 0).state
