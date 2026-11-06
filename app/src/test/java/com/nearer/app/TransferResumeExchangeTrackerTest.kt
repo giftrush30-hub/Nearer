@@ -131,6 +131,46 @@ class TransferResumeExchangeTrackerTest {
         assertEquals(0, tracker.pendingCount())
     }
 
+    @Test fun conflictingDuplicateInvalidatesTheWholeExchange() {
+        val tracker = TransferResumeExchangeTracker()
+        tracker.recordProposal("peer", proposalEnvelope())
+        tracker.recordDecision("peer", decisionEnvelope())
+        tracker.recordDataPayload("peer", 7L)
+        val conflicting = proposal.copy(prefixSha256 = "d".repeat(64))
+        assertEquals(
+            TransferResumeExchangeTracker.Update.CONFLICT,
+            tracker.recordProposal("peer", proposalEnvelope().copy(proposal = conflicting))
+        )
+        assertNull("Conflicting exchange must not be applied", tracker.takeReady("peer", 7L))
+        assertEquals(0, tracker.pendingCount())
+    }
+
+    @Test fun incompleteExchangesExpireAndReleaseCapacity() {
+        var now = 100L
+        val tracker = TransferResumeExchangeTracker(
+            maxPendingExchanges = 1,
+            nowMillis = { now },
+            entryTtlMillis = 50L
+        )
+        tracker.recordProposal("peer", proposalEnvelope())
+        now = 149L
+        assertEquals(1, tracker.pendingCount())
+        now = 150L
+        assertEquals(0, tracker.pendingCount())
+        assertEquals(
+            TransferResumeExchangeTracker.Update.STORED,
+            tracker.recordDataPayload("peer", 8L)
+        )
+    }
+
+    @Test fun invalidClockRollbackExpiresEntriesSafely() {
+        var now = 100L
+        val tracker = TransferResumeExchangeTracker(nowMillis = { now }, entryTtlMillis = 100L)
+        tracker.recordDataPayload("peer", 9L)
+        now = 90L
+        assertEquals(0, tracker.pendingCount())
+    }
+
     @Test fun validatesConfiguredCapacity() {
         try {
             TransferResumeExchangeTracker(0)
