@@ -181,4 +181,62 @@ class TransferResumeExchangeTrackerTest {
             fail("Excessive capacity must be rejected")
         } catch (_: IllegalArgumentException) { }
     }
+    @Test fun lateCallbacksCannotRecreateAConsumedExchange() {
+        val tracker = TransferResumeExchangeTracker()
+        tracker.recordProposal("peer", proposalEnvelope())
+        tracker.recordDecision("peer", decisionEnvelope())
+        tracker.recordDataPayload("peer", 7L)
+        assertNotNull(tracker.takeReady("peer", 7L))
+
+        assertEquals(
+            TransferResumeExchangeTracker.Update.DUPLICATE,
+            tracker.recordDataPayload("peer", 7L)
+        )
+        assertEquals(
+            TransferResumeExchangeTracker.Update.DUPLICATE,
+            tracker.recordProposal("peer", proposalEnvelope())
+        )
+        assertEquals(
+            TransferResumeExchangeTracker.Update.DUPLICATE,
+            tracker.recordDecision("peer", decisionEnvelope())
+        )
+        assertEquals("Late callbacks must not allocate a fresh pending slot", 0, tracker.pendingCount())
+    }
+
+    @Test fun lateCallbacksCannotResurrectAConflictedExchange() {
+        val tracker = TransferResumeExchangeTracker()
+        tracker.recordProposal("peer", proposalEnvelope())
+        val conflicting = proposal.copy(prefixSha256 = "e".repeat(64))
+        assertEquals(
+            TransferResumeExchangeTracker.Update.CONFLICT,
+            tracker.recordProposal("peer", proposalEnvelope().copy(proposal = conflicting))
+        )
+        assertEquals(
+            TransferResumeExchangeTracker.Update.DUPLICATE,
+            tracker.recordDecision("peer", decisionEnvelope())
+        )
+        assertNull(tracker.takeReady("peer", 7L))
+        assertEquals(0, tracker.pendingCount())
+    }
+
+    @Test fun terminalTombstonesExpireAndEndpointCleanupClearsThem() {
+        var now = 100L
+        val tracker = TransferResumeExchangeTracker(nowMillis = { now }, entryTtlMillis = 50L)
+        tracker.recordProposal("peer", proposalEnvelope())
+        tracker.recordDecision("peer", decisionEnvelope())
+        tracker.recordDataPayload("peer", 7L)
+        assertNotNull(tracker.takeReady("peer", 7L))
+        assertEquals(
+            TransferResumeExchangeTracker.Update.DUPLICATE,
+            tracker.recordDataPayload("peer", 7L)
+        )
+        now = 150L
+        assertEquals(
+            TransferResumeExchangeTracker.Update.STORED,
+            tracker.recordDataPayload("peer", 7L)
+        )
+        tracker.clearEndpoint("peer")
+        assertEquals(0, tracker.pendingCount())
+    }
+
 }
