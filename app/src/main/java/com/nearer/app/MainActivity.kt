@@ -1066,7 +1066,8 @@ class MainActivity : ComponentActivity() {
 
     private fun sendCommunityToNames(body: String, targetNames: Set<String>): Boolean {
         if (hybridConnected) return nearbyTransport?.sendToNames(body, targetNames) == true
-        if (chatReady && connectedDeviceName != null && connectedDeviceName in targetNames) {
+        val peerName = connectedDeviceName
+        if (chatReady && peerName != null && peerName in targetNames) {
             val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
             return sendWireLine("COMMUNITY|$encoded")
         }
