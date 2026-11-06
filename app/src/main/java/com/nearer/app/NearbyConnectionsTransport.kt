@@ -222,7 +222,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 Payload.Type.BYTES -> handleBytes(id, payload.asBytes())
                 Payload.Type.FILE -> {
                     val key = transferKey(id, payload.id)
-                    if (rejectedIncomingPayloads.contains(key)) {
+                    if (rejectedIncomingPayloads.contains(key) || failedIncomingPayloads.contains(key)) {
                         try { payload.asFile()?.asUri()?.let { appContext.contentResolver.delete(it, null, null) } } catch (_: Exception) { }
                         try { payload.close() } catch (_: Exception) { }
                         return
@@ -297,8 +297,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     failedIncomingPayloads.add(key)
                     if (failedIncomingPayloads.size > 4096) failedIncomingPayloads.clear()
                 }
-                incomingPayloads.remove(key)?.close()
-                completedPayloads.remove(key)?.close()
+                val failedPayload = incomingPayloads.remove(key) ?: completedPayloads[key]
+                completedPayloads.remove(key)
+                failedPayload?.let { try { it.close() } catch (_: Exception) { } }
                 if (failedOutgoing != null) {
                     listener.onOutgoingFileFinished(id, payloadId, failedOutgoing.second, false, "Nearby file transfer failed or was cancelled.")
                 } else {
@@ -332,11 +333,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val payloadId = envelope.optLong("payloadId", -1L)
                 val name = safeFileName(envelope.optString("name", "shared-file"))
                 val size = envelope.optLong("size", -1L)
-                if (payloadId < 0L || size < 0L) {
+                if (payloadId < 0L) {
                     listener.onFileStatus("A nearby phone sent invalid file information. The transfer was ignored.")
                     return
                 }
                 val key = transferKey(endpointId, payloadId)
+                if (size < 0L) {
+                    rejectIncomingPayload(key, "A nearby phone sent an invalid file size. The transfer was rejected.")
+                    return
+                }
                 val transferId = envelope.optString("bundleTransferId").takeIf { it.isNotBlank() }
                 val itemId = envelope.optString("bundleItemId").takeIf { it.isNotBlank() }
                 val relativePath = envelope.optString("relativePath").takeIf { it.isNotBlank() }
