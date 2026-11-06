@@ -395,7 +395,7 @@ class MainActivity : ComponentActivity() {
                                 pendingBundleItemsByUri[uri.toString()] = pending.manifest.items[index]
                             }
                         }
-                        chatNotice = "Recipient approved the bundle. Sending its approved files in order."
+                        chatNotice = "Recipient approved the bundle. Sending its files with a bounded parallel window."
                         if (outgoingTransferId == null) sendNextQueuedFile()
                     } else {
                         chatNotice = "The other phone declined the bundle. No files were sent."
@@ -405,11 +405,6 @@ class MainActivity : ComponentActivity() {
             override fun onFileStatus(message: String) {
                 runOnUiThread {
                     chatNotice = message
-                    if (message.startsWith("File could not be prepared") || message.startsWith("The nearby connection is no longer active.") || message.startsWith("The nearby connection is not ready.")) {
-                        outgoingTransferId = null
-                        outgoingProgress = 0f
-                        sendNextQueuedFile()
-                    }
                     if (message.startsWith("Nearby file transfer failed")) {
                         incomingTransferName = null
                         incomingProgress = 0f
@@ -1801,6 +1796,7 @@ class MainActivity : ComponentActivity() {
             // Nearby supports multiple independent FILE payloads. A bounded window
             // overlaps per-file preparation with active radio transfers.
             while (activeNearbyOutgoingPayloadIds.size < maxParallelNearbyFiles) {
+                if (nearbyTransport?.isEndpointConnected(hybridConnectedEndpoint!!) != true) break
                 val next = synchronized(pendingFileUris) {
                     if (pendingFileUris.isEmpty()) null else pendingFileUris.removeFirst()
                 } ?: break
@@ -1852,7 +1848,6 @@ class MainActivity : ComponentActivity() {
             val bundleTransferId = activeOutgoingBundleTransferId
             if (bundleTransferId != null && bundleItem == null) {
                 chatNotice = "A selected bundle item lost its manifest link. That item was skipped safely."
-                sendNextQueuedFile()
                 return
             }
             val payloadId = nearbyTransport?.sendFile(
@@ -1869,8 +1864,6 @@ class MainActivity : ComponentActivity() {
                     outgoingProgress = 0f
                 }
                 chatNotice = "Preparing to send $fileName over Nearby Connections…"
-            } else {
-                sendNextQueuedFile()
             }
             return
         }
