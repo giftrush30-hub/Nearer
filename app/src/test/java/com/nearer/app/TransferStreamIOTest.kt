@@ -36,6 +36,16 @@ class TransferStreamIOTest {
     }
 
     @Test
+    fun checksumPreparationCanBeCancelledWithoutReadingSource() {
+        assertThrows(TransferCancelledException::class.java) {
+            TransferStreamIO.sha256Exactly(
+                ByteArrayInputStream(ByteArray(8192)),
+                8192L,
+                4096
+            ) { true }
+        }
+    }
+    @Test
     fun hashesEmptyFilesAndRejectsUnexpectedBytesAfterDeclaredLength() {
         val emptyDigest = TransferStreamIO.sha256Exactly(ByteArrayInputStream(byteArrayOf()), 0L, 4096)
         assertEquals(
