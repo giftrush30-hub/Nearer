@@ -37,10 +37,14 @@ internal class TransferResumeJournal(private val directory: File) {
     @Synchronized
     fun load(transferId: String, itemId: String): TransferResumeCheckpoint? {
         val file = checkpointFile(transferId, itemId)
-        if (!file.isFile) return null
+        // A journal entry is tiny by design. Check its on-disk length before
+        // allocating a byte array so a damaged or externally modified file cannot
+        // trigger an unbounded read during resume discovery.
+        if (!file.isFile || file.length() !in 1..MAX_ENCODED_BYTES.toLong()) return null
         return try {
             TransferResumeCheckpointCodec.decode(file.readBytes()).takeIf {
-                it.transferId == transferId && it.itemId == itemId
+                it.transferId == transferId && it.itemId == itemId &&
+                    it.validationError() == null
             }
         } catch (_: Exception) {
             null
