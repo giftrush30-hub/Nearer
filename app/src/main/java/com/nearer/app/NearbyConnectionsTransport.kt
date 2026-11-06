@@ -276,6 +276,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (synchronized(activeEndpoints) { !activeEndpoints.contains(targetEndpointId) }) return false
             return try {
                 client.sendPayload(targetEndpointId, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
+                    .addOnFailureListener { listener.onMessageStatus(messageId, "Failed") }
                 true
             } catch (_: Exception) { false }
         }
