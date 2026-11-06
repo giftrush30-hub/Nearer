@@ -55,6 +55,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val incomingPayloads = ConcurrentHashMap<Long, Payload>()
     private val completedPayloads = ConcurrentHashMap<Long, Payload>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
+    private val transferStartedAtNanos = ConcurrentHashMap<Long, Long>()
+    private val completedTransferRates = ConcurrentHashMap<Long, String>()
     private val fileIo = Executors.newSingleThreadExecutor()
     private val seenMessageIds = ConcurrentHashMap.newKeySet<String>().apply {
         appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
@@ -213,6 +215,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val name = outgoing?.second ?: incoming?.name ?: "Incoming file"
             val isIncoming = outgoing == null
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
+                transferStartedAtNanos.putIfAbsent(payloadId, System.nanoTime())
+            }
+            if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
                 listener.onFileProgress(id, payloadId, name, update.bytesTransferred, update.totalBytes, isIncoming)
                 return
             }
@@ -223,7 +228,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 } else {
                     outgoingFiles.remove(payloadId)
                     listener.onFileProgress(id, payloadId, name, update.totalBytes, update.totalBytes, false)
-                    listener.onFileStatus("File sent to the nearby phone: $name")
+                    val startedAt = transferStartedAtNanos.remove(payloadId) ?: System.nanoTime()
+                    val elapsedNanos = (System.nanoTime() - startedAt).coerceAtLeast(1L)
+                    val averageMbps = update.totalBytes.toDouble() * 1_000_000_000.0 /
+                        elapsedNanos.toDouble() / (1024.0 * 1024.0)
+                    val rateLabel = String.format(java.util.Locale.US, "%.1f", averageMbps)
+                    if (isIncoming) completedTransferRates[payloadId] = rateLabel
+                    listener.onFileStatus("File sent to the nearby phone: $name • $rateLabel MB/s average")
                 }
             } else {
                 outgoingFiles.remove(payloadId)
@@ -247,6 +258,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     return
                 }
                 incomingMetadata[payloadId] = FileMeta(endpointId, name, size)
+                transferStartedAtNanos[payloadId] = System.nanoTime()
                 listener.onFileProgress(endpointId, payloadId, name, 0L, size, true)
                 processCompletedFile(payloadId)
                 return
@@ -326,6 +338,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 } ?: throw IllegalStateException("Could not open the received file")
                 appContext.contentResolver.delete(uri, null, null)
                 listener.onFileReceived(meta.endpointId, meta.name, target)
+                completedTransferRates.remove(payloadId)?.let { rate ->
+                    listener.onFileStatus("Received ${meta.name} • $rate MB/s average")
+                }
             } catch (error: Exception) {
                 destination?.delete()
                 listener.onFileStatus("Could not save the received file: ${error.localizedMessage ?: "transfer error"}")
@@ -477,6 +492,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 .put("name", name).put("size", size)
             client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
                 .addOnSuccessListener {
+                    transferStartedAtNanos[payload.id] = System.nanoTime()
                     client.sendPayload(endpointId, payload)
                         .addOnFailureListener { error ->
                             outgoingFiles.remove(id)
