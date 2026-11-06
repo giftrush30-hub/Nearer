@@ -2114,7 +2114,13 @@ private fun NeaRerHome(
                     } else if (installedApps.isEmpty()) {
                         Text("No shareable apps were found. Check that this phone has apps installed.", color = White, fontSize = 13.sp)
                     } else if (visibleApps.isEmpty()) {
-                        Text("No apps match that search.", color = White, fontSize = 13.sp)
+                        val emptyMessage = when {
+                            appSearch.isNotBlank() && appFilter != "All" -> "No ${appFilter.lowercase()} apps match “${appSearch.trim()}”."
+                            appSearch.isNotBlank() -> "No apps match “${appSearch.trim()}”. Try another name or package ID."
+                            appFilter != "All" -> "No ${appFilter.lowercase()} apps were found on this phone."
+                            else -> "No shareable apps were found on this phone."
+                        }
+                        Text(emptyMessage, color = White, fontSize = 13.sp)
                     }
                     if (!isLoadingApps) visibleApps.forEach { app ->
                         Surface(
@@ -2140,6 +2146,7 @@ private fun NeaRerHome(
                                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                                     Text(app.label, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text(if (app.apkPaths.size > 1) "Split app • " + app.apkPaths.size + " APK parts" else "App • APK ready", color = Muted, fontSize = 10.sp)
+                                    Text(app.packageName, color = Color(0xFF83A5CC), fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                                 Text("›", color = Gold, fontSize = 23.sp)
                             }
