@@ -1965,7 +1965,7 @@ private fun NeaRerHome(
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.weight(1f).verticalScroll(pageScrollState).padding(horizontal = 18.dp, vertical = 18.dp),
+                modifier = Modifier.weight(1f).verticalScroll(pageScrollState).animateContentSize().padding(horizontal = 18.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
 
@@ -1975,14 +1975,15 @@ private fun NeaRerHome(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    if (activeSection == "home") {
+                    AnimatedVisibility(visible = activeSection == "home", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Nea", color = White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
                             Text("R", color = Gold, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
                             Text("er", color = White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
                         }
                         Text("No Data? We Are NeaRer.", color = Muted, fontSize = 12.sp)
-                    } else {
+                    }
+            } else {
                         Text(
                             when (activeSection) {
                                 "nearby" -> "Nearby"
@@ -2305,7 +2306,7 @@ private fun NeaRerHome(
                 }
             }
 
-            if (activeSection == "games") {
+            AnimatedVisibility(visible = activeSection == "games", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF15315A), border = BorderStroke(1.dp, Color(0xFF42618B))) {
                 Column(modifier = Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2325,8 +2326,9 @@ private fun NeaRerHome(
             }
 
             }
+            }
 
-            if (activeSection == "nearby") {
+            AnimatedVisibility(visible = activeSection == "nearby", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
             Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFF102B50), shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Color(0xFF28589A))) {
                 Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("YOUR NEARER NAME", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
@@ -2490,9 +2492,10 @@ private fun NeaRerHome(
             }
 
             }
+            }
 
 
-            if (activeSection == "chats") {
+            AnimatedVisibility(visible = activeSection == "chats", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("MESSAGES", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp)
                     Text("Your conversations", color = White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
@@ -2722,8 +2725,9 @@ private fun NeaRerHome(
             }
 
             }
+            }
 
-            if (activeSection == "community") {
+            AnimatedVisibility(visible = activeSection == "community", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
             androidx.compose.foundation.layout.Box(
                 Modifier.fillMaxWidth().onGloballyPositioned {
                     sectionPositions["community"] = it.positionInParent().y.toInt()
@@ -2735,6 +2739,7 @@ private fun NeaRerHome(
                     onRejectGameInvite, onGameMove, onGameChat, onEndGame)
             }
 
+            }
             }
 
             if (activeSection == "community") {
