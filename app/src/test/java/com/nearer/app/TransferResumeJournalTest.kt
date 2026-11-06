@@ -50,6 +50,23 @@ class TransferResumeJournalTest {
         }
     }
 
+    @Test fun journalRejectsInvalidCheckpointWithoutLeavingArtifacts() {
+        val directory = Files.createTempDirectory("nearer-resume-invalid-save").toFile()
+        try {
+            val journal = TransferResumeJournal(directory)
+            val invalid = checkpoint().copy(
+                committedOffsetBytes = 7L * 1024L * 1024L,
+                prefixSha256 = "not-a-digest"
+            )
+            assertThrows(IllegalArgumentException::class.java) {
+                journal.save(invalid)
+            }
+            assertTrue(directory.listFiles().orEmpty().isEmpty())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     @Test fun journalDoesNotReturnCheckpointForDifferentIdentity() {
         val directory = Files.createTempDirectory("nearer-resume-id").toFile()
         try {
