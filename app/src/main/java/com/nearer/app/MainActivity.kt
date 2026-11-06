@@ -1130,74 +1130,172 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 "broadcast" -> communityNotice = "Broadcast from " + sender + ": " + packet.optString("body").take(500)
-                "game_invite" -> if (activeGame == null) incomingGameInvite = GameInvite(packet.optString("matchId"), sender)
-                "game_accept" -> activeGame?.let { if (it.matchId == packet.optString("matchId") && it.status == "Waiting for a player") activeGame = it.copy(opponent = sender, status = "Your turn") }
-                "game_move" -> {
-                    val game = activeGame
-                    val symbol = packet.optString("symbol")
-                    val index = packet.optInt("index", -1)
-                    if (game != null && game.matchId == packet.optString("matchId") && sender == game.opponent && symbol != game.localSymbol && index in 0..8 && game.board[index] == '.' && game.turn == symbol) {
-                        val board = game.board.toCharArray()
-                        board[index] = symbol.first()
-                        val next = String(board)
-                        val winner = ticTacToeWinner(next)
-                        activeGame = game.copy(board = next, turn = if (symbol == "X") "O" else "X", status = winner?.let { "$it wins" } ?: if (next.none { it == '.' }) "Draw" else "Your turn")
+                "ludo_invite" -> if (activeGame == null) incomingGameInvite = GameInvite(packet.optString("matchId"), sender)
+                "ludo_accept" -> activeGame?.let { game ->
+                    if (game.isHost && game.matchId == packet.optString("matchId") && !game.ready) {
+                        val state = LudoEngine.newGame(
+                            mapOf(LudoColor.RED to displayName, LudoColor.YELLOW to sender),
+                            playerColors = listOf(LudoColor.RED, LudoColor.YELLOW)
+                        )
+                        activeGame = game.copy(state = state, opponentName = sender, ready = true)
+                        sendLudoState(activeGame!!)
+                        communityNotice = "$sender joined your Ludo match."
                     }
                 }
-                "game_chat" -> activeGame?.let { game ->
-                    if (game.matchId == packet.optString("matchId")) {
-                        if (sender == game.opponent) gameChatMessages.add(sender + ": " + packet.optString("body").take(300))
+                "ludo_state" -> activeGame?.let { game ->
+                    if (!game.isHost && game.matchId == packet.optString("matchId") && sender == game.opponentName) {
+                        parseLudoState(packet.optJSONObject("state"))?.let { state ->
+                            activeGame = game.copy(state = state, ready = true)
+                        }
+                    }
+                }
+                "ludo_action" -> activeGame?.let { game ->
+                    if (game.isHost && game.ready && game.matchId == packet.optString("matchId") &&
+                        sender == game.opponentName && game.state.currentPlayer.color != game.localColor) {
+                        applyHostLudoAction(game, packet.optString("action"), packet.optInt("token", -1))
+                    }
+                }
+                "ludo_chat" -> activeGame?.let { game ->
+                    if (game.matchId == packet.optString("matchId") && sender == game.opponentName) {
+                        gameChatMessages.add("$sender: " + packet.optString("body").take(300))
                         while (gameChatMessages.size > 60) gameChatMessages.removeAt(0)
                     }
                 }
-                "game_end" -> activeGame?.let { game ->
-                    if (game.matchId == packet.optString("matchId") && sender == game.opponent) {
+                "ludo_end" -> activeGame?.let { game ->
+                    if (game.matchId == packet.optString("matchId") && sender == game.opponentName) {
                         activeGame = null
                         gameChatMessages.clear()
-                        communityNotice = "$sender ended the match."
+                        communityNotice = "$sender ended the Ludo match."
                     }
                 }
             }
         } catch (_: Exception) { communityNotice = "A community packet was invalid and ignored." }
     }
+
     private fun inviteToGame() {
-        if (!hybridConnected || activeGame != null) return
+        if (!hybridConnected || activeGame != null) {
+            communityNotice = "Connect to a nearby NeaRer phone first, or finish the current match."
+            return
+        }
         val id = UUID.randomUUID().toString()
-        activeGame = TicTacToeMatch(id, ".........", "X", "X", "Waiting for a player", "Nearby opponent")
+        val initial = LudoEngine.newGame(
+            mapOf(LudoColor.RED to displayName, LudoColor.YELLOW to "Nearby player"),
+            playerColors = listOf(LudoColor.RED, LudoColor.YELLOW)
+        )
+        activeGame = LudoNetworkMatch(id, initial, LudoColor.RED, true, "Waiting for player…", false)
         gameChatMessages.clear()
-        if (!sendCommunityPacket(JSONObject().put("type", "game_invite").put("matchId", id).put("sender", displayName))) activeGame = null
+        if (!sendCommunityPacket(JSONObject().put("type", "ludo_invite").put("matchId", id).put("sender", displayName))) {
+            activeGame = null
+        } else communityNotice = "Ludo invitation sent to your connected nearby player."
     }
+
     private fun acceptGameInvite() {
         val invite = incomingGameInvite ?: return
-        activeGame = TicTacToeMatch(invite.matchId, ".........", "X", "O", "Waiting for X", invite.sender)
+        val initial = LudoEngine.newGame(
+            mapOf(LudoColor.RED to invite.sender, LudoColor.YELLOW to displayName),
+            playerColors = listOf(LudoColor.RED, LudoColor.YELLOW)
+        )
+        activeGame = LudoNetworkMatch(invite.matchId, initial, LudoColor.YELLOW, false, invite.sender, false)
         incomingGameInvite = null
         gameChatMessages.clear()
-        nearbyTransport?.sendToNames("NR_COMMUNITY:" + JSONObject().put("type", "game_accept").put("matchId", invite.matchId).put("sender", displayName), setOf(invite.sender))
+        nearbyTransport?.sendToNames(
+            "NR_COMMUNITY:" + JSONObject().put("type", "ludo_accept").put("matchId", invite.matchId).put("sender", displayName),
+            setOf(invite.sender)
+        )
+        communityNotice = "Joining $invite.sender's Ludo table…"
     }
-    private fun playGameMove(index: Int) {
+
+    private fun sendLudoState(match: LudoNetworkMatch) {
+        val players = JSONArray()
+        match.state.players.forEach { player ->
+            players.put(JSONObject()
+                .put("color", player.color.name)
+                .put("name", player.name)
+                .put("computer", player.isComputer)
+                .put("tokens", JSONArray(player.tokens.map { it.steps })))
+        }
+        val snapshot = JSONObject()
+            .put("players", players)
+            .put("current", match.state.currentPlayerIndex)
+            .put("dice", match.state.diceValue ?: 0)
+            .put("winner", match.state.winner?.name ?: "")
+            .put("turn", match.state.turnNumber)
+            .put("sixes", match.state.consecutiveSixes)
+        nearbyTransport?.sendToNames(
+            "NR_COMMUNITY:" + JSONObject().put("type", "ludo_state").put("matchId", match.matchId).put("state", snapshot),
+            setOf(match.opponentName)
+        )
+    }
+
+    private fun parseLudoState(snapshot: JSONObject?): LudoGameState? {
+        snapshot ?: return null
+        val array = snapshot.optJSONArray("players") ?: return null
+        if (array.length() !in 2..4) return null
+        val players = (0 until array.length()).map { index ->
+            val item = array.getJSONObject(index)
+            val color = LudoColor.valueOf(item.getString("color"))
+            val tokenArray = item.getJSONArray("tokens")
+            if (tokenArray.length() != 4) throw IllegalArgumentException("Invalid token count")
+            val tokens = (0 until 4).map { LudoToken(tokenArray.getInt(it)) }
+            LudoPlayer(color, item.optString("name").take(20), item.optBoolean("computer"), tokens)
+        }
+        val current = snapshot.optInt("current", -1)
+        if (current !in players.indices) return null
+        val dice = snapshot.optInt("dice", 0).takeIf { it in 1..6 }
+        val winner = snapshot.optString("winner").takeIf { it.isNotBlank() }?.let { LudoColor.valueOf(it) }
+        return LudoGameState(players, current, dice, winner, snapshot.optLong("turn", 1L), snapshot.optInt("sixes", 0).coerceIn(0, 3))
+    }
+
+    private fun applyHostLudoAction(game: LudoNetworkMatch, action: String, token: Int) {
+        try {
+            val next = when (action) {
+                "roll" -> LudoEngine.rollDice(game.state)
+                "move" -> LudoEngine.moveToken(game.state, token).state
+                "pass" -> LudoEngine.passTurn(game.state)
+                else -> return
+            }
+            val updated = game.copy(state = next, ready = true)
+            activeGame = updated
+            sendLudoState(updated)
+        } catch (_: Exception) {
+            communityNotice = "That Ludo move was not legal. The board was not changed."
+        }
+    }
+
+    private fun playGameMove(action: String, token: Int) {
         val game = activeGame ?: return
-        if (game.status.endsWith("wins") || game.status == "Draw" || game.turn != game.localSymbol || index !in 0..8 || game.board[index] != '.') return
-        val board = game.board.toCharArray()
-        board[index] = game.localSymbol.first()
-        val next = String(board)
-        val winner = ticTacToeWinner(next)
-        activeGame = game.copy(board = next, turn = if (game.localSymbol == "X") "O" else "X", status = winner?.let { "$it wins" } ?: if (next.none { it == '.' }) "Draw" else "Waiting for opponent")
-        nearbyTransport?.sendToNames("NR_COMMUNITY:" + JSONObject().put("type", "game_move").put("matchId", game.matchId).put("index", index).put("symbol", game.localSymbol).put("sender", displayName), setOf(game.opponent))
+        if (!game.ready || game.state.isFinished || game.state.currentPlayer.color != game.localColor) return
+        if (game.isHost) {
+            applyHostLudoAction(game, action, token)
+        } else {
+            nearbyTransport?.sendToNames(
+                "NR_COMMUNITY:" + JSONObject().put("type", "ludo_action").put("matchId", game.matchId)
+                    .put("action", action).put("token", token).put("sender", displayName),
+                setOf(game.opponentName)
+            )
+        }
     }
+
     private fun endGame() {
         activeGame?.let { game ->
-            nearbyTransport?.sendToNames("NR_COMMUNITY:" + JSONObject().put("type", "game_end").put("matchId", game.matchId), setOf(game.opponent))
+            nearbyTransport?.sendToNames(
+                "NR_COMMUNITY:" + JSONObject().put("type", "ludo_end").put("matchId", game.matchId),
+                setOf(game.opponentName)
+            )
         }
         activeGame = null
         incomingGameInvite = null
         gameChatMessages.clear()
-        communityNotice = "Game closed."
+        communityNotice = "Ludo match closed."
     }
 
     private fun sendGameChat(raw: String) {
         val game = activeGame ?: return
         val body = raw.trim().take(300)
-        if (body.isNotBlank() && nearbyTransport?.sendToNames("NR_COMMUNITY:" + JSONObject().put("type", "game_chat").put("matchId", game.matchId).put("sender", displayName).put("body", body), setOf(game.opponent)) == true) {
+        if (body.isNotBlank() && nearbyTransport?.sendToNames(
+                "NR_COMMUNITY:" + JSONObject().put("type", "ludo_chat").put("matchId", game.matchId).put("sender", displayName).put("body", body),
+                setOf(game.opponentName)
+            ) == true) {
             gameChatMessages.add("$displayName: $body")
             while (gameChatMessages.size > 60) gameChatMessages.removeAt(0)
         }
@@ -1994,7 +2092,7 @@ private fun CommunityHub(
     invite: GameInvite?, game: LudoNetworkMatch?, gameChat: List<String>, nearbyConnected: Boolean,
     onCreate: (String) -> Unit, onJoin: (String) -> Unit, onSelect: (String) -> Unit,
     onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
-    onAccept: () -> Unit, onReject: () -> Unit, onMove: (String, Int) -> Unit, onGameChat: (String) -> Unit, onEndGame: () -> Unit, onInviteGame: () -> Unit
+    onAccept: () -> Unit, onReject: () -> Unit, onMove: (String, Int) -> Unit, onGameChat: (String) -> Unit, onEndGame: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
@@ -2052,7 +2150,6 @@ private fun ticTacToeWinner(board: String): String? {
 private data class CommunityGroup(val code: String, val name: String, val members: List<String>)
 private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
 private data class GameInvite(val matchId: String, val sender: String)
-private data class TicTacToeMatch(val matchId: String, val board: String, val turn: String, val localSymbol: String, val status: String, val opponent: String)
 
 private data class NearbyPerson(val name: String, val lastSeenAt: Long)
 
