@@ -12,6 +12,8 @@ Make nearby Android file sharing as fast as the two phones and their wireless li
 - The receive-save copy buffer is selected from available memory, low-RAM classification and Android thermal status.
 - A capable, cool phone uses 256 KiB; constrained devices use 128 KiB; severe thermal pressure uses 32 KiB.
 - Nearby Connections payload completion is timed and the observed average MB/s is reported.
+- Sender-side time-to-first-byte is now measured from FILE payload creation (before any bundle checksum pre-read) to the first positive-byte progress callback, and is reported separately from sustained payload MiB/s. This makes checksum/setup delay visible instead of hiding it outside the radio-throughput metric.
+- Multi-file Nearby sends use a bounded two-payload window on capable, cool phones. A pure Kotlin concurrency policy reduces the sender to one in-flight file when available memory is below 256 MiB, Android reports low memory/low-RAM hardware, or thermal status reaches severe; it never raises concurrency above two without benchmark evidence.
 - Existing P2P_CLUSTER discovery remains unchanged so current multi-device connections are not sacrificed.
 - JVM tests cover the buffer policy, Unicode-safe filename handling, bundle-manifest validation/codec round-trips, and bounded stream-copy integrity/cancellation.
 - A metadata-only bundle model and bounded binary wire codec validate IDs, destination paths, duplicate entries, item sizes, item kinds and protocol version before bulk data begins; malformed UTF-8 is rejected rather than silently replaced.
