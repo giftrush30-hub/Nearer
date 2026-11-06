@@ -981,13 +981,16 @@ class MainActivity : ComponentActivity() {
             return
         }
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
+        chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…"))
+        persistMessages()
         if (!sendWireLine("MSG|$id|$encoded")) {
+            val index = chatMessages.indexOfFirst { it.id == id }
+            if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
+            persistMessages()
             chatNotice = "Message could not be sent. Check the nearby connection."
             return
         }
-        chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sent"))
-        persistMessages()
-        chatNotice = "Sent directly • waiting for delivery confirmation"
+        chatNotice = "Sent directly • waiting for the recipient app to save and acknowledge it."
     }
 
 
@@ -1316,14 +1319,22 @@ class MainActivity : ComponentActivity() {
                                 val body = try {
                                     String(Base64.getDecoder().decode(parts[2]), Charsets.UTF_8)
                                 } catch (_: Exception) { "" }
-                                if (body.isNotBlank() && receivedMessageIds.add(id)) {
-                                    runOnUiThread {
-                                        chatMessages.add(ChatMessage(id, body, outgoing = false, delivery = "Received"))
-                                        persistMessages()
-                                        chatNotice = "New message received directly."
+                                if (id.isNotBlank() && id.length <= 80 && body.isNotBlank()) {
+                                    if (receivedMessageIds.add(id)) {
+                                        runOnUiThread {
+                                            if (chatMessages.none { it.id == id }) {
+                                                chatMessages.add(ChatMessage(id, body, outgoing = false, delivery = "Received"))
+                                                persistMessages()
+                                                chatNotice = "New message received directly."
+                                            }
+                                            // Acknowledge only after the message has been stored locally.
+                                            synchronized(writerLock) { peerWriter?.println("ACK|$id") }
+                                        }
+                                    } else {
+                                        // Duplicate retry: it was already stored, so resend its receipt.
+                                        synchronized(writerLock) { peerWriter?.println("ACK|$id") }
                                     }
                                 }
-                                synchronized(writerLock) { peerWriter?.println("ACK|$id") }
                             }
                         }
                         line.startsWith("ACK|") -> {
