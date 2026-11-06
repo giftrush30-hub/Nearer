@@ -435,6 +435,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val relativePath = envelope.optString("relativePath").takeIf { it.isNotBlank() }
                 val digestPending = envelope.optBoolean("sha256Pending", false)
                 val expectedSha256 = envelope.optString("sha256").takeIf { it.isNotBlank() }
+                if (digestPending && transferId == null) {
+                    rejectIncomingPayload(key, "Deferred integrity confirmation is only valid for an approved bundle file.")
+                    return
+                }
                 if (listOf(transferId, itemId, relativePath).count { it != null } !in listOf(0, 3)) {
                     rejectIncomingPayload(key, "A nearby phone sent incomplete bundle file details. The file was rejected.")
                     return
@@ -462,6 +466,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                         return
                     }
                     if (failedIncomingPayloads.remove(key)) {
+                        rejectedIncomingPayloads.add(key)
                         try { session.fail(payloadId) } catch (_: Exception) { }
                         if (session.isFinished()) {
                             incomingBundleSessions.remove(sessionKey, session)
@@ -1089,6 +1094,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                             outgoingDeferredDigestPayloads.remove(id)
                             outgoingBundleDigests.remove(id)
                             outgoingBundleFileCompleted.remove(id)
+                            try { client.cancelPayload(id) } catch (_: Exception) { }
                             sendDeferredFileDigestFailure(endpointId, id)
                             listener.onFileStatus("Integrity check failed for $name: ${error.localizedMessage ?: "source read failed"}. The receiver was told not to save it.")
                         }
