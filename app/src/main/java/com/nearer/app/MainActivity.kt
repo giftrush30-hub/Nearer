@@ -399,7 +399,7 @@ class MainActivity : ComponentActivity() {
                     onBroadcast = ::sendCommunityBroadcast,
                     onGameInvite = ::inviteToGame,
                     onAcceptGameInvite = ::acceptGameInvite,
-                    onRejectGameInvite = { incomingGameInvite = null },
+                    onRejectGameInvite = ::rejectGameInvite,
                     onGameMove = ::playGameMove,
                     onGameChat = ::sendGameChat,
                     onEndGame = ::endGame,
@@ -1134,6 +1134,12 @@ class MainActivity : ComponentActivity() {
                 }
                 "broadcast" -> communityNotice = "Broadcast from " + sender + ": " + packet.optString("body").take(500)
                 "ludo_invite" -> if (activeGame == null) incomingGameInvite = GameInvite(packet.optString("matchId"), sender)
+                "ludo_reject" -> activeGame?.let { game ->
+                    if (game.isHost && game.matchId == packet.optString("matchId")) {
+                        activeGame = null
+                        communityNotice = "$sender declined the Ludo invitation."
+                    }
+                }
                 "ludo_accept" -> activeGame?.let { game ->
                     if (game.isHost && game.matchId == packet.optString("matchId") && !game.ready) {
                         val state = LudoEngine.newGame(
@@ -1190,6 +1196,15 @@ class MainActivity : ComponentActivity() {
         if (!sendCommunityPacket(JSONObject().put("type", "ludo_invite").put("matchId", id).put("sender", displayName))) {
             activeGame = null
         } else communityNotice = "Ludo invitation sent to your connected nearby player."
+    }
+
+    private fun rejectGameInvite() {
+        val invite = incomingGameInvite ?: return
+        nearbyTransport?.sendToNames(
+            "NR_COMMUNITY:" + JSONObject().put("type", "ludo_reject").put("matchId", invite.matchId).put("sender", displayName),
+            setOf(invite.sender)
+        )
+        incomingGameInvite = null
     }
 
     private fun acceptGameInvite() {
