@@ -192,12 +192,6 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             listener.onMessage(endpointId, senderName, messageId, body)
             // Direct/private chat messages use ttl=0. Multi-hop forwarding stays disabled
             // until recipient routing and end-to-end encryption are implemented.
-                val forwarded = JSONObject().put("kind", "message").put("version", 1)
-                    .put("id", messageId).put("body", body)
-                    .put("ttl", ttl - 1).put("hops", envelope.optInt("hops", 0) + 1)
-                    .put("origin", envelope.optString("origin", "nearby"))
-                broadcast(forwarded.toString(), endpointId)
-            }
         } catch (_: Exception) {
             listener.onStatus("A nearby message could not be read and was ignored.")
         }
