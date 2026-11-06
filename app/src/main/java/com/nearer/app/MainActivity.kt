@@ -1973,7 +1973,19 @@ private fun NeaRerHome(
         return
     }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
-        Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.0f to Color(0xFF0B2852),
+                            0.38f to Midnight,
+                            1.0f to Color(0xFF050F22)
+                        )
+                    )
+                )
+        ) {
             Column(
                 modifier = Modifier.weight(1f).verticalScroll(pageScrollState).animateContentSize().padding(horizontal = 18.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
