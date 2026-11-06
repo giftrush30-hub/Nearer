@@ -107,4 +107,50 @@ class TransferResumeStreamWriterTest {
             root.deleteRecursively()
         }
     }
+
+    @Test fun explicitCancellationPreservesOnlyTheLastSyncedCheckpoint() {
+        val root = Files.createTempDirectory("nearer-resume-writer-cancel").toFile()
+        try {
+            val selected = item((chunk * 2L) + 100L)
+            val data = ByteArray(selected.sizeBytes.toInt()) { (it % 181).toByte() }
+            val store = store(root)
+            var checks = 0
+            try {
+                TransferResumeStreamWriter(store).write(
+                    "transfer-stream", selected, 456L, ByteArrayInputStream(data)
+                ) {
+                    checks++
+                    checks > 1
+                }
+                fail("Expected explicit cancellation")
+            } catch (_: java.io.InterruptedIOException) { }
+
+            val candidate = store.findValid("transfer-stream", selected, 456L)
+            assertNotNull(candidate)
+            assertEquals(chunk.toLong(), candidate!!.checkpoint.committedOffsetBytes)
+            assertEquals(chunk.toLong(), candidate.partialFile.length())
+            assertArrayEquals(data.copyOfRange(0, chunk), candidate.partialFile.readBytes())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun zeroByteFileProducesTheCorrectEmptyDigestWithoutAResumeCheckpoint() {
+        val root = Files.createTempDirectory("nearer-resume-writer-empty").toFile()
+        try {
+            val selected = item(0L)
+            val store = store(root)
+            val result = TransferResumeStreamWriter(store).write(
+                "transfer-stream", selected, null, ByteArrayInputStream(byteArrayOf())
+            )
+            assertEquals(0L, result.bytesReceived)
+            assertEquals(0L, result.resumedFromBytes)
+            assertEquals(sha256(byteArrayOf()), result.sha256)
+            assertEquals(0L, result.partialFile.length())
+            assertNull(store.findValid("transfer-stream", selected, null))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
 }
