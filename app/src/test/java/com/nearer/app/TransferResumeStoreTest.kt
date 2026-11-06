@@ -63,6 +63,33 @@ class TransferResumeStoreTest {
         }
     }
 
+    @Test fun rejectsInvalidIdentityBeforeMutatingPartialFile() {
+        val root = Files.createTempDirectory("nearer-resume-store-invalid-identity").toFile()
+        try {
+            val store = store(root)
+            val selected = item()
+            val partial = store.partialFileFor("transfer-1", selected.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(byteArrayOf(1, 2, 3, 4))
+            }
+            val original = partial.readBytes()
+            try {
+                store.checkpoint("x".repeat(129), selected, null, 4L)
+                fail("Expected overlong transfer identity to be rejected")
+            } catch (_: IllegalArgumentException) { }
+            assertArrayEquals("Invalid identity must not truncate or rewrite partial data", original, partial.readBytes())
+            assertTrue(TransferResumeJournal(File(root, "journal")).loadAll().isEmpty())
+
+            try {
+                store.checkpoint("transfer-1", selected, -1L, 4L)
+                fail("Expected invalid source timestamp to be rejected")
+            } catch (_: IllegalArgumentException) { }
+            assertArrayEquals(original, partial.readBytes())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun discardRemovesPartialAndJournalEntry() {
         val root = Files.createTempDirectory("nearer-resume-store-discard").toFile()
         try {

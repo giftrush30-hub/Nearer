@@ -27,6 +27,14 @@ internal class TransferResumeStore(
         sourceModifiedAtMillis: Long?,
         bytesSynced: Long
     ): TransferResumeCheckpoint {
+        require(transferId.isNotBlank() && transferId.length <= 128) { "Invalid transfer ID" }
+        require(item.id.isNotBlank() && item.id.length <= 128) { "Invalid bundle item ID" }
+        require(item.relativePath.isNotBlank() && item.relativePath.length <= TransferBundleManifest.MAX_PATH_LENGTH) {
+            "Invalid bundle item path"
+        }
+        require(sourceModifiedAtMillis == null || sourceModifiedAtMillis >= 0L) {
+            "Invalid source modification time"
+        }
         require(item.kind == TransferBundleItem.Kind.FILE) { "Only files can be resumed" }
         require(item.sizeBytes >= 0L && bytesSynced in 0L..item.sizeBytes) {
             "Synced byte count is outside the source file"
