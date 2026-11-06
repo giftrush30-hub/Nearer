@@ -83,3 +83,19 @@ References:
 ## Completion gate
 
 Do not raise the project completion estimate for resume until the protocol is integrated into NearbyConnectionsTransport, the Android unit/instrumentation suite passes, and a two-device interruption/reconnect test proves that a partially transferred large file finishes correctly without restarting from byte zero.
+
+
+## Additional implementation guard: finalization must be gated
+
+The source/API review also confirms two important lifecycle details:
+
+- `PayloadCallback.onPayloadReceived()` can fire at the start of a FILE/STREAM transfer, before the complete bytes are present. Promotion must wait for the successful transfer update and the receiver's own exact-length/digest verification.
+- Android's `AtomicFile` provides sync-before-commit semantics for atomic file replacement, but does not provide locking. NeaRer must retain per-transfer serialization if it adopts AtomicFile for journals or destination metadata.
+
+A pure `TransferResumeFinalizationPolicy` now rejects a partial unless it is a FILE, has exactly the manifest-declared byte count, has a well-formed expected SHA-256, and its computed full-file SHA-256 matches. This policy is a guard for the future transport integration; it is not yet wired into live Nearby transfer promotion.
+
+Research references:
+- Google Nearby Payload API: https://developers.google.com/android/reference/com/google/android/gms/nearby/connection/Payload
+- Google Nearby PayloadCallback lifecycle: https://developers.google.com/android/reference/com/google/android/gms/nearby/connection/PayloadCallback
+- Google Nearby exchange-data guide: https://developers.google.com/nearby/connections/android/exchange-data
+- Android AtomicFile: https://developer.android.com/reference/android/util/AtomicFile
