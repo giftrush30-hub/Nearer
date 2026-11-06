@@ -306,7 +306,6 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 // its descriptor callback can still complete the receive path.
                 if (update.status == PayloadTransferUpdate.Status.SUCCESS) {
                     incomingCompletionTracker.markCompleted(id, payloadId)
-                    deferredIncomingDigests.markFileCompleted(id, payloadId)?.let { ready -> incomingMetadata[key]?.expectedSha256 = ready.sha256 }
                 }
                 return
             }
