@@ -149,6 +149,7 @@ class MainActivity : ComponentActivity() {
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
     private var incomingBundleOffer by mutableStateOf<IncomingBundleOffer?>(null)
+    private var pendingOutgoingBundle: PendingOutgoingBundle? = null
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
@@ -347,10 +348,19 @@ class MainActivity : ComponentActivity() {
             }
             override fun onBundleDecision(endpointId: String, transferId: String, accepted: Boolean) {
                 runOnUiThread {
-                    chatNotice = if (accepted) {
-                        "The other phone accepted bundle " + transferId + ". File streaming is the next transfer stage."
+                    val pending = pendingOutgoingBundle
+                    if (pending == null || pending.endpointId != endpointId || pending.manifest.transferId != transferId) {
+                        return@runOnUiThread
+                    }
+                    pendingOutgoingBundle = null
+                    if (accepted) {
+                        synchronized(pendingFileUris) {
+                            pending.uris.forEach { pendingFileUris.addLast(it) }
+                        }
+                        chatNotice = "Recipient approved the bundle. Sending its files one by one while keeping the selected order."
+                        if (outgoingTransferId == null) sendNextQueuedFile()
                     } else {
-                        "The other phone declined bundle " + transferId + "."
+                        chatNotice = "The other phone declined the bundle. No files were sent."
                     }
                 }
             }
@@ -1654,9 +1664,65 @@ class MainActivity : ComponentActivity() {
             chatNotice = "Connect to the intended nearby phone before selecting files to send."
             return
         }
+        if (hybridConnected) {
+            if (pendingOutgoingBundle != null || outgoingTransferId != null ||
+                synchronized(pendingFileUris) { pendingFileUris.isNotEmpty() }) {
+                chatNotice = "Finish the current transfer before starting another bundle."
+                return
+            }
+            try {
+                val endpoint = hybridConnectedEndpoint ?: throw IllegalStateException("Nearby phone is no longer connected")
+                val manifestItems = ArrayList<TransferBundleItem>(uris.size)
+                val usedPaths = HashSet<String>()
+                uris.forEach { uri ->
+                    var originalName = "shared-file"
+                    var reportedSize = -1L
+                    contentResolver.query(
+                        uri,
+                        arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+                        null, null, null
+                    )?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                            if (nameIndex >= 0) originalName = cursor.getString(nameIndex) ?: originalName
+                            val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                            if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) reportedSize = cursor.getLong(sizeIndex)
+                        }
+                    }
+                    val descriptorSize = contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
+                    val size = if (descriptorSize >= 0L) descriptorSize else reportedSize
+                    require(size >= 0L) { "NeaRer could not read the size of " + originalName }
+                    val safeName = TransferFileName.safeLeafName(originalName)
+                    var uniquePath = safeName
+                    var suffix = 2
+                    while (!usedPaths.add(uniquePath)) {
+                        val dot = safeName.lastIndexOf('.').takeIf { it > 0 } ?: safeName.length
+                        uniquePath = safeName.substring(0, dot) + " (" + suffix++ + ")" + safeName.substring(dot)
+                    }
+                    manifestItems += TransferBundleItem(
+                        id = UUID.randomUUID().toString(),
+                        relativePath = uniquePath,
+                        displayName = safeName,
+                        sizeBytes = size,
+                        mimeType = contentResolver.getType(uri)
+                    )
+                }
+                val manifest = TransferBundleManifest(UUID.randomUUID().toString(), manifestItems)
+                pendingOutgoingBundle = PendingOutgoingBundle(endpoint, manifest, uris.toList())
+                if (nearbyTransport?.sendBundleManifest(endpoint, manifest) != true) {
+                    pendingOutgoingBundle = null
+                    return
+                }
+                chatNotice = "Bundle offer sent. Waiting for the recipient to approve " + uris.size + " selected file(s)."
+            } catch (error: Exception) {
+                pendingOutgoingBundle = null
+                chatNotice = "Bundle could not be prepared: " + (error.localizedMessage ?: "check the selected files")
+            }
+            return
+        }
         synchronized(pendingFileUris) { uris.forEach { pendingFileUris.addLast(it) } }
         if (outgoingTransferId == null) sendNextQueuedFile()
-        else chatNotice = "${uris.size} file(s) added to the transfer queue."
+        else chatNotice = uris.size.toString() + " file(s) added to the transfer queue."
     }
 
     private fun sendNextQueuedFile() {
@@ -2551,6 +2617,11 @@ private data class ChatMessage(
 
 private data class ReceivedFile(val displayName: String, val file: File)
 private data class IncomingBundleOffer(val endpointId: String, val manifest: TransferBundleManifest)
+private data class PendingOutgoingBundle(
+    val endpointId: String,
+    val manifest: TransferBundleManifest,
+    val uris: List<Uri>
+)
 
 private data class IncomingTransfer(
     val name: String,
