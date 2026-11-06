@@ -345,8 +345,27 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
         val cell = size.width / 15f
         val colors = listOf(Color(0xFFE64B68), Color(0xFF19B58A), Color(0xFFFFC247), Color(0xFF347CF5))
         fun tile(x: Int, y: Int, color: Color) {
-            drawRoundRect(color, Offset(x * cell + 1.5f, y * cell + 1.5f),
-                Size(cell - 3f, cell - 3f), CornerRadius(cell * 0.13f))
+            val topLeft = Offset(x * cell + 1.5f, y * cell + 1.5f)
+            val tileSize = Size(cell - 3f, cell - 3f)
+            val radius = CornerRadius(cell * 0.13f)
+            val shade = Color(
+                red = (color.red * 0.72f).coerceIn(0f, 1f),
+                green = (color.green * 0.72f).coerceIn(0f, 1f),
+                blue = (color.blue * 0.72f).coerceIn(0f, 1f),
+                alpha = color.alpha
+            )
+            drawRoundRect(
+                Brush.linearGradient(
+                    listOf(color.copy(red = (color.red * 1.12f).coerceIn(0f, 1f),
+                        green = (color.green * 1.12f).coerceIn(0f, 1f),
+                        blue = (color.blue * 1.12f).coerceIn(0f, 1f)), color, shade),
+                    start = topLeft,
+                    end = Offset(topLeft.x + cell, topLeft.y + cell)
+                ),
+                topLeft, tileSize, radius
+            )
+            drawRoundRect(Color.White.copy(alpha = 0.16f), topLeft, tileSize, radius,
+                style = Stroke(cell * 0.025f))
         }
         drawRoundRect(Brush.linearGradient(listOf(Color(0xFF1A3558), Color(0xFF0D1E35))), cornerRadius = CornerRadius(cell * 0.3f))
         for (y in 0..5) for (x in 0..5) tile(x, y, Color(0xFF3B2036))
