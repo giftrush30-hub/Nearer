@@ -16,7 +16,7 @@ class FlashCallScreeningService : CallScreeningService() {
     private val finishBurst = Runnable { publishDecodedBurst() }
 
     override fun onScreenCall(details: Call.Details) {
-        if (details.callDirection != Call.Details.DIRECTION_INCOMING) return
+        if (Build.VERSION.SDK_INT < 29 || details.callDirection != Call.Details.DIRECTION_INCOMING) return
         val incoming = normalize(details.handle?.schemeSpecificPart.orEmpty())
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val trusted = incoming.isNotBlank() && incoming == normalize(prefs.getString(KEY_TRUSTED_NUMBER, "").orEmpty()) && prefs.getBoolean(KEY_ENABLED, false)
