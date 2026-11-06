@@ -113,6 +113,7 @@ fun LudoGamePanel(
     )) }
     var message by remember { mutableStateOf("Roll a six to bring your first token out.") }
     var rolling by remember { mutableStateOf(false) }
+    var difficulty by remember { mutableStateOf(LudoDifficulty.NORMAL) }
     var gameText by remember { mutableStateOf("") }
     var networkActionPending by remember(networkMatch?.matchId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -138,14 +139,14 @@ fun LudoGamePanel(
         }
     }
 
-    LaunchedEffect(networkMatch, game.currentPlayerIndex, game.diceValue, game.turnNumber, game.winner, game.consecutiveSixes) {
+    LaunchedEffect(networkMatch, game.currentPlayerIndex, game.diceValue, game.turnNumber, game.winner, game.consecutiveSixes, difficulty) {
         if (!networkMode && !game.isFinished && game.currentPlayer.isComputer) {
             delay(750)
             if (localGame.diceValue == null) {
                 localGame = LudoEngine.rollDice(localGame)
                 message = "${current.name} rolled ${localGame.diceValue}"
             } else {
-                val choice = LudoEngine.chooseComputerMove(localGame)
+                val choice = LudoEngine.chooseComputerMove(localGame, difficulty)
                 if (choice == null) {
                     localGame = LudoEngine.passTurn(localGame)
                     message = if (localGame.consecutiveSixes >= 3) "${current.name} rolled three sixes — turn forfeited" else "${current.name} has no legal move"
@@ -250,6 +251,21 @@ fun LudoGamePanel(
                                 Text(player.name, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                             Text("${player.finishedTokens}/4 HOME", color = if (player.finishedTokens == 4) LudoGold else Color(0xFFAFC1D4), fontSize = 8.sp)
+                        }
+                    }
+                }
+            }
+
+            if (!networkMode) {
+                Text("COMPUTER CHALLENGE", color = LudoGold, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    LudoDifficulty.entries.forEach { level ->
+                        Button(onClick = { difficulty = level }, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (difficulty == level) LudoGold else Color(0xFF294967),
+                                contentColor = if (difficulty == level) LudoNavy else Color.White
+                            ), shape = RoundedCornerShape(11.dp)) {
+                            Text(level.name, fontSize = 9.sp, fontWeight = FontWeight.Black)
                         }
                     }
                 }
