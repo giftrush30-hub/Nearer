@@ -1480,7 +1480,8 @@ class MainActivity : ComponentActivity() {
             activeGame = resumed
             sendLudoState(resumed)
         } else {
-            activeGame = game.copy(ready = true)
+            // Keep the guest board locked until the host sends the authoritative snapshot.
+            activeGame = game.copy(ready = false)
             val syncPacket = JSONObject().put("type", "ludo_sync")
                 .put("matchId", game.matchId).put("revision", game.revision).put("sender", displayName)
             val sent = if (hybridConnected) {
