@@ -65,9 +65,20 @@ internal object TransferManifestFragments {
         val totalBytes = input.readInt()
         val partLength = input.readInt()
         require(totalBytes in 1..MAX_MANIFEST_BYTES)
-        require(count in 1..totalBytes)
+        val headerBytes = 4 + 2 + idLength + 4 + 4 + 4 + 4
+        val maxPartBytes = MAX_FRAGMENT_BYTES - headerBytes
+        require(maxPartBytes > 0)
+        val expectedCount = (totalBytes + maxPartBytes - 1) / maxPartBytes
+        require(count == expectedCount) { "Manifest fragment count is inconsistent with its declared size" }
         require(index in 0 until count)
-        require(partLength in 1..input.available() && partLength == input.available())
+        val expectedPartLength = if (index == count - 1) {
+            totalBytes - (maxPartBytes * index)
+        } else {
+            maxPartBytes
+        }
+        require(partLength == expectedPartLength && partLength == input.available()) {
+            "Manifest fragment length is inconsistent with its position"
+        }
         val part = ByteArray(partLength)
         input.readFully(part)
         return Fragment(transferId, index, count, totalBytes, part)
@@ -83,6 +94,7 @@ internal class TransferManifestReassembler {
     private var expectedCount = 0
     private var expectedBytes = 0
     private val parts = HashMap<Int, ByteArray>()
+    private var receivedBytes = 0
 
     @Synchronized
     fun accept(encodedFragment: ByteArray): ByteArray? {
@@ -101,7 +113,11 @@ internal class TransferManifestReassembler {
             require(previous.contentEquals(fragment.bytes)) { "Conflicting duplicate manifest fragment" }
             return null
         }
+        require(fragment.bytes.size <= expectedBytes - receivedBytes) {
+            "Manifest fragments exceed the declared total size"
+        }
         parts[fragment.index] = fragment.bytes
+        receivedBytes += fragment.bytes.size
         if (parts.size != expectedCount) return null
 
         val output = ByteArrayOutputStream(expectedBytes)
@@ -120,5 +136,6 @@ internal class TransferManifestReassembler {
         transferId = null
         expectedCount = 0
         expectedBytes = 0
+        receivedBytes = 0
     }
 }
