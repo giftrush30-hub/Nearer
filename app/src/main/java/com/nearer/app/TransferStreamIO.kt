@@ -85,6 +85,37 @@ internal object TransferStreamIO {
         if (input.read() != -1) throw IllegalStateException("Selected file changed while its integrity check was running")
         return digest.digest()
     }
+    /** Hash exactly the requested prefix without consuming bytes beyond it. */
+    fun sha256PrefixExactly(
+        input: InputStream,
+        prefixBytes: Long,
+        bufferBytes: Int,
+        isCancelled: () -> Boolean = { false }
+    ): ByteArray {
+        require(prefixBytes >= 0L) { "Prefix length cannot be negative" }
+        require(bufferBytes in 4_096..1_048_576) { "Transfer buffer size is outside safe bounds" }
+        val buffer = ByteArray(bufferBytes)
+        val digest = MessageDigest.getInstance("SHA-256")
+        var hashed = 0L
+        while (hashed < prefixBytes) {
+            if (isCancelled()) throw TransferCancelledException()
+            val wanted = minOf(buffer.size.toLong(), prefixBytes - hashed).toInt()
+            val count = input.read(buffer, 0, wanted)
+            if (count < 0) throw EOFException("Selected file ended before the resume prefix")
+            if (count == 0) {
+                val single = input.read()
+                if (single < 0) throw EOFException("Selected file ended before the resume prefix")
+                digest.update(single.toByte())
+                hashed++
+            } else {
+                digest.update(buffer, 0, count)
+                hashed += count
+            }
+        }
+        if (isCancelled()) throw TransferCancelledException()
+        return digest.digest()
+    }
+
     fun sha256Hex(digestBytes: ByteArray): String =
         digestBytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
