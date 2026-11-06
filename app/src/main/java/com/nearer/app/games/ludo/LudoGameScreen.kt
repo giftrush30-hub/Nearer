@@ -381,13 +381,29 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
             listOf(13 to 7, 12 to 7, 11 to 7, 10 to 7, 9 to 7)
         )
         lanes.forEachIndexed { i, lane -> lane.forEach { (x, y) -> tile(x, y, colors[i].copy(alpha = 0.9f)) } }
+        val centerPoint = Offset(7.5f * cell, 7.5f * cell)
+        val centerWedges = listOf(
+            Triple(Offset(6f * cell, 6f * cell), Offset(9f * cell, 6f * cell), colors[0]),
+            Triple(Offset(9f * cell, 6f * cell), Offset(9f * cell, 9f * cell), colors[3]),
+            Triple(Offset(9f * cell, 9f * cell), Offset(6f * cell, 9f * cell), colors[2]),
+            Triple(Offset(6f * cell, 9f * cell), Offset(6f * cell, 6f * cell), colors[1])
+        )
+        centerWedges.forEach { (first, second, color) ->
+            val wedge = Path().apply {
+                moveTo(first.x, first.y)
+                lineTo(second.x, second.y)
+                lineTo(centerPoint.x, centerPoint.y)
+                close()
+            }
+            drawPath(wedge, color)
+        }
         val center = Path().apply {
             moveTo(7.5f * cell, 6f * cell); lineTo(9f * cell, 7.5f * cell)
             lineTo(7.5f * cell, 9f * cell); lineTo(6f * cell, 7.5f * cell); close()
         }
-        drawPath(center, Color(0xFF102746))
-        drawPath(center, Gold, style = Stroke(cell * 0.08f))
-        drawCircle(Color(0xFFFFE99A), cell * 0.19f, Offset(7.5f * cell, 7.5f * cell))
+        drawPath(center, Gold, style = Stroke(cell * 0.075f))
+        drawCircle(Color(0xFFFFE99A), cell * 0.13f, centerPoint)
+        drawCircle(Color(0xFF102746), cell * 0.055f, centerPoint)
 
         game.players.forEachIndexed { pIndex, player ->
             player.tokens.forEachIndexed { tokenIndex, target ->
