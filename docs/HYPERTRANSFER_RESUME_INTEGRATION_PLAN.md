@@ -99,3 +99,12 @@ Research references:
 - Google Nearby PayloadCallback lifecycle: https://developers.google.com/android/reference/com/google/android/gms/nearby/connection/PayloadCallback
 - Google Nearby exchange-data guide: https://developers.google.com/nearby/connections/android/exchange-data
 - Android AtomicFile: https://developer.android.com/reference/android/util/AtomicFile
+
+
+## Callback replay hardening
+
+The exchange tracker now keeps a bounded, short-lived tombstone for completed or conflicted endpoint/payload exchanges. Late BYTES/FILE/STREAM callbacks for those IDs are ignored instead of creating a fresh incomplete exchange. Tombstones are removed on endpoint cleanup and expire using the same monotonic TTL.
+
+A repeated identical proposal/decision/data callback does not refresh an incomplete exchange's lease. Only a newly accepted event advances its expiry timestamp, preventing a peer from keeping stale pending state alive indefinitely by replaying duplicates. Automated tests cover consumed-exchange replay, conflicted-exchange replay, tombstone expiry, endpoint cleanup, and duplicate retry expiry.
+
+This remains a transport-independent safeguard. The active transport still does not invoke the tracker, so it must not be mistaken for end-to-end resume integration.
