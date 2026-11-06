@@ -2,6 +2,7 @@ package com.nearer.app.games.ludo
 
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -26,7 +27,7 @@ class LudoEngineTraditionalRulesTest {
         state = LudoEngine.roll(state, AlwaysSixRandom)
 
         assertEquals(1, state.activePlayerIndex)
-        assertEquals(null, state.dice)
+        assertNull(state.dice)
         assertEquals(0, state.consecutiveSixes)
         assertTrue(state.message.contains("three consecutive sixes"))
     }
