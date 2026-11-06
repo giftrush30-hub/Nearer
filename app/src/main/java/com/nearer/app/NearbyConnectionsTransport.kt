@@ -222,6 +222,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 Payload.Type.FILE -> {
                     val key = transferKey(id, payload.id)
                     if (rejectedIncomingPayloads.contains(key)) {
+                        try { payload.asFile()?.asUri()?.let { appContext.contentResolver.delete(it, null, null) } } catch (_: Exception) { }
                         try { payload.close() } catch (_: Exception) { }
                         return
                     }
@@ -282,8 +283,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 completedTransferRates.remove(key)
                 val failedOutgoing = outgoingFiles[payloadId]?.takeIf { it.first == id }?.also { outgoingFiles.remove(payloadId) }
                 incomingMetadata.remove(key)?.bundleTransferId?.let { transferId ->
-                    incomingBundleSessions[BundleSessionKey(id, transferId)]?.let { session ->
+                    val sessionKey = BundleSessionKey(id, transferId)
+                    incomingBundleSessions[sessionKey]?.let { session ->
                         try { session.fail(payloadId) } catch (_: Exception) { }
+                        if (session.isFinished()) {
+                            incomingBundleSessions.remove(sessionKey, session)
+                            bundleDestinationFolders.remove(sessionKey)
+                        }
                     }
                 }
                 incomingPayloads.remove(key)?.close()
@@ -301,8 +307,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         rejectedIncomingPayloads.add(key)
         if (rejectedIncomingPayloads.size > 4096) rejectedIncomingPayloads.clear()
         incomingMetadata.remove(key)
-        incomingPayloads.remove(key)?.let { try { it.close() } catch (_: Exception) { } }
-        completedPayloads.remove(key)?.let { try { it.close() } catch (_: Exception) { } }
+        val payload = incomingPayloads.remove(key) ?: completedPayloads[key]
+        completedPayloads.remove(key)
+        if (payload != null) {
+            try { payload.asFile()?.asUri()?.let { appContext.contentResolver.delete(it, null, null) } } catch (_: Exception) { }
+            try { payload.close() } catch (_: Exception) { }
+        }
         listener.onFileStatus(message)
     }
 
