@@ -2302,9 +2302,31 @@ private fun NeaRerHome(
             }, shape = RoundedCornerShape(20.dp), color = Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("PRIVATE CHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        Spacer(modifier = Modifier.weight(1f))
-                        Text(if (chatReady) "LOCAL LINK" else "NOT CONNECTED", color = Muted, fontSize = 9.sp)
+                        Surface(
+                            shape = CircleShape,
+                            color = if (chatReady) Color(0xFF1D6856) else Color(0xFF244B70),
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                Text(if (chatReady) (connectedDeviceName ?: "N").take(1).uppercase() else "✉",
+                                    color = White, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                        Column(Modifier.weight(1f).padding(start = 11.dp)) {
+                            Text(connectedDeviceName ?: "PRIVATE CHAT", color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text(if (chatReady) "DIRECT • OFFLINE • PRIVATE" else "CONNECT TO A NEARBY PHONE",
+                                color = if (chatReady) Color(0xFF8CE4C8) else Muted,
+                                fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 0.7.sp)
+                        }
+                        Surface(
+                            color = if (chatReady) Color(0xFF174B43) else Color(0xFF25364D),
+                            shape = RoundedCornerShape(50)
+                        ) {
+                            Text(if (chatReady) "ACTIVE" else "OFFLINE",
+                                color = if (chatReady) Color(0xFF8CE4C8) else Muted,
+                                fontSize = 8.sp, fontWeight = FontWeight.Black,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp))
+                        }
                     }
                     if (chatReady) {
                         if (messages.isEmpty()) {
@@ -2388,7 +2410,19 @@ private fun NeaRerHome(
                         ) { Text("Share a photo or file") }
                         Text(if (usingNearbyConnections) "Nearby Connections • no fixed file-size cap" else "Wi-Fi Direct • no fixed file-size cap", color = Muted, fontSize = 10.sp)
                     } else {
-                        Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        Text("Your conversations stay on the direct phone link. Find someone nearby and approve the matching security code to start chatting — no mobile data required.",
+                            color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        Button(
+                            onClick = {
+                                activeSection = "nearby"
+                                navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(47.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                        ) {
+                            Text("FIND SOMEONE NEARBY  →", fontWeight = FontWeight.Black, fontSize = 10.sp)
+                        }
                     }
                 }
             }
