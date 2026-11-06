@@ -1614,7 +1614,7 @@ private fun NeaRerHome(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("BLUETOOTH CHAT" to "Hybrid connection enabled", "MESH RELAY" to "Opt-in, up to 4 hops").forEach { item ->
+                        listOf("BLUETOOTH CHAT" to "Direct nearby link", "MESH RELAY" to "Paused for privacy upgrade").forEach { item ->
                             Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -1642,11 +1642,11 @@ private fun NeaRerHome(
                         Text("✦", color = Gold, fontSize = 25.sp)
                         Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
                             Text("NEARER MESSAGES", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                            Text("One chat. Smarter delivery.", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Text("Private nearby messaging.", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         }
                         Text("DIRECT", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
                     }
-                    Text("Send a normal message in your private chat. NeaRer uses the available nearby connection, confirms when the other phone acknowledges it, and keeps the conversation on your device.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    Text("Send a normal message directly to a connected NeaRer phone without mobile data. Delivery is confirmed after the recipient app saves it. Multi-hop and long-distance delivery are not active yet.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                 }
             }
 
