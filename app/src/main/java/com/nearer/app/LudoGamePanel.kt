@@ -211,7 +211,7 @@ fun LudoGamePanel(
                 Column {
                     Text("NEARER • GAME ZONE", color = LudoGold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp)
                     Text("LUDO CLASSIC", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black)
-                    Text(if (networkMode) "PRIVATE NEARBY MATCH" else "Four players • One champion", color = Color(0xFFAFC1D4), fontSize = 10.sp)
+                    Text(if (networkMode) "NEARBY MULTIPLAYER • ${game.players.size}/4" else "Four players • One champion", color = Color(0xFFAFC1D4), fontSize = 10.sp)
                 }
                 Surface(color = Color(0xFF234463), shape = RoundedCornerShape(30.dp)) {
                     Text(if (networkMode) "BLUETOOTH / WI-FI" else "OFFLINE VS BOTS", color = Color(0xFF9FE6CD), fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp))
