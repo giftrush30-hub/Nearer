@@ -60,7 +60,8 @@ internal object TransferResumeNegotiation {
         item: TransferBundleItem,
         sourceModifiedAtMillis: Long?,
         senderSupportsOffsets: Boolean,
-        receiverSupportsOffsets: Boolean
+        receiverSupportsOffsets: Boolean,
+        senderPrefixSha256: String?
     ): Decision {
         if (!senderSupportsOffsets || !receiverSupportsOffsets) {
             return Decision(0L, Reason.PEER_UNSUPPORTED)
@@ -77,6 +78,11 @@ internal object TransferResumeNegotiation {
         if (offset <= 0L || offset > item.sizeBytes ||
             offset % TransferResumeCheckpoint.CHECKPOINT_GRANULARITY_BYTES != 0L ||
             !Regex("^[a-fA-F0-9]{64}$").matches(proposal.prefixSha256)) {
+            return Decision(0L, Reason.OFFSET_INVALID)
+        }
+        if (senderPrefixSha256 == null ||
+            !Regex("^[a-fA-F0-9]{64}$").matches(senderPrefixSha256) ||
+            !senderPrefixSha256.equals(proposal.prefixSha256, ignoreCase = true)) {
             return Decision(0L, Reason.OFFSET_INVALID)
         }
         return Decision(offset, Reason.RESUME_ACCEPTED)
