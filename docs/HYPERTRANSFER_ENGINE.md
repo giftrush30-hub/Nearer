@@ -94,7 +94,7 @@ Xender's current support page advertises transfer speeds of up to 40 Mb/s (megab
 
 ## Benchmark protocol
 
-Compare NeaRer with Xender, LocalSend and Android Quick Share where available.
+Compare NeaRer with Xender, LocalSend and Android Quick Share where available. The pure Kotlin `TransferBenchmarkMetrics` helper now summarizes repeated successful runs by median elapsed time, median first-byte latency and median MiB/s, while reporting failed-run count and fastest/slowest spread separately. It never treats a failed run as a fast success. This is report math only; it does not run device benchmarks or prove a speed advantage.
 
 For every run, record device models, Android versions, source and destination storage, wireless route, distance, signal/environment notes, battery state and thermal status. Keep the same phones and conditions for each app; repeat each case at least five times and report median plus spread.
 
