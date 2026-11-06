@@ -98,12 +98,21 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
         }
     }
 
-    LaunchedEffect(game.activePlayerIndex, game.dice, game.turnNumber, game.winnerId, game.message) {
+    fun moveToken(tokenIndex: Int) {
+        val next = LudoEngine.move(game, tokenIndex)
+        if (soundEnabled && next != game) {
+            val captured = next.lastAction.contains("captured", ignoreCase = true)
+            tones.startTone(if (captured) ToneGenerator.TONE_PROP_PROMPT else ToneGenerator.TONE_PROP_ACK, if (captured) 170 else 75)
+        }
+        game = next
+    }
+
+    LaunchedEffect(game.activePlayerIndex, game.dice, game.turnNumber, game.winnerId, game.message, showRules) {
         if (!showRules && !game.isFinished && game.activePlayer.isComputer) {
             if (game.dice == null) animateRoll(computer = true)
             else {
                 delay(720)
-                LudoEngine.chooseComputerMove(game)?.let { game = LudoEngine.move(game, it) }
+                LudoEngine.chooseComputerMove(game)?.let { moveToken(it) }
             }
         }
     }
@@ -222,8 +231,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                     }
                     LudoBoard(game, pulse, Modifier.fillMaxWidth()) { token ->
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        if (soundEnabled) tones.startTone(ToneGenerator.TONE_PROP_ACK, 75)
-                        game = LudoEngine.move(game, token)
+                        moveToken(token)
                     }
                 }
             }
@@ -314,8 +322,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                                     border = BorderStroke(1.dp, Gold.copy(alpha = pulse)),
                                     modifier = Modifier.weight(1f).clickable {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        if (soundEnabled) tones.startTone(ToneGenerator.TONE_PROP_ACK, 75)
-                                        game = LudoEngine.move(game, tokenIndex)
+                                        moveToken(tokenIndex)
                                     }) {
                                     Column(Modifier.padding(vertical = 9.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                         Box(Modifier.size(20.dp).clip(CircleShape).background(Color(game.activePlayer.color.hex)).shadow(4.dp, CircleShape))
