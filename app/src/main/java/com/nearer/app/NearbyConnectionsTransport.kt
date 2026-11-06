@@ -1,5 +1,6 @@
 package com.nearer.app
 
+import android.app.ActivityManager
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -311,7 +312,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val uri: Uri = payload.asFile()?.asUri() ?: throw IllegalStateException("Nearby file content is unavailable")
                 appContext.contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(target).use { output ->
-                        val buffer = ByteArray(32 * 1024)
+                        val buffer = ByteArray(HyperTransferTuning.receiveBufferBytes(appContext))
                         var copied = 0L
                         while (true) {
                             val count = input.read(buffer)
