@@ -2188,6 +2188,7 @@ private fun NeaRerHome(
 
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable {
+                            receiveMode = false
                             if (chatReady) {
                                 filePicker.launch(arrayOf("*/*"))
                             } else {
@@ -2252,7 +2253,7 @@ private fun NeaRerHome(
                             Triple("▶", "Videos", arrayOf("video/*")),
                             Triple("♫", "Music", arrayOf("audio/*")),
                             Triple("▣", "Apps", arrayOf("application/vnd.android.package-archive")),
-                            Triple("▤", "Documents", arrayOf("application/pdf", "text/*", "application/msword")),
+                            Triple("▤", "Documents", arrayOf("application/pdf", "text/*", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/rtf")),
                             Triple("•••", "All files", arrayOf("*/*"))
                         )
                         fileCategories.chunked(3).forEachIndexed { rowIndex, rowItems ->
@@ -2268,6 +2269,7 @@ private fun NeaRerHome(
                                     }
                                     Surface(
                                         modifier = Modifier.weight(1f).height(108.dp).animateContentSize().clickable {
+                                            receiveMode = false
                                             if (chatReady) filePicker.launch(item.third)
                                             else {
                                                 pendingFileTypes = item.third
@@ -2457,7 +2459,10 @@ private fun NeaRerHome(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         val resultIsError = chatNotice.contains("failed", ignoreCase = true) ||
-                                            chatNotice.contains("could not", ignoreCase = true)
+                                            chatNotice.contains("could not", ignoreCase = true) ||
+                                            chatNotice.contains("cancel", ignoreCase = true) ||
+                                            chatNotice.contains("stopped", ignoreCase = true) ||
+                                            chatNotice.contains("larger than its declared size", ignoreCase = true)
                                         Text(if (resultIsError) "!" else "✓",
                                             color = if (resultIsError) Color(0xFFFFA5AE) else Color(0xFF8EF0C6),
                                             fontSize = 15.sp, fontWeight = FontWeight.Black)
