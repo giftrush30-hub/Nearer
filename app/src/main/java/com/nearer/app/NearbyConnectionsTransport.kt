@@ -583,34 +583,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val payloadId = envelope.optLong("payloadId", -1L)
                 if (payloadId < 0L) return
                 val key = transferKey(endpointId, payloadId)
-                // A negative receipt can refer to our outgoing bundle file. Stop
-                // its retry loop before treating the same control message as an
-                // incoming-file failure; both directions share this BYTES handler.
+                // This receipt travels from the receiver back to the original
+                // sender. It must only affect our matching outgoing digest retry;
+                // treating it as an incoming-file failure can corrupt a simultaneous
+                // transfer in the opposite direction.
                 val rejectedOutgoingDigest = pendingDeferredDigests.remove(key)
                 rejectedOutgoingDigest?.retryTask?.let(deliveryHandler::removeCallbacks)
                 if (rejectedOutgoingDigest != null) {
                     listener.onFileStatus("The receiver rejected the bundle file's integrity confirmation. Send that file again.")
-                    return
                 }
-                deferredIncomingDigests.remove(endpointId, payloadId)
-                val meta = incomingMetadata.remove(key)
-                if (meta?.bundleTransferId != null) {
-                    val sessionKey = BundleSessionKey(endpointId, meta.bundleTransferId)
-                    incomingBundleSessions[sessionKey]?.let { session ->
-                        try { session.fail(payloadId) } catch (_: Exception) { }
-                        if (session.isFinished()) {
-                            incomingBundleSessions.remove(sessionKey, session)
-                            bundleDestinationFolders.remove(sessionKey)
-                        }
-                    }
-                }
-                val pending = incomingPayloads.remove(key) ?: completedPayloads.remove(key)
-                pending?.let {
-                    try { it.asFile()?.asUri()?.let { uri -> appContext.contentResolver.delete(uri, null, null) } } catch (_: Exception) { }
-                    try { it.close() } catch (_: Exception) { }
-                }
-                if (pending == null) failedIncomingPayloads.markCompleted(endpointId, payloadId)
-                listener.onFileStatus("A bundle file was not saved because its sender could not confirm SHA-256 integrity.")
                 return
             }
             if (kind == "bundle_decision") {
