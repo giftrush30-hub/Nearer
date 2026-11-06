@@ -38,6 +38,7 @@ internal class TransferBundleSession(
 
     private val items: LinkedHashMap<String, MutableItem>
     private val payloadToItem = HashMap<Long, String>()
+    private val declaredTotalBytes: Long
     var decision: Decision = Decision.AWAITING_APPROVAL
         private set
 
@@ -48,6 +49,7 @@ internal class TransferBundleSession(
             manifest.items.filter { it.kind == TransferBundleItem.Kind.FILE }
                 .forEach { put(it.id, MutableItem(it)) }
         }
+        declaredTotalBytes = items.values.fold(0L) { total, entry -> Math.addExact(total, entry.item.size) }
     }
 
     @Synchronized
@@ -117,11 +119,10 @@ internal class TransferBundleSession(
         val snapshots = items.values.map {
             ItemSnapshot(it.item.id, it.state, it.transferred, it.sha256)
         }
-        val total = items.values.sumOf { it.item.size }
         return Snapshot(
             transferId = manifest.transferId,
             decision = decision,
-            totalBytes = total,
+            totalBytes = declaredTotalBytes,
             completedBytes = items.values.filter { it.state == ItemState.COMPLETED }.sumOf { it.transferred },
             completedItems = snapshots.count { it.state == ItemState.COMPLETED },
             failedItems = snapshots.count { it.state == ItemState.FAILED },
