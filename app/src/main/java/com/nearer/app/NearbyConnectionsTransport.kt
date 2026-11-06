@@ -465,6 +465,14 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             require(manifest.transferId == fragment.transferId) {
                 "Manifest transfer ID does not match its fragment envelope"
             }
+            // Check the whole accepted bundle before asking the receiver to approve it.
+            // This is a preflight only; each individual file is checked again before save
+            // because other apps may consume storage while the transfer is in progress.
+            val bundleBytes = TransferStoragePolicy.requiredBytes(manifest.items)
+            val availableBytes = appContext.filesDir.usableSpace
+            require(TransferStoragePolicy.canFit(bundleBytes, availableBytes)) {
+                "Not enough free storage for this complete bundle"
+            }
             val sessionKey = BundleSessionKey(endpointId, manifest.transferId)
             require(incomingBundleSessions.keys.count { it.endpointId == endpointId } < 3) {
                 "Too many bundle offers are already active for this phone"
