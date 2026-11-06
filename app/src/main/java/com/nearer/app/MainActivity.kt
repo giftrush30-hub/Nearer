@@ -2304,7 +2304,7 @@ private fun NeaRerHome(
                     }
                 }
             }
-            }
+            
 
             AnimatedVisibility(visible = activeSection == "games", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF15315A), border = BorderStroke(1.dp, Color(0xFF42618B))) {
@@ -2326,7 +2326,7 @@ private fun NeaRerHome(
             }
 
             }
-            }
+            
 
             AnimatedVisibility(visible = activeSection == "nearby", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
             Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFF102B50), shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Color(0xFF28589A))) {
@@ -2492,7 +2492,7 @@ private fun NeaRerHome(
             }
 
             }
-            }
+            
 
 
             AnimatedVisibility(visible = activeSection == "chats", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
@@ -2725,7 +2725,7 @@ private fun NeaRerHome(
             }
 
             }
-            }
+            
 
             AnimatedVisibility(visible = activeSection == "community", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
             androidx.compose.foundation.layout.Box(
@@ -2740,7 +2740,7 @@ private fun NeaRerHome(
             }
 
             }
-            }
+            
 
             if (activeSection == "community") {
             if (incomingRequesterName != null) {
