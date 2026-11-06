@@ -88,18 +88,18 @@ private fun ludoTokenPosition(color: LudoColor, token: LudoToken, index: Int): O
 }
 
 @Composable
-private fun rememberLudoAnimatedPosition(color: LudoColor, token: LudoToken, index: Int): Offset {
+private fun rememberLudoAnimatedPosition(color: LudoColor, token: LudoToken, index: Int, stepDurationMs: Int): Offset {
     val target = ludoTokenPosition(color, token, index)
     val position = remember(color, index) { Animatable(target, Offset.VectorConverter) }
     var previousSteps by remember(color, index) { mutableIntStateOf(token.steps) }
-    LaunchedEffect(token.steps) {
+    LaunchedEffect(token.steps, stepDurationMs) {
         val from = previousSteps
         val to = token.steps
         if (from >= 0 && to > from) {
             for (step in (from + 1)..to) {
                 position.animateTo(
                     ludoTokenPosition(color, LudoToken(step), index),
-                    tween(durationMillis = 105, easing = LinearOutSlowInEasing)
+                    tween(durationMillis = stepDurationMs, easing = LinearOutSlowInEasing)
                 )
             }
         } else {
@@ -142,6 +142,7 @@ fun LudoGamePanel(
     var message by remember { mutableStateOf("Roll a six to bring your first token out.") }
     var rolling by remember { mutableStateOf(false) }
     var difficulty by remember { mutableStateOf(LudoDifficulty.NORMAL) }
+    var movementSpeed by remember { mutableStateOf(LudoMoveSpeed.NORMAL) }
     var gameText by remember { mutableStateOf("") }
     var networkActionPending by remember(networkMatch?.matchId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -228,7 +229,7 @@ fun LudoGamePanel(
                 }
             }
 
-            LudoBoard(game = game, legalMoves = if (myTurn) moves else emptyList(), onMove = { index ->
+            LudoBoard(game = game, legalMoves = if (myTurn) moves else emptyList(), stepDurationMs = movementSpeed.stepDurationMs, onMove = { index ->
                 if (networkMode) requestNetworkAction("move", index) else {
                     val result = LudoEngine.moveToken(localGame, index)
                     localGame = result.state
@@ -310,6 +311,19 @@ fun LudoGamePanel(
                 }
             }
 
+            Text("TOKEN MOVEMENT SPEED", color = LudoGold, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                LudoMoveSpeed.entries.forEach { speed ->
+                    Button(onClick = { movementSpeed = speed }, modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (movementSpeed == speed) LudoGold else Color(0xFF294967),
+                            contentColor = if (movementSpeed == speed) LudoNavy else Color.White
+                        ), shape = RoundedCornerShape(11.dp)) {
+                        Text(speed.name, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+            }
+
             if (networkMode) {
                 Text("MATCH CHAT", color = LudoGold, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                 Column(Modifier.fillMaxWidth().height(70.dp).background(Color(0xFF142A40), RoundedCornerShape(12.dp)).padding(8.dp)) {
@@ -367,10 +381,10 @@ private fun DiceFace(value: Int, rotation: Float) {
 }
 
 @Composable
-private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, onMove: (Int) -> Unit, modifier: Modifier = Modifier) {
+private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, stepDurationMs: Int, onMove: (Int) -> Unit, modifier: Modifier = Modifier) {
     val animatedPositions = game.players.map { player ->
         player.tokens.mapIndexed { index, token ->
-            key(player.color, index) { rememberLudoAnimatedPosition(player.color, token, index) }
+            key(player.color, index) { rememberLudoAnimatedPosition(player.color, token, index, stepDurationMs) }
         }
     }
     Canvas(modifier
