@@ -46,6 +46,18 @@ class TransferStreamIOTest {
         }
     }
     @Test
+    fun cancellationAfterLastReadStillPreventsSuccessfulFinalization() {
+        var cancellationChecks = 0
+        assertThrows(TransferCancelledException::class.java) {
+            TransferStreamIO.copyExactly(
+                ByteArrayInputStream(byteArrayOf(1, 2, 3, 4)),
+                ByteArrayOutputStream(),
+                4L,
+                4096
+            ) { ++cancellationChecks >= 2 }
+        }
+    }
+    @Test
     fun hashesEmptyFilesAndRejectsUnexpectedBytesAfterDeclaredLength() {
         val emptyDigest = TransferStreamIO.sha256Exactly(ByteArrayInputStream(byteArrayOf()), 0L, 4096)
         assertEquals(
