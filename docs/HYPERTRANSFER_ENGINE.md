@@ -1,5 +1,7 @@
 # NeaRer HyperTransfer — engineering plan
 
+- When files are selected through Android's Storage Access Framework, NeaRer attempts to retain the read grant with `takePersistableUriPermission` so queued work can continue beyond the picker activity when the provider supports it. Providers that do not issue persistable grants remain supported for the current foreground transfer; moved or deleted documents still require reselection.
+
 ## Product promise
 
 Make nearby Android file sharing as fast as the two phones and their wireless link can reliably sustain. Preserve original bytes and names. Never claim a fixed multiplier over Xender until repeated, controlled tests prove it.
