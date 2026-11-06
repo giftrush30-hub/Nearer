@@ -496,6 +496,31 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 }
                 return
             }
+            if (kind == "file_digest_failed") {
+                val payloadId = envelope.optLong("payloadId", -1L)
+                if (payloadId < 0L) return
+                val key = transferKey(endpointId, payloadId)
+                deferredIncomingDigests.remove(endpointId, payloadId)
+                val meta = incomingMetadata.remove(key)
+                if (meta?.bundleTransferId != null) {
+                    val sessionKey = BundleSessionKey(endpointId, meta.bundleTransferId)
+                    incomingBundleSessions[sessionKey]?.let { session ->
+                        try { session.fail(payloadId) } catch (_: Exception) { }
+                        if (session.isFinished()) {
+                            incomingBundleSessions.remove(sessionKey, session)
+                            bundleDestinationFolders.remove(sessionKey)
+                        }
+                    }
+                }
+                val pending = incomingPayloads.remove(key) ?: completedPayloads.remove(key)
+                pending?.let {
+                    try { it.asFile()?.asUri()?.let { uri -> appContext.contentResolver.delete(uri, null, null) } } catch (_: Exception) { }
+                    try { it.close() } catch (_: Exception) { }
+                }
+                failedIncomingPayloads.add(key)
+                listener.onFileStatus("A bundle file was not saved because its sender could not confirm SHA-256 integrity.")
+                return
+            }
             if (kind == "bundle_decision") {
                 val transferId = envelope.optString("transferId")
                 if (transferId.isNotBlank() && transferId.length <= 128) {
@@ -926,11 +951,21 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
+    private fun sendDeferredFileDigestFailure(endpointId: String, payloadId: Long) {
+        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return
+        val envelope = JSONObject().put("kind", "file_digest_failed").put("version", 1).put("payloadId", payloadId)
+        try { client.sendPayload(endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8))) }
+        catch (_: Exception) { listener.onFileStatus("Could not notify the receiver about an integrity failure.") }
+    }
+
     private fun failOutgoingPreparation(
         endpointId: String, payloadId: Long, name: String, payload: Payload, message: String
     ) {
         preparingOutgoingFiles.remove(payloadId, payload)
         outgoingFiles.remove(payloadId)
+        outgoingDeferredDigestPayloads.remove(payloadId)
+        outgoingBundleDigests.remove(payloadId)
+        outgoingBundleFileCompleted.remove(payloadId)
         outgoingAwaitingFirstByteSinceNanos.remove(payloadId)
         outgoingFirstByteLatencyNanos.remove(payloadId)
         transferStartedAtNanos.remove(transferKey(endpointId, payloadId))
@@ -1051,7 +1086,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                             if (outgoingBundleFileCompleted.remove(id)) outgoingBundleDigests.remove(id)?.let { sendDeferredFileDigest(it.first, id, it.second) }
                             listener.onFileStatus(TransferPreparationMetrics.describe(size, hashElapsedNanos) + " • integrity checked in parallel")
                         } catch (error: Exception) {
-                            listener.onFileStatus("Integrity check failed for $name: ${error.localizedMessage ?: "source read failed"}. Do not trust this bundle item.")
+                            outgoingDeferredDigestPayloads.remove(id)
+                            outgoingBundleDigests.remove(id)
+                            outgoingBundleFileCompleted.remove(id)
+                            sendDeferredFileDigestFailure(endpointId, id)
+                            listener.onFileStatus("Integrity check failed for $name: ${error.localizedMessage ?: "source read failed"}. The receiver was told not to save it.")
                         }
                     }
                     dispatchPreparedFile(endpointId, id, name, size, payload, metadata, true)
