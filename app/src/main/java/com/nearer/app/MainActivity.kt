@@ -1202,7 +1202,7 @@ class MainActivity : ComponentActivity() {
             "NR_COMMUNITY:" + JSONObject().put("type", "ludo_accept").put("matchId", invite.matchId).put("sender", displayName),
             setOf(invite.sender)
         )
-        communityNotice = "Joining $invite.sender's Ludo table…"
+        communityNotice = "Joining ${invite.sender}'s Ludo table…"
     }
 
     private fun sendLudoState(match: LudoNetworkMatch) {
@@ -1931,7 +1931,7 @@ private fun NeaRerHome(
             CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
                 activeGame, gameChatMessages, usingNearbyConnections, onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
-                onRejectGameInvite, onGameMove, onGameChat, onEndGame, onGameInvite)
+                onRejectGameInvite, onGameMove, onGameChat, onEndGame)
 
             if (incomingRequesterName != null) {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
@@ -2135,17 +2135,7 @@ private fun CommunityHub(
             Text(notice, color = Mint, fontSize = 10.sp)
         }
     }
-    LudoGamePanel()
-}
-private fun ticTacToeWinner(board: String): String? {
-    val lines = listOf("012", "345", "678", "036", "147", "258", "048", "246")
-    for (line in lines) {
-        val a = board[line[0].digitToInt()]
-        val b = board[line[1].digitToInt()]
-        val c = board[line[2].digitToInt()]
-        if (a != '.' && a == b && b == c) return a.toString()
-    }
-    return null
+    LudoGamePanel(game, invite, nearbyConnected, onInviteGame, onAccept, onReject, onMove, gameChat, onGameChat, onEndGame)
 }
 private data class CommunityGroup(val code: String, val name: String, val members: List<String>)
 private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
