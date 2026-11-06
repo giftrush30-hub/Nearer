@@ -3307,7 +3307,7 @@ private fun NeaRerHome(
                             ) {
                                 Surface(shape = CircleShape, color = Color(0xFF244B4A), modifier = Modifier.size(38.dp)) {
                                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                        Text("N", color = AccentBlue, fontWeight = FontWeight.Bold)
+                                        Image(painter = painterResource(R.drawable.ic_nearer_foreground), contentDescription = "NeaRer network N", modifier = Modifier.size(28.dp))
                                     }
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
