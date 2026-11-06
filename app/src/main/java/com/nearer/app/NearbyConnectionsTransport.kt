@@ -351,8 +351,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private fun handleManifestFragment(endpointId: String, encodedFragment: ByteArray) {
         try {
             val now = System.currentTimeMillis()
-            incomingManifestAssemblies.entries.removeIf {
-                now - it.value.updatedAtMillis > manifestAssemblyTimeoutMillis
+            incomingManifestAssemblies.entries.forEach { entry ->
+                if (now - entry.value.updatedAtMillis > manifestAssemblyTimeoutMillis) {
+                    if (incomingManifestAssemblies.remove(entry.key, entry.value)) {
+                        entry.value.reassembler.reset()
+                    }
+                }
             }
             require(synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) {
                 "Manifest arrived from a disconnected phone"
