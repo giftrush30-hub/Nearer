@@ -261,12 +261,14 @@ class MainActivity : ComponentActivity() {
                     chatNotice = "Nearby connection ended. Search again to reconnect."
                 }
             }
-            override fun onMessage(id: String, senderName: String, body: String) {
+            override fun onMessage(id: String, senderName: String, messageId: String, body: String) {
                 runOnUiThread {
                     if (body.startsWith("NR_COMMUNITY:")) handleCommunityPacket(senderName, body.removePrefix("NR_COMMUNITY:"))
                     else {
-                        chatMessages.add(ChatMessage("hybrid-" + System.currentTimeMillis(), body, outgoing = false, delivery = "Received"))
-                        persistMessages()
+                        if (chatMessages.none { it.id == messageId }) {
+                            chatMessages.add(ChatMessage(messageId, body, outgoing = false, delivery = "Received"))
+                            persistMessages()
+                        }
                         chatNotice = "New offline message received from $senderName."
                     }
                 }
@@ -958,13 +960,17 @@ class MainActivity : ComponentActivity() {
         if (body.isEmpty() || !chatReady) return
         val id = UUID.randomUUID().toString()
         if (hybridConnected) {
+            // Add the pending bubble before dispatch so a very fast receipt cannot race the UI.
+            chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…"))
+            persistMessages()
             if (nearbyTransport?.send(body, id, hybridConnectedEndpoint) != true) {
+                val index = chatMessages.indexOfFirst { it.id == id }
+                if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
+                persistMessages()
                 chatNotice = "Message could not be sent. Check the nearby connection."
                 return
             }
-            chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…"))
-            persistMessages()
-            chatNotice = "Sent over the offline link • waiting for the other phone to acknowledge receipt."
+            chatNotice = "Sent over the offline link • waiting for the recipient's NeaRer app to acknowledge it."
             return
         }
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
