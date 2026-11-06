@@ -1156,7 +1156,10 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 "broadcast" -> communityNotice = "Broadcast from " + sender + ": " + packet.optString("body").take(500)
-                "ludo_invite" -> if (activeGame == null) incomingGameInvite = GameInvite(packet.optString("matchId"), sender)
+                "ludo_invite" -> {
+                    val matchId = packet.optString("matchId")
+                    if (activeGame == null && matchId.isNotBlank() && matchId.length <= 80) incomingGameInvite = GameInvite(matchId, sender)
+                }
                 "ludo_reject" -> activeGame?.let { game ->
                     if (game.isHost && game.matchId == packet.optString("matchId")) {
                         activeGame = null
@@ -1284,11 +1287,17 @@ class MainActivity : ComponentActivity() {
             val tokens = (0 until 4).map { LudoToken(tokenArray.getInt(it)) }
             LudoPlayer(color, item.optString("name").take(20), item.optBoolean("computer"), tokens)
         }
+        if (players.map { it.color }.distinct().size != players.size) return null
         val current = snapshot.optInt("current", -1)
         if (current !in players.indices) return null
-        val dice = snapshot.optInt("dice", 0).takeIf { it in 1..6 }
+        val rawDice = snapshot.optInt("dice", 0)
+        if (rawDice !in 0..6) return null
+        val dice = rawDice.takeIf { it in 1..6 }
         val winner = snapshot.optString("winner").takeIf { it.isNotBlank() }?.let { LudoColor.valueOf(it) }
-        return LudoGameState(players, current, dice, winner, snapshot.optLong("turn", 1L), snapshot.optInt("sixes", 0).coerceIn(0, 3))
+        if (winner != null && players.none { it.color == winner }) return null
+        val turn = snapshot.optLong("turn", 1L)
+        if (turn < 1L) return null
+        return LudoGameState(players, current, dice, winner, turn, snapshot.optInt("sixes", 0).coerceIn(0, 3))
     }
 
     private fun applyHostLudoAction(game: LudoNetworkMatch, action: String, token: Int) {
