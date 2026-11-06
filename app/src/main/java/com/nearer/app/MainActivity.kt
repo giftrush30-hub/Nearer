@@ -1165,8 +1165,14 @@ class MainActivity : ComponentActivity() {
                     if (activeGame == null && matchId.isNotBlank() && matchId.length <= 80) incomingGameInvite = GameInvite(matchId, sender)
                 }
                 "ludo_reject" -> activeGame?.let { game ->
-                    if (game.isHost && game.matchId == packet.optString("matchId")) {
-                        communityNotice = "$sender declined the invitation. Your Ludo room remains open."
+                    if (game.matchId == packet.optString("matchId")) {
+                        if (game.isHost) {
+                            communityNotice = "$sender declined the invitation. Your Ludo room remains open."
+                        } else if (sender == game.opponentName) {
+                            activeGame = null
+                            gameChatMessages.clear()
+                            communityNotice = "The host can no longer add players to this Ludo room."
+                        }
                     }
                 }
                 "ludo_accept" -> activeGame?.let { game ->
@@ -1192,6 +1198,13 @@ class MainActivity : ComponentActivity() {
                             sendLudoState(updated)
                             communityNotice = "$sender joined as ${nextColor.name}. ${expanded.players.size}/4 seats filled."
                         }
+                    } else if (game.isHost && game.matchId == packet.optString("matchId") &&
+                        sender !in game.remotePlayers.values) {
+                        sendCommunityToNames(
+                            "NR_COMMUNITY:" + JSONObject().put("type", "ludo_reject")
+                                .put("matchId", game.matchId).put("reason", "room_closed"),
+                            setOf(sender)
+                        )
                     }
                 }
                 "ludo_state" -> activeGame?.let { game ->
