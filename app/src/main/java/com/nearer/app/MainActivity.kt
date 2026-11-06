@@ -2767,19 +2767,36 @@ private fun NeaRerHome(
                         }
                     }
                     Text(
-                        if (scanning) "NeaRer is looking for nearby phones. Keep the app open on both devices."
-                        else "Discover nearby NeaRer users without mobile data. Bluetooth and nearby Wi-Fi work together; hotspot is not required.",
+                        when {
+                            receiveMode && incomingTransferName != null -> "A file is arriving from a nearby phone. Keep both phones close until the transfer finishes."
+                            receiveMode && chatReady -> "You're connected to ${connectedDeviceName ?: "a nearby phone"}. Ask the sender to select a file and send it to you."
+                            receiveMode && scanning -> "NeaRer is listening for nearby senders. Keep this screen open; when someone connects, you can receive their file here."
+                            receiveMode -> "Ready to find someone sending you a file. Start discovery and keep NeaRer open. No mobile data is used."
+                            scanning -> "NeaRer is looking for nearby phones. Keep the app open on both devices."
+                            chatReady -> "Connected to ${connectedDeviceName ?: "a nearby phone"}. You can return Home to choose files to send."
+                            else -> "Discover nearby NeaRer users without mobile data. Bluetooth and nearby Wi-Fi work together; hotspot is not required."
+                        },
                         color = Color(0xFFD0DDF0), fontSize = 12.sp, lineHeight = 18.sp
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
                         Button(
                             onClick = onFindNearby,
                             modifier = Modifier.weight(1f).height(49.dp),
-                            enabled = !scanning,
+                            enabled = !scanning && !chatReady,
                             shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight, disabledContainerColor = Color(0xFF315174), disabledContentColor = Color(0xFFD8E5F5))
                         ) {
-                            Text(if (scanning) "SEARCHING…" else "START DISCOVERING", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                            Text(
+                                when {
+                                    scanning && receiveMode -> "LISTENING FOR SENDER…"
+                                    scanning -> "SEARCHING…"
+                                    receiveMode && chatReady -> "READY TO RECEIVE"
+                                    chatReady -> "CONNECTED"
+                                    receiveMode -> "FIND A SENDER"
+                                    else -> "START DISCOVERING"
+                                },
+                                fontSize = 10.sp, fontWeight = FontWeight.Black
+                            )
                         }
                         if (scanning) {
                             Button(
