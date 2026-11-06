@@ -10,6 +10,7 @@ Make nearby Android file sharing as fast as the two phones and their wireless li
 
 - Nearby startup now checks Bluetooth and Wi-Fi readiness and gives a specific user instruction when either radio is off or its state cannot be read. It does not silently toggle radios or block the fallback connection path; users can enable radios in system settings and retry.
 - The receive-save copy buffer is selected from available memory, low-RAM classification and Android thermal status.
+- Receiver finalization now uses a memory/thermal-aware worker count capped at two, with an eight-task bounded queue. This allows two independent completed FILE payloads to be validated and committed concurrently on capable devices while constrained devices stay serial; queue saturation rejects the save cleanly rather than building unbounded disk work. A rejected bundle item is marked failed so its session cannot remain stuck in progress.
 - A capable, cool phone uses 256 KiB; constrained devices use 128 KiB; severe thermal pressure uses 32 KiB.
 - Nearby Connections payload completion is timed and the observed average MB/s is reported.
 - Sender-side time-to-first-byte is now measured from FILE payload creation (before any bundle checksum pre-read) to the first positive-byte progress callback, and is reported separately from sustained payload MiB/s. This makes checksum/setup delay visible instead of hiding it outside the radio-throughput metric.
