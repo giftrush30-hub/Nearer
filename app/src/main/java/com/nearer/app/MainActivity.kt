@@ -2447,13 +2447,42 @@ private fun NeaRerHome(
                                     Text("↓  RECEIVE", fontSize = 10.sp, fontWeight = FontWeight.Black)
                                 }
                             }
-                            Text(when {
-                                receiveMode && incomingTransferName != null -> "Receiving a file from a nearby phone…"
-                                receiveMode && chatReady -> "Receive mode is ready. Ask the nearby sender to choose and send a file."
-                                receiveMode -> "Receive mode: discover a nearby sender. Keep NeaRer open. No mobile data is used."
-                                chatReady -> "Connected to ${connectedDeviceName ?: "a nearby phone"} • ready to share"
-                                else -> "Discover a nearby phone to send or receive files. No mobile data is used."
-                            }, color = Color(0xFFB9D2F5), fontSize = 10.sp)
+                            val transferGuidance = when {
+                                receiveMode && incomingTransferName != null -> "Receiving ${incomingTransferName} from a nearby phone. Keep NeaRer open until it finishes."
+                                receiveMode && chatReady -> "You're connected. Ask the sender to select a file; it will arrive here automatically."
+                                receiveMode -> "Your phone is ready to receive. Find a nearby sender and keep NeaRer open."
+                                chatReady -> "Connected to ${connectedDeviceName ?: "a nearby phone"}. Choose any file or app to send."
+                                else -> "Find a nearby phone first. Once connected, choose files or apps to share directly."
+                            }
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().animateContentSize(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (incomingTransferName != null) Color(0xFF123F3A) else Color(0xFF0B2342),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (incomingTransferName != null) Color(0xFF54D6A5).copy(alpha = 0.55f)
+                                    else Color(0xFF4775AD).copy(alpha = 0.45f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (incomingTransferName != null) Color(0xFF54D6A5) else Gold,
+                                        modifier = Modifier.size(7.dp)
+                                    ) {}
+                                    Text(
+                                        transferGuidance,
+                                        color = if (incomingTransferName != null) Color(0xFFC8FFEA) else Color(0xFFD7E5FA),
+                                        fontSize = 10.sp,
+                                        lineHeight = 15.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
                         }
                     }
 
