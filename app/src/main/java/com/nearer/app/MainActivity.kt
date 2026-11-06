@@ -2070,9 +2070,39 @@ private fun NeaRerHome(
                         singleLine = true,
                         label = { Text("Search apps", color = Muted) }
                     )
-                    val visibleApps = installedApps.filter {
-                        appSearch.isBlank() || it.label.contains(appSearch, ignoreCase = true) ||
-                            it.packageName.contains(appSearch, ignoreCase = true)
+                    var appFilter by remember { mutableStateOf("All") }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("All", "Single APK", "Split APK").forEach { filter ->
+                            val selected = appFilter == filter
+                            Surface(
+                                modifier = Modifier.weight(1f).clickable { appFilter = filter },
+                                color = if (selected) Color(0xFF1B5EB5) else Color(0xFF0B2342),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, if (selected) Gold.copy(alpha = 0.8f) else Color(0xFF31547E))
+                            ) {
+                                Text(
+                                    filter,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 9.dp),
+                                    color = if (selected) White else Muted,
+                                    fontSize = 9.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                    val visibleApps = installedApps.filter { app ->
+                        (appSearch.isBlank() || app.label.contains(appSearch, ignoreCase = true) ||
+                            app.packageName.contains(appSearch, ignoreCase = true)) &&
+                            when (appFilter) {
+                                "Single APK" -> app.apkPaths.size == 1
+                                "Split APK" -> app.apkPaths.size > 1
+                                else -> true
+                            }
                     }
                     if (isLoadingApps) {
                         Text("Please wait while NeaRer reads the app library on this phone.", color = White, fontSize = 12.sp)
