@@ -148,6 +148,7 @@ class MainActivity : ComponentActivity() {
     private var outgoingProgress by mutableStateOf(0f)
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
+    private var incomingBundleOffer by mutableStateOf<IncomingBundleOffer?>(null)
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
@@ -336,6 +337,23 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            override fun onBundleOffer(endpointId: String, manifest: TransferBundleManifest) {
+                runOnUiThread {
+                    if (hybridConnectedEndpoint == endpointId) {
+                        incomingBundleOffer = IncomingBundleOffer(endpointId, manifest)
+                        chatNotice = "A nearby phone wants to send " + manifest.items.count { it.kind == TransferBundleItem.Kind.FILE } + " files. Review the list before accepting."
+                    }
+                }
+            }
+            override fun onBundleDecision(endpointId: String, transferId: String, accepted: Boolean) {
+                runOnUiThread {
+                    chatNotice = if (accepted) {
+                        "The other phone accepted bundle " + transferId + ". File streaming is the next transfer stage."
+                    } else {
+                        "The other phone declined bundle " + transferId + "."
+                    }
+                }
+            }
             override fun onFileStatus(message: String) {
                 runOnUiThread {
                     chatNotice = message
@@ -395,6 +413,9 @@ class MainActivity : ComponentActivity() {
                     messages = chatMessages,
                     chatNotice = chatNotice,
                     receivedFiles = receivedFiles,
+                    incomingBundleOffer = incomingBundleOffer,
+                    onAcceptBundle = ::acceptIncomingBundleOffer,
+                    onRejectBundle = ::rejectIncomingBundleOffer,
                     onSendMessage = ::sendChatMessage,
                     groups = communityGroups.toList(),
                     groupMessages = communityMessages.toList(),
@@ -1613,6 +1634,20 @@ class MainActivity : ComponentActivity() {
         chatNotice = "Cancelling file transfer…"
     }
 
+    private fun acceptIncomingBundleOffer() {
+        val offer = incomingBundleOffer ?: return
+        nearbyTransport?.sendBundleDecision(offer.endpointId, offer.manifest.transferId, true)
+        incomingBundleOffer = null
+        chatNotice = "Bundle approved. NeaRer is ready for the sender's file-transfer stage."
+    }
+
+    private fun rejectIncomingBundleOffer() {
+        val offer = incomingBundleOffer ?: return
+        nearbyTransport?.sendBundleDecision(offer.endpointId, offer.manifest.transferId, false)
+        incomingBundleOffer = null
+        chatNotice = "Bundle declined. No files were saved."
+    }
+
     private fun sendFiles(uris: List<Uri>) {
         if (uris.isEmpty()) return
         if ((!hybridConnected && !chatReady) || (hybridConnected && hybridConnectedEndpoint == null)) {
@@ -1954,6 +1989,9 @@ private fun NeaRerHome(
     messages: List<ChatMessage>,
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
+    incomingBundleOffer: IncomingBundleOffer?,
+    onAcceptBundle: () -> Unit,
+    onRejectBundle: () -> Unit,
     onSendMessage: (String) -> Unit,
     groups: List<CommunityGroup>,
     groupMessages: List<CommunityChatMessage>,
@@ -2235,6 +2273,37 @@ private fun NeaRerHome(
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)
                             ) { Text("Cancel file transfer") }
                         }
+                        incomingBundleOffer?.let { offer ->
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFF203858)
+                            ) {
+                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("INCOMING FILE BUNDLE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        offer.manifest.items.count { it.kind == TransferBundleItem.Kind.FILE }.toString() + " files • " +
+                                            offer.manifest.items.count { it.kind == TransferBundleItem.Kind.DIRECTORY } + " folders",
+                                        color = White, fontWeight = FontWeight.Bold
+                                    )
+                                    Text("Review the names and folder paths. No file payload is accepted until you approve.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                                    offer.manifest.items.take(4).forEach { item ->
+                                        Text(
+                                            (if (item.kind == TransferBundleItem.Kind.DIRECTORY) "📁 " else "• ") +
+                                                item.relativePath + if (item.kind == TransferBundleItem.Kind.FILE) "  (" + item.sizeBytes + " bytes)" else "",
+                                            color = White, fontSize = 10.sp, maxLines = 2
+                                        )
+                                    }
+                                    if (offer.manifest.items.size > 4) {
+                                        Text("+ " + (offer.manifest.items.size - 4) + " more entries", color = Muted, fontSize = 10.sp)
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(onClick = onAcceptBundle, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Approve") }
+                                        Button(onClick = onRejectBundle, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Decline") }
+                                    }
+                                }
+                            }
+                        }
                         Button(
                             onClick = { filePicker.launch(arrayOf("*/*")) },
                             modifier = Modifier.fillMaxWidth(),
@@ -2481,6 +2550,7 @@ private data class ChatMessage(
 )
 
 private data class ReceivedFile(val displayName: String, val file: File)
+private data class IncomingBundleOffer(val endpointId: String, val manifest: TransferBundleManifest)
 
 private data class IncomingTransfer(
     val name: String,
