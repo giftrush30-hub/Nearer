@@ -1,6 +1,6 @@
 # Resume checkpoint foundation
 
-NeaRer now has a pure Kotlin `TransferResumeCheckpoint` model with unit tests.
+NeaRer now has a pure Kotlin `TransferResumeCheckpoint` model, a versioned binary codec, and a durable local journal with unit tests.
 
 It binds a checkpoint to:
 - bundle transfer ID and item ID;
@@ -19,7 +19,7 @@ Before a future resume implementation trusts a checkpoint, it must:
 4. negotiate the offset with the peer;
 5. resume from that offset and verify the final full-file digest before finalisation.
 
-IMPORTANT: this is a validated protocol primitive, not a working pause/resume feature. The application does not yet persist checkpoints, negotiate offsets with another phone, call Nearby Payload.setOffset, or recover a transfer after process death. No user-facing resume claim should be made until those steps are implemented and tested on two physical devices.
+IMPORTANT: the local checkpoint journal is implemented and tested as a storage primitive, but it is not yet wired into the live file-receive pipeline. The application does not yet persist partial-file checkpoints during transfer, re-hash an on-disk retained prefix, negotiate offsets with another phone, call Nearby Payload.setOffset, or recover an interrupted transfer after process death. This is not yet a working pause/resume feature. No user-facing resume claim should be made until those steps are integrated and tested on two physical devices.
 
 References:
 - Google Nearby Payload API documents getOffset/setOffset for FILE and STREAM payloads: https://developers.google.com/android/reference/com/google/android/gms/nearby/connection/Payload
