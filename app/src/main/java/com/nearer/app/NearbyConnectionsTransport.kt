@@ -335,6 +335,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             fileIo.execute {
                 var temporary: File? = null
                 var destination: File? = null
+                var receivedUri: Uri? = null
                 try {
                     val folder = File(appContext.filesDir, "received").apply {
                         if (!exists() && !mkdirs()) throw IllegalStateException("Could not create the received-files folder")
@@ -352,6 +353,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
 
                     val uri: Uri = payload.asFile()?.asUri()
                         ?: throw IllegalStateException("Nearby file content is unavailable")
+                    receivedUri = uri
                     val copied = appContext.contentResolver.openInputStream(uri)?.use { input ->
                         FileOutputStream(temp).use { output ->
                             val result = TransferStreamIO.copyExactly(
@@ -374,7 +376,6 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     }
                     temporary = null
                     destination = null // The final file is committed; later UI callbacks must not delete it.
-                    appContext.contentResolver.delete(uri, null, null)
                     listener.onFileReceived(meta.endpointId, meta.name, target)
                     completedTransferRates.remove(payloadId)?.let { rate ->
                         listener.onFileStatus("Received ${meta.name} • $rate MB/s average • SHA-256 ${TransferStreamIO.sha256Hex(copied.sha256).take(12)}")
@@ -384,6 +385,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     destination?.takeIf { it.exists() }?.delete()
                     listener.onFileStatus("Could not save the received file: ${error.localizedMessage ?: "transfer error"}")
                 } finally {
+                    receivedUri?.let { try { appContext.contentResolver.delete(it, null, null) } catch (_: Exception) { } }
                     try { payload.close() } catch (_: Exception) { }
                 }
             }
