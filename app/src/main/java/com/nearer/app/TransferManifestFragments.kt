@@ -4,6 +4,8 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 
 /**
  * Splits a bounded bundle manifest into Nearby BYTES payloads.
@@ -66,7 +68,11 @@ internal object TransferManifestFragments {
         require(idLength in 1..MAX_TRANSFER_ID_BYTES && idLength <= input.available())
         val idBytes = ByteArray(idLength)
         input.readFully(idBytes)
-        val transferId = idBytes.toString(Charsets.UTF_8)
+        val transferId = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(idBytes))
+            .toString()
         require(transferId.isNotBlank() && !transferId.any { it.isISOControl() })
         val index = input.readInt()
         val count = input.readInt()
