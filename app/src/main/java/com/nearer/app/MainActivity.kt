@@ -105,7 +105,7 @@ import com.nearer.app.games.ludo.LudoGameScreen
 
 private val Midnight = Color(0xFF071A38)
 private val Panel = Color(0xFF102B50)
-private val Mint = Color(0xFFFFD34E)
+private val Mint = Color(0xFF3B82F6)
 private val Muted = Color(0xFFAABBD4)
 private val White = Color(0xFFF6F8FF)
 private val BrandBlue = Color(0xFF1769FF)
@@ -1989,6 +1989,63 @@ private fun NeaRerHome(
                                 else "To send or receive, connect to a nearby NeaRer phone first.",
                                 color = Color(0xFFB9D2F5), fontSize = 10.sp)
                         }
+                    }
+
+
+                    Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("BROWSE FILES", color = White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                            Spacer(Modifier.weight(1f))
+                            Text("Choose what to share", color = Muted, fontSize = 10.sp)
+                        }
+                        val fileCategories = listOf(
+                            Triple("▧", "Photos", arrayOf("image/*")),
+                            Triple("▶", "Videos", arrayOf("video/*")),
+                            Triple("♫", "Music", arrayOf("audio/*")),
+                            Triple("▣", "Apps", arrayOf("application/vnd.android.package-archive")),
+                            Triple("▤", "Documents", arrayOf("application/pdf", "text/*", "application/msword")),
+                            Triple("•••", "All files", arrayOf("*/*"))
+                        )
+                        fileCategories.chunked(3).forEachIndexed { rowIndex, rowItems ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                                rowItems.forEachIndexed { columnIndex, item ->
+                                    val tileBlue = when ((rowIndex * 3) + columnIndex) {
+                                        0 -> Color(0xFF1554B8)
+                                        1 -> Color(0xFF123F88)
+                                        2 -> Color(0xFF174A9B)
+                                        3 -> Color(0xFF123D7A)
+                                        4 -> Color(0xFF194783)
+                                        else -> Color(0xFF102F63)
+                                    }
+                                    Surface(
+                                        modifier = Modifier.weight(1f).height(94.dp).clickable {
+                                            if (chatReady) filePicker.launch(item.third)
+                                            else {
+                                                activeSection = "nearby"
+                                                onFindNearby()
+                                                navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                                            }
+                                        },
+                                        color = tileBlue,
+                                        shape = RoundedCornerShape(17.dp),
+                                        border = BorderStroke(1.dp, Color(0xFF347CEB).copy(alpha = 0.55f))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxSize().padding(11.dp),
+                                            verticalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(item.first, color = Gold, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                                            Text(item.second, color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Text(
+                            if (chatReady) "Choose a category to select files for your connected device."
+                            else "Connect to a nearby NeaRer phone to start selecting and sending files.",
+                            color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                        )
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
