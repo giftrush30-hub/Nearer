@@ -670,6 +670,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     }
                 }
             }
+            // A FILE payload rejected by the bounded save queue still owns a
+            // Nearby-managed temporary URI. Delete it explicitly before closing
+            // the payload so queue saturation cannot leak received storage.
+            try { payload.asFile()?.asUri()?.let { appContext.contentResolver.delete(it, null, null) } } catch (_: Exception) { }
             try { payload.close() } catch (_: Exception) { }
             listener.onFileStatus("Could not queue the received file for saving: ${error.localizedMessage ?: "storage busy"}")
         }
