@@ -1142,6 +1142,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             .filter { it.value.first == endpointId }
             .forEach { (payloadId, _) ->
                 outgoingFiles.remove(payloadId)
+                outgoingDeferredDigestPayloads.remove(payloadId)
+                outgoingBundleDigests.remove(payloadId)
+                outgoingBundleFileCompleted.remove(payloadId)
                 outgoingAwaitingFirstByteSinceNanos.remove(payloadId)
                 outgoingFirstByteLatencyNanos.remove(payloadId)
                 preparingOutgoingFiles.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
@@ -1157,6 +1160,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val key = transferKeyForOutgoing(payloadId)
         try { client.cancelPayload(payloadId) } catch (_: Exception) { }
         outgoingFiles.remove(payloadId)
+        outgoingDeferredDigestPayloads.remove(payloadId)
+        outgoingBundleDigests.remove(payloadId)
+        outgoingBundleFileCompleted.remove(payloadId)
         outgoingAwaitingFirstByteSinceNanos.remove(payloadId)
         outgoingFirstByteLatencyNanos.remove(payloadId)
         preparingOutgoingFiles.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
