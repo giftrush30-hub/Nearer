@@ -165,7 +165,7 @@ object LudoEngine {
             winnerId = if (won) updatedPlayer.id else null,
             message = if (won) "${updatedPlayer.name} has won the game!" else if (extraTurn) "${updatedPlayer.name} gets another turn" else "${nextPlayer.name}'s turn",
             turnNumber = state.turnNumber + if (extraTurn || won) 0 else 1,
-            consecutiveSixes = if (dice == 6) state.consecutiveSixes else 0,
+            consecutiveSixes = if (dice == 6 && captured == 0 && newProgress != 56) state.consecutiveSixes else 0,
             lastAction = action
         )
     }
