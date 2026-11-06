@@ -1054,8 +1054,23 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) { communityGroups.clear(); communityMessages.clear() }
     }
     private fun sendCommunityPacket(packet: JSONObject): Boolean {
-        if (!hybridConnected) { communityNotice = "Connect to nearby NeaRer phones first."; return false }
-        return nearbyTransport?.send("NR_COMMUNITY:$packet") == true
+        val body = "NR_COMMUNITY:$packet"
+        if (hybridConnected) return nearbyTransport?.send(body) == true
+        if (chatReady && connectedDeviceName != null) {
+            val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
+            return sendWireLine("COMMUNITY|$encoded")
+        }
+        communityNotice = "Connect to a nearby NeaRer phone first."
+        return false
+    }
+
+    private fun sendCommunityToNames(body: String, targetNames: Set<String>): Boolean {
+        if (hybridConnected) return sendCommunityToNames(body, targetNames) == true
+        if (chatReady && connectedDeviceName != null && connectedDeviceName in targetNames) {
+            val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
+            return sendWireLine("COMMUNITY|$encoded")
+        }
+        return false
     }
     private fun createCommunityGroup(raw: String) {
         val name = raw.trim().take(32)
@@ -1617,6 +1632,20 @@ class MainActivity : ComponentActivity() {
                                 incomingTransferName = null
                                 incomingProgress = 0f
                                 chatNotice = "The other phone cancelled the file transfer."
+                            }
+                        }
+                        line.startsWith("COMMUNITY|") -> {
+                            val encoded = line.substringAfter("COMMUNITY|")
+                            try {
+                                val body = String(Base64.getDecoder().decode(encoded), Charsets.UTF_8)
+                                if (body.startsWith("NR_COMMUNITY:") && body.length <= 24 * 1024) {
+                                    runOnUiThread {
+                                        handleCommunityPacket(connectedDeviceName ?: "Nearby member", body.removePrefix("NR_COMMUNITY:"))
+                                        persistCommunityData()
+                                    }
+                                }
+                            } catch (_: Exception) {
+                                runOnUiThread { communityNotice = "A nearby game or community packet could not be read." }
                             }
                         }
                         line == "PING" -> synchronized(writerLock) { peerWriter?.println("PONG") }
