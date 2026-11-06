@@ -114,7 +114,7 @@ class LudoEngineTraditionalRulesTest {
             assertEquals(it + 1, state.consecutiveSixes)
         }
 
-        state = LudoEngine.roll(state, AlwaysSixRandom())
+        state = LudoEngine.roll(state, FixedDiceRandom(6))
 
         assertEquals(1, state.activePlayerIndex)
         assertNull(state.dice)
