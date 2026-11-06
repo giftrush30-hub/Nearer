@@ -52,7 +52,7 @@ internal object TransferResumeMessageCodec {
 
     fun decode(bytes: ByteArray): Envelope {
         require(bytes.size in MIN_MESSAGE_BYTES..MAX_MESSAGE_BYTES) { "Invalid resume proposal length" }
-        DataInputStream(ByteArrayInputStream(bytes)).use { data ->
+        return try { DataInputStream(ByteArrayInputStream(bytes)).use { data ->
             require(data.readInt() == MAGIC) { "Invalid resume proposal signature" }
             require(data.readUnsignedByte() == VERSION) { "Unsupported resume proposal version" }
             val payloadId = data.readLong()
@@ -73,7 +73,11 @@ internal object TransferResumeMessageCodec {
                 offset % TransferResumeCheckpoint.CHECKPOINT_GRANULARITY_BYTES == 0L)
             require(digest.matches(Regex("^[a-fA-F0-9]{64}$")))
             require(transferId.isNotBlank() && itemId.isNotBlank() && path.isNotBlank())
-            return Envelope(payloadId, proposal.copy(prefixSha256 = digest.lowercase()))
+            Envelope(payloadId, proposal.copy(prefixSha256 = digest.lowercase()))
+        } } catch (error: IllegalArgumentException) {
+            throw error
+        } catch (error: Exception) {
+            throw IllegalArgumentException("Malformed resume proposal", error)
         }
     }
 
