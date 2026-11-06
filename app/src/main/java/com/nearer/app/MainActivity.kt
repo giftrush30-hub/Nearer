@@ -2071,9 +2071,9 @@ private fun NeaRerHome(
                             border = BorderStroke(1.dp, Color(0xFF2B4C70))
                         ) {
                             Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                                Text(item[0], color = Gold, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                                Text(item[1], color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                Text(item[2], color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+                                Text(item.first, color = Gold, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                                Text(item.second, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text(item.third, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
                             }
                         }
                     }
@@ -2090,9 +2090,9 @@ private fun NeaRerHome(
                             border = BorderStroke(1.dp, Color(0xFF2B4C70))
                         ) {
                             Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                                Text(item[0], color = Color(0xFF8FB9F4), fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                                Text(item[1], color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                Text(item[2], color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+                                Text(item.first, color = Color(0xFF8FB9F4), fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                                Text(item.second, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text(item.third, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
                             }
                         }
                     }
@@ -2629,10 +2629,10 @@ private fun NeaRerHome(
                         Triple("♟", "Community", "community"),
                         Triple("♜", "Games", "games")
                     ).forEach { item ->
-                        val selected = activeSection == item[2]
+                        val selected = activeSection == item.third
                         Surface(
                             modifier = Modifier.weight(1f).clickable {
-                                activeSection = item[2]
+                                activeSection = item.third
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                             },
                             color = if (selected) Color(0xFF25466F) else Color.Transparent,
@@ -2644,8 +2644,8 @@ private fun NeaRerHome(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                Text(item[0], color = if (selected) Gold else Muted, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                                Text(item[1], color = if (selected) White else Muted, fontSize = 8.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
+                                Text(item.first, color = if (selected) Gold else Muted, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                Text(item.second, color = if (selected) White else Muted, fontSize = 8.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
                             }
                         }
                     }
