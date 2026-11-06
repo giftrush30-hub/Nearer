@@ -4,7 +4,7 @@ package com.nearer.app
  * Metadata-only description of one logical multi-file transfer.
  * File bytes are deliberately not stored here; they are streamed separately.
  */
-internal data class TransferBundleManifest(
+data class TransferBundleManifest(
     val transferId: String,
     val items: List<TransferBundleItem>,
     val protocolVersion: Int = CURRENT_PROTOCOL_VERSION
@@ -80,7 +80,7 @@ internal data class TransferBundleManifest(
     }
 }
 
-internal data class TransferBundleItem(
+data class TransferBundleItem(
     val id: String,
     val relativePath: String,
     val displayName: String,
