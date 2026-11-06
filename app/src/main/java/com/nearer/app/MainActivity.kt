@@ -339,7 +339,7 @@ class MainActivity : ComponentActivity() {
             override fun onFileStatus(message: String) {
                 runOnUiThread {
                     chatNotice = message
-                    if (message.startsWith("File could not be prepared") || message.startsWith("The nearby connection is no longer active.")) {
+                    if (message.startsWith("File could not be prepared") || message.startsWith("The nearby connection is no longer active.") || message.startsWith("The nearby connection is not ready.")) {
                         outgoingTransferId = null
                         outgoingProgress = 0f
                         sendNextQueuedFile()
