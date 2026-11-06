@@ -47,10 +47,44 @@ internal class TransferResumeJournal(private val directory: File) {
         }
     }
 
+    /** Enumerate valid checkpoints after process restart; corrupt or misnamed entries are ignored. */
+    @Synchronized
+    fun loadAll(): List<TransferResumeCheckpoint> {
+        if (!directory.isDirectory) return emptyList()
+        return directory.listFiles()
+            ?.asSequence()
+            ?.filter { it.isFile && it.name.endsWith(".nrc") && it.length() in 1..MAX_ENCODED_BYTES.toLong() }
+            ?.take(MAX_DISCOVERED_ENTRIES)
+            ?.mapNotNull { file ->
+                try {
+                    TransferResumeCheckpointCodec.decode(file.readBytes()).takeIf { checkpoint ->
+                        checkpointFile(checkpoint.transferId, checkpoint.itemId).name == file.name
+                    }
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            ?.sortedWith(compareBy<TransferResumeCheckpoint> { it.transferId }.thenBy { it.itemId })
+            ?.toList()
+            ?: emptyList()
+    }
+
+    @Synchronized
+    fun removeTransfer(transferId: String): Int {
+        require(transferId.isNotBlank()) { "Transfer ID is required" }
+        return loadAll().filter { it.transferId == transferId }
+            .count { remove(it.transferId, it.itemId) }
+    }
+
     @Synchronized
     fun remove(transferId: String, itemId: String): Boolean {
         val file = checkpointFile(transferId, itemId)
         return !file.exists() || file.delete()
+    }
+
+    private companion object {
+        const val MAX_ENCODED_BYTES = 6_144
+        const val MAX_DISCOVERED_ENTRIES = 10_000
     }
 
     private fun checkpointFile(transferId: String, itemId: String): File {
