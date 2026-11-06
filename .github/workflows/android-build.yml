@@ -35,7 +35,7 @@ jobs:
           gradle-version: '8.9'
 
       - name: Compile app, run unit tests, and assemble installable APK
-        run: gradle --no-daemon --stacktrace testDebugUnitTest assembleDebug
+        run: gradle --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug
 
       - name: Upload NeaRer debug APK
         uses: actions/upload-artifact@v4
