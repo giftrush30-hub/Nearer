@@ -13,7 +13,9 @@ package com.nearer.app
  * memory use with unbounded control messages.
  */
 internal class TransferResumeExchangeTracker(
-    private val maxPendingExchanges: Int = DEFAULT_MAX_PENDING
+    private val maxPendingExchanges: Int = DEFAULT_MAX_PENDING,
+    private val nowMillis: () -> Long = { System.nanoTime() / 1_000_000L },
+    private val entryTtlMillis: Long = DEFAULT_ENTRY_TTL_MILLIS
 ) {
     data class Key(val endpointId: String, val payloadId: Long)
 
@@ -41,6 +43,7 @@ internal class TransferResumeExchangeTracker(
     private val entries = LinkedHashMap<Key, Entry>()
 
     init {
+        require(entryTtlMillis > 0L) { "Resume exchange expiry must be positive" }
         require(maxPendingExchanges in 1..MAX_ALLOWED_PENDING) {
             "Resume exchange capacity is outside the safe range"
         }
@@ -49,26 +52,27 @@ internal class TransferResumeExchangeTracker(
     @Synchronized
     fun recordProposal(endpointId: String, envelope: TransferResumeMessageCodec.Envelope): Update {
         val key = key(endpointId, envelope.payloadId) ?: return Update.INVALID_KEY
+        pruneExpired()
         val entry = entryFor(key) ?: return Update.CAPACITY_REACHED
         val existing = entry.proposal
-        if (existing != null) return if (existing == envelope.proposal) Update.DUPLICATE else Update.CONFLICT
-        entry.proposal = envelope.proposal
+        if (existing != null) return if (existing == envelope.proposal) Update.DUPLICATE else invalidate(key)
         return Update.STORED
     }
 
     @Synchronized
     fun recordDecision(endpointId: String, envelope: TransferResumeMessageCodec.DecisionEnvelope): Update {
         val key = key(endpointId, envelope.payloadId) ?: return Update.INVALID_KEY
+        pruneExpired()
         val entry = entryFor(key) ?: return Update.CAPACITY_REACHED
         val existing = entry.decision
-        if (existing != null) return if (existing == envelope.decision) Update.DUPLICATE else Update.CONFLICT
-        entry.decision = envelope.decision
+        if (existing != null) return if (existing == envelope.decision) Update.DUPLICATE else invalidate(key)
         return Update.STORED
     }
 
     @Synchronized
     fun recordDataPayload(endpointId: String, payloadId: Long): Update {
         val key = key(endpointId, payloadId) ?: return Update.INVALID_KEY
+        pruneExpired()
         val entry = entryFor(key) ?: return Update.CAPACITY_REACHED
         if (entry.dataPayloadSeen) return Update.DUPLICATE
         entry.dataPayloadSeen = true
@@ -82,6 +86,7 @@ internal class TransferResumeExchangeTracker(
      */
     @Synchronized
     fun takeReady(endpointId: String, payloadId: Long): ReadyExchange? {
+        pruneExpired()
         val key = key(endpointId, payloadId) ?: return null
         val entry = entries[key] ?: return null
         if (entry.consumed || !entry.dataPayloadSeen) return null
@@ -106,12 +111,29 @@ internal class TransferResumeExchangeTracker(
     }
 
     @Synchronized
-    fun pendingCount(): Int = entries.size
+    fun pendingCount(): Int {
+        pruneExpired()
+        return entries.size
+    }
 
     private fun entryFor(key: Key): Entry? {
-        entries[key]?.let { return it }
+        entries[key]?.let { it.updatedAtMillis = nowMillis(); return it }
         if (entries.size >= maxPendingExchanges) return null
-        return Entry().also { entries[key] = it }
+        return Entry(updatedAtMillis = nowMillis()).also { entries[key] = it }
+    }
+
+    private fun invalidate(key: Key): Update {
+        entries.remove(key)
+        return Update.CONFLICT
+    }
+
+    private fun pruneExpired() {
+        val now = nowMillis()
+        val iterator = entries.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next().value
+            if (now - entry.updatedAtMillis >= entryTtlMillis || now < entry.updatedAtMillis) iterator.remove()
+        }
     }
 
     private fun key(endpointId: String, payloadId: Long): Key? =
@@ -119,6 +141,7 @@ internal class TransferResumeExchangeTracker(
 
     private companion object {
         const val DEFAULT_MAX_PENDING = 64
+        const val DEFAULT_ENTRY_TTL_MILLIS = 120_000L
         const val MAX_ALLOWED_PENDING = 256
     }
 }
