@@ -243,6 +243,11 @@ class MainActivity : ComponentActivity() {
                     statusMessage = "$name is requesting a nearby connection."
                 }
             }
+            override fun onTransferWindowChanged(endpointId: String) {
+                runOnUiThread {
+                    if (hybridConnectedEndpoint == endpointId) sendNextQueuedFile()
+                }
+            }
             override fun onConnected(id: String, name: String, stableId: String) {
                 runOnUiThread {
                     hybridConnected = true
@@ -1795,12 +1800,16 @@ class MainActivity : ComponentActivity() {
         val thermalStatus = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             (getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager)?.currentThermalStatus ?: 0
         } else 0
-        return TransferConcurrencyPolicy.maxParallelFiles(
+        val localWindow = TransferConcurrencyPolicy.maxParallelFiles(
             availableMemoryBytes = memory.availMem,
             lowMemory = memory.lowMemory,
             lowRamDevice = manager?.isLowRamDevice == true,
             thermalStatus = thermalStatus
         )
+        val endpoint = hybridConnectedEndpoint
+        return if (endpoint != null) {
+            nearbyTransport?.recommendedParallelFiles(endpoint, localWindow) ?: 1
+        } else localWindow
     }
 
     private fun sendNextQueuedFile() {
