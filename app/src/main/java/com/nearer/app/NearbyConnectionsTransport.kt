@@ -901,7 +901,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 preparingOutgoingFiles[id] = payload
                 listener.onFileProgress(endpointId, id, name, 0L, size, false)
                 listener.onFileStatus("Preparing the integrity check for $name in the background…")
-                filePreparationIo.execute {
+                try {
+                    filePreparationIo.execute {
                     try {
                         val hashStartedAt = SystemClock.elapsedRealtimeNanos()
                         val sourceSha256 = appContext.contentResolver.openInputStream(uri)?.use { input ->
@@ -928,6 +929,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                             )
                         }
                     }
+                    }
+                } catch (error: Exception) {
+                    failOutgoingPreparation(
+                        endpointId, id, name, payload,
+                        "File could not be prepared: ${error.localizedMessage ?: "integrity worker unavailable"}"
+                    )
                 }
             } else {
                 dispatchPreparedFile(endpointId, id, name, size, payload, metadata, false)
