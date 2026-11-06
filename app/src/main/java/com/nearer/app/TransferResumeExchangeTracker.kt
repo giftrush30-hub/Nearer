@@ -34,6 +34,7 @@ internal class TransferResumeExchangeTracker(
     }
 
     private data class Entry(
+        var updatedAtMillis: Long,
         var proposal: TransferResumeNegotiation.Proposal? = null,
         var decision: TransferResumeNegotiation.Decision? = null,
         var dataPayloadSeen: Boolean = false,
