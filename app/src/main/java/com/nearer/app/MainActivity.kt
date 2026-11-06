@@ -1609,6 +1609,10 @@ class MainActivity : ComponentActivity() {
 
     private fun sendFiles(uris: List<Uri>) {
         if (uris.isEmpty()) return
+        if ((!hybridConnected && !chatReady) || (hybridConnected && hybridConnectedEndpoint == null)) {
+            chatNotice = "Connect to the intended nearby phone before selecting files to send."
+            return
+        }
         synchronized(pendingFileUris) { uris.forEach { pendingFileUris.addLast(it) } }
         if (outgoingTransferId == null) sendNextQueuedFile()
         else chatNotice = "${uris.size} file(s) added to the transfer queue."
