@@ -173,7 +173,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                                 else -> "Choose a token to move"
                             }, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                         }
-                        DiceFace(if (rolling) rollingFace else game.dice ?: rollingFace, rolling, Modifier.size(66.dp))
+                        DiceFace(if (rolling) rollingFace else game.dice ?: rollingFace, rolling, Modifier.size(66.dp).clickable(enabled = game.canRoll && !game.activePlayer.isComputer && !rolling) { scope.launch { animateRoll() } })
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
                         Button(onClick = { scope.launch { animateRoll() } },
