@@ -73,10 +73,19 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
     DisposableEffect(tones) { onDispose { tones.release() } }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
-    val pulse by rememberInfiniteTransition(label = "legal-pulse").animateFloat(
-        0.72f, 1f, infiniteRepeatable(tween(850, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "legal-pulse"
-    )
+    // Highlight legal moves only while a player can actually choose a token.
+    // This avoids running an endless animation throughout setup and idle turns.
+    val pulse = remember { Animatable(1f) }
+    LaunchedEffect(game.legalTokenIndexes, game.isFinished) {
+        if (game.legalTokenIndexes.isNotEmpty() && !game.isFinished) {
+            while (true) {
+                pulse.animateTo(0.72f, tween(850, easing = FastOutSlowInEasing))
+                pulse.animateTo(1f, tween(850, easing = FastOutSlowInEasing))
+            }
+        } else {
+            pulse.snapTo(1f)
+        }
+    }
 
     suspend fun animateRoll(computer: Boolean = false) {
         if (rolling || !game.canRoll) return
@@ -242,7 +251,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                         Spacer(Modifier.weight(1f))
                         Text("4 TOKENS EACH", color = Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
-                    LudoBoard(game, pulse, Modifier.fillMaxWidth()) { token ->
+                    LudoBoard(game, pulse.value, Modifier.fillMaxWidth()) { token ->
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         moveToken(token)
                     }
