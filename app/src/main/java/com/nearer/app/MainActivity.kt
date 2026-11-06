@@ -46,6 +46,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -2063,6 +2064,16 @@ private fun NeaRerHome(
 
             AnimatedVisibility(visible = activeSection == "home", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
                 // File sharing is the primary purpose of NeaRer: make Send and Receive the first actions.
+                val smoothIncomingProgress by animateFloatAsState(
+                    targetValue = incomingProgress.coerceIn(0f, 1f),
+                    animationSpec = tween(320, easing = FastOutSlowInEasing),
+                    label = "home-incoming-progress"
+                )
+                val smoothOutgoingProgress by animateFloatAsState(
+                    targetValue = outgoingProgress.coerceIn(0f, 1f),
+                    animationSpec = tween(320, easing = FastOutSlowInEasing),
+                    label = "home-outgoing-progress"
+                )
                 val homeMotion = rememberInfiniteTransition(label = "home-transfer-motion")
                 val homePulse by homeMotion.animateFloat(
                     initialValue = 0.62f,
@@ -2308,11 +2319,19 @@ private fun NeaRerHome(
 
                     if (incomingTransferName != null || outgoingTransferId != null || receivedFiles.isNotEmpty()) {
                         Surface(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().animateContentSize(),
                             color = Color(0xFF102B50),
                             shape = RoundedCornerShape(19.dp),
-                            border = BorderStroke(1.dp, Color(0xFF347CEB).copy(alpha = 0.55f))
+                            border = BorderStroke(1.dp, Color(0xFF347CEB).copy(alpha = 0.55f)),
+                            shadowElevation = 5.dp
                         ) {
+                            Column(
+                                Modifier.background(
+                                    Brush.linearGradient(
+                                        listOf(Color(0xFF153A68), Color(0xFF102B50), Color(0xFF0D2442))
+                                    )
+                                )
+                            ) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("TRANSFER ACTIVITY", color = White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
@@ -2352,13 +2371,13 @@ private fun NeaRerHome(
                                             )
                                         } else {
                                             LinearProgressIndicator(
-                                                progress = { incomingProgress.coerceIn(0f, 1f) },
+                                                progress = { smoothIncomingProgress },
                                                 modifier = Modifier.fillMaxWidth(),
                                                 color = BrandBlue,
                                                 trackColor = Color(0xFF24436D)
                                             )
                                         }
-                                        Text("${(incomingProgress * 100).toInt().coerceIn(0, 100)}% received", color = Muted, fontSize = 9.sp)
+                                        Text("${(smoothIncomingProgress * 100).toInt().coerceIn(0, 100)}% received", color = Muted, fontSize = 9.sp)
                                     }
                                 }
                                 if (outgoingTransferId != null) {
@@ -2380,14 +2399,14 @@ private fun NeaRerHome(
                                             )
                                         } else {
                                             LinearProgressIndicator(
-                                                progress = { outgoingProgress.coerceIn(0f, 1f) },
+                                                progress = { smoothOutgoingProgress },
                                                 modifier = Modifier.fillMaxWidth(),
                                                 color = Gold,
                                                 trackColor = Color(0xFF24436D)
                                             )
                                         }
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("${(outgoingProgress * 100).toInt().coerceIn(0, 100)}% sent", color = Muted, fontSize = 9.sp)
+                                            Text("${(smoothOutgoingProgress * 100).toInt().coerceIn(0, 100)}% sent", color = Muted, fontSize = 9.sp)
                                             Spacer(Modifier.weight(1f))
                                             TextButton(onClick = onCancelTransfer) {
                                                 Text("CANCEL", color = Color(0xFFFFA5AE), fontSize = 9.sp, fontWeight = FontWeight.Black)
@@ -2403,6 +2422,7 @@ private fun NeaRerHome(
                                         TextButton(onClick = { onOpenFile(fileItem) }) { Text("OPEN", color = Gold, fontSize = 9.sp) }
                                     }
                                 }
+                            }
                             }
                         }
                     } else {
