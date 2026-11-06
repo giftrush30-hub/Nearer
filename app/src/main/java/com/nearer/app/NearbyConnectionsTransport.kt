@@ -1313,6 +1313,14 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         pendingDeferredDigests.entries.filter { it.key.endpointId == endpointId }.forEach { (key, pending) ->
             pending.retryTask?.let(deliveryHandler::removeCallbacks)
             pendingDeferredDigests.remove(key, pending)
+            // A file can finish before its deferred digest acknowledgement arrives,
+            // so it is no longer present in outgoingFiles. Clear every payload-scoped
+            // companion entry here as well when the endpoint disappears.
+            outgoingDeferredDigestPayloads.remove(key.payloadId)
+            outgoingBundleDigests.remove(key.payloadId)
+            outgoingBundleFileCompleted.remove(key.payloadId)
+            outgoingAwaitingFirstByteSinceNanos.remove(key.payloadId)
+            outgoingFirstByteLatencyNanos.remove(key.payloadId)
         }
         val keys = (incomingMetadata.keys + incomingPayloads.keys + completedPayloads.keys +
             transferStartedAtNanos.keys + completedTransferRates.keys)
