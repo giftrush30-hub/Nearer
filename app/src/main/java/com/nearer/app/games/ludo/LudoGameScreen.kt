@@ -263,7 +263,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                 Surface(
                     color = Color(0xFF18375D),
                     shape = RoundedCornerShape(22.dp),
-                    border = BorderStroke(1.5.dp, Gold.copy(alpha = pulse)),
+                    border = BorderStroke(1.5.dp, Gold.copy(alpha = pulse.value)),
                     shadowElevation = 12.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
