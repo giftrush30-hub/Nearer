@@ -2651,8 +2651,7 @@ private fun NeaRerHome(
                     if (incomingTransferName != null || outgoingTransferId != null || receivedFiles.isNotEmpty() || hasTransferResult) {
                         Surface(
                             modifier = Modifier.fillMaxWidth().animateContentSize(),
-                            color = if (hasTransferResult && incomingTransferName == null && outgoingTransferId == null)
-                                Color(0xFF102B50) else Color(0xFF102B50),
+                            color = Color(0xFF102B50),
                             shape = RoundedCornerShape(19.dp),
                             border = BorderStroke(
                                 1.dp,
@@ -2671,7 +2670,18 @@ private fun NeaRerHome(
                             ) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("TRANSFER ACTIVITY", color = White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                                    Text(
+                                        when {
+                                            incomingTransferName != null || outgoingTransferId != null -> "TRANSFER ACTIVITY"
+                                            hasTransferResult && transferResultCancelled -> "TRANSFER CANCELLED"
+                                            hasTransferResult && transferResultFailed -> "TRANSFER NEEDS ATTENTION"
+                                            hasTransferResult -> "TRANSFER COMPLETE"
+                                            else -> "RECENT TRANSFERS"
+                                        },
+                                        color = White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
                                     Spacer(Modifier.weight(1f))
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
