@@ -3,14 +3,12 @@ name: NeaRer code validation
 on:
   push:
     branches: ["**"]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
-  # A PR push and its pull_request event share the same head-branch group,
-  # preventing duplicate Gradle jobs for the same source revision.
-  group: nearer-validation-${{ github.head_ref || github.ref_name }}
+  # Branch pushes already validate the exact commit that a PR will propose.
+  # Avoid a duplicate pull_request job for the same branch revision.
+  group: nearer-validation-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
