@@ -72,7 +72,7 @@ class LudoEngineTest {
     @Test fun blockadeCannotBePassedThrough() {
         val players = LudoEngine.newGame().players.toMutableList()
         players[0] = players[0].copy(tokens = listOf(LudoToken(1), LudoToken(), LudoToken(), LudoToken()))
-        players[1] = players[1].copy(tokens = listOf(LudoToken(16), LudoToken(16), LudoToken(), LudoToken()))
+        players[1] = players[1].copy(tokens = listOf(LudoToken(42), LudoToken(42), LudoToken(), LudoToken()))
         val state = LudoEngine.rollDice(LudoGameState(players = players), 3)
         assertTrue(LudoEngine.legalMoves(state).isEmpty())
     }
