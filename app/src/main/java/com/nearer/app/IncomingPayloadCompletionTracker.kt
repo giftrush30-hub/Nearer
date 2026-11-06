@@ -62,7 +62,13 @@ internal class IncomingPayloadCompletionTracker(
     private fun purgeExpired() {
         val now = nowMillis()
         val expired = completed.entries
-            .filter { (now - it.value) >= ttlMillis || now < it.value }
+            .filter { entry ->
+                // System.nanoTime has an arbitrary origin and wraps. Use elapsed
+                // subtraction so a valid short interval across Long.MAX_VALUE is
+                // not mistaken for a future timestamp.
+                val ageMillis = now - entry.value
+                ageMillis < 0L || ageMillis >= ttlMillis
+            }
             .map { it.key }
         expired.forEach(completed::remove)
     }
