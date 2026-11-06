@@ -82,8 +82,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private data class TransferKey(val endpointId: String, val payloadId: Long)
     private fun transferKey(endpointId: String, payloadId: Long) = TransferKey(endpointId, payloadId)
     private val incomingMetadata = ConcurrentHashMap<TransferKey, FileMeta>()
-    private val rejectedIncomingPayloads = ConcurrentHashMap.newKeySet<TransferKey>()
-    private val failedIncomingPayloads = ConcurrentHashMap.newKeySet<TransferKey>()
+    // Late FILE descriptors must remain quarantined without an unbounded set.
+    // Reuse the bounded, expiring endpoint/payload marker tracker.
+    private val rejectedIncomingPayloads = IncomingPayloadCompletionTracker()
+    private val failedIncomingPayloads = IncomingPayloadCompletionTracker()
     private val incomingPayloads = ConcurrentHashMap<TransferKey, Payload>()
     private val completedPayloads = ConcurrentHashMap<TransferKey, Payload>()
     // Nearby may report FILE completion before its FILE descriptor callback.
@@ -285,7 +287,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 Payload.Type.BYTES -> handleBytes(id, payload.asBytes())
                 Payload.Type.FILE -> {
                     val key = transferKey(id, payload.id)
-                    if (rejectedIncomingPayloads.contains(key) || failedIncomingPayloads.contains(key)) {
+                    val wasRejected = rejectedIncomingPayloads.isCompleted(id, payload.id)
+                    val hadFailed = failedIncomingPayloads.isCompleted(id, payload.id)
+                    if (wasRejected || hadFailed) {
+                        rejectedIncomingPayloads.remove(id, payload.id)
+                        failedIncomingPayloads.remove(id, payload.id)
                         try { payload.asFile()?.asUri()?.let { appContext.contentResolver.delete(it, null, null) } } catch (_: Exception) { }
                         try { payload.close() } catch (_: Exception) { }
                         return
@@ -398,13 +404,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                             bundleDestinationFolders.remove(sessionKey)
                         }
                     }
-                } else if (incomingPayloads.containsKey(key) || completedPayloads.containsKey(key)) {
-                    failedIncomingPayloads.add(key)
-                    if (failedIncomingPayloads.size > 4096) failedIncomingPayloads.clear()
                 }
                 val failedPayload = incomingPayloads.remove(key) ?: completedPayloads[key]
                 completedPayloads.remove(key)
-                failedPayload?.let { try { it.close() } catch (_: Exception) { } }
+                if (failedPayload == null) failedIncomingPayloads.markCompleted(id, payloadId)
+                else try { failedPayload.close() } catch (_: Exception) { }
                 if (failedOutgoing != null) {
                     listener.onOutgoingFileFinished(id, payloadId, failedOutgoing.second, false, "Nearby file transfer failed or was cancelled.")
                 } else {
@@ -415,11 +419,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
 
     private fun rejectIncomingPayload(key: TransferKey, message: String) {
-        rejectedIncomingPayloads.add(key)
-        if (rejectedIncomingPayloads.size > 4096) rejectedIncomingPayloads.clear()
         incomingMetadata.remove(key)
         val payload = incomingPayloads.remove(key) ?: completedPayloads[key]
         completedPayloads.remove(key)
+        if (payload == null) rejectedIncomingPayloads.markCompleted(key.endpointId, key.payloadId)
+        else rejectedIncomingPayloads.remove(key.endpointId, key.payloadId)
         if (payload != null) {
             try { payload.asFile()?.asUri()?.let { appContext.contentResolver.delete(it, null, null) } } catch (_: Exception) { }
             try { payload.close() } catch (_: Exception) { }
@@ -482,8 +486,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                         rejectIncomingPayload(key, "A duplicate or unexpected bundle file was rejected.")
                         return
                     }
-                    if (failedIncomingPayloads.remove(key)) {
-                        rejectedIncomingPayloads.add(key)
+                    if (failedIncomingPayloads.remove(endpointId, payloadId)) {
+                        rejectedIncomingPayloads.markCompleted(endpointId, payloadId)
                         try { session.fail(payloadId) } catch (_: Exception) { }
                         if (session.isFinished()) {
                             incomingBundleSessions.remove(sessionKey, session)
@@ -596,7 +600,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     try { it.asFile()?.asUri()?.let { uri -> appContext.contentResolver.delete(uri, null, null) } } catch (_: Exception) { }
                     try { it.close() } catch (_: Exception) { }
                 }
-                failedIncomingPayloads.add(key)
+                if (pending == null) failedIncomingPayloads.markCompleted(endpointId, payloadId)
                 listener.onFileStatus("A bundle file was not saved because its sender could not confirm SHA-256 integrity.")
                 return
             }
@@ -1303,6 +1307,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             bundleDestinationFolders.remove(it)
         }
         incomingCompletionTracker.removeEndpoint(endpointId)
+        rejectedIncomingPayloads.removeEndpoint(endpointId)
+        failedIncomingPayloads.removeEndpoint(endpointId)
         deferredIncomingDigests.removeEndpoint(endpointId)
         peerMaxParallelFiles.remove(endpointId)
         peerSupportsDeferredDigest.remove(endpointId)
@@ -1317,8 +1323,6 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             .toSet()
         keys.forEach { key ->
             incomingMetadata.remove(key)
-            rejectedIncomingPayloads.remove(key)
-            failedIncomingPayloads.remove(key)
             incomingPayloads.remove(key)?.let { try { it.close() } catch (_: Exception) { } }
             completedPayloads.remove(key)?.let { try { it.close() } catch (_: Exception) { } }
             transferStartedAtNanos.remove(key)
