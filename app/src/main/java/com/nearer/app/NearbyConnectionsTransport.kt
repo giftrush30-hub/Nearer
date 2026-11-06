@@ -89,6 +89,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val outgoingDeferredDigestPayloads = ConcurrentHashMap.newKeySet<Long>()
     private val outgoingBundleDigests = ConcurrentHashMap<Long, Pair<String, String>>()
     private val outgoingBundleFileCompleted = ConcurrentHashMap.newKeySet<Long>()
+    private data class PendingDeferredDigest(
+        val endpointId: String,
+        val sha256: String,
+        @Volatile var attempts: Int = 0,
+        @Volatile var retryTask: Runnable? = null
+    )
+    private val pendingDeferredDigests = ConcurrentHashMap<Long, PendingDeferredDigest>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
     private val outgoingAwaitingFirstByteSinceNanos = ConcurrentHashMap<Long, Long>()
     private val outgoingFirstByteLatencyNanos = ConcurrentHashMap<Long, Long>()
@@ -341,7 +348,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     completedTransferRates[key] = rateLabel
                     incomingCompletionTracker.markCompleted(id, payloadId)
                     incomingPayloads.remove(key)?.let { completedPayloads[key] = it }
-                    incoming?.takeIf { it.digestPending }?.let { meta -> deferredIncomingDigests.markFileCompleted(id, payloadId)?.let { ready -> meta.expectedSha256 = ready.sha256 } }
+                    incoming?.takeIf { it.digestPending }?.let { meta ->
+                        deferredIncomingDigests.markFileCompleted(id, payloadId)?.let { ready ->
+                            meta.expectedSha256 = ready.sha256
+                            sendDeferredFileDigestAck(id, payloadId)
+                        }
+                    }
                     processCompletedFile(key)
                 } else {
                     outgoingFiles.remove(payloadId)
@@ -483,7 +495,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 if (digestPending && transferId != null) {
                     val ready = deferredIncomingDigests.registerFile(endpointId, payloadId, size)
                     val completedReady = if (incomingCompletionTracker.isCompleted(endpointId, payloadId)) deferredIncomingDigests.markFileCompleted(endpointId, payloadId) else null
-                    (ready ?: completedReady)?.let { fileMeta.expectedSha256 = it.sha256 }
+                    (ready ?: completedReady)?.let {
+                        fileMeta.expectedSha256 = it.sha256
+                        sendDeferredFileDigestAck(endpointId, payloadId)
+                    }
                 }
                 listener.onFileProgress(endpointId, payloadId, name, 0L, size, true)
                 processCompletedFile(key)
@@ -496,7 +511,18 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val ready = deferredIncomingDigests.recordDigest(endpointId, payloadId, envelope.optString("sha256"))
                 if (ready != null) {
                     val key = transferKey(endpointId, payloadId)
-                    incomingMetadata[key]?.let { meta -> meta.expectedSha256 = ready.sha256; processCompletedFile(key) }
+                    incomingMetadata[key]?.let { meta ->
+                        meta.expectedSha256 = ready.sha256
+                        sendDeferredFileDigestAck(endpointId, payloadId)
+                        processCompletedFile(key)
+                    }
+                }
+                return
+            }
+            if (kind == "file_digest_ack") {
+                val payloadId = envelope.optLong("payloadId", -1L)
+                if (payloadId >= 0L) {
+                    pendingDeferredDigests.remove(payloadId)?.retryTask?.let(deliveryHandler::removeCallbacks)
                 }
                 return
             }
@@ -944,15 +970,47 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
 
     private fun sendDeferredFileDigest(endpointId: String, payloadId: Long, sha256: String) {
-        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return
-        val envelope = JSONObject().put("kind", "file_digest").put("version", 1)
-            .put("payloadId", payloadId).put("sha256", sha256)
-        try {
-            client.sendPayload(endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8)))
-                .addOnFailureListener { listener.onFileStatus("The file arrived, but its integrity confirmation could not be sent. Reconnect and retry this file.") }
-        } catch (_: Exception) {
-            listener.onFileStatus("The file arrived, but its integrity confirmation could not be sent. Reconnect and retry this file.")
+        pendingDeferredDigests[payloadId] = PendingDeferredDigest(endpointId, sha256)
+        attemptDeferredFileDigest(payloadId)
+    }
+
+    private fun attemptDeferredFileDigest(payloadId: Long) {
+        val pending = pendingDeferredDigests[payloadId] ?: return
+        if (synchronized(activeEndpoints) { !activeEndpoints.contains(pending.endpointId) }) {
+            pendingDeferredDigests.remove(payloadId, pending)
+            listener.onFileStatus("The connection ended before the integrity confirmation was acknowledged.")
+            return
         }
+        if (pending.attempts >= 3) {
+            pendingDeferredDigests.remove(payloadId, pending)
+            listener.onFileStatus("The receiver did not acknowledge the file's integrity confirmation. Reconnect and retry this file.")
+            return
+        }
+        pending.attempts += 1
+        val envelope = JSONObject().put("kind", "file_digest").put("version", 1)
+            .put("payloadId", payloadId).put("sha256", pending.sha256)
+        try {
+            client.sendPayload(pending.endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener { scheduleDeferredDigestRetry(payloadId, 400L) }
+        } catch (_: Exception) {
+            scheduleDeferredDigestRetry(payloadId, 400L)
+            return
+        }
+        scheduleDeferredDigestRetry(payloadId, 1500L)
+    }
+
+    private fun scheduleDeferredDigestRetry(payloadId: Long, delayMillis: Long) {
+        val pending = pendingDeferredDigests[payloadId] ?: return
+        pending.retryTask?.let(deliveryHandler::removeCallbacks)
+        val retry = Runnable { attemptDeferredFileDigest(payloadId) }
+        pending.retryTask = retry
+        deliveryHandler.postDelayed(retry, delayMillis)
+    }
+
+    private fun sendDeferredFileDigestAck(endpointId: String, payloadId: Long) {
+        val ack = JSONObject().put("kind", "file_digest_ack").put("version", 1).put("payloadId", payloadId)
+        try { client.sendPayload(endpointId, Payload.fromBytes(ack.toString().toByteArray(Charsets.UTF_8))) }
+        catch (_: Exception) { listener.onFileStatus("The sender may retry the integrity confirmation because its receipt could not be sent.") }
     }
 
     private fun sendDeferredFileDigestFailure(endpointId: String, payloadId: Long) {
