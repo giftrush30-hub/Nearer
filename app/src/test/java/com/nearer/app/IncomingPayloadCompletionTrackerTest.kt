@@ -47,4 +47,41 @@ class IncomingPayloadCompletionTrackerTest {
         assertEquals(2, tracker.pendingCount())
         assertTrue(tracker.isCompleted("peer", 1L))
     }
+
+    @Test fun staleMarkersExpireWithoutNeedingEndpointDisconnect() {
+        var now = 10_000L
+        val tracker = IncomingPayloadCompletionTracker(
+            maxEntries = 4,
+            ttlMillis = 500L,
+            nowMillis = { now }
+        )
+        tracker.markCompleted("peer", 7L)
+        now += 499L
+        assertTrue(tracker.isCompleted("peer", 7L))
+        now += 1L
+        assertFalse(tracker.isCompleted("peer", 7L))
+        assertEquals(0, tracker.pendingCount())
+    }
+
+    @Test fun duplicateCompletionRefreshesMarkerLifetime() {
+        var now = 1_000L
+        val tracker = IncomingPayloadCompletionTracker(
+            maxEntries = 4,
+            ttlMillis = 500L,
+            nowMillis = { now }
+        )
+        tracker.markCompleted("peer", 8L)
+        now += 400L
+        tracker.markCompleted("peer", 8L)
+        now += 400L
+        assertTrue(tracker.isCompleted("peer", 8L))
+        now += 100L
+        assertFalse(tracker.isCompleted("peer", 8L))
+    }
+
+    @Test fun invalidLifetimeIsRejected() {
+        assertThrows(IllegalArgumentException::class.java) {
+            IncomingPayloadCompletionTracker(ttlMillis = 0L)
+        }
+    }
 }
