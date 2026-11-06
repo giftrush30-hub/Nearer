@@ -288,12 +288,12 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, onMove: (Int) 
     }
     Canvas(modifier
         .background(Color(0xFFF4F6FA), RoundedCornerShape(16.dp))
-        .pointerInput(game, legalMoves, animatedPositions) {
+        .pointerInput(game, legalMoves) {
             detectTapGestures { tap ->
                 if (game.currentPlayer.isComputer || game.diceValue == null) return@detectTapGestures
                 val unit = size.width / 15f
                 val playerIndex = game.currentPlayerIndex
-                val candidates = legalMoves.map { index -> index to animatedPositions[playerIndex][index] }
+                val candidates = legalMoves.map { index -> index to ludoTokenPosition(game.currentPlayer.color, game.currentPlayer.tokens[index], index) }
                 val selected = candidates.minByOrNull { (_, p) -> hypot((tap.x / unit - p.x).toDouble(), (tap.y / unit - p.y).toDouble()) }
                 if (selected != null && hypot((tap.x / unit - selected.second.x).toDouble(), (tap.y / unit - selected.second.y).toDouble()) < .85) onMove(selected.first)
             }
@@ -367,14 +367,19 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, onMove: (Int) 
                 val pos = animatedPositions[p][index]
                 val isSelectable = player.color == game.currentPlayer.color && index in legalMoves
                 val point = Offset(pos.x * unit, pos.y * unit)
+                val sameSquare = player.tokens.withIndex().filter { it.value.steps == token.steps && token.steps >= 0 }.map { it.index }
+                val stackSlot = sameSquare.indexOf(index).coerceAtLeast(0)
+                val stackOffsets = listOf(Offset(-.13f, -.13f), Offset(.13f, -.13f), Offset(-.13f, .13f), Offset(.13f, .13f))
+                val stackOffset = if (sameSquare.size > 1) stackOffsets[stackSlot % stackOffsets.size] else Offset.Zero
+                val stackedPoint = point + Offset(stackOffset.x * unit, stackOffset.y * unit)
                 if (isSelectable) {
-                    drawCircle(LudoGold.copy(alpha = .35f), unit * .48f, point)
-                    drawCircle(LudoGold, unit * .48f, point, style = Stroke(unit * .07f))
+                    drawCircle(LudoGold.copy(alpha = .35f), unit * .48f, stackedPoint)
+                    drawCircle(LudoGold, unit * .48f, stackedPoint, style = Stroke(unit * .07f))
                 }
-                drawCircle(Color(0x550C1B2A), unit * .36f, point + Offset(unit * .035f, unit * .07f))
-                drawCircle(player.color.paint(), unit * .32f, point)
-                drawCircle(Color.White, unit * .24f, point, style = Stroke(unit * .07f))
-                drawCircle(Color.White.copy(alpha = .9f), unit * .07f, point + Offset(-unit * .09f, -unit * .1f))
+                drawCircle(Color(0x550C1B2A), unit * .36f, stackedPoint + Offset(unit * .035f, unit * .07f))
+                drawCircle(player.color.paint(), unit * .32f, stackedPoint)
+                drawCircle(Color.White, unit * .24f, stackedPoint, style = Stroke(unit * .07f))
+                drawCircle(Color.White.copy(alpha = .9f), unit * .07f, stackedPoint + Offset(-unit * .09f, -unit * .1f))
             }
         }
     }
