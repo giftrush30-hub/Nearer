@@ -2636,12 +2636,30 @@ private fun NeaRerHome(
                         chatNotice.startsWith("The received file could not be written") ||
                         chatNotice.startsWith("Received and verified:") ||
                         chatNotice.startsWith("Received and saved:")
+                    val transferResultCancelled = chatNotice.contains("cancel", ignoreCase = true)
+                    val transferResultFailed = !transferResultCancelled && (
+                        chatNotice.contains("failed", ignoreCase = true) ||
+                            chatNotice.contains("could not", ignoreCase = true) ||
+                            chatNotice.contains("stopped", ignoreCase = true) ||
+                            chatNotice.contains("larger than its declared size", ignoreCase = true)
+                        )
+                    val transferResultAccent = when {
+                        transferResultCancelled -> Gold
+                        transferResultFailed -> Color(0xFFFFA5AE)
+                        else -> Color(0xFF8EF0C6)
+                    }
                     if (incomingTransferName != null || outgoingTransferId != null || receivedFiles.isNotEmpty() || hasTransferResult) {
                         Surface(
                             modifier = Modifier.fillMaxWidth().animateContentSize(),
-                            color = Color(0xFF102B50),
+                            color = if (hasTransferResult && incomingTransferName == null && outgoingTransferId == null)
+                                Color(0xFF102B50) else Color(0xFF102B50),
                             shape = RoundedCornerShape(19.dp),
-                            border = BorderStroke(1.dp, Color(0xFF347CEB).copy(alpha = 0.55f)),
+                            border = BorderStroke(
+                                1.dp,
+                                if (hasTransferResult && incomingTransferName == null && outgoingTransferId == null)
+                                    transferResultAccent.copy(alpha = 0.58f)
+                                else Color(0xFF347CEB).copy(alpha = 0.55f)
+                            ),
                             shadowElevation = 5.dp
                         ) {
                             Column(
@@ -2773,27 +2791,20 @@ private fun NeaRerHome(
                                 if (hasTransferResult && incomingTransferName == null && outgoingTransferId == null) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth()
-                                            .background(Color(0xFF0B2342), RoundedCornerShape(12.dp))
+                                            .background(transferResultAccent.copy(alpha = 0.09f), RoundedCornerShape(12.dp))
                                             .padding(horizontal = 10.dp, vertical = 9.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        val resultIsCancelled = chatNotice.contains("cancel", ignoreCase = true)
-                                        val resultIsError = !resultIsCancelled && (
-                                            chatNotice.contains("failed", ignoreCase = true) ||
-                                            chatNotice.contains("could not", ignoreCase = true) ||
-                                            chatNotice.contains("stopped", ignoreCase = true) ||
-                                            chatNotice.contains("larger than its declared size", ignoreCase = true)
-                                        )
                                         Text(
                                             when {
-                                                resultIsCancelled -> "↺"
-                                                resultIsError -> "!"
+                                                transferResultCancelled -> "↺"
+                                                transferResultFailed -> "!"
                                                 else -> "✓"
                                             },
                                             color = when {
-                                                resultIsCancelled -> Gold
-                                                resultIsError -> Color(0xFFFFA5AE)
+                                                transferResultCancelled -> Gold
+                                                transferResultFailed -> Color(0xFFFFA5AE)
                                                 else -> Color(0xFF8EF0C6)
                                             },
                                             fontSize = 15.sp, fontWeight = FontWeight.Black
