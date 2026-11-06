@@ -499,8 +499,28 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val fileMeta = FileMeta(endpointId, name, size, transferId, itemId, relativePath, expectedSha256?.lowercase(), digestPending)
                 incomingMetadata[key] = fileMeta
                 if (digestPending && transferId != null) {
-                    val ready = deferredIncomingDigests.registerFile(endpointId, payloadId, size)
-                    val completedReady = if (incomingCompletionTracker.isCompleted(endpointId, payloadId)) deferredIncomingDigests.markFileCompleted(endpointId, payloadId) else null
+                    val ready = try {
+                        deferredIncomingDigests.registerFile(endpointId, payloadId, size)
+                    } catch (error: IllegalArgumentException) {
+                        rejectIncomingPayload(
+                            key,
+                            "Too many files are awaiting integrity confirmation. This file was rejected safely."
+                        )
+                        sendDeferredFileDigestFailure(endpointId, payloadId)
+                        return
+                    }
+                    val completedReady = if (incomingCompletionTracker.isCompleted(endpointId, payloadId)) {
+                        try {
+                            deferredIncomingDigests.markFileCompleted(endpointId, payloadId)
+                        } catch (_: IllegalArgumentException) {
+                            rejectIncomingPayload(
+                                key,
+                                "The integrity-confirmation queue is full. This file was rejected safely."
+                            )
+                            sendDeferredFileDigestFailure(endpointId, payloadId)
+                            return
+                        }
+                    } else null
                     (ready ?: completedReady)?.let {
                         fileMeta.expectedSha256 = it.sha256
                         sendDeferredFileDigestAck(endpointId, payloadId)
@@ -528,7 +548,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     sendDeferredFileDigestAck(endpointId, payloadId)
                     return
                 }
-                val ready = deferredIncomingDigests.recordDigest(endpointId, payloadId, envelope.optString("sha256"))
+                val ready = try {
+                    deferredIncomingDigests.recordDigest(endpointId, payloadId, envelope.optString("sha256"))
+                } catch (error: IllegalArgumentException) {
+                    deferredIncomingDigests.remove(endpointId, payloadId)
+                    sendDeferredFileDigestFailure(endpointId, payloadId)
+                    listener.onFileStatus(
+                        "An integrity confirmation could not be queued or validated. The sender was asked not to save this file."
+                    )
+                    return
+                }
                 if (ready != null) {
                     val key = transferKey(endpointId, payloadId)
                     incomingMetadata[key]?.let { meta ->
