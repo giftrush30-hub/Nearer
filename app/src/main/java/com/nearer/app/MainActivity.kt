@@ -2555,7 +2555,7 @@ private fun NeaRerHome(
                                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                             Surface(shape = CircleShape, color = BrandBlue.copy(alpha = homePulse), modifier = Modifier.size(7.dp)) {}
-                                            Text("Receiving $name", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                            Text("Receiving $name", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                             Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
                                                 listOf(transferDotOne, transferDotTwo, transferDotThree).forEach { dotAlpha ->
                                                     Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(4.dp).alpha(dotAlpha)) {}
@@ -3197,7 +3197,7 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Surface(
-                                modifier = Modifier.size(46.dp).clickable { filePicker.launch(arrayOf("*/*")) },
+                                modifier = Modifier.size(48.dp).clickable { filePicker.launch(arrayOf("*/*")) },
                                 shape = CircleShape,
                                 color = Color(0xFF173F78),
                                 border = BorderStroke(1.dp, Color(0xFF347CEB))
@@ -3216,7 +3216,7 @@ private fun NeaRerHome(
                                 maxLines = 4
                             )
                             Surface(
-                                modifier = Modifier.size(46.dp).clickable(enabled = draft.isNotBlank()) {
+                                modifier = Modifier.size(48.dp).clickable(enabled = draft.isNotBlank()) {
                                     onSendMessage(draft.trim())
                                     draft = ""
                                 },
