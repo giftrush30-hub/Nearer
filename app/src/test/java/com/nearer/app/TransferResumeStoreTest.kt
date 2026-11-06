@@ -47,10 +47,16 @@ class TransferResumeStoreTest {
             // establish the canonical partial path.
             val checkpoint = store.checkpoint("transfer-1", selected, 100L, chunk.toLong())
             assertNull(store.findValid("transfer-1", selected, 101L))
-            val candidate = store.findValid("transfer-1", selected, 100L)
-            assertNotNull(candidate)
-            candidate!!.partialFile.writeBytes(ByteArray(chunk) { 9 })
+            assertFalse("changed-source partial must be discarded", partial.exists())
             assertNull(store.findValid("transfer-1", selected, 100L))
+
+            // A fresh checkpoint whose bytes are later corrupted is also removed.
+            partial.parentFile?.mkdirs()
+            partial.writeBytes(ByteArray(chunk) { 4 })
+            store.checkpoint("transfer-1", selected, 100L, chunk.toLong())
+            partial.writeBytes(ByteArray(chunk) { 9 })
+            assertNull(store.findValid("transfer-1", selected, 100L))
+            assertFalse("corrupt partial must be discarded", partial.exists())
             assertEquals(chunk.toLong(), checkpoint.committedOffsetBytes)
         } finally {
             root.deleteRecursively()
