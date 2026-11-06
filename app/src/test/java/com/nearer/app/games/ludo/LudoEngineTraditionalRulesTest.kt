@@ -7,11 +7,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LudoEngineTraditionalRulesTest {
-    private class AlwaysSixRandom : Random() {
+    private class FixedDiceRandom(private val face: Int) : Random() {
         override fun nextBits(bitCount: Int): Int = 0
         override fun nextInt(from: Int, until: Int): Int {
-            require(from <= 6 && until > 6)
-            return 6
+            require(face in from until until)
+            return face
         }
     }
 
@@ -52,11 +52,25 @@ class LudoEngineTraditionalRulesTest {
     }
 
     @Test
+    fun sixWithNoLegalMoveKeepsTheTurnAndStreak() {
+        val red = LudoPlayer("red", "Hope", LudoColor.RED, false, listOf(50, 50, 50, 50))
+        val yellow = LudoPlayer("yellow", "Guest", LudoColor.YELLOW, false, listOf(50, 50, 50, 50))
+        val state = LudoState(players = listOf(red, yellow))
+
+        val rolled = LudoEngine.roll(state, FixedDiceRandom(6))
+
+        assertNull(rolled.dice)
+        assertEquals(0, rolled.activePlayerIndex)
+        assertEquals(1, rolled.consecutiveSixes)
+        assertTrue(rolled.message.contains("Roll again"))
+    }
+
+    @Test
     fun thirdConsecutiveSixForfeitsTheTurn() {
         var state = LudoEngine.newGame("Hope", playerCount = 2, computerOpponents = false)
 
         repeat(2) {
-            state = LudoEngine.roll(state, AlwaysSixRandom())
+            state = LudoEngine.roll(state, FixedDiceRandom(6))
             assertEquals(6, state.dice)
             assertTrue(state.legalTokenIndexes.isNotEmpty())
             state = LudoEngine.move(state, state.legalTokenIndexes.first())
