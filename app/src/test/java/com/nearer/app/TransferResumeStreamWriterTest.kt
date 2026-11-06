@@ -117,6 +117,35 @@ class TransferResumeStreamWriterTest {
         }
     }
 
+    @Test fun makesProgressWhenWrappedStreamReturnsZeroFromBulkRead() {
+        val root = Files.createTempDirectory("nearer-resume-writer-zero-read").toFile()
+        try {
+            val data = ByteArray(4097) { (it % 223).toByte() }
+            val delegate = ByteArrayInputStream(data)
+            var returnZeroOnce = true
+            val unusualStream = object : java.io.InputStream() {
+                override fun read(): Int = delegate.read()
+
+                override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                    if (returnZeroOnce) {
+                        returnZeroOnce = false
+                        return 0
+                    }
+                    return delegate.read(buffer, offset, length)
+                }
+            }
+
+            val result = TransferResumeStreamWriter(store(root)).write(
+                "transfer-zero-read", item(data.size.toLong()), null, unusualStream
+            )
+            assertEquals(data.size.toLong(), result.bytesReceived)
+            assertEquals(sha256(data), result.sha256)
+            assertArrayEquals(data, result.partialFile.readBytes())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun rejectsStreamLongerThanDeclaredSize() {
         val root = Files.createTempDirectory("nearer-resume-writer-overflow").toFile()
         try {
