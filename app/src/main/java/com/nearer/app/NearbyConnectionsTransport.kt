@@ -4,6 +4,7 @@ import android.content.Context
 import android.bluetooth.BluetoothManager
 import android.net.wifi.WifiManager
 import android.os.Handler
+import android.os.SystemClock
 import android.os.Looper
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -820,13 +821,18 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (reportedSize < 0L) throw IllegalStateException("NeaRer could not determine this file's size. Choose another file.")
             val size = reportedSize
             val sourceSha256 = if (bundleTransferId != null) {
-                appContext.contentResolver.openInputStream(uri)?.use { input ->
+                listener.onFileStatus("Checking bundle file integrity before sending…")
+                val hashStartedAt = SystemClock.elapsedRealtimeNanos()
+                val digest = appContext.contentResolver.openInputStream(uri)?.use { input ->
                     TransferStreamIO.sha256Hex(
                         TransferStreamIO.sha256Exactly(
                             input, size, HyperTransferTuning.receiveBufferBytes(appContext)
                         )
                     )
                 } ?: throw IllegalStateException("NeaRer could not read the selected file for its integrity check")
+                val hashElapsedNanos = (SystemClock.elapsedRealtimeNanos() - hashStartedAt).coerceAtLeast(0L)
+                listener.onFileStatus(TransferPreparationMetrics.describe(size, hashElapsedNanos))
+                digest
             } else null
             val payload = Payload.fromFile(openedDescriptor)
             filePayload = payload
