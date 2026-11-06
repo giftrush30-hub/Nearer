@@ -1983,11 +1983,11 @@ private fun NeaRerHome(
                                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.75f)),
                                     colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
                                 ) {
-                                    Text("↓  RECEIVE FILES", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                    Text("↓  RECEIVE FROM NEARBY", fontSize = 9.sp, fontWeight = FontWeight.Black)
                                 }
                             }
                             Text(if (chatReady) "Connected to ${connectedDeviceName ?: "a nearby phone"} • ready to share"
-                                else "To send or receive, connect to a nearby NeaRer phone first.",
+                                else "Receiving starts by discovering a nearby sender. No mobile data is used.",
                                 color = Color(0xFFB9D2F5), fontSize = 10.sp)
                         }
                     }
@@ -2112,6 +2112,7 @@ private fun NeaRerHome(
                             Surface(
                                 modifier = Modifier.weight(1f).clickable {
                                     activeSection = item[2]
+                                    if (item[2] == "nearby") onFindNearby()
                                     navigationScope.launch { pageScrollState.animateScrollTo(0) }
                                 },
                                 color = Color(0xFF12315D),
@@ -2476,7 +2477,7 @@ private fun NeaRerHome(
                             Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         } else {
                             Column(
-                                modifier = Modifier.fillMaxWidth().height(300.dp).verticalScroll(messageScrollState),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 360.dp).verticalScroll(messageScrollState),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
                                 messages.forEach { message ->
@@ -2488,7 +2489,7 @@ private fun NeaRerHome(
                                             color = if (message.outgoing) Color(0xFF174A9B) else Color(0xFF19375D),
                                             shape = if (message.outgoing) RoundedCornerShape(17.dp, 17.dp, 5.dp, 17.dp)
                                                 else RoundedCornerShape(17.dp, 17.dp, 17.dp, 5.dp),
-                                            modifier = Modifier.animateContentSize()
+                                            modifier = Modifier.fillMaxWidth(0.86f).animateContentSize()
                                         ) {
                                             Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
                                                 Text(message.body, color = White, fontSize = 14.sp)
@@ -2515,16 +2516,17 @@ private fun NeaRerHome(
                                 value = draft,
                                 onValueChange = { draft = it.take(2000) },
                                 modifier = Modifier.weight(1f),
-                                placeholder = { Text("Write a message…", color = Muted) },
-                                shape = RoundedCornerShape(14.dp),
-                                singleLine = true
+                                placeholder = { Text("Message your nearby friend…", color = Muted) },
+                                shape = RoundedCornerShape(18.dp),
+                                minLines = 1,
+                                maxLines = 4
                             )
                             Button(
                                 onClick = { onSendMessage(draft); draft = "" },
                                 enabled = draft.isNotBlank(),
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)
-                            ) { Text("Send", fontWeight = FontWeight.Bold) }
+                            ) { Text("➤", fontSize = 17.sp, fontWeight = FontWeight.Black) }
                         }
                         incomingTransferName?.let { incomingName ->
                             Text("Receiving $incomingName", color = Muted, fontSize = 11.sp)
@@ -2555,7 +2557,7 @@ private fun NeaRerHome(
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF19375D), contentColor = White)
                         ) { Text("Share a photo or file") }
-                        Text(if (usingNearbyConnections) "Nearby Connections • no fixed file-size cap" else "Wi-Fi Direct • no fixed file-size cap", color = Muted, fontSize = 10.sp)
+                        Text(if (usingNearbyConnections) "DIRECT NEARBY LINK  •  NO MOBILE DATA" else "WI-FI DIRECT LINK  •  NO MOBILE DATA", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.35.sp)
                     } else {
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
