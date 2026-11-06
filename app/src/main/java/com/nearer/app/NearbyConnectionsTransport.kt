@@ -458,6 +458,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 "Manifest transfer ID does not match its fragment envelope"
             }
             val sessionKey = BundleSessionKey(endpointId, manifest.transferId)
+            require(incomingBundleSessions.keys.count { it.endpointId == endpointId } < 3) {
+                "Too many bundle offers are already active for this phone"
+            }
             require(incomingBundleSessions.putIfAbsent(sessionKey, TransferBundleSession(manifest)) == null) {
                 "This bundle offer has already been received"
             }
