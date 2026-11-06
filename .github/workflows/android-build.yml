@@ -1,15 +1,16 @@
-name: Android debug APK
+name: NeaRer code validation
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: nearer-android-build-${{ github.ref }}
+  group: nearer-validation-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    if: ${{ false }}
+  validate:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -31,14 +32,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build debug APK
-        run: gradle --no-daemon --stacktrace assembleDebug
-      - name: Verify APK output
-        run: test -s app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: nearer-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+      # Validation compiles the app and runs JVM tests, but deliberately does
+      # not run assembleDebug or create an APK.
+      - name: Compile app and run unit tests
+        run: gradle --no-daemon --stacktrace testDebugUnitTest
