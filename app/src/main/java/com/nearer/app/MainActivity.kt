@@ -2048,6 +2048,56 @@ private fun NeaRerHome(
                         )
                     }
 
+
+                    if (incomingTransferName != null || outgoingTransferId != null || receivedFiles.isNotEmpty()) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF102B50),
+                            shape = RoundedCornerShape(19.dp),
+                            border = BorderStroke(1.dp, Color(0xFF347CEB).copy(alpha = 0.55f))
+                        ) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("TRANSFER ACTIVITY", color = White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                                    Spacer(Modifier.weight(1f))
+                                    Text("LIVE", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                }
+                                incomingTransferName?.let { name ->
+                                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        Text("Receiving $name", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        LinearProgressIndicator(
+                                            progress = { incomingProgress.coerceIn(0f, 1f) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            color = BrandBlue,
+                                            trackColor = Color(0xFF24436D)
+                                        )
+                                        Text("${(incomingProgress * 100).toInt().coerceIn(0, 100)}% received", color = Muted, fontSize = 9.sp)
+                                    }
+                                }
+                                if (outgoingTransferId != null) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        Text("Sending file to nearby device", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        LinearProgressIndicator(
+                                            progress = { outgoingProgress.coerceIn(0f, 1f) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            color = Gold,
+                                            trackColor = Color(0xFF24436D)
+                                        )
+                                        Text("${(outgoingProgress * 100).toInt().coerceIn(0, 100)}% sent", color = Muted, fontSize = 9.sp)
+                                    }
+                                }
+                                receivedFiles.take(2).forEach { fileItem ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("✓", color = Gold, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                        Text(fileItem.displayName, color = White, fontSize = 10.sp, maxLines = 1,
+                                            modifier = Modifier.weight(1f).padding(start = 8.dp))
+                                        TextButton(onClick = { onOpenFile(fileItem) }) { Text("OPEN", color = Gold, fontSize = 9.sp) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("QUICK ACCESS", color = White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
                         Spacer(Modifier.weight(1f))
