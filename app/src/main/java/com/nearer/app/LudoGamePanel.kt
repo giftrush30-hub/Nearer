@@ -143,7 +143,10 @@ fun LudoGamePanel(
         if (!networkMode && !game.isFinished && game.currentPlayer.isComputer) {
             delay(750)
             if (localGame.diceValue == null) {
+                rolling = true
+                delay(280)
                 localGame = LudoEngine.rollDice(localGame)
+                rolling = false
                 message = "${current.name} rolled ${localGame.diceValue}"
             } else {
                 val choice = LudoEngine.chooseComputerMove(localGame, difficulty)
@@ -161,6 +164,14 @@ fun LudoGamePanel(
                     }
                 }
             }
+        }
+    }
+
+    LaunchedEffect(networkMatch?.state?.diceValue, networkMatch?.state?.turnNumber) {
+        if (networkMode && networkMatch?.state?.diceValue != null) {
+            rolling = true
+            delay(320)
+            rolling = false
         }
     }
 
