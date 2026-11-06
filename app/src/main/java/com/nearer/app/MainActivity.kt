@@ -2324,7 +2324,15 @@ private fun NeaRerHome(
                     }
 
 
-                    if (incomingTransferName != null || outgoingTransferId != null || receivedFiles.isNotEmpty()) {
+                    val hasTransferResult = chatNotice.startsWith("File delivered and verified") ||
+                        chatNotice.startsWith("File sent to the nearby phone") ||
+                        chatNotice.startsWith("Nearby file transfer failed") ||
+                        chatNotice.startsWith("Could not start file transfer") ||
+                        chatNotice.startsWith("Could not send file details") ||
+                        chatNotice.startsWith("File could not be prepared") ||
+                        chatNotice.startsWith("The received file failed") ||
+                        chatNotice.startsWith("Received and verified:")
+                    if (incomingTransferName != null || outgoingTransferId != null || receivedFiles.isNotEmpty() || hasTransferResult) {
                         Surface(
                             modifier = Modifier.fillMaxWidth().animateContentSize(),
                             color = Color(0xFF102B50),
@@ -2427,6 +2435,23 @@ private fun NeaRerHome(
                                         Text(fileItem.displayName, color = White, fontSize = 10.sp, maxLines = 1,
                                             modifier = Modifier.weight(1f).padding(start = 8.dp))
                                         TextButton(onClick = { onOpenFile(fileItem) }) { Text("OPEN", color = Gold, fontSize = 9.sp) }
+                                    }
+                                }
+                                if (hasTransferResult && incomingTransferName == null && outgoingTransferId == null) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth()
+                                            .background(Color(0xFF0B2342), RoundedCornerShape(12.dp))
+                                            .padding(horizontal = 10.dp, vertical = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        val resultIsError = chatNotice.contains("failed", ignoreCase = true) ||
+                                            chatNotice.contains("could not", ignoreCase = true)
+                                        Text(if (resultIsError) "!" else "✓",
+                                            color = if (resultIsError) Color(0xFFFFA5AE) else Color(0xFF8EF0C6),
+                                            fontSize = 15.sp, fontWeight = FontWeight.Black)
+                                        Text(chatNotice, color = Color(0xFFD6E5FA), fontSize = 10.sp,
+                                            lineHeight = 14.sp, modifier = Modifier.weight(1f))
                                     }
                                 }
                             }
