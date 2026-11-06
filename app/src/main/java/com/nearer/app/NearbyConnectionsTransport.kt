@@ -1358,7 +1358,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         outgoingAwaitingFirstByteSinceNanos.remove(payloadId)
         outgoingFirstByteLatencyNanos.remove(payloadId)
         preparingOutgoingFiles.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
-        key?.let { transferStartedAtNanos.remove(it); completedTransferRates.remove(it) }
+        key?.let {
+            transferStartedAtNanos.remove(it)
+            completedTransferRates.remove(it)
+            // A cancelled transfer must not keep retrying its deferred integrity
+            // control message after the underlying file payload is gone.
+            pendingDeferredDigests.remove(it)?.retryTask?.let(deliveryHandler::removeCallbacks)
+        }
     }
 
     private fun broadcast(content: String, excludeEndpoint: String?): Boolean {
