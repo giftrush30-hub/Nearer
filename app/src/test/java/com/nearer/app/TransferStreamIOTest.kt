@@ -17,7 +17,7 @@ class TransferStreamIOTest {
         assertArrayEquals(source, output.toByteArray())
         assertEquals(source.size.toLong(), result.bytesCopied)
         assertEquals("7c29824111af28755e63a3b8061aad8540f0f681083a2d844b702c57453e0355",
-            TransferStreamIO.sha256Hex(result.sha256))
+            result.sha256.joinToString("") { "%02x".format(it.toInt() and 0xff) })
     }
 
     @Test
