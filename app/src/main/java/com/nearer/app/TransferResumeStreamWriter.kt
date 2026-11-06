@@ -80,10 +80,22 @@ internal class TransferResumeStreamWriter(
                 val wanted = minOf(buffer.size.toLong(), item.sizeBytes - received, untilCheckpoint).toInt()
                 val read = input.read(buffer, 0, wanted)
                 if (read < 0) throw IllegalStateException("Incoming stream ended before the declared file size")
-                if (read == 0) continue
-                output.write(buffer, 0, read)
-                digest.update(buffer, 0, read)
-                received += read.toLong()
+                if (read == 0) {
+                    // A few wrapped/custom streams can legally make no progress
+                    // on a bulk read. Fall back to one byte so a broken provider
+                    // cannot pin this worker in a zero-progress busy loop.
+                    val singleByte = input.read()
+                    if (singleByte < 0) {
+                        throw IllegalStateException("Incoming stream ended before the declared file size")
+                    }
+                    output.write(singleByte)
+                    digest.update(singleByte.toByte())
+                    received++
+                } else {
+                    output.write(buffer, 0, read)
+                    digest.update(buffer, 0, read)
+                    received += read.toLong()
+                }
 
                 if (received == nextCheckpoint || received == item.sizeBytes) {
                     output.fd.sync()
