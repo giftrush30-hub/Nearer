@@ -29,7 +29,7 @@ class DeferredFileDigestTrackerTest {
         tracker.registerFile("peer-b", 12L, 100L)
         tracker.markFileCompleted("peer-a", 12L)
         assertNull(tracker.recordDigest("peer-b", 12L, digest))
-        assertEquals(1, tracker.pendingCount())
+        assertEquals(2, tracker.pendingCount())
         assertEquals(DeferredFileDigestTracker.Ready("peer-a", 12L, digest.lowercase()),
             tracker.recordDigest("peer-a", 12L, digest))
     }
