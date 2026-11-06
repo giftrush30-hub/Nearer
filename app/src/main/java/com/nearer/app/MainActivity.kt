@@ -2984,9 +2984,16 @@ private fun NeaRerHome(
 
             Text("NEARER  •  DIRECT DEVICE DISCOVERY", color = Muted, fontSize = 10.sp, letterSpacing = 1.sp)
             }
-            Surface(color = Color(0xFF092653), modifier = Modifier.fillMaxWidth(), shadowElevation = 14.dp) {
+            Surface(
+                color = Color(0xFF092653),
+                modifier = Modifier.fillMaxWidth(),
+                shadowElevation = 18.dp,
+                border = BorderStroke(1.dp, Color(0xFF244A7D).copy(alpha = 0.65f))
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 7.dp),
+                    modifier = Modifier.fillMaxWidth()
+                        .background(Brush.verticalGradient(listOf(Color(0xFF103365), Color(0xFF071A34))))
+                        .padding(horizontal = 7.dp, vertical = 7.dp),
                     horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     listOf(
@@ -3011,8 +3018,25 @@ private fun NeaRerHome(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
-                                Text(item.first, color = if (selected) Gold else Muted, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                                Text(item.second, color = if (selected) White else Muted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
+                                Text(
+                                    item.first,
+                                    color = if (selected) Gold else Muted,
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    item.second,
+                                    color = if (selected) White else Muted,
+                                    fontSize = 9.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    maxLines = 1
+                                )
+                                androidx.compose.foundation.layout.Box(
+                                    Modifier.padding(top = 1.dp).width(if (selected) 17.dp else 4.dp)
+                                        .height(2.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (selected) Gold else Color.Transparent)
+                                )
                             }
                         }
                     }
