@@ -13,7 +13,9 @@ Make nearby Android file sharing as fast as the two phones and their wireless li
 - JVM tests cover the buffer policy, Unicode-safe filename handling, bundle-manifest validation/codec round-trips, and bounded stream-copy integrity/cancellation.
 - A metadata-only bundle model and bounded binary wire codec validate IDs, destination paths, duplicate entries, item sizes, item kinds and protocol version before bulk data begins.
 - `TransferStreamIO` copies exactly the declared number of bytes with a fixed-size buffer, supports cancellation, detects premature EOF, and returns a SHA-256 digest for receiver-side verification.
-- The stream copier is a tested building block, not yet wired into Nearby Connections as a complete multi-file send/receive session.
+- Incoming Nearby FILE payloads now use the bounded exact-length stream copier when saved into NeaRer's private received-files area; the receiver syncs the temporary file, checks its declared size, and renames it into place only after the copy succeeds.
+- The receiver calculates SHA-256 while copying and reports a short digest prefix. This is a local digest calculation, not yet a sender-to-receiver checksum comparison; end-to-end integrity verification still needs a checksum in the negotiated transfer metadata.
+- This is still single-file transfer plumbing: the bundle manifest has not yet been connected to a multi-file send/accept/receive session.
 - The stream copier now handles a zero-progress bulk read without spinning forever, and its SHA-256 hex formatter treats digest bytes as unsigned.
 - Google documents that `onPayloadReceived` for FILE/STREAM is an early notification, not proof that all bytes arrived; completion must be confirmed by the transfer-update SUCCESS event. STREAM input must be drained promptly on a background worker, and the owning `Payload` must be closed when finished or cancelled.
 - Filename sanitization preserves Unicode names while stripping path components and reserved/control characters.
