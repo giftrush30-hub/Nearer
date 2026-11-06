@@ -50,6 +50,26 @@ class TransferManifestFragmentsTest {
     }
 
     @Test
+    fun rejectsForgedFragmentCountAndIncorrectPartLength() {
+        val valid = TransferManifestFragments.split("bundle-a", ByteArray(40_000) { it.toByte() }).first()
+
+        // Header layout: magic, ID length + ID, index, count, total bytes, part length.
+        val forgedCount = valid.copyOf().also {
+            java.nio.ByteBuffer.wrap(it).putInt(18, Int.MAX_VALUE)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TransferManifestFragments.decode(forgedCount)
+        }
+
+        val forgedPartLength = valid.copyOf().also {
+            java.nio.ByteBuffer.wrap(it).putInt(26, 1)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TransferManifestFragments.decode(forgedPartLength)
+        }
+    }
+
+    @Test
     fun rejectsOversizedFragment() {
         assertThrows(IllegalArgumentException::class.java) {
             TransferManifestFragments.decode(ByteArray(TransferManifestFragments.MAX_FRAGMENT_BYTES + 1))
