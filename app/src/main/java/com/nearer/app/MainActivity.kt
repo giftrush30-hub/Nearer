@@ -1902,89 +1902,221 @@ private fun NeaRerHome(
             }
 
             if (activeSection == "home") {
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Color(0xFF10233D),
-                border = BorderStroke(1.dp, Color(0xFF385C88)), shadowElevation = 8.dp) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("YOUR NEARER NAME", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        Spacer(Modifier.weight(1f))
-                        Text("LOCAL PROFILE", color = Color(0xFF8FB9F4), fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 0.8.sp)
-                    }
-                    Text("What should people around you call you?", color = White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(24) }, modifier = Modifier.weight(1f), singleLine = true, placeholder = { Text("e.g. Hope, Jay Flex, Mimi", color = Muted) }, shape = RoundedCornerShape(14.dp))
-                        Button(onClick = { nameSaveFeedback = if (onSaveDisplayName(nameDraft)) "Your name is saved on this phone and ready for nearby discovery." else "Could not save your name. Please try again." }, enabled = nameDraft.trim().isNotBlank(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Save") }
-                    }
-                    Text("This is your public nearby name, not your phone model.", color = Muted, fontSize = 10.sp)
-                    nameSaveFeedback?.let { feedback -> Text(feedback, color = if (feedback.startsWith("Your name is saved")) Mint else Color(0xFFFF9A9A), fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
-                }
-            }
-
-            Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
-                sectionPositions["home"] = it.positionInParent().y.toInt()
-            }.background(
-                Brush.linearGradient(listOf(Color(0xFF174B91), Color(0xFF102746), Color(0xFF0B1A30))),
-                RoundedCornerShape(24.dp)
-            ), shape = RoundedCornerShape(24.dp), color = Color.Transparent,
-                shadowElevation = 16.dp, border = BorderStroke(1.dp, Color(0xFF4D83C8))) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(shape = RoundedCornerShape(12.dp), color = BrandBlue, modifier = Modifier.size(42.dp)) {
-                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("N", color = White, fontSize = 23.sp, fontWeight = FontWeight.Black) }
-                        }
-                        Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
-                            Text("YOUR OFFLINE WORLD", color = White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.7.sp)
-                            Text("People, sharing and play — closer.", color = Muted, fontSize = 11.sp)
-                        }
-                        Text("NEARER", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                    }
-                    Text("Everything starts nearby.", color = White, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = 0.2.sp)
-                    Text("Connect without mobile data. Share directly. Build a local community with people around you.", color = Color(0xFFD3E1F5), fontSize = 13.sp, lineHeight = 20.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
-                        Button(onClick = { activeSection = "nearby"; navigationScope.launch { pageScrollState.animateScrollTo(0) } },
-                            modifier = Modifier.weight(1f).height(46.dp), shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)) {
-                            Text("EXPLORE NEARBY", fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.3.sp)
-                        }
-                        Button(onClick = { activeSection = "games"; navigationScope.launch { pageScrollState.animateScrollTo(0) } },
-                            modifier = Modifier.weight(1f).height(46.dp), shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF234C80), contentColor = White)) {
-                            Text("GAME ZONE", fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.3.sp)
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("PRIVATE CHAT" to "Ready after connection", "FILE SHARING" to "Ready after connection").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text(item.first, color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                    Text(item.second, color = Muted, fontSize = 10.sp)
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(28.dp),
+                    color = Color(0xFF102A4C),
+                    border = BorderStroke(1.dp, Color(0xFF396AA8)),
+                    shadowElevation = 18.dp
+                ) {
+                    androidx.compose.foundation.layout.Box {
+                        Surface(
+                            modifier = Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 18.dp).size(112.dp).alpha(0.7f),
+                            shape = CircleShape,
+                            color = Color.Transparent,
+                            border = BorderStroke(1.dp, Color(0xFF477CB8))
+                        ) {
+                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                Surface(
+                                    modifier = Modifier.size(78.dp).rotate(orbitRotation),
+                                    shape = CircleShape,
+                                    color = Color.Transparent,
+                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.7f))
+                                ) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.TopCenter) {
+                                        Surface(shape = CircleShape, color = Gold, modifier = Modifier.size(7.dp)) {}
+                                    }
+                                }
+                                Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(48.dp), shadowElevation = 12.dp) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                        Text("N", color = White, fontSize = 25.sp, fontWeight = FontWeight.Black)
+                                    }
                                 }
                             }
                         }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("NEARBY LINK" to "Bluetooth + nearby Wi-Fi", "MESH RELAY" to "Opt-in, up to 4 hops").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                    Text(item.second, color = Muted, fontSize = 10.sp)
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(13.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(color = Color(0xFF1C4777), shape = RoundedCornerShape(50)) {
+                                    Text("✦  OFFLINE-FIRST", color = Color(0xFFD7E7FF), fontSize = 9.sp,
+                                        fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp,
+                                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp))
                                 }
+                                Spacer(Modifier.weight(1f))
+                                Text("MADE TO BRING US CLOSER", color = Gold, fontSize = 8.sp,
+                                    fontWeight = FontWeight.Black, letterSpacing = 0.8.sp)
                             }
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("LOCAL GROUPS" to "Nearby groups ready", "PLAY TOGETHER" to "Tic-tac-toe + Ludo").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                    Text(item.second, color = Muted, fontSize = 10.sp)
+                            Spacer(Modifier.height(42.dp))
+                            Text("YOUR WORLD.\nCLOSER.", color = White, fontSize = 31.sp,
+                                lineHeight = 34.sp, fontWeight = FontWeight.Black, letterSpacing = 0.2.sp)
+                            Text(
+                                "Find people nearby. Share directly. Chat and play — even when mobile data is gone.",
+                                color = Color(0xFFD0DDF0), fontSize = 13.sp, lineHeight = 20.sp,
+                                modifier = Modifier.fillMaxWidth(0.82f)
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
+                                Button(
+                                    onClick = { activeSection = "nearby"; navigationScope.launch { pageScrollState.animateScrollTo(0) } },
+                                    modifier = Modifier.weight(1f).height(48.dp),
+                                    shape = RoundedCornerShape(15.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                                ) {
+                                    Text("FIND PEOPLE  →", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                }
+                                Button(
+                                    onClick = { activeSection = "games"; navigationScope.launch { pageScrollState.animateScrollTo(0) } },
+                                    modifier = Modifier.weight(1f).height(48.dp),
+                                    shape = RoundedCornerShape(15.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF28558B), contentColor = White)
+                                ) {
+                                    Text("PLAY GAMES", fontSize = 10.sp, fontWeight = FontWeight.Black)
                                 }
                             }
                         }
                     }
                 }
-            }
 
+                Surface(
+                    modifier = Modifier.fillMaxWidth().animateContentSize(),
+                    color = if (chatReady) Color(0xFF123D39) else Color(0xFF12243B),
+                    shape = RoundedCornerShape(19.dp),
+                    border = BorderStroke(1.dp, if (chatReady) Color(0xFF368F77) else Color(0xFF294667))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 15.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(shape = CircleShape, color = if (chatReady) Color(0xFF2B8A70) else Color(0xFF29496E), modifier = Modifier.size(38.dp)) {
+                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                Text(if (chatReady) "✓" else "◎", color = White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Column(Modifier.weight(1f).padding(start = 11.dp)) {
+                            Text(if (chatReady) "YOU'RE CONNECTED" else "YOUR NEARBY LINK",
+                                color = if (chatReady) Color(0xFF8CE4C8) else Gold, fontSize = 9.sp,
+                                fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                            Text(
+                                if (chatReady) "Connected to ${connectedDeviceName ?: "a nearby person"}"
+                                else "Your phone is ready to discover nearby NeaRer users",
+                                color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Text(if (chatReady) "ACTIVE" else "OFFLINE",
+                            color = if (chatReady) Color(0xFF8CE4C8) else Muted,
+                            fontSize = 8.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("YOUR NEARER NAME", color = Gold, fontSize = 10.sp,
+                            fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
+                        Text("How people nearby know you", color = Muted, fontSize = 11.sp)
+                    }
+                    Text("SAVED ON THIS PHONE", color = Color(0xFF8FB9F4), fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                }
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFF132944),
+                    border = BorderStroke(1.dp, Color(0xFF2E4D70))
+                ) {
+                    Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        OutlinedTextField(
+                            value = nameDraft,
+                            onValueChange = { nameDraft = it.take(24); nameSaveFeedback = null },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text("Choose your nearby name", color = Muted) },
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                        Button(
+                            onClick = {
+                                nameSaveFeedback = if (onSaveDisplayName(nameDraft))
+                                    "✓  Your name is saved and ready for nearby discovery."
+                                else "Could not save your name. Please try again."
+                            },
+                            enabled = nameDraft.trim().isNotBlank(),
+                            modifier = Modifier.fillMaxWidth().height(46.dp),
+                            shape = RoundedCornerShape(13.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                        ) {
+                            Text("SAVE MY NAME", fontWeight = FontWeight.Black, letterSpacing = 0.8.sp)
+                        }
+                        Text(nameSaveFeedback ?: "Your name is private to this phone until you choose to discover nearby.",
+                            color = if (nameSaveFeedback?.startsWith("✓") == true) Color(0xFF8CE4C8) else Muted,
+                            fontSize = 10.sp, lineHeight = 15.sp)
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("THE NEARER TOOLKIT", color = Gold, fontSize = 10.sp,
+                            fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
+                        Text("Everything you need, one tap away", color = Muted, fontSize = 11.sp)
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf(Triple("◎", "Discover", "Find nearby people", "nearby"), Triple("✉", "Private chat", "Direct phone link", "chats")).forEach { item ->
+                        Surface(
+                            modifier = Modifier.weight(1f).clickable {
+                                activeSection = item.fourth
+                                navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                            },
+                            shape = RoundedCornerShape(18.dp),
+                            color = Color(0xFF142C49),
+                            border = BorderStroke(1.dp, Color(0xFF2B4C70))
+                        ) {
+                            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Text(item.first, color = Gold, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                                Text(item.second, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text(item.third, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+                            }
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf(Triple("⇧", "Share files", "Photos, videos and more", "chats"), Triple("♟", "Communities", "Build a local circle", "community")).forEach { item ->
+                        Surface(
+                            modifier = Modifier.weight(1f).clickable {
+                                activeSection = item.fourth
+                                navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                            },
+                            shape = RoundedCornerShape(18.dp),
+                            color = Color(0xFF142C49),
+                            border = BorderStroke(1.dp, Color(0xFF2B4C70))
+                        ) {
+                            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Text(item.first, color = Color(0xFF8FB9F4), fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                                Text(item.second, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text(item.third, color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+                            }
+                        }
+                    }
+                }
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        activeSection = "games"
+                        navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                    },
+                    shape = RoundedCornerShape(19.dp),
+                    color = Color(0xFF1A3455),
+                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.45f))
+                ) {
+                    Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("♟", color = Gold, fontSize = 29.sp)
+                        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                            Text("NEARER GAME ZONE", color = Gold, fontSize = 9.sp,
+                                fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                            Text("A little friendly competition?", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Traditional Ludo and more to come", color = Muted, fontSize = 10.sp)
+                        }
+                        Text("EXPLORE  →", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                    }
+                }
             }
 
             if (activeSection == "games") {
