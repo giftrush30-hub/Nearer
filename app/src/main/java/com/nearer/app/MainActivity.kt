@@ -2626,14 +2626,26 @@ private fun NeaRerHome(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        val resultIsError = chatNotice.contains("failed", ignoreCase = true) ||
+                                        val resultIsCancelled = chatNotice.contains("cancel", ignoreCase = true)
+                                        val resultIsError = !resultIsCancelled && (
+                                            chatNotice.contains("failed", ignoreCase = true) ||
                                             chatNotice.contains("could not", ignoreCase = true) ||
-                                            chatNotice.contains("cancel", ignoreCase = true) ||
                                             chatNotice.contains("stopped", ignoreCase = true) ||
                                             chatNotice.contains("larger than its declared size", ignoreCase = true)
-                                        Text(if (resultIsError) "!" else "✓",
-                                            color = if (resultIsError) Color(0xFFFFA5AE) else Color(0xFF8EF0C6),
-                                            fontSize = 15.sp, fontWeight = FontWeight.Black)
+                                        )
+                                        Text(
+                                            when {
+                                                resultIsCancelled -> "↺"
+                                                resultIsError -> "!"
+                                                else -> "✓"
+                                            },
+                                            color = when {
+                                                resultIsCancelled -> Gold
+                                                resultIsError -> Color(0xFFFFA5AE)
+                                                else -> Color(0xFF8EF0C6)
+                                            },
+                                            fontSize = 15.sp, fontWeight = FontWeight.Black
+                                        )
                                         Text(chatNotice, color = Color(0xFFD6E5FA), fontSize = 10.sp,
                                             lineHeight = 14.sp, modifier = Modifier.weight(1f))
                                     }
