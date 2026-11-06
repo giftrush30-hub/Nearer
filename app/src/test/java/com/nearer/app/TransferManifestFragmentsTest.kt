@@ -8,6 +8,14 @@ import org.junit.Test
 
 class TransferManifestFragmentsTest {
     @Test
+    fun identifiesOnlyManifestFragmentFrames() {
+        val fragment = TransferManifestFragments.split("bundle-1", byteArrayOf(1, 2, 3)).single()
+        assertTrue(TransferManifestFragments.isFragment(fragment))
+        assertFalse(TransferManifestFragments.isFragment(byteArrayOf(0x7B, 0x7D)))
+        assertFalse(TransferManifestFragments.isFragment(null))
+    }
+
+    @Test
     fun splitsAndReassemblesLargeManifestOutOfOrder() {
         val original = ByteArray(180_000) { (it % 251).toByte() }
         val fragments = TransferManifestFragments.split("bundle-123", original)
