@@ -238,6 +238,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
     private var started = false
     @Volatile private var localName = "NeaRer User"
+    @Volatile private var selectedStrategy = Strategy.P2P_CLUSTER
 
     private val discovery = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(id: String, info: DiscoveredEndpointInfo) {
@@ -812,7 +813,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private fun safeFileName(raw: String): String = TransferFileName.safeLeafName(raw)
 
     private fun startAdvertising() {
-        val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
+        val options = AdvertisingOptions.Builder().setStrategy(selectedStrategy).build()
         client.startAdvertising(encodedName(), serviceId, lifecycle, options).addOnFailureListener {
             listener.onStatus("Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}")
         }
@@ -845,10 +846,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         return TransferRadioReadiness.message(bluetoothEnabled, wifiEnabled)
     }
 
-    fun start() {
+    /** Both phones select the same mode before searching; Cluster remains the default. */
+    fun start(highSpeedOneToOne: Boolean = false) {
         if (started) return
+        selectedStrategy = if (highSpeedOneToOne) Strategy.P2P_POINT_TO_POINT else Strategy.P2P_CLUSTER
         started = true
-        val discovering = DiscoveryOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
+        val discovering = DiscoveryOptions.Builder().setStrategy(selectedStrategy).build()
         startAdvertising()
         client.startDiscovery(serviceId, discovery, discovering).addOnFailureListener {
             listener.onStatus("Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth and nearby-device permissions"}")
