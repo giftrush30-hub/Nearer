@@ -8,7 +8,11 @@ import org.junit.Test
 
 class LudoEngineTraditionalRulesTest {
     private class AlwaysSixRandom : Random() {
-        override fun nextBits(bitCount: Int): Int = minOf(5, (1 shl bitCount) - 1)
+        override fun nextBits(bitCount: Int): Int = 0
+        override fun nextInt(from: Int, until: Int): Int {
+            require(from <= 6 && until > 6)
+            return 6
+        }
     }
 
     @Test
