@@ -2013,7 +2013,7 @@ private fun NeaRerHome(
                 }
             }
 
-            if (activeSection == "home") {
+            AnimatedVisibility(visible = activeSection == "home", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
                 // File sharing is the primary purpose of NeaRer: make Send and Receive the first actions.
                 Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
                     Surface(
@@ -2303,6 +2303,7 @@ private fun NeaRerHome(
                         }
                     }
                 }
+            }
             }
 
             AnimatedVisibility(visible = activeSection == "games", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
