@@ -275,7 +275,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 } else {
                     outgoingFiles.remove(payloadId)
                     listener.onFileProgress(id, payloadId, name, update.totalBytes, update.totalBytes, false)
-                    listener.onOutgoingFileFinished(id, payloadId, name, true, "File sent to the nearby phone: $name • $rateLabel MB/s average")
+                    listener.onOutgoingFileFinished(id, payloadId, name, true, "File sent to the nearby phone: $name • $rateLabel MiB/s average")
                 }
             } else {
                 transferStartedAtNanos.remove(key)
@@ -576,7 +576,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                         listener.onFileStatus("File saved successfully, but NeaRer could not refresh the received-files screen.")
                     }
                     completedTransferRates.remove(key)?.let { rate ->
-                        listener.onFileStatus("Received ${meta.name} • $rate MB/s average • SHA-256 ${TransferStreamIO.sha256Hex(copied.sha256).take(12)}")
+                        listener.onFileStatus("Received ${meta.name} • $rate MiB/s average • SHA-256 ${TransferStreamIO.sha256Hex(copied.sha256).take(12)}")
                     }
                 } catch (error: Exception) {
                     meta.bundleTransferId?.let { transferId ->
