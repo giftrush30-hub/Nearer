@@ -353,7 +353,7 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
         for (y in 9..14) for (x in 0..5) tile(x, y, Color(0xFFD9F1E7))
         for (y in 9..14) for (x in 9..14) tile(x, y, Color(0xFFFFEFCB))
         for (y in 0..5) for (x in 9..14) tile(x, y, Color(0xFFDCE8FF))
-        val yards = listOf(Offset(0f, 0f), Offset(9f, 0f), Offset(0f, 9f), Offset(9f, 9f))
+        val yards = listOf(Offset(0f, 0f), Offset(0f, 9f), Offset(9f, 9f), Offset(9f, 0f))
         yards.forEachIndexed { i, p ->
             drawRoundRect(colors[i].copy(alpha = 0.16f), Offset((p.x + 1f) * cell, (p.y + 1f) * cell),
                 Size(4f * cell, 4f * cell), CornerRadius(cell * 0.42f))
