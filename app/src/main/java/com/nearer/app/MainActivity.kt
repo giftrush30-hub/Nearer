@@ -2055,6 +2055,11 @@ private fun NeaRerHome(
                     Text("Your installed apps", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     if (isLoadingApps) {
                         Text("Scanning installed apps and preparing their icons…", color = Gold, fontSize = 11.sp)
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Gold,
+                            trackColor = Color(0xFF24466F)
+                        )
                     }
                     Text(installedApps.size.toString() + " shareable apps found on this phone. This list is read on-device and is not uploaded.", color = Muted, fontSize = 10.sp)
                     var appSearch by remember { mutableStateOf("") }
