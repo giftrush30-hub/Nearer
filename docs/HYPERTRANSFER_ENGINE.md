@@ -10,7 +10,10 @@ Make nearby Android file sharing as fast as the two phones and their wireless li
 - A capable, cool phone uses 256 KiB; constrained devices use 128 KiB; severe thermal pressure uses 32 KiB.
 - Nearby Connections payload completion is timed and the observed average MB/s is reported.
 - Existing P2P_CLUSTER discovery remains unchanged so current multi-device connections are not sacrificed.
-- JVM tests cover the buffer policy. The Android compile/test workflow does not assemble an APK.
+- JVM tests cover the buffer policy, Unicode-safe filename handling and bundle-manifest validation.
+- A metadata-only bundle model validates IDs, destination paths, duplicate entries, item sizes and protocol version before a future streaming sender accepts a bundle.
+- Filename sanitization preserves Unicode names while stripping path components and reserved/control characters.
+- The Android compile/test workflow does not assemble an APK.
 
 These changes tune the local file-save stage and expose real measurements. They do not, by themselves, increase the Wi-Fi radio's throughput.
 
