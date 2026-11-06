@@ -1711,7 +1711,15 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     } catch (_: Exception) {
-                                        incomingTransfers.remove(parts[1])?.close()
+                                        val failedTransfer = incomingTransfers.remove(parts[1])
+                                        failedTransfer?.close()
+                                        failedTransfer?.file?.delete()
+                                        synchronized(writerLock) { peerWriter?.println("FILE_DONE|${parts[1]}|ERROR") }
+                                        runOnUiThread {
+                                            incomingTransferName = null
+                                            incomingProgress = 0f
+                                            chatNotice = "The received file could not be written. Transfer stopped."
+                                        }
                                     }
                                 }
                             }
@@ -2343,6 +2351,8 @@ private fun NeaRerHome(
                         chatNotice.startsWith("Could not send file details") ||
                         chatNotice.startsWith("File could not be prepared") ||
                         chatNotice.startsWith("The received file failed") ||
+                        chatNotice.startsWith("The received file was larger than its declared size") ||
+                        chatNotice.startsWith("The received file could not be written") ||
                         chatNotice.startsWith("Received and verified:")
                     if (incomingTransferName != null || outgoingTransferId != null || receivedFiles.isNotEmpty() || hasTransferResult) {
                         Surface(
