@@ -1410,7 +1410,15 @@ class MainActivity : ComponentActivity() {
         recipients.forEach { (name, color) ->
             val packet = JSONObject().put("type", "ludo_state").put("matchId", match.matchId)
                 .put("revision", match.revision).put("localColor", color.name).put("state", snapshot)
-            if (sendCommunityToNames("NR_COMMUNITY:$packet", setOf(name)) == true) sentAny = true
+            // Wi-Fi Direct fallback is a single-peer socket and may expose the Android
+            // device name rather than the NeaRer profile name. The match ID and sender
+            // checks still authenticate the room at the application layer.
+            val sent = if (!hybridConnected && chatReady && match.isHost && match.remotePlayers.size == 1) {
+                sendCommunityPacket(packet)
+            } else {
+                sendCommunityToNames("NR_COMMUNITY:$packet", setOf(name)) == true
+            }
+            if (sent) sentAny = true
         }
         if (!sentAny) communityNotice = "The Ludo board could not sync. Check that the nearby players are still connected."
     }
@@ -1474,7 +1482,15 @@ class MainActivity : ComponentActivity() {
 
     private fun resumeLudoAfterReconnect(peerName: String) {
         val game = activeGame ?: return
-        if ((if (game.isHost) peerName !in game.remotePlayers.values else peerName != game.opponentName) || game.ready) return
+        val expectedPeer = if (hybridConnected) {
+            if (game.isHost) peerName in game.remotePlayers.values else peerName == game.opponentName
+        } else {
+            // Wi-Fi Direct exposes only one live socket; its Android device label can
+            // differ from the profile name stored in the Ludo room.
+            chatReady && connectedDeviceName != null &&
+                (if (game.isHost) game.remotePlayers.size == 1 else true)
+        }
+        if (!expectedPeer || game.ready) return
         if (game.isHost) {
             val resumed = game.copy(ready = true, revision = game.revision + 1L)
             activeGame = resumed
