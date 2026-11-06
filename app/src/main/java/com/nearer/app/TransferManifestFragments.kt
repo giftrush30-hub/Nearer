@@ -60,7 +60,15 @@ internal object TransferManifestFragments {
         }
     }
 
-    fun decode(bytes: ByteArray): Fragment {
+    fun decode(bytes: ByteArray): Fragment = try {
+        decodeInternal(bytes)
+    } catch (error: IllegalArgumentException) {
+        throw error
+    } catch (error: Exception) {
+        throw IllegalArgumentException("Malformed manifest fragment", error)
+    }
+
+    private fun decodeInternal(bytes: ByteArray): Fragment {
         require(bytes.size in 1..MAX_FRAGMENT_BYTES) { "Manifest fragment size is invalid" }
         val input = DataInputStream(ByteArrayInputStream(bytes))
         require(input.readInt() == MAGIC) { "Invalid manifest fragment signature" }
