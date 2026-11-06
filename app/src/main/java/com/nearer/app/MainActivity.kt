@@ -1894,15 +1894,16 @@ private fun NeaRerHome(
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
-    var fastSendPending by remember { mutableStateOf(false) }
+    var pendingFileTypes by remember { mutableStateOf<Array<String>?>(null) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
     }
-    // Fast Send remembers the user's intent while nearby discovery establishes a connection.
-    LaunchedEffect(chatReady, fastSendPending) {
-        if (chatReady && fastSendPending) {
-            fastSendPending = false
-            filePicker.launch(arrayOf("*/*"))
+    // Keep the exact file-selection intent while nearby discovery establishes a connection.
+    LaunchedEffect(chatReady, pendingFileTypes) {
+        val requestedTypes = pendingFileTypes
+        if (chatReady && requestedTypes != null) {
+            pendingFileTypes = null
+            filePicker.launch(requestedTypes)
         }
     }
     if (!hasChosenName) {
@@ -2144,7 +2145,12 @@ private fun NeaRerHome(
                                 Button(
                                     onClick = {
                                         if (chatReady) filePicker.launch(arrayOf("*/*"))
-                                        else { navigateToSection("nearby"); onFindNearby(); navigationScope.launch { pageScrollState.animateScrollTo(0) } }
+                                        else {
+                                            pendingFileTypes = arrayOf("*/*")
+                                            navigateToSection("nearby")
+                                            onFindNearby()
+                                            navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                                        }
                                     },
                                     modifier = Modifier.weight(1f).height(52.dp),
                                     shape = RoundedCornerShape(15.dp),
@@ -2178,7 +2184,7 @@ private fun NeaRerHome(
                             if (chatReady) {
                                 filePicker.launch(arrayOf("*/*"))
                             } else {
-                                fastSendPending = true
+                                pendingFileTypes = arrayOf("*/*")
                                 navigateToSection("nearby")
                                 onFindNearby()
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
@@ -2257,6 +2263,7 @@ private fun NeaRerHome(
                                         modifier = Modifier.weight(1f).height(108.dp).animateContentSize().clickable {
                                             if (chatReady) filePicker.launch(item.third)
                                             else {
+                                                pendingFileTypes = item.third
                                                 navigateToSection("nearby")
                                                 onFindNearby()
                                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
