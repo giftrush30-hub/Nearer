@@ -72,7 +72,9 @@ class LudoEngineTest {
 
     @Test fun thirdConsecutiveSixForfeitsTurn() {
         var state = LudoEngine.newGame()
-        repeat(3) { state = LudoEngine.rollDice(state, 6) }
+        state = LudoEngine.moveToken(LudoEngine.rollDice(state, 6), 0).state
+        state = LudoEngine.moveToken(LudoEngine.rollDice(state, 6), 1).state
+        state = LudoEngine.rollDice(state, 6)
         assertTrue(LudoEngine.legalMoves(state).isEmpty())
         state = LudoEngine.passTurn(state)
         assertEquals(1, state.currentPlayerIndex)
