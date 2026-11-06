@@ -58,6 +58,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
             .getStringSet("nearby_seen_message_ids", HashSet<String>()).orEmpty().forEach { add(it) }
     }
+    // Prevent two copies arriving at once while the first copy is still being saved.
+    // An ID becomes "seen" only after the UI confirms local persistence.
+    private val pendingIncomingMessageIds = ConcurrentHashMap.newKeySet<String>()
     private val outgoingMessageTargets = ConcurrentHashMap<String, String>()
 
     private fun rememberMessageId(messageId: String) {
@@ -182,17 +185,27 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val ttl = envelope.optInt("ttl", 0)
             if (messageId.isBlank() || body.isBlank() || body.length > 4000) return
             if (messageId.length > 80 || ttl !in 0..4) return
-            val isNewMessage = !seenMessageIds.contains(messageId)
-            // A duplicate is acknowledged again so a sender can recover from a lost receipt.
-            if (!isNewMessage) {
+            // A previously saved message is safe to acknowledge again after a lost receipt.
+            if (seenMessageIds.contains(messageId)) {
                 sendAcknowledgement(endpointId, messageId)
                 return
             }
-            rememberMessageId(messageId)
+            // If the same payload arrives while its first copy is being saved, wait for
+            // that save to finish; do not acknowledge a message that is not durable yet.
+            if (!pendingIncomingMessageIds.add(messageId)) return
             val senderName = synchronized(names) { names[endpointId] ?: "Nearby member" }
-            // The UI acknowledges only after it has persisted the message locally.
-            listener.onMessage(endpointId, senderName, messageId, body) {
-                sendAcknowledgement(endpointId, messageId)
+            // Persist the dedupe ID only when the UI confirms that the message itself
+            // has been saved. This closes the crash window between ID and message storage.
+            try {
+                listener.onMessage(endpointId, senderName, messageId, body) {
+                    if (pendingIncomingMessageIds.remove(messageId)) {
+                        rememberMessageId(messageId)
+                        sendAcknowledgement(endpointId, messageId)
+                    }
+                }
+            } catch (error: Exception) {
+                pendingIncomingMessageIds.remove(messageId)
+                throw error
             }
             // Direct/private chat messages use ttl=0. Multi-hop forwarding stays disabled
             // until recipient routing and end-to-end encryption are implemented.
