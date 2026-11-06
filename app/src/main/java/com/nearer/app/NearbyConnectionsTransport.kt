@@ -21,6 +21,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onConnected(id: String, name: String, stableId: String)
         fun onDisconnected(id: String, stableId: String, name: String)
         fun onMessage(id: String, senderName: String, body: String)
+        fun onMessageStatus(messageId: String, status: String)
         fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
@@ -153,15 +154,27 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 processCompletedFile(payloadId)
                 return
             }
+            val kind = envelope.optString("kind", "message")
+            if (kind == "ack") {
+                val acknowledgedId = envelope.optString("id")
+                if (acknowledgedId.isNotBlank()) listener.onMessageStatus(acknowledgedId, "Delivered")
+                return
+            }
+            if (kind != "message") return
             val messageId = envelope.optString("id")
             val body = envelope.optString("body")
             val ttl = envelope.optInt("ttl", 0)
-            if (messageId.isBlank() || body.isBlank() || body.length > 4000 || !seenMessageIds.add(messageId)) return
+            if (messageId.isBlank() || body.isBlank() || body.length > 4000) return
+            val isNewMessage = seenMessageIds.add(messageId)
             if (seenMessageIds.size > 5000) seenMessageIds.remove(seenMessageIds.first())
+            // A duplicate is still acknowledged so a sender can recover from a lost receipt.
+            sendAcknowledgement(endpointId, messageId)
+            if (!isNewMessage) return
             val senderName = synchronized(names) { names[endpointId] ?: "Nearby member" }
             listener.onMessage(endpointId, senderName, body)
             if (relayEnabled && ttl > 0) {
-                val forwarded = JSONObject().put("id", messageId).put("body", body)
+                val forwarded = JSONObject().put("kind", "message").put("version", 1)
+                    .put("id", messageId).put("body", body)
                     .put("ttl", ttl - 1).put("hops", envelope.optInt("hops", 0) + 1)
                     .put("origin", envelope.optString("origin", "nearby"))
                 broadcast(forwarded.toString(), endpointId)
@@ -248,12 +261,23 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     fun reject(id: String) { client.rejectConnection(id).addOnFailureListener { listener.onStatus("Could not reject nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun setRelayEnabled(enabled: Boolean) { relayEnabled = enabled }
 
-    fun send(body: String): Boolean {
-        val messageId = UUID.randomUUID().toString()
+    fun send(body: String, messageId: String = UUID.randomUUID().toString()): Boolean {
+        if (body.isBlank() || body.length > 4000) return false
         seenMessageIds.add(messageId)
-        val envelope = JSONObject().put("id", messageId).put("body", body)
+        val envelope = JSONObject().put("kind", "message").put("version", 1)
+            .put("id", messageId).put("body", body)
             .put("ttl", 4).put("hops", 0).put("origin", localName)
+            .put("createdAt", System.currentTimeMillis())
         return broadcast(envelope.toString(), null)
+    }
+
+    private fun sendAcknowledgement(endpointId: String, messageId: String) {
+        try {
+            val receipt = JSONObject().put("kind", "ack").put("version", 1).put("id", messageId)
+            client.sendPayload(endpointId, Payload.fromBytes(receipt.toString().toByteArray(Charsets.UTF_8)))
+        } catch (_: Exception) {
+            // The message itself is already safely stored; the sender will retain a pending state.
+        }
     }
 
     fun sendToNames(body: String, targetNames: Set<String>): Boolean {
