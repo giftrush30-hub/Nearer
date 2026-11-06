@@ -1678,8 +1678,29 @@ class MainActivity : ComponentActivity() {
         chatNotice = "Bundle declined. No files were saved."
     }
 
+    /**
+     * Keep Storage Access Framework read grants for queued files when the provider
+     * supports persistable permissions. Failure is non-fatal: the current picker
+     * grant may still be usable for this foreground transfer.
+     */
+    private fun retainSelectedDocumentReadPermissions(uris: List<Uri>) {
+        uris.forEach { uri ->
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: SecurityException) {
+                // Some document providers do not offer persistable grants.
+            } catch (_: IllegalArgumentException) {
+                // The URI was not issued with a persistable grant.
+            }
+        }
+    }
+
     private fun sendFiles(uris: List<Uri>) {
         if (uris.isEmpty()) return
+        retainSelectedDocumentReadPermissions(uris)
         if ((!hybridConnected && !chatReady) || (hybridConnected && hybridConnectedEndpoint == null)) {
             chatNotice = "Connect to the intended nearby phone before selecting files to send."
             return
