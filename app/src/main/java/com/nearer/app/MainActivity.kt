@@ -2476,7 +2476,7 @@ private fun NeaRerHome(
                             Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         } else {
                             Column(
-                                modifier = Modifier.fillMaxWidth().height(150.dp).verticalScroll(messageScrollState),
+                                modifier = Modifier.fillMaxWidth().height(300.dp).verticalScroll(messageScrollState),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
                                 messages.forEach { message ->
@@ -2486,11 +2486,15 @@ private fun NeaRerHome(
                                     ) {
                                         Surface(
                                             color = if (message.outgoing) Color(0xFF174A9B) else Color(0xFF19375D),
-                                            shape = RoundedCornerShape(14.dp)
+                                            shape = if (message.outgoing) RoundedCornerShape(17.dp, 17.dp, 5.dp, 17.dp)
+                                                else RoundedCornerShape(17.dp, 17.dp, 17.dp, 5.dp),
+                                            modifier = Modifier.animateContentSize()
                                         ) {
-                                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                                            Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
                                                 Text(message.body, color = White, fontSize = 14.sp)
-                                                Text(if (message.outgoing) message.delivery else "Received", color = AccentBlue, fontSize = 9.sp)
+                                                Text(if (message.outgoing) message.delivery else "Received",
+                                                    color = if (message.outgoing) Color(0xFFBBD5FF) else Gold,
+                                                    fontSize = 9.sp, fontWeight = FontWeight.Medium)
                                             }
                                         }
                                     }
