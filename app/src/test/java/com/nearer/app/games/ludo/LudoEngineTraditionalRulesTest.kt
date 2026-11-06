@@ -31,6 +31,20 @@ class LudoEngineTraditionalRulesTest {
     }
 
     @Test
+    fun safeSquareProtectsOpponentTokenFromCapture() {
+        val red = LudoPlayer("red", "Hope", LudoColor.RED, false, listOf(7, -1, -1, -1))
+        val green = LudoPlayer("green", "Guest", LudoColor.GREEN, false, listOf(47, -1, -1, -1))
+        val state = LudoState(
+            players = listOf(red, green), dice = 1, legalTokenIndexes = listOf(0)
+        )
+
+        val moved = LudoEngine.move(state, 0)
+
+        assertEquals(47, moved.players[1].tokens[0])
+        assertEquals(1, moved.activePlayerIndex)
+    }
+
+    @Test
     fun tokenMustReachHomeWithAnExactRoll() {
         val red = LudoPlayer("red", "Hope", LudoColor.RED, false, listOf(55, -1, -1, -1))
         assertTrue(LudoEngine.legalMoves(red, 2).isEmpty())
