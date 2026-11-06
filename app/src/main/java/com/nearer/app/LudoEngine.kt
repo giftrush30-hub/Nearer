@@ -3,6 +3,7 @@ package com.nearer.app
 import kotlin.random.Random
 
 enum class LudoDifficulty { EASY, NORMAL, HARD }
+enum class LudoMoveSpeed(val stepDurationMs: Int) { SLOW(180), NORMAL(105), FAST(55) }
 
 enum class LudoColor(val startOffset: Int) {
     RED(0), GREEN(13), YELLOW(26), BLUE(39)
