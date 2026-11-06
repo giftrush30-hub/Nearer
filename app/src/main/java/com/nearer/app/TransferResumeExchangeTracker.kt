@@ -57,6 +57,7 @@ internal class TransferResumeExchangeTracker(
         val entry = entryFor(key) ?: return Update.CAPACITY_REACHED
         val existing = entry.proposal
         if (existing != null) return if (existing == envelope.proposal) Update.DUPLICATE else invalidate(key)
+        entry.proposal = envelope.proposal
         return Update.STORED
     }
 
@@ -67,6 +68,7 @@ internal class TransferResumeExchangeTracker(
         val entry = entryFor(key) ?: return Update.CAPACITY_REACHED
         val existing = entry.decision
         if (existing != null) return if (existing == envelope.decision) Update.DUPLICATE else invalidate(key)
+        entry.decision = envelope.decision
         return Update.STORED
     }
 
