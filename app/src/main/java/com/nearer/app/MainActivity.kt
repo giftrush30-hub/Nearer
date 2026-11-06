@@ -2961,7 +2961,7 @@ private fun NeaRerHome(
                         val selected = activeSection == item.third
                         Surface(
                             modifier = Modifier.weight(1f).heightIn(min = 56.dp).animateContentSize().clickable {
-                                activeSection = item.third
+                                navigateToSection(item.third)
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                             },
                             color = if (selected) Color(0xFF1554A8) else Color.Transparent,
