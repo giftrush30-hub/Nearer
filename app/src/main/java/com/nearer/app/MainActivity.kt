@@ -2037,46 +2037,7 @@ private fun CommunityHub(
             Text(notice, color = Mint, fontSize = 10.sp)
         }
     }
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF172A42)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Text("PLAY TOGETHER", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Text("Tic-tac-toe • live nearby match", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Text("Invite a connected player. Board moves and game chat use the offline link.", color = Muted, fontSize = 11.sp)
-            if (invite != null) {
-                Text(invite.sender + " invited you to play.", color = White)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onAccept, Modifier.weight(1f)) { Text("Accept") }
-                    Button(onClick = onReject, Modifier.weight(1f)) { Text("Decline") }
-                }
-            }
-            if (game == null) Button(onClick = onInviteGame, Modifier.fillMaxWidth()) { Text("Challenge nearby players") }
-            else {
-                Text("You are " + game.localSymbol + " • " + game.opponent, color = White, fontWeight = FontWeight.SemiBold)
-                Text(game.status, color = Mint)
-                repeat(3) { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        repeat(3) { col ->
-                            val index = row * 3 + col
-                            val cell = game.board[index].takeIf { it != '.' }?.toString() ?: ""
-                            Button(onClick = { onMove(index) }, Modifier.weight(1f).height(54.dp),
-                                enabled = cell.isEmpty() && game.turn == game.localSymbol && game.status != "Waiting for a player" && !game.status.endsWith("wins") && game.status != "Draw") {
-                                Text(cell.ifBlank { " " }, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-                Text("IN-GAME CHAT", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                Column(Modifier.fillMaxWidth().height(80.dp).verticalScroll(rememberScrollState())) {
-                    gameChat.takeLast(20).forEach { Text(it, color = White, fontSize = 11.sp) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(gameText, { gameText = it.take(300) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Chat while playing") })
-                    Button(onClick = { onGameChat(gameText); gameText = "" }, enabled = gameText.isNotBlank()) { Text("Send") }
-                }
-                Button(onClick = onEndGame, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B))) { Text("End match") }
-            }
-        }
-    }
+    LudoGamePanel()
 }
 private fun ticTacToeWinner(board: String): String? {
     val lines = listOf("012", "345", "678", "036", "147", "258", "048", "246")
