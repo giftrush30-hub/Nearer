@@ -432,10 +432,30 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
                     drawCircle(Gold.copy(alpha = 0.2f * pulse), cell * 0.49f, Offset(x, y))
                     drawCircle(Gold.copy(alpha = pulse), cell * 0.4f, Offset(x, y), style = Stroke(cell * 0.055f))
                 }
-                drawCircle(Color(0xFF172A45).copy(alpha = 0.3f), cell * 0.34f, Offset(x + cell * 0.035f, y + cell * 0.06f))
-                drawCircle(Color(0xFFFAFCFF), cell * 0.33f, Offset(x, y))
-                drawCircle(tokenColor, cell * 0.285f, Offset(x, y))
-                drawCircle(Color.White.copy(alpha = 0.52f), cell * 0.095f, Offset(x - cell * 0.085f, y - cell * 0.095f))
+                // Sculpted pawn silhouette: shadow, tapered body, raised head and enamel highlight.
+                drawOval(
+                    Color(0xFF061326).copy(alpha = 0.58f),
+                    Offset(x - cell * 0.24f, y + cell * 0.19f),
+                    Size(cell * 0.48f, cell * 0.18f)
+                )
+                val pawn = Path().apply {
+                    moveTo(x - cell * 0.19f, y + cell * 0.19f)
+                    cubicTo(x - cell * 0.18f, y + cell * 0.02f, x - cell * 0.09f, y - cell * 0.015f, x - cell * 0.105f, y - cell * 0.12f)
+                    cubicTo(x - cell * 0.12f, y - cell * 0.28f, x + cell * 0.12f, y - cell * 0.28f, x + cell * 0.105f, y - cell * 0.12f)
+                    cubicTo(x + cell * 0.09f, y - cell * 0.015f, x + cell * 0.18f, y + cell * 0.02f, x + cell * 0.19f, y + cell * 0.19f)
+                    close()
+                }
+                drawPath(pawn, Color(0xFF07162B).copy(alpha = 0.72f))
+                drawPath(
+                    pawn,
+                    Brush.linearGradient(
+                        listOf(Color.White.copy(alpha = 0.82f), tokenColor, tokenColor.copy(red = (tokenColor.red * 0.62f).coerceIn(0f, 1f))),
+                        start = Offset(x - cell * 0.2f, y - cell * 0.2f),
+                        end = Offset(x + cell * 0.2f, y + cell * 0.2f)
+                    )
+                )
+                drawCircle(Color(0xFFFFF8E3), cell * 0.105f, Offset(x, y - cell * 0.19f))
+                drawCircle(Color.White.copy(alpha = 0.76f), cell * 0.045f, Offset(x - cell * 0.045f, y - cell * 0.225f))
             }
         }
     }
