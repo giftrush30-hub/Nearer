@@ -40,10 +40,12 @@ class TransferManifestFragmentsTest {
 
     @Test
     fun rejectsFragmentsFromAnotherTransfer() {
-        val a = TransferManifestFragments.split("bundle-a", byteArrayOf(1, 2, 3)).single()
-        val b = TransferManifestFragments.split("bundle-b", byteArrayOf(1, 2, 3)).single()
+        // Keep the first transfer incomplete so its identity remains bound
+        // to this reassembler while a fragment from another transfer arrives.
+        val a = TransferManifestFragments.split("bundle-a", ByteArray(40_000) { it.toByte() }).first()
+        val b = TransferManifestFragments.split("bundle-b", ByteArray(40_000) { it.toByte() }).first()
         val receiver = TransferManifestReassembler()
-        receiver.accept(a)
+        assertNull(receiver.accept(a))
         assertThrows(IllegalArgumentException::class.java) { receiver.accept(b) }
     }
 
