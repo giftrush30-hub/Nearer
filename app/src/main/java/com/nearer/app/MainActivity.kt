@@ -3001,8 +3001,7 @@ private fun NeaRerHome(
                                 Button(
                                     onClick = { onHybridConnect(id) },
                                     shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight),
-                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp)
+                                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
                                 ) { Text("CONNECT", fontSize = 9.sp, fontWeight = FontWeight.Black) }
                             }
                         }
