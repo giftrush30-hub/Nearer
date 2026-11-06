@@ -2517,22 +2517,42 @@ private fun NeaRerHome(
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF19375D), contentColor = White)
                             ) { Text("Open ${fileItem.displayName}", maxLines = 1) }
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Surface(
+                                modifier = Modifier.size(46.dp).clickable { filePicker.launch(arrayOf("*/*")) },
+                                shape = CircleShape,
+                                color = Color(0xFF173F78),
+                                border = BorderStroke(1.dp, Color(0xFF347CEB))
+                            ) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text("+", color = Gold, fontSize = 27.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
                             OutlinedTextField(
                                 value = draft,
                                 onValueChange = { draft = it.take(2000) },
                                 modifier = Modifier.weight(1f),
-                                placeholder = { Text("Message your nearby friend…", color = Muted) },
-                                shape = RoundedCornerShape(18.dp),
+                                placeholder = { Text("Write a message…", color = Muted, fontSize = 12.sp) },
+                                shape = RoundedCornerShape(22.dp),
                                 minLines = 1,
                                 maxLines = 4
                             )
-                            Button(
-                                onClick = { onSendMessage(draft); draft = "" },
-                                enabled = draft.isNotBlank(),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)
-                            ) { Text("➤", fontSize = 17.sp, fontWeight = FontWeight.Black) }
+                            Surface(
+                                modifier = Modifier.size(46.dp).clickable(enabled = draft.isNotBlank()) {
+                                    onSendMessage(draft.trim())
+                                    draft = ""
+                                },
+                                shape = CircleShape,
+                                color = if (draft.isNotBlank()) BrandBlue else Color(0xFF24436D)
+                            ) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text("➤", color = White, fontSize = 19.sp, fontWeight = FontWeight.Black)
+                                }
+                            }
                         }
                         incomingTransferName?.let { incomingName ->
                             Text("Receiving $incomingName", color = Muted, fontSize = 11.sp)
@@ -2557,12 +2577,7 @@ private fun NeaRerHome(
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF713D4A), contentColor = White)
                             ) { Text("Cancel file transfer") }
                         }
-                        Button(
-                            onClick = { filePicker.launch(arrayOf("*/*")) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF19375D), contentColor = White)
-                        ) { Text("Share a photo or file") }
+                        Text("＋ Share photos, videos and files from the attachment button.", color = Muted, fontSize = 9.sp)
                         Text(if (usingNearbyConnections) "DIRECT NEARBY LINK  •  NO MOBILE DATA" else "WI-FI DIRECT LINK  •  NO MOBILE DATA", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.35.sp)
                     } else {
                         Column(
