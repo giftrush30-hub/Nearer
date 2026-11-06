@@ -176,13 +176,20 @@ class MainActivity : ComponentActivity() {
                 }
                 WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
                     if (hasDiscoveryPermission()) {
+                        val requestGeneration = discoveryGeneration
                         wifiManager?.requestPeers(channel) { peers ->
+                            // Ignore delayed results from a scan that has since been stopped or restarted.
+                            if (requestGeneration != discoveryGeneration) return@requestPeers
                             nearbyDevices.clear()
                             nearbyDevices.addAll(peers.deviceList)
-                            statusMessage = if (nearbyDevices.isEmpty()) {
-                                if (scanning) "Searching… keep NeaRer open on both phones." else "No nearby Wi-Fi Direct devices are currently visible. Search again when ready."
-                            } else {
-                                "${nearbyDevices.size} nearby device(s) found. You can select one now or keep searching."
+                            if (scanning) {
+                                statusMessage = if (nearbyDevices.isEmpty()) {
+                                    "Searching… keep NeaRer open on both phones."
+                                } else {
+                                    "${nearbyDevices.size} nearby device(s) found. You can select one now or keep searching."
+                                }
+                            } else if (nearbyDevices.isNotEmpty()) {
+                                statusMessage = "${nearbyDevices.size} nearby Wi-Fi Direct device(s) found."
                             }
                         }
                     }
@@ -193,20 +200,24 @@ class MainActivity : ComponentActivity() {
                         scanning = true
                         statusMessage = "Searching nearby…"
                     } else if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STOPPED && scanning) {
+                        val stoppedGeneration = discoveryGeneration
                         if (hasDiscoveryPermission()) {
                             wifiManager?.requestPeers(channel) { peers ->
+                                if (stoppedGeneration != discoveryGeneration || !scanning) return@requestPeers
                                 nearbyDevices.clear()
                                 nearbyDevices.addAll(peers.deviceList)
                                 finishDiscovery()
                                 if (nearbyDevices.isEmpty() && hybridPeers.isEmpty()) {
-                                    statusMessage = "No nearby phones found yet. Keep Bluetooth and Wi-Fi ON on both phones, then search again."
+                                    statusMessage = "Wi-Fi Direct search ended. Bluetooth discovery can continue; check both phones and search again if needed."
                                 } else {
-                                    statusMessage = "Nearby search finished. Select a phone below to connect."
+                                    statusMessage = "Wi-Fi Direct search finished. Select a phone below; Bluetooth discovery can continue."
                                 }
                             }
                         } else {
-                            finishDiscovery()
-                            statusMessage = "Nearby search finished. Check the Nearby devices permission if no phones appear."
+                            if (stoppedGeneration == discoveryGeneration) {
+                                finishDiscovery()
+                                statusMessage = "Wi-Fi Direct search finished. Check Nearby devices permission if no phones appear."
+                            }
                         }
                     }
                 }
