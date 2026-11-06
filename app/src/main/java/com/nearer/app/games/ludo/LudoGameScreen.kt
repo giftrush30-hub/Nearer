@@ -2,9 +2,9 @@ package com.nearer.app.games.ludo
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -291,8 +291,13 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
 
 @Composable
 private fun DiceFace(value: Int, rolling: Boolean, modifier: Modifier = Modifier) {
-    val rotation by animateFloatAsState(if (rolling) 360f else 0f, tween(560, easing = FastOutSlowInEasing), label = "dice-angle")
-    Canvas(modifier = modifier.rotate(rotation).shadow(12.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp))) {
+    val spin by rememberInfiniteTransition(label = "dice-spin").animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(430, easing = LinearEasing), RepeatMode.Restart),
+        label = "dice-spin-angle"
+    )
+    Canvas(modifier = modifier.rotate(if (rolling) spin else 0f).shadow(12.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp))) {
         drawRoundRect(Brush.linearGradient(listOf(Color(0xFFFFE995), Gold, Color(0xFFE7A91F))),
             cornerRadius = CornerRadius(size.width * 0.22f))
         drawRoundRect(Color.White.copy(alpha = 0.45f), cornerRadius = CornerRadius(size.width * 0.22f),
