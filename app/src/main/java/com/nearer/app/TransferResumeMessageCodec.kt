@@ -9,7 +9,7 @@ import java.nio.charset.CodingErrorAction
 
 /** Bounded, versioned binary envelope for a receiver's resume-offset proposal. */
 internal object TransferResumeMessageCodec {
-    private const val MAGIC = 0x4E525253 // NRRS
+    private const val MAGIC = 0x4E525253 // NRRS\n    private const val DECISION_MAGIC = 0x4E525244 // NRRD
     private const val VERSION = 1
     private const val MAX_MESSAGE_BYTES = 4_096
     private const val MAX_ID_BYTES = 128
@@ -81,6 +81,75 @@ internal object TransferResumeMessageCodec {
         }
     }
 
+    /** Sender's bounded answer to a resume proposal. Zero offset always means restart from byte zero. */
+    data class DecisionEnvelope(
+        val payloadId: Long,
+        val decision: TransferResumeNegotiation.Decision
+    )
+
+    /**
+     * A separate signature keeps decision messages unambiguous and lets older
+     * proposal decoders reject them rather than interpreting fields incorrectly.
+     */
+    fun encodeDecision(payloadId: Long, decision: TransferResumeNegotiation.Decision): ByteArray {
+        require(payloadId >= 0L) { "Invalid Nearby payload ID" }
+        val accepted = decision.reason == TransferResumeNegotiation.Reason.RESUME_ACCEPTED
+        require(if (accepted) {
+            decision.acceptedOffsetBytes > 0L &&
+                decision.acceptedOffsetBytes % TransferResumeCheckpoint.CHECKPOINT_GRANULARITY_BYTES == 0L
+        } else decision.acceptedOffsetBytes == 0L) {
+            "Resume decision offset does not match its outcome"
+        }
+        val reason = decision.reason.name.toByteArray(Charsets.US_ASCII)
+        require(reason.isNotEmpty() && reason.size <= 32)
+        val output = ByteArrayOutputStream()
+        DataOutputStream(output).use { data ->
+            data.writeInt(DECISION_MAGIC)
+            data.writeByte(VERSION)
+            data.writeLong(payloadId)
+            data.writeLong(decision.acceptedOffsetBytes)
+            data.writeByte(reason.size)
+            data.write(reason)
+        }
+        return output.toByteArray().also {
+            require(it.size <= MAX_MESSAGE_BYTES) { "Resume decision is too large" }
+        }
+    }
+
+    fun decodeDecision(bytes: ByteArray): DecisionEnvelope {
+        require(bytes.size in MIN_DECISION_MESSAGE_BYTES..MAX_MESSAGE_BYTES) {
+            "Invalid resume decision length"
+        }
+        return try {
+            DataInputStream(ByteArrayInputStream(bytes)).use { data ->
+                require(data.readInt() == DECISION_MAGIC) { "Invalid resume decision signature" }
+                require(data.readUnsignedByte() == VERSION) { "Unsupported resume decision version" }
+                val payloadId = data.readLong()
+                val offset = data.readLong()
+                val reasonLength = data.readUnsignedByte()
+                require(payloadId >= 0L && reasonLength in 1..32 && reasonLength == data.available()) {
+                    "Invalid resume decision fields"
+                }
+                val reasonBytes = ByteArray(reasonLength)
+                data.readFully(reasonBytes)
+                val reasonName = reasonBytes.toString(Charsets.US_ASCII)
+                val reason = TransferResumeNegotiation.Reason.values()
+                    .firstOrNull { it.name == reasonName }
+                    ?: throw IllegalArgumentException("Unknown resume decision reason")
+                require(data.available() == 0) { "Unexpected trailing resume decision data" }
+                val accepted = reason == TransferResumeNegotiation.Reason.RESUME_ACCEPTED
+                require(if (accepted) {
+                    offset > 0L && offset % TransferResumeCheckpoint.CHECKPOINT_GRANULARITY_BYTES == 0L
+                } else offset == 0L) { "Resume decision offset does not match its outcome" }
+                DecisionEnvelope(payloadId, TransferResumeNegotiation.Decision(offset, reason))
+            }
+        } catch (error: IllegalArgumentException) {
+            throw error
+        } catch (error: Exception) {
+            throw IllegalArgumentException("Malformed resume decision", error)
+        }
+    }
+
     private fun writeString(output: DataOutputStream, value: String, maxBytes: Int) {
         val encoded = value.toByteArray(Charsets.UTF_8)
         require(encoded.isNotEmpty() && encoded.size <= maxBytes) { "Resume field is too large or empty" }
@@ -99,5 +168,5 @@ internal object TransferResumeMessageCodec {
             .decode(ByteBuffer.wrap(bytes)).toString()
     }
 
-    private const val MIN_MESSAGE_BYTES = 4 + 1 + 8 + 2 * 4 + 8 + 1 + 8 + 2 + 64
+    private const val MIN_MESSAGE_BYTES = 4 + 1 + 8 + 2 * 4 + 8 + 1 + 8 + 2 + 64\n    private const val MIN_DECISION_MESSAGE_BYTES = 4 + 1 + 8 + 8 + 1 + 1
 }
