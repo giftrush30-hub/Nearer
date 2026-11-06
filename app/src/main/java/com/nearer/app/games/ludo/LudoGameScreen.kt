@@ -40,6 +40,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -419,7 +421,13 @@ private fun DiceFace(value: Int, rolling: Boolean, modifier: Modifier = Modifier
         animationSpec = infiniteRepeatable(tween(430, easing = LinearEasing), RepeatMode.Restart),
         label = "dice-spin-angle"
     )
-    Canvas(modifier = modifier.rotate(if (rolling) spin else 0f).shadow(12.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp))) {
+    Canvas(
+        modifier = modifier
+            .rotate(if (rolling) spin else 0f)
+            .shadow(12.dp, RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .semantics { contentDescription = if (rolling) "Dice rolling" else "Dice showing $value" }
+    ) {
         drawRoundRect(Brush.linearGradient(listOf(Color(0xFFFFE995), Gold, Color(0xFFE7A91F))),
             cornerRadius = CornerRadius(size.width * 0.22f))
         drawRoundRect(Color.White.copy(alpha = 0.45f), cornerRadius = CornerRadius(size.width * 0.22f),
@@ -481,6 +489,13 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
                         val dy = tap.y - (p.second + 0.5f) * cellSize
                         if (dx * dx + dy * dy <= cellSize * cellSize * 0.65f) onTokenTap(nearest)
                     }
+                }
+            }
+            .semantics {
+                contentDescription = if (game.legalTokenIndexes.isEmpty()) {
+                    "Ludo board. ${game.activePlayer.name} turn. Roll the dice to begin a move."
+                } else {
+                    "Ludo board. ${game.legalTokenIndexes.size} legal token moves available. Tap a highlighted token to move."
                 }
             }
     ) {
