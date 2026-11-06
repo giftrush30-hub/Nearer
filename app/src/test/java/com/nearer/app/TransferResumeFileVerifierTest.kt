@@ -7,24 +7,26 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TransferResumeFileVerifierTest {
+    private val boundary = TransferResumeCheckpoint.CHECKPOINT_GRANULARITY_BYTES.toInt()
+
     private fun sha256(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes)
             .joinToString("") { "%02x".format(it) }
 
-    private fun checkpoint(bytes: ByteArray, expectedSize: Long = bytes.size.toLong()) =
+    private fun checkpoint(prefix: ByteArray, expectedSize: Long = prefix.size.toLong()) =
         TransferResumeCheckpoint(
             "transfer", "item", "file.bin", expectedSize, 1L,
-            bytes.size.toLong(), sha256(bytes)
+            prefix.size.toLong(), sha256(prefix)
         )
 
     @Test fun acceptsMatchingPrefixAndTrimsUncommittedTail() {
         val directory = Files.createTempDirectory("nearer-resume-verify").toFile()
         try {
-            val committed = "durable-prefix".toByteArray()
+            val committed = ByteArray(boundary) { (it % 251).toByte() }
             val file = File(directory, "partial.bin").apply {
                 writeBytes(committed + "uncommitted-tail".toByteArray())
             }
-            assertTrue(TransferResumeFileVerifier.verifyAndTrim(file, checkpoint(committed, 100L)))
+            assertTrue(TransferResumeFileVerifier.verifyAndTrim(file, checkpoint(committed, committed.size.toLong() + 100L)))
             assertArrayEquals(committed, file.readBytes())
         } finally {
             directory.deleteRecursively()
@@ -34,10 +36,13 @@ class TransferResumeFileVerifierTest {
     @Test fun rejectsChangedPrefixWithoutTrimmingFile() {
         val directory = Files.createTempDirectory("nearer-resume-mismatch").toFile()
         try {
-            val file = File(directory, "partial.bin").apply { writeText("changed-prefix-and-tail") }
+            val original = ByteArray(boundary) { (it % 239).toByte() }
+            val changed = original.copyOf().also { it[boundary / 2] = (it[boundary / 2] + 1).toByte() }
+            val file = File(directory, "partial.bin").apply {
+                writeBytes(changed + "tail".toByteArray())
+            }
             val before = file.readBytes()
-            val cp = checkpoint("original-prefix".toByteArray(), 100L)
-            assertFalse(TransferResumeFileVerifier.verifyAndTrim(file, cp))
+            assertFalse(TransferResumeFileVerifier.verifyAndTrim(file, checkpoint(original, original.size.toLong() + 100L)))
             assertArrayEquals(before, file.readBytes())
         } finally {
             directory.deleteRecursively()
@@ -47,11 +52,11 @@ class TransferResumeFileVerifierTest {
     @Test fun rejectsShortOrOversizedPartialFiles() {
         val directory = Files.createTempDirectory("nearer-resume-size").toFile()
         try {
+            val prefix = ByteArray(boundary) { 7 }
             val file = File(directory, "partial.bin").apply { writeText("tiny") }
-            assertFalse(TransferResumeFileVerifier.verifyAndTrim(file, checkpoint("longer-prefix".toByteArray(), 100L)))
-            file.writeText("x".repeat(20))
-            val cp = checkpoint("x".repeat(8).toByteArray(), 10L)
-            assertFalse(TransferResumeFileVerifier.verifyAndTrim(file, cp))
+            assertFalse(TransferResumeFileVerifier.verifyAndTrim(file, checkpoint(prefix, prefix.size.toLong() + 100L)))
+            file.writeBytes(prefix + byteArrayOf(1))
+            assertFalse(TransferResumeFileVerifier.verifyAndTrim(file, checkpoint(prefix)))
         } finally {
             directory.deleteRecursively()
         }
