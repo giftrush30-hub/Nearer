@@ -268,7 +268,6 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 }
                 val key = transferKey(endpointId, payloadId)
                 incomingMetadata[key] = FileMeta(endpointId, name, size)
-                transferStartedAtNanos[key] = System.nanoTime()
                 listener.onFileProgress(endpointId, payloadId, name, 0L, size, true)
                 processCompletedFile(key)
                 return
