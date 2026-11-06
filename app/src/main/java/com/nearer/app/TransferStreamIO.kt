@@ -48,6 +48,30 @@ internal object TransferStreamIO {
         return CopyResult(copied, digest.digest())
     }
 
+    fun sha256Exactly(input: InputStream, expectedBytes: Long, bufferBytes: Int): ByteArray {
+        require(expectedBytes >= 0L) { "Expected byte count cannot be negative" }
+        require(bufferBytes in 4_096..1_048_576) { "Transfer buffer size is outside safe bounds" }
+        val buffer = ByteArray(bufferBytes)
+        val digest = MessageDigest.getInstance("SHA-256")
+        var readTotal = 0L
+        while (readTotal < expectedBytes) {
+            val wanted = minOf(buffer.size.toLong(), expectedBytes - readTotal).toInt()
+            val count = input.read(buffer, 0, wanted)
+            if (count < 0) throw EOFException("Selected file ended before its declared size")
+            if (count == 0) {
+                val single = input.read()
+                if (single < 0) throw EOFException("Selected file ended before its declared size")
+                digest.update(single.toByte())
+                readTotal++
+            } else {
+                digest.update(buffer, 0, count)
+                readTotal += count
+            }
+        }
+        if (input.read() != -1) throw IllegalStateException("Selected file changed while its integrity check was running")
+        return digest.digest()
+    }
+
     fun sha256Hex(digestBytes: ByteArray): String =
         digestBytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
