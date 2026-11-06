@@ -1,63 +1,52 @@
-# NeaRer Flash — experimental feature proposal
+# NeaRer Flash — source implementation and compatibility notes
 
-**Status:** Proposed; not implemented in the APK  
-**Product area:** Long-distance signalling  
-**Priority:** Prototype and validate before production integration
+**Status:** Integrated into the Android source tree; physical-device and carrier validation still outstanding  
+**Product area:** Long-distance preset signalling over cellular voice calls
 
-## Product intent
+## What is implemented
 
-NeaRer Flash explores short, opt-in messages between NeaRer users over ordinary cellular voice-call signalling. It complements (but does not replace) NeaRer's offline Nearby Connections chat and file-transfer features.
+- A dedicated blue-and-gold Flash screen is linked from the NeaRer home screen.
+- Ten preset messages are available: call me, come outside, on my way, waiting, Room 8, Room 10, food ready, lecturer coming, help, and emergency.
+- The sender selects a preset and opens the Android system dialler for each separate call attempt. The user must place and end each call manually.
+- The receiver can save one trusted sender number and request Android's call-screening role.
+- Only calls matching that locally saved trusted number are processed. Other calls are passed through unchanged.
+- Trusted calls have their ringtone silenced and are counted into a preset code. The notification is updated as the count increases.
+- The receiver can request Contacts permission (needed for Android to pass calls from saved contacts to the screening service) and notification permission.
+- No mobile-data connection is used by the Flash signalling flow.
 
-The feature must never be marketed as guaranteed free, universally compatible, or available without cellular coverage. Ordinary cellular voice service and carrier policies apply.
+## Current protocol
 
-## Initial scope
+A code is the number of distinct incoming calls from the trusted number within a two-minute burst window. The receiver maps counts 1–10 to the preset list. The user must wait two minutes before beginning a new message so the next burst starts at one.
 
-1. **Flash Codes (first prototype):** a small set of user-configurable preset signals such as “Call me”, “I'm outside”, “Come to my room”, and “Emergency”.
-2. **Flash Text (later experiment):** investigate whether short custom text can be encoded reliably. Do not promise this until measured on real devices and networks.
-3. **Flash Alerts:** distinct in-app notification and vibration for verified, opted-in senders.
+## Important limitations
 
-## Technical investigation
+- This is preset signalling, not free-form text chat. Arbitrary custom text has not been implemented.
+- The sender flow opens the system dialler; it does not automatically place or hang up calls.
+- The screening service silences the ringtone for a trusted incoming call; it does not hide the call from the system dialler or call history.
+- Android call screening is available through a user-granted role on supported Android versions (the in-app role request targets Android 10+).
+- Calls may incur airtime charges. Missed calls are not guaranteed to be free on MTN, Airtel, Glo, or 9mobile.
+- Carrier routing, call waiting, dual SIM selection, spam controls, OEM power management, and incoming-call presentation can affect reliability.
+- The source has not yet been confirmed by a successful final APK build or real two-phone testing.
 
-Build a separate Android prototype before changing the main communication flow.
+## Privacy and abuse safeguards
 
-- Investigate Android's supported incoming-call screening role and CallScreeningService behavior across supported Android versions and OEMs.
-- Do not assume an app can silently observe every ring, measure precise ring duration, or end calls using ordinary runtime permissions.
-- Investigate supported outgoing-call initiation and call-disconnect control. If user interaction or a system dialer flow is required, design around that rather than bypassing Android restrictions.
-- Prefer distinguishing separate call events over relying on ring duration, but treat event sequences as experimental: carriers and devices may delay, suppress, merge, or otherwise alter calls.
-- Test foreground/background behavior, Doze, reboot, dual-SIM selection, caller-ID presentation, blocked/private numbers, call waiting, and concurrent senders.
-- Check current Google Play policy and permission eligibility before choosing any call-log, phone-state, or call-screening permissions.
+- Flash is opt-in and uses a single locally stored trusted sender number.
+- Unknown callers are not decoded or silenced.
+- No call metadata or contact list is uploaded to a server.
+- Users can disable the receiver by turning off the receiver setting in NeaRer or removing its call-screening role.
+- The feature must not be advertised as universally compatible, guaranteed free, or a replacement for emergency calling.
 
-## Safety, privacy, and abuse prevention
+## Next engineering gates
 
-- Both parties must explicitly enable Flash.
-- Receiver maintains an allowlist of contacts or verified NeaRer peers; unknown callers are never decoded as messages by default.
-- Never suppress or interfere with emergency calls or ordinary calls outside a clearly disclosed, user-enabled screening behavior.
-- Add replay/duplicate protection, rate limits, cooldowns, sender confirmation, and a clear disable switch.
-- Do not upload call metadata or contact lists to a server. Explain locally what phone permissions are needed and why.
-- Do not use repeated calls at abusive volume or attempt to evade carrier anti-spam controls.
-
-## Validation gates
-
-Do not integrate or advertise Flash as working until all gates pass:
-
-1. Incoming signal events can be identified consistently on two or more physical Android phones.
-2. Preset codes decode correctly under foreground and background conditions.
-3. Ordinary incoming calls remain usable and are not mistaken for Flash.
-4. Sender/receiver behavior is tested across MTN, Airtel, Glo and 9mobile where available, including dual-SIM cases.
-5. Actual outgoing-call charges, bundle deductions, carrier restrictions, and anti-spam behavior are measured. “₦0” is not a product claim unless independently verified for the exact supported conditions.
-6. Compatibility, battery use, permission UX, accessibility, and Play policy are reviewed.
-
-## Suggested delivery phases
-
-- **Phase 0 — feasibility:** document Android API and policy constraints; test manual and supported call flows.
-- **Phase 1 — two-phone prototype:** send and receive one fixed test signal with explicit user action and visible diagnostics.
-- **Phase 2 — preset codebook:** add a small configurable set only if Phase 1 is reliable.
-- **Phase 3 — field validation:** test carriers, Android versions, OEMs, dual SIM and real-world conditions.
-- **Phase 4 — product integration:** add a polished NeaRer Flash screen only after validation; keep it separate from Nearby Connections.
+1. Obtain a successful CI APK build for the current main branch.
+2. Install on two physical Android phones and confirm one through ten call events decode correctly.
+3. Confirm ordinary calls from trusted and unknown numbers behave as clearly disclosed.
+4. Test with contacts permission both granted and denied, notification permission granted and denied, and app in background.
+5. Test MTN, Airtel, Glo and 9mobile, dual-SIM routing, call waiting and carrier restrictions.
+6. Measure actual charges and reliability before making any ₦0 or compatibility claim.
+7. Design a reliable custom-text protocol only after the preset code path is dependable.
 
 ## Product positioning
 
-- Nearby mode: local chat and file sharing without mobile network or internet, using supported nearby radios.
-- Flash mode: experimental long-distance signalling over cellular voice service; requires cellular coverage and may incur charges.
-
-**Current truth:** this document records the intended investigation and safeguards. It does not mean the feature has been implemented or tested in the APK.
+- **Nearby mode:** local chat and file sharing without mobile network or internet, using supported nearby radios.
+- **Flash mode:** low-bandwidth preset signalling over cellular voice service; requires cellular coverage and may incur charges.
