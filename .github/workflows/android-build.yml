@@ -8,7 +8,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: nearer-validation-${{ github.ref }}
+  # A PR push and its pull_request event share the same head-branch group,
+  # preventing duplicate Gradle jobs for the same source revision.
+  group: nearer-validation-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
