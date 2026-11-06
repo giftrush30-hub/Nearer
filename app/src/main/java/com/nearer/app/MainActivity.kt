@@ -1975,15 +1975,14 @@ private fun NeaRerHome(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    AnimatedVisibility(visible = activeSection == "home", enter = fadeIn(tween(240)), exit = fadeOut(tween(140))) {
+                    if (activeSection == "home") {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Nea", color = White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
                             Text("R", color = Gold, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
                             Text("er", color = White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
                         }
                         Text("No Data? We Are NeaRer.", color = Muted, fontSize = 12.sp)
-                    }
-            } else {
+                    } else {
                         Text(
                             when (activeSection) {
                                 "nearby" -> "Nearby"
