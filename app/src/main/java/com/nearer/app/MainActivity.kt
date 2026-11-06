@@ -2358,7 +2358,8 @@ private fun NeaRerHome(
                         chatNotice.startsWith("The received file failed") ||
                         chatNotice.startsWith("The received file was larger than its declared size") ||
                         chatNotice.startsWith("The received file could not be written") ||
-                        chatNotice.startsWith("Received and verified:")
+                        chatNotice.startsWith("Received and verified:") ||
+                        chatNotice.startsWith("Received and saved:")
                     if (incomingTransferName != null || outgoingTransferId != null || receivedFiles.isNotEmpty() || hasTransferResult) {
                         Surface(
                             modifier = Modifier.fillMaxWidth().animateContentSize(),
