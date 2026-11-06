@@ -79,7 +79,7 @@ class FlashActivity : ComponentActivity() {
                                 startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(recipientNumber))))
                             }
                         }, modifier = Modifier.fillMaxWidth()) { Text("OPEN DIALER FOR NEXT SIGNAL") }
-                        Text("Place one call, hang up, return here and repeat. Calls may cost airtime.", color = Color.LightGray)
+                        Text("Place one call, hang up, return here and repeat. Finish the code within 2 minutes; wait 2 minutes before sending another message. Calls may cost airtime.", color = Color.LightGray)
                     }
                 }
             }
