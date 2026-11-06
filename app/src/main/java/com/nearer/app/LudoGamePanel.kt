@@ -133,6 +133,7 @@ fun LudoGamePanel(
     onNetworkAction: (String, Int) -> Unit,
     gameChat: List<String>,
     onGameChat: (String) -> Unit,
+    onRematch: () -> Unit,
     onEndMatch: () -> Unit
 ) {
     var localGame by remember { mutableStateOf(LudoEngine.newGame(
@@ -334,8 +335,28 @@ fun LudoGamePanel(
                     androidx.compose.material3.OutlinedTextField(gameText, { gameText = it.take(300) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Message your opponent") })
                     Button(onClick = { onGameChat(gameText); gameText = "" }, enabled = gameText.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = LudoGold, contentColor = LudoNavy)) { Text("SEND") }
                 }
+                if (game.isFinished) {
+                    Surface(color = Color(0xFF284C45), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("THE MATCH IS COMPLETE", color = LudoGold, fontWeight = FontWeight.Black, fontSize = 12.sp)
+                            Text("Celebrate the winner, then challenge each other again.", color = Color.White, fontSize = 10.sp)
+                            Button(onClick = onRematch, enabled = ready, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = LudoGold, contentColor = LudoNavy)) {
+                                Text("PLAY AGAIN", fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+                }
                 Button(onClick = onEndMatch, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6B3541))) { Text("LEAVE MATCH") }
             } else {
+                if (game.isFinished) {
+                    Button(onClick = {
+                        localGame = LudoEngine.newGame(
+                            mapOf(LudoColor.RED to "You", LudoColor.GREEN to "Nova", LudoColor.YELLOW to "Atlas", LudoColor.BLUE to "Mira"),
+                            setOf(LudoColor.GREEN, LudoColor.YELLOW, LudoColor.BLUE)
+                        )
+                        message = "A fresh game begins. Roll a six!"
+                    }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = LudoGold, contentColor = LudoNavy)) { Text("PLAY AGAIN", fontWeight = FontWeight.Black) }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(onClick = {
                         localGame = LudoEngine.newGame(
