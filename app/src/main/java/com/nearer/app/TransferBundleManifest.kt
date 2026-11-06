@@ -18,23 +18,26 @@ internal data class TransferBundleManifest(
     fun validationErrors(): List<String> {
         val errors = mutableListOf<String>()
         if (protocolVersion != CURRENT_PROTOCOL_VERSION) errors += "Unsupported transfer manifest version"
-        if (transferId.isBlank() || transferId.length > 128) errors += "Invalid transfer ID"
+        if (transferId.isBlank() || transferId.length > 128 || transferId.any { it.isISOControl() }) {
+            errors += "Invalid transfer ID"
+        }
         if (items.isEmpty()) errors += "A transfer bundle must contain at least one item"
         if (items.size > MAX_ITEMS) errors += "Transfer bundle contains too many items"
 
         val ids = HashSet<String>()
-        val paths = HashSet<String>()
+        val paths = HashMap<String, TransferBundleItem.Kind>()
         items.forEachIndexed { index, item ->
             val prefix = "Item " + (index + 1)
-            if (item.id.isBlank() || item.id.length > 128 || !ids.add(item.id)) {
+            if (item.id.isBlank() || item.id.length > 128 || item.id.any { it.isISOControl() } || !ids.add(item.id)) {
                 errors += "$prefix has a missing, oversized or duplicate ID"
             }
             if (!isSafeRelativePath(item.relativePath)) {
                 errors += "$prefix has an unsafe relative path"
-            } else if (!paths.add(item.relativePath)) {
+            } else if (paths.put(item.relativePath, item.kind) != null) {
                 errors += "$prefix duplicates another destination path"
             }
             if (item.displayName.isBlank() || item.displayName.length > 255 ||
+                item.displayName.any { it.isISOControl() } ||
                 item.displayName != TransferFileName.safeLeafName(item.displayName)
             ) {
                 errors += "$prefix has an unsafe display name"
@@ -43,8 +46,29 @@ internal data class TransferBundleManifest(
             if (item.kind == TransferBundleItem.Kind.DIRECTORY && item.sizeBytes != 0L) {
                 errors += "$prefix directory entries must have zero size"
             }
+            if (item.mimeType != null && (item.mimeType.length > 255 || item.mimeType.any { it.isISOControl() })) {
+                errors += "$prefix has invalid MIME metadata"
+            }
         }
-        return errors
+
+        // A file cannot also be a parent directory. Without this check, a later
+        // item such as "Photos/2026/a.jpg" could collide with an earlier file "Photos".
+        paths.forEach { (path, kind) ->
+            val components = path.split('/')
+            for (index in 1 until components.size) {
+                val parent = components.take(index).joinToString("/")
+                if (paths[parent] == TransferBundleItem.Kind.FILE) {
+                    errors += "A file entry cannot be used as a parent directory"
+                    break
+                }
+            }
+            if (kind == TransferBundleItem.Kind.FILE &&
+                paths.keys.any { it.startsWith("$path/") }
+            ) {
+                errors += "A file entry cannot contain child paths"
+            }
+        }
+        return errors.distinct()
     }
 
     private fun isSafeRelativePath(path: String): Boolean {
@@ -52,7 +76,10 @@ internal data class TransferBundleManifest(
         if (path.startsWith('/') || path.startsWith('\\') || path.contains('\\')) return false
         if (path.any { it.isISOControl() }) return false
         val parts = path.split('/')
-        return parts.all { it.isNotBlank() && it != "." && it != ".." }
+        return parts.all { part ->
+            part.isNotBlank() && part != "." && part != ".." &&
+                part == TransferFileName.safeLeafName(part)
+        }
     }
 }
 
