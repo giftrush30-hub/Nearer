@@ -71,9 +71,20 @@ internal class TransferResumeStore(
         sourceModifiedAtMillis: Long?
     ): Candidate? {
         val checkpoint = journal.load(transferId, item.id) ?: return null
-        if (!checkpoint.matches(transferId, item, sourceModifiedAtMillis)) return null
         val partial = partialFileFor(transferId, item.id)
-        if (!TransferResumeFileVerifier.verifyAndTrim(partial, checkpoint)) return null
+        // A checkpoint tied to a changed source is never reusable. Remove both
+        // halves so stale bytes cannot linger and later be mistaken for a valid
+        // candidate if the same transfer identity is retried.
+        if (!checkpoint.matches(transferId, item, sourceModifiedAtMillis)) {
+            discard(transferId, item.id)
+            return null
+        }
+        // Treat a missing, truncated, oversized, or digest-mismatched partial as
+        // a failed resume candidate and clean it up before a fresh transfer.
+        if (!TransferResumeFileVerifier.verifyAndTrim(partial, checkpoint)) {
+            discard(transferId, item.id)
+            return null
+        }
         return Candidate(checkpoint, partial)
     }
 
