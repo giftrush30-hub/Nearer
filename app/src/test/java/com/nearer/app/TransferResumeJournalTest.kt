@@ -62,6 +62,29 @@ class TransferResumeJournalTest {
         }
     }
 
+    @Test fun journalEnumeratesValidEntriesAndRemovesWholeTransfer() {
+        val directory = Files.createTempDirectory("nearer-resume-list").toFile()
+        try {
+            val journal = TransferResumeJournal(directory)
+            val first = checkpoint()
+            val second = checkpoint().copy(
+                transferId = "transfer-2",
+                itemId = "item-2",
+                relativePath = "Pictures/photo.jpg",
+                expectedSizeBytes = 4L * 1024L * 1024L,
+                committedOffsetBytes = 4L * 1024L * 1024L,
+                prefixSha256 = "b".repeat(64)
+            )
+            journal.save(first)
+            journal.save(second)
+            assertEquals(2, journal.loadAll().size)
+            assertEquals(1, journal.removeTransfer("transfer-1"))
+            assertEquals(listOf(second.copy(prefixSha256 = "b".repeat(64))), journal.loadAll())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     @Test fun corruptJournalEntryIsIgnoredWithoutCrashing() {
         val directory = Files.createTempDirectory("nearer-resume-corrupt").toFile()
         try {
@@ -69,6 +92,7 @@ class TransferResumeJournalTest {
             journal.save(checkpoint())
             directory.listFiles()!!.single().writeBytes(byteArrayOf(0, 1, 2))
             assertNull(journal.load("transfer-1", "item-1"))
+            assertTrue(journal.loadAll().isEmpty())
         } finally {
             directory.deleteRecursively()
         }
