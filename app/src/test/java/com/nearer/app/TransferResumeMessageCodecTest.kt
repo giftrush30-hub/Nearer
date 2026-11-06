@@ -63,6 +63,65 @@ class TransferResumeMessageCodecTest {
         } catch (_: IllegalArgumentException) { }
     }
 
+    @Test fun roundTripsAcceptedResumeDecisionBoundToPayload() {
+        val decision = TransferResumeNegotiation.Decision(
+            chunk, TransferResumeNegotiation.Reason.RESUME_ACCEPTED
+        )
+        val decoded = TransferResumeMessageCodec.decodeDecision(
+            TransferResumeMessageCodec.encodeDecision(77L, decision)
+        )
+        assertEquals(77L, decoded.payloadId)
+        assertEquals(decision, decoded.decision)
+    }
+
+    @Test fun roundTripsSafeRestartDecisionWithZeroOffset() {
+        val decision = TransferResumeNegotiation.Decision(
+            0L, TransferResumeNegotiation.Reason.SOURCE_CHANGED
+        )
+        val decoded = TransferResumeMessageCodec.decodeDecision(
+            TransferResumeMessageCodec.encodeDecision(78L, decision)
+        )
+        assertEquals(decision, decoded.decision)
+    }
+
+    @Test fun rejectsDecisionWithOffsetThatContradictsOutcome() {
+        try {
+            TransferResumeMessageCodec.encodeDecision(
+                1L, TransferResumeNegotiation.Decision(
+                    chunk, TransferResumeNegotiation.Reason.SOURCE_CHANGED
+                )
+            )
+            fail("Expected rejected decision with nonzero offset")
+        } catch (_: IllegalArgumentException) { }
+        try {
+            TransferResumeMessageCodec.encodeDecision(
+                1L, TransferResumeNegotiation.Decision(
+                    0L, TransferResumeNegotiation.Reason.RESUME_ACCEPTED
+                )
+            )
+            fail("Expected accepted decision without offset to be rejected")
+        } catch (_: IllegalArgumentException) { }
+    }
+
+    @Test fun rejectsMalformedDecisionAndProposalCrossDecoding() {
+        val decision = TransferResumeNegotiation.Decision(
+            chunk, TransferResumeNegotiation.Reason.RESUME_ACCEPTED
+        )
+        val encodedDecision = TransferResumeMessageCodec.encodeDecision(3L, decision)
+        try {
+            TransferResumeMessageCodec.decodeDecision(encodedDecision.copyOf(encodedDecision.size - 1))
+            fail("Expected truncated decision rejection")
+        } catch (_: IllegalArgumentException) { }
+        try {
+            TransferResumeMessageCodec.decode(encodedDecision)
+            fail("Proposal decoder must reject a decision envelope")
+        } catch (_: IllegalArgumentException) { }
+        try {
+            TransferResumeMessageCodec.decodeDecision(TransferResumeMessageCodec.encode(3L, proposal))
+            fail("Decision decoder must reject a proposal envelope")
+        } catch (_: IllegalArgumentException) { }
+    }
+
     @Test fun rejectsBadMagicAndUnsupportedVersion() {
         val encoded = TransferResumeMessageCodec.encode(1L, proposal)
         val badMagic = encoded.copyOf().also { it[0] = 0 }
