@@ -1518,7 +1518,7 @@ class MainActivity : ComponentActivity() {
             if (payloadId != null && endpoint != null) nearbyTransport?.cancelFile(payloadId)
             outgoingTransferId = null
             outgoingProgress = 0f
-            chatNotice = "Cancelling nearby file transfer…"
+            chatNotice = "File transfer cancelled."
             return
         }
         cancelledOutgoingTransfers.add(id)
@@ -1615,7 +1615,11 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     outgoingTransferId = null
                     outgoingProgress = 0f
-                    chatNotice = "File transfer failed: ${e.message ?: "connection problem"}"
+                    chatNotice = if (e.message?.contains("cancel", ignoreCase = true) == true) {
+                        "File transfer cancelled."
+                    } else {
+                        "File transfer failed: ${e.message ?: "connection problem"}"
+                    }
                 }
             } finally {
                 cancelledOutgoingTransfers.clear()
@@ -2350,6 +2354,7 @@ private fun NeaRerHome(
                         chatNotice.startsWith("The received file failed its integrity check") ||
                         chatNotice.startsWith("The other phone cancelled the file transfer") ||
                         chatNotice.startsWith("File transfer failed:") ||
+                        chatNotice.startsWith("File transfer cancelled") ||
                         chatNotice.startsWith("File sent to the nearby phone") ||
                         chatNotice.startsWith("Nearby file transfer failed") ||
                         chatNotice.startsWith("Could not start file transfer") ||
