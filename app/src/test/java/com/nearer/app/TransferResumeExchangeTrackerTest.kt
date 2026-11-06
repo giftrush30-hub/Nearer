@@ -239,4 +239,17 @@ class TransferResumeExchangeTrackerTest {
         assertEquals(0, tracker.pendingCount())
     }
 
+    @Test fun duplicateCallbacksDoNotKeepIncompleteEntriesAlive() {
+        var now = 100L
+        val tracker = TransferResumeExchangeTracker(nowMillis = { now }, entryTtlMillis = 50L)
+        tracker.recordProposal("peer", proposalEnvelope())
+        now = 140L
+        assertEquals(
+            TransferResumeExchangeTracker.Update.DUPLICATE,
+            tracker.recordProposal("peer", proposalEnvelope())
+        )
+        now = 150L
+        assertEquals("An identical retry must not extend the original exchange lease", 0, tracker.pendingCount())
+    }
+
 }
