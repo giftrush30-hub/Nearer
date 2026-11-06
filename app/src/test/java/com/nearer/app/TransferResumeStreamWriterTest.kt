@@ -2,6 +2,7 @@ package com.nearer.app
 
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.security.MessageDigest
 import org.junit.Assert.*
@@ -112,6 +113,50 @@ class TransferResumeStreamWriterTest {
             assertNotNull(candidate)
             assertEquals(chunk.toLong(), candidate!!.partialFile.length())
             assertEquals(chunk.toLong(), candidate.checkpoint.committedOffsetBytes)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun corruptedCommittedPrefixIsDiscardedBeforeResume() {
+        val root = Files.createTempDirectory("nearer-resume-writer-corrupt-prefix").toFile()
+        try {
+            val data = ByteArray(chunk + 100) { (it % 211).toByte() }
+            val selected = item(data.size.toLong())
+            val store = store(root)
+            val partial = store.partialFileFor("transfer-corrupt", selected.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(data.copyOfRange(0, chunk))
+            }
+            store.checkpoint("transfer-corrupt", selected, 123L, chunk.toLong())
+            RandomAccessFile(partial, "rw").use { file ->
+                file.seek(17L)
+                file.write(0x7f)
+            }
+
+            assertNull(store.findValid("transfer-corrupt", selected, 123L))
+            assertFalse(partial.exists())
+            assertNull(TransferResumeJournal(File(root, "journal")).load("transfer-corrupt", selected.id))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun changedSourceModificationTimeDiscardsOldPartial() {
+        val root = Files.createTempDirectory("nearer-resume-writer-changed-source").toFile()
+        try {
+            val data = ByteArray(chunk + 100) { (it % 199).toByte() }
+            val selected = item(data.size.toLong())
+            val store = store(root)
+            val partial = store.partialFileFor("transfer-changed", selected.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(data.copyOfRange(0, chunk))
+            }
+            store.checkpoint("transfer-changed", selected, 100L, chunk.toLong())
+
+            assertNull(store.findValid("transfer-changed", selected, 101L))
+            assertFalse(partial.exists())
+            assertNull(TransferResumeJournal(File(root, "journal")).load("transfer-changed", selected.id))
         } finally {
             root.deleteRecursively()
         }
