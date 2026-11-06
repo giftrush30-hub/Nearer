@@ -222,22 +222,19 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 return
             }
             if (update.status == PayloadTransferUpdate.Status.SUCCESS) {
+                val startedAt = transferStartedAtNanos.remove(payloadId) ?: System.nanoTime()
+                val elapsedNanos = (System.nanoTime() - startedAt).coerceAtLeast(1L)
+                val averageMbps = update.totalBytes.toDouble() * 1_000_000_000.0 /
+                    elapsedNanos.toDouble() / (1024.0 * 1024.0)
+                val rateLabel = String.format(java.util.Locale.US, "%.1f", averageMbps)
                 if (isIncoming) {
+                    completedTransferRates[payloadId] = rateLabel
                     incomingPayloads[payloadId]?.let { completedPayloads[payloadId] = it }
                     processCompletedFile(payloadId)
                 } else {
                     outgoingFiles.remove(payloadId)
                     listener.onFileProgress(id, payloadId, name, update.totalBytes, update.totalBytes, false)
-                    val startedAt = transferStartedAtNanos.remove(payloadId) ?: System.nanoTime()
-                    val elapsedNanos = (System.nanoTime() - startedAt).coerceAtLeast(1L)
-                    val averageMbps = update.totalBytes.toDouble() * 1_000_000_000.0 /
-                        elapsedNanos.toDouble() / (1024.0 * 1024.0)
-                    val rateLabel = String.format(java.util.Locale.US, "%.1f", averageMbps)
-                    if (isIncoming) {
-                        completedTransferRates[payloadId] = rateLabel
-                    } else {
-                        listener.onFileStatus("File sent to the nearby phone: $name • $rateLabel MB/s average")
-                    }
+                    listener.onFileStatus("File sent to the nearby phone: $name • $rateLabel MB/s average")
                 }
             } else {
                 transferStartedAtNanos.remove(payloadId)
