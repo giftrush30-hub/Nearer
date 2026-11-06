@@ -339,6 +339,17 @@ class MainActivity : ComponentActivity() {
         })
         if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
         restoreLocalData()
+        val queuedAfterRestart = nearbyTransport?.pendingMessageIds().orEmpty()
+        if (queuedAfterRestart.isNotEmpty()) {
+            chatMessages.indices.forEach { index ->
+                val message = chatMessages[index]
+                if (message.outgoing && message.id in queuedAfterRestart && message.delivery != "Delivered") {
+                    chatMessages[index] = message.copy(delivery = "Queued")
+                }
+            }
+            persistMessages()
+            chatNotice = "Some messages are safely queued. NeaRer will retry when those people reconnect."
+        }
         restoreCommunityData()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
         nearbyTransport?.setDisplayName(displayName)
