@@ -381,7 +381,8 @@ class MainActivity : ComponentActivity() {
                     onHybridConnect = { id -> nearbyTransport?.request(id) },
                     onFindNearby = ::startDiscovery,
                     onStopSearch = ::stopDiscovery,
-                    onConnect = ::connectToDevice
+                    onConnect = ::connectToDevice,
+                    onOpenFlash = { startActivity(Intent(this, FlashActivity::class.java)) }
                 )
             }
         }
@@ -1508,7 +1509,8 @@ private fun NeaRerHome(
     onHybridConnect: (String) -> Unit,
     onFindNearby: () -> Unit,
     onStopSearch: () -> Unit,
-    onConnect: (WifiP2pDevice) -> Unit
+    onConnect: (WifiP2pDevice) -> Unit,
+    onOpenFlash: () -> Unit
 ) {
     var draft by remember { mutableStateOf("") }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
@@ -1598,6 +1600,23 @@ private fun NeaRerHome(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF1D3455)) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("✦", color = Gold, fontSize = 25.sp)
+                        Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
+                            Text("NEARER FLASH", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            Text("Send a signal beyond distance", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text("NEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                    }
+                    Text("Preset missed-call messages over the cellular voice network. No mobile data required.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    Button(onClick = onOpenFlash, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)) {
+                        Text("OPEN NEARER FLASH", fontWeight = FontWeight.Bold)
                     }
                 }
             }
