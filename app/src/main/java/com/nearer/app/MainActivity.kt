@@ -2375,7 +2375,7 @@ class MainActivity : ComponentActivity() {
         if (hybridConnected) {
             val endpoint = hybridConnectedEndpoint
             if (endpoint == null) {
-                chatNotice = "The nearby connection is not ready. Reconnect and try again."
+                queueChatFile(uri, "The nearby connection is not ready. This file remains prepared; reconnect and try again.")
                 return
             }
             var fileName = "shared-file"
@@ -2395,12 +2395,14 @@ class MainActivity : ComponentActivity() {
             if (payloadId != null) {
                 outgoingTransferId = "nearby:$payloadId"
                 outgoingProgress = 0f
-            outgoingTransferredBytes = 0L
-            outgoingTotalBytes = 0L
-            outgoingSpeedBytesPerSecond = 0L
-            outgoingRateSampleAt = 0L
-            outgoingRateSampleBytes = 0L
+                outgoingTransferredBytes = 0L
+                outgoingTotalBytes = 0L
+                outgoingSpeedBytesPerSecond = 0L
+                outgoingRateSampleAt = 0L
+                outgoingRateSampleBytes = 0L
                 chatNotice = "Preparing to send $fileName over Nearby Connections…"
+            } else {
+                queueChatFile(uri, "Could not start this transfer. Your file remains prepared; reconnect and try again.")
             }
             return
         }
@@ -2483,10 +2485,12 @@ class MainActivity : ComponentActivity() {
             outgoingSpeedBytesPerSecond = 0L
             outgoingRateSampleAt = 0L
             outgoingRateSampleBytes = 0L
-                    chatNotice = if (e.message?.contains("cancel", ignoreCase = true) == true) {
+                    val wasCancelled = e.message?.contains("cancel", ignoreCase = true) == true
+                    chatNotice = if (wasCancelled) {
                         "File transfer cancelled."
                     } else {
-                        "File transfer failed: ${e.message ?: "connection problem"}"
+                        queueChatFile(uri, "Transfer interrupted. This file has been returned to your prepared files.")
+                        "File transfer failed: ${e.message ?: "connection problem"} • file kept in your prepared files"
                     }
                 }
             } finally {
