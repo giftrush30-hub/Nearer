@@ -179,6 +179,8 @@ class MainActivity : ComponentActivity() {
     private var outgoingProgress by mutableStateOf(0f)
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
+    private var incomingTransferredBytes by mutableStateOf(0L)
+    private var incomingTotalBytes by mutableStateOf(0L)
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
@@ -330,6 +332,8 @@ class MainActivity : ComponentActivity() {
                     if (incoming) {
                         incomingTransferName = name
                         incomingProgress = fraction
+                        incomingTransferredBytes = transferred.coerceAtLeast(0L)
+                        incomingTotalBytes = total.coerceAtLeast(0L)
                         chatNotice = if (total > 0L) "Receiving $name • ${(fraction * 100).toInt()}%" else "Receiving $name…"
                     } else {
                         outgoingTransferId = "nearby:$payloadId"
@@ -342,6 +346,8 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     incomingTransferName = null
                     incomingProgress = 0f
+                    incomingTransferredBytes = 0L
+                    incomingTotalBytes = 0L
                     receivedFiles.add(0, ReceivedFile(name, file))
                     chatNotice = "Received and saved: $name. Tap it below to open."
                 }
@@ -437,6 +443,8 @@ class MainActivity : ComponentActivity() {
                     outgoingProgress = outgoingProgress,
                     incomingTransferName = incomingTransferName,
                     incomingProgress = incomingProgress,
+                    incomingTransferredBytes = incomingTransferredBytes,
+                    incomingTotalBytes = incomingTotalBytes,
                     onOpenFile = ::openReceivedFile,
                     onDisconnect = ::disconnectFromPeer,
                     onAccept = ::approveIncoming,
@@ -1967,6 +1975,8 @@ private fun NeaRerHome(
     outgoingProgress: Float,
     incomingTransferName: String?,
     incomingProgress: Float,
+    incomingTransferredBytes: Long,
+    incomingTotalBytes: Long,
     onOpenFile: (ReceivedFile) -> Unit,
     onDisconnect: () -> Unit,
     onAccept: () -> Unit,
@@ -2824,7 +2834,16 @@ private fun NeaRerHome(
                                                 trackColor = Color(0xFF24436D)
                                             )
                                         }
-                                        Text("${(smoothIncomingProgress * 100).toInt().coerceIn(0, 100)}% received", color = Muted, fontSize = 9.sp)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("${(smoothIncomingProgress * 100).toInt().coerceIn(0, 100)}% received", color = Muted, fontSize = 9.sp)
+                                            Spacer(Modifier.weight(1f))
+                                            Text(
+                                                if (incomingTotalBytes > 0L) "${formatTransferSize(incomingTransferredBytes)} / ${formatTransferSize(incomingTotalBytes)}"
+                                                else "Receiving data…",
+                                                color = Color(0xFFB9CBE2),
+                                                fontSize = 9.sp
+                                            )
+                                        }
                                     }
                                 }
                                 if (outgoingTransferId != null) {
@@ -4160,6 +4179,16 @@ private data class ChatMessage(
     val outgoing: Boolean,
     val delivery: String
 )
+
+private fun formatTransferSize(bytes: Long): String {
+    val safeBytes = bytes.coerceAtLeast(0L)
+    return when {
+        safeBytes < 1024L -> "$safeBytes B"
+        safeBytes < 1024L * 1024L -> String.format(java.util.Locale.ROOT, "%.1f KB", safeBytes / 1024.0)
+        safeBytes < 1024L * 1024L * 1024L -> String.format(java.util.Locale.ROOT, "%.1f MB", safeBytes / (1024.0 * 1024.0))
+        else -> String.format(java.util.Locale.ROOT, "%.2f GB", safeBytes / (1024.0 * 1024.0 * 1024.0))
+    }
+}
 
 private data class ReceivedFile(val displayName: String, val file: File)
 private data class ShareableApp(val label: String, val packageName: String, val apkPaths: List<String>, val icon: androidx.compose.ui.graphics.ImageBitmap)
