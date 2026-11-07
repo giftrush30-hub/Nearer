@@ -57,7 +57,7 @@ object LudoDoubleDiceEngine {
                 message = "${state.game.activePlayer.name}, choose a die, then a highlighted token",
                 lastAction = "Rolled ${pair.first} + ${pair.second}"
             ),
-            turn = turn.copy(remaining = playable),
+            turn = turn.copy(remaining = if (playable.isEmpty()) setOf(LudoDieSlot.FIRST, LudoDieSlot.SECOND) else playable),
             extraTurnPending = pair.isDoubleSix
         )
     }
