@@ -25,9 +25,13 @@ object SplitApkInstaller {
         }
 
         val installer = packageManager.packageInstaller
-        val sessionId = installer.createSession(
-            PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-        )
+        val sessionParams = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+        // NeaRer is a peer-to-peer installer, not a privileged device owner.
+        // Always make Android's user approval step explicit.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            sessionParams.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
+        }
+        val sessionId = installer.createSession(sessionParams)
         try {
             installer.openSession(sessionId).use { session ->
                 var hasBaseApk = false
