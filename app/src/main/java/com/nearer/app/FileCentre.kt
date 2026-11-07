@@ -66,7 +66,7 @@ import java.util.zip.ZipOutputStream
 
 internal enum class FileCentreCategory(val label: String) {
     PICTURES("Pictures"), VIDEOS("Videos"), MUSIC("Music"), APPS("Apps"),
-    DOCUMENTS("Documents"), DOWNLOADS("Downloads"), OTHER("Other files")
+    DOCUMENTS("Documents"), DOWNLOADS("Downloads"), OTHER("Other files"), FAVOURITES("Favourites")
 }
 
 internal data class FileCentreItem(
@@ -296,6 +296,7 @@ internal fun FileCentreScreen(
     val scope = rememberCoroutineScope()
     val items = remember { mutableStateListOf<FileCentreItem>() }
     val selected = remember { mutableStateListOf<String>() }
+    val favouriteIds = remember { mutableStateListOf<String>() }
     var category by remember { mutableStateOf(FileCentreCategory.PICTURES) }
     var search by remember { mutableStateOf("") }
     var gridMode by remember { mutableStateOf(true) }
@@ -303,6 +304,16 @@ internal fun FileCentreScreen(
     var loading by remember { mutableStateOf(false) }
     val hasAccess = AndroidFileCatalog.hasMediaAccess(context, category)
     var notice by remember { mutableStateOf("Your phone's accessible media and apps will appear here.") }
+    LaunchedEffect(Unit) {
+        val saved = context.getSharedPreferences("nearer_file_centre", Context.MODE_PRIVATE)
+            .getStringSet("favourites", emptySet()).orEmpty()
+        favouriteIds.addAll(saved)
+    }
+    val toggleFavourite: (String) -> Unit = { id ->
+        if (id in favouriteIds) favouriteIds.remove(id) else favouriteIds.add(id)
+        context.getSharedPreferences("nearer_file_centre", Context.MODE_PRIVATE)
+            .edit().putStringSet("favourites", favouriteIds.toSet()).apply()
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -390,7 +401,7 @@ internal fun FileCentreScreen(
     }
 
     val visible = items.filter { item ->
-        item.category == category &&
+        (if (category == FileCentreCategory.FAVOURITES) item.id in favouriteIds else item.category == category) &&
             (search.isBlank() || item.name.contains(search.trim(), ignoreCase = true))
     }.let { matches ->
         when (sortMode) {
@@ -500,6 +511,8 @@ internal fun FileCentreScreen(
                     FileCentreTile(
                         item = item,
                         selected = item.id in selected,
+                        favourite = item.id in favouriteIds,
+                        onToggleFavourite = { toggleFavourite(item.id) },
                         context = context,
                         onClick = {
                             if (item.category == FileCentreCategory.APPS && item.packageName != null && item.uri == null) {
@@ -624,6 +637,8 @@ internal fun FileCentreScreen(
 private fun FileCentreTile(
     item: FileCentreItem,
     selected: Boolean,
+    favourite: Boolean,
+    onToggleFavourite: () -> Unit,
     context: Context,
     onClick: () -> Unit
 ) {
@@ -673,6 +688,7 @@ private fun FileCentreTile(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (selected) Text("✓ Selected", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 else Spacer(Modifier.weight(1f))
+                TextButton(onClick = onToggleFavourite) { Text(if (favourite) "★" else "☆", color = Gold, fontSize = 17.sp) }
                 if (item.uri != null) {
                     TextButton(onClick = { AndroidFileCatalog.openPreview(context, item) }) {
                         Text("Preview", color = Mint, fontSize = 10.sp)
