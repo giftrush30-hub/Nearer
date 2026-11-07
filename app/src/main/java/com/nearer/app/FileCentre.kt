@@ -554,6 +554,32 @@ internal fun FileCentreScreen(
             Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("${selectedItems.size} selected • ${AndroidFileCatalog.formatSize(selectedItems.sumOf { it.sizeBytes })}", color = White, fontWeight = FontWeight.Bold)
+                    Text("YOUR SEND BASKET", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        selectedItems.forEach { selectedItem ->
+                            Surface(color = Midnight, shape = RoundedCornerShape(12.dp)) {
+                                Row(
+                                    modifier = Modifier.padding(start = 10.dp, end = 4.dp, top = 5.dp, bottom = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Column {
+                                        Text(selectedItem.name, color = White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                        Text(AndroidFileCatalog.formatSize(selectedItem.sizeBytes), color = Muted, fontSize = 8.sp)
+                                    }
+                                    TextButton(onClick = {
+                                        selected.remove(selectedItem.id)
+                                        notice = "${selectedItem.name} removed from your basket."
+                                    }) {
+                                        Text("Remove", color = Gold, fontSize = 9.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = { selected.clear() },
