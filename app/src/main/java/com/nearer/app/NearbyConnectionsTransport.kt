@@ -299,14 +299,43 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         if (started) { client.stopAdvertising(); startAdvertising(startGeneration) }
     }
 
+    /**
+     * Nearby Connections no longer guarantees that it will enable device radios
+     * on the user's behalf. Check the visible radio state before starting and
+     * guide the user to Android Quick Settings when both are disabled.
+     */
+    private fun hasEnabledNearbyRadio(): Boolean {
+        val bluetoothEnabled = try {
+            val manager = appContext.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            manager?.adapter?.isEnabled == true
+        } catch (_: SecurityException) {
+            false
+        } catch (_: Exception) {
+            false
+        }
+        val wifiEnabled = try {
+            val manager = appContext.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+            manager?.isWifiEnabled == true
+        } catch (_: SecurityException) {
+            false
+        } catch (_: Exception) {
+            false
+        }
+        return bluetoothEnabled || wifiEnabled
+    }
+
     fun start() {
         if (started) return
+        if (!hasEnabledNearbyRadio()) {
+            listener.onStatus("Turn on Bluetooth or Wi-Fi in Quick Settings, then tap Find people again. NeaRer will not switch your phone radios on for you.")
+            return
+        }
         started = true
         val generation = ++startGeneration
         val discovering = DiscoveryOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
         startAdvertising(generation)
         client.startDiscovery(serviceId, discovery, discovering).addOnFailureListener {
-            failStart(generation, "Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. Tap Find people to retry.")
+            failStart(generation, "Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth and nearby-device permissions"}. Tap Find people to retry.")
         }
         listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
     }
