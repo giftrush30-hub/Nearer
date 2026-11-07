@@ -32,6 +32,16 @@ class FastShareHttpSessionTest {
         assertTrue(response.isEmpty())
     }
 
+    @Test fun headRequestIgnoresRangeHeaderAndDescribesWholeFile() {
+        val (exchange, response) = read(
+            "HEAD /download HTTP/1.1\\r\\nRange: bytes=10-19\\r\\n\\r\\n"
+        )
+        assertNotNull(exchange)
+        assertTrue(exchange!!.request.isHeadOnly)
+        assertNull(exchange.rangeHeader)
+        assertTrue(response.isEmpty())
+    }
+
     @Test fun unsupportedMethodWrites405AndAllowHeader() {
         val (exchange, response) = read("POST /download HTTP/1.1\r\n\r\n")
         assertNull(exchange)
