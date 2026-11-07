@@ -141,6 +141,14 @@ class MainActivity : ComponentActivity() {
     private var activeGame by mutableStateOf<LudoNetworkMatch?>(null)
     private val gameChatMessages = mutableStateListOf<String>()
     private val receivedFiles = mutableStateListOf<ReceivedFile>()
+    private val shareableApps = mutableStateListOf<ShareableApp>()
+    private var appShareLoading by mutableStateOf(false)
+    private var appShareNotice by mutableStateOf("Connect to a nearby NeaRer phone before sending apps.")
+    private var pendingAppShare by mutableStateOf<AppShareArchiveInfo?>(null)
+    private var openSendSession by mutableStateOf<OpenSendSession?>(null)
+    private var openSendNotice by mutableStateOf("Choose files to create a temporary no-internet download network.")
+    private var openSendManager: OpenSendSessionManager? = null
+    private var pendingOpenSendUris: List<Uri> = emptyList()
     private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
     private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
     private var outgoingTransferId by mutableStateOf<String?>(null)
@@ -406,6 +414,17 @@ class MainActivity : ComponentActivity() {
                     onGameRematch = ::requestGameRematch,
                     onEndGame = ::endGame,
                     onSendFile = ::sendFile,
+                    apps = shareableApps.toList(),
+                    appsLoading = appShareLoading,
+                    appNotice = appShareNotice,
+                    onLoadApps = ::loadShareableApps,
+                    onShareApps = ::shareInstalledApps,
+                    openSendSession = openSendSession,
+                    openSendNotice = openSendNotice,
+                    onPickOpenSendFiles = { /* picker is launched inside the share hub */ },\n                    onStartOpenSend = ::startOpenSendFromPicker,
+                    onStopOpenSend = ::stopOpenSend,
+                    pendingApp = pendingAppShare,
+                    onInstallPendingApp = ::installPendingApp,
                     onCancelTransfer = ::cancelOutgoingFileTransfer,
                     outgoingTransferId = outgoingTransferId,
                     outgoingProgress = outgoingProgress,
@@ -457,7 +476,7 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    override fun onPause() {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {\n        super.onRequestPermissionsResult(requestCode, permissions, grantResults)\n        if (requestCode == REQUEST_OPEN_SEND_PERMISSION) {\n            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {\n                val queued = pendingOpenSendUris\n                pendingOpenSendUris = emptyList()\n                startOpenSendWithUris(queued)\n            } else {\n                pendingOpenSendUris = emptyList()\n                openSendNotice = "Nearby Wi-Fi permission was not granted. OpenSend cannot create its temporary local network without it."\n            }\n        }\n    }\n\n    override fun onPause() {
         if (receiverRegistered) {
             unregisterReceiver(receiver)
             receiverRegistered = false
@@ -465,7 +484,7 @@ class MainActivity : ComponentActivity() {
         super.onPause()
     }
 
-    private fun hasDiscoveryPermission(): Boolean {
+NaN
         val permission = if (Build.VERSION.SDK_INT >= 33) {
             Manifest.permission.NEARBY_WIFI_DEVICES
         } else {
@@ -1902,7 +1921,7 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
-        private const val REQUEST_DISCOVERY_PERMISSION = 410
+        private const val REQUEST_DISCOVERY_PERMISSION = 410\n        private const val REQUEST_OPEN_SEND_PERMISSION = 411
     }
 }
 
@@ -1942,7 +1961,7 @@ private fun NeaRerHome(
     onGameChat: (String) -> Unit,
     onGameRematch: () -> Unit,
     onEndGame: () -> Unit,
-    onSendFile: (Uri) -> Unit,
+    onSendFile: (Uri) -> Unit,\n    apps: List<ShareableApp>,\n    appsLoading: Boolean,\n    appNotice: String,\n    onLoadApps: () -> Unit,\n    onShareApps: (List<String>) -> Unit,\n    openSendSession: OpenSendSession?,\n    openSendNotice: String,\n    onPickOpenSendFiles: () -> Unit,\n    onStartOpenSend: (List<Uri>) -> Unit,\n    onStopOpenSend: () -> Unit,\n    pendingApp: AppShareArchiveInfo?,\n    onInstallPendingApp: () -> Unit,
     onCancelTransfer: () -> Unit,
     outgoingTransferId: String?,
     outgoingProgress: Float,
@@ -1963,7 +1982,7 @@ private fun NeaRerHome(
     onStopSearch: () -> Unit,
     onConnect: (WifiP2pDevice) -> Unit
 ) {
-    var draft by remember { mutableStateOf("") }
+    var draft by remember { mutableStateOf("")\n    var unusedShareHubState by remember { mutableStateOf(false) } }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
@@ -2216,7 +2235,7 @@ private fun NeaRerHome(
                 }
             }
 
-            CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
+            NeaRerShareHub(\n                apps = apps, appsLoading = appsLoading, appNotice = appNotice,\n                onLoadApps = onLoadApps, onShareApps = onShareApps,\n                openSendSession = openSendSession, openSendNotice = openSendNotice,\n                onPickOpenSendFiles = { openSendPicker.launch(arrayOf("*/*")) },\n                onStopOpenSend = onStopOpenSend, pendingApp = pendingApp,\n                onInstallPendingApp = onInstallPendingApp\n            )\n\n            CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
                 activeGame, gameChatMessages, (usingNearbyConnections || chatReady), onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
                 onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame)
