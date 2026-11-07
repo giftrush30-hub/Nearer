@@ -150,6 +150,9 @@ class MainActivity : ComponentActivity() {
     private var activeGame by mutableStateOf<LudoNetworkMatch?>(null)
     private val gameChatMessages = mutableStateListOf<String>()
     private val receivedFiles = mutableStateListOf<ReceivedFile>()
+    private val nearbyTransferHistory = mutableStateListOf<NearbyTransferRecord>()
+    private var activeOutgoingFileName = "shared-file"
+    private var activeOutgoingFileBytes = 0L
     private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
     private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
     private var outgoingTransferId by mutableStateOf<String?>(null)
@@ -375,6 +378,8 @@ class MainActivity : ComponentActivity() {
                             outgoingLastSampleAt = now
                         }
                         outgoingRateBytesPerSecond = rate
+                        activeOutgoingFileName = name
+                        activeOutgoingFileBytes = total
                         outgoingTransferId = "nearby:$payloadId"
                         outgoingProgress = fraction
                     }
@@ -391,6 +396,7 @@ class MainActivity : ComponentActivity() {
                     incomingTransferName = null
                     incomingProgress = 0f
                     receivedFiles.add(0, ReceivedFile(name, file))
+                    recordNearbyTransfer("Received", name, file.length(), "Complete")
                     chatNotice = "Received and saved: $name. Tap it below to open."
                 }
             }
@@ -406,6 +412,9 @@ class MainActivity : ComponentActivity() {
                         outgoingTransferId = null
                         outgoingProgress = 0f
                         if (message.startsWith("File sent to the nearby phone")) {
+                            recordNearbyTransfer("Sent", activeOutgoingFileName, activeOutgoingFileBytes, "Complete")
+                            activeOutgoingFileName = "shared-file"
+                            activeOutgoingFileBytes = 0L
                             currentNearbyQueuedFile = null
                             nearbyQueueCompleted += 1
                             persistNearbyFileQueue()
@@ -425,6 +434,7 @@ class MainActivity : ComponentActivity() {
         })
         if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
         restoreLocalData()
+        restoreNearbyTransferHistory()
         restoreNearbyFileQueue()
         val queuedAfterRestart = nearbyTransport?.pendingMessageIds().orEmpty()
         if (queuedAfterRestart.isNotEmpty()) {
@@ -468,6 +478,7 @@ class MainActivity : ComponentActivity() {
                     messages = chatMessages,
                     chatNotice = chatNotice,
                     receivedFiles = receivedFiles,
+                    transferHistory = nearbyTransferHistory.toList(),
                     onSendMessage = ::sendChatMessage,
                     groups = communityGroups.toList(),
                     groupMessages = communityMessages.toList(),
@@ -1040,6 +1051,38 @@ class MainActivity : ComponentActivity() {
                 receivedFiles.add(ReceivedFile(it.name.substringAfter('-', it.name), it))
             }
         }
+    }
+
+    private fun recordNearbyTransfer(direction: String, fileName: String, bytes: Long, status: String) {
+        nearbyTransferHistory.add(0, NearbyTransferRecord(direction, fileName.take(140), bytes.coerceAtLeast(0L), System.currentTimeMillis(), status))
+        while (nearbyTransferHistory.size > 100) nearbyTransferHistory.removeAt(nearbyTransferHistory.lastIndex)
+        try {
+            val array = JSONArray()
+            nearbyTransferHistory.forEach { item ->
+                array.put(JSONObject().put("direction", item.direction).put("fileName", item.fileName)
+                    .put("bytes", item.bytes).put("timestamp", item.timestamp).put("status", item.status))
+            }
+            getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+                .putString("nearby_transfer_history", array.toString()).apply()
+        } catch (_: Exception) { }
+    }
+
+    private fun restoreNearbyTransferHistory() {
+        try {
+            val raw = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .getString("nearby_transfer_history", "[]") ?: "[]"
+            val array = JSONArray(raw)
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val direction = item.optString("direction")
+                if (direction != "Sent" && direction != "Received") continue
+                nearbyTransferHistory.add(NearbyTransferRecord(
+                    direction, item.optString("fileName", "shared-file").take(140),
+                    item.optLong("bytes").coerceAtLeast(0L), item.optLong("timestamp"),
+                    item.optString("status", "Complete")
+                ))
+            }
+        } catch (_: Exception) { nearbyTransferHistory.clear() }
     }
 
     private fun persistMessages(): Boolean {
@@ -2030,6 +2073,7 @@ class MainActivity : ComponentActivity() {
                                             incomingTransferName = null
                                             incomingProgress = 0f
                                             receivedFiles.add(0, ReceivedFile(transfer.name, transfer.file))
+                                            recordNearbyTransfer("Received", transfer.name, transfer.receivedBytes, "Complete")
                                             chatNotice = "Received and verified: ${transfer.name}. Tap it below to open."
                                         }
                                         synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|OK") }
@@ -2133,6 +2177,7 @@ private fun NeaRerHome(
     messages: List<ChatMessage>,
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
+    transferHistory: List<NearbyTransferRecord>,
     onSendMessage: (String) -> Unit,
     groups: List<CommunityGroup>,
     groupMessages: List<CommunityChatMessage>,
@@ -2485,6 +2530,22 @@ private fun NeaRerHome(
                             }
                         }
                         Text(chatNotice, color = Muted, fontSize = 10.sp)
+                        if (transferHistory.isNotEmpty()) {
+                            Text("Recent transfers", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            transferHistory.take(5).forEach { record ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("${if (record.direction == "Sent") "↑ Sent" else "↓ Received"} • ${record.fileName}", color = White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("${formatTransferBytes(record.bytes)} • ${record.status}", color = Muted, fontSize = 9.sp)
+                                    }
+                                    Text(record.timeLabel, color = Muted, fontSize = 9.sp)
+                                }
+                            }
+                        }
                         receivedFiles.take(3).forEach { fileItem ->
                             Button(
                                 onClick = { onOpenFile(fileItem) },
@@ -2882,6 +2943,23 @@ internal data class ChatMessage(
 )
 
 private data class ReceivedFile(val displayName: String, val file: File)
+
+private data class NearbyTransferRecord(
+    val direction: String,
+    val fileName: String,
+    val bytes: Long,
+    val timestamp: Long,
+    val status: String
+) {
+    val timeLabel: String get() = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+}
+
+private fun formatTransferBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024L * 1024L -> String.format(java.util.Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+    bytes >= 1024L * 1024L -> String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
+    bytes >= 1024L -> String.format(java.util.Locale.US, "%.0f KB", bytes / 1024.0)
+    else -> "$bytes B"
+}
 
 private data class IncomingTransfer(
     val name: String,
