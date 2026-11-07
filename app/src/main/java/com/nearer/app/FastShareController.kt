@@ -53,6 +53,7 @@ class FastShareController(private val context: Context) {
         status = "Preparing a private Wi-Fi connection…"
         val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         if (wifi == null) {
+            pendingUris = emptyList()
             status = "This phone does not provide Android Wi-Fi hotspot sharing."
             return
         }
@@ -70,7 +71,10 @@ class FastShareController(private val context: Context) {
                 val password = config?.preSharedKey.orEmpty()
                 val selectedUris = pendingUris
                 if (selectedUris.isEmpty() || ssid.isBlank() || password.isBlank()) {
-                    status = "Android started Wi-Fi, but did not provide share details. Stop and try again."
+                    // Do not leave a hotspot reservation alive when Android cannot
+                    // provide the credentials needed by the receiving device.
+                    stop(updateStatus = false)
+                    status = "Android started Wi-Fi, but did not provide share details. Try Fast Share again."
                     return
                 }
                 try {
@@ -176,8 +180,12 @@ class FastShareController(private val context: Context) {
         try {
             wifi.startLocalOnlyHotspot(hotspotCallback, Handler(Looper.getMainLooper()))
         } catch (error: SecurityException) {
+            // Clear the pending session as well as the callback so a failed
+            // permission attempt cannot leave stale state for the next start.
+            stop(updateStatus = false)
             status = "Allow NeaRer nearby Wi-Fi permission, then try again."
         } catch (error: Exception) {
+            stop(updateStatus = false)
             status = "Could not start Fast Share: ${error.message ?: "please try again"}"
         }
     }
