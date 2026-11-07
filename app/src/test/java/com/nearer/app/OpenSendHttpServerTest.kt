@@ -55,6 +55,61 @@ class OpenSendHttpServerTest {
         }
     }
 
+    @Test
+    fun suffixRangeReturnsLastBytesAndUnsatisfiableRangeReturns416() {
+        val folder = createTempDir(prefix = "nearer-opensend-suffix")
+        val bytes = "abcdefghij".toByteArray()
+        val file = File(folder, "sample.bin").apply { writeBytes(bytes) }
+        val server = OpenSendHttpServer(
+            listOf(OpenSendFile(id = "sample", displayName = "sample.bin", file = file)),
+            accessToken = "c".repeat(32)
+        )
+        try {
+            val info = server.start()
+            val suffix = URL("http://127.0.0.1:${info.port}/download/sample?token=${info.accessToken}")
+                .openConnection() as HttpURLConnection
+            suffix.setRequestProperty("Range", "bytes=-4")
+            assertEquals(206, suffix.responseCode)
+            assertEquals("bytes 6-9/10", suffix.getHeaderField("Content-Range"))
+            assertArrayEquals("ghij".toByteArray(), suffix.inputStream.use { it.readBytes() })
+            suffix.disconnect()
+
+            val invalid = URL("http://127.0.0.1:${info.port}/download/sample?token=${info.accessToken}")
+                .openConnection() as HttpURLConnection
+            invalid.setRequestProperty("Range", "bytes=20-30")
+            assertEquals(416, invalid.responseCode)
+            assertEquals("bytes */10", invalid.getHeaderField("Content-Range"))
+            invalid.disconnect()
+        } finally {
+            server.close()
+            folder.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun headRequestReturnsFileHeadersWithoutBody() {
+        val folder = createTempDir(prefix = "nearer-opensend-head")
+        val file = File(folder, "sample.txt").apply { writeText("hello world") }
+        val server = OpenSendHttpServer(
+            listOf(OpenSendFile(id = "head", displayName = "sample.txt", file = file, mimeType = "text/plain")),
+            accessToken = "d".repeat(32)
+        )
+        try {
+            val info = server.start()
+            val connection = URL("http://127.0.0.1:${info.port}/download/head?token=${info.accessToken}")
+                .openConnection() as HttpURLConnection
+            connection.requestMethod = "HEAD"
+            assertEquals(200, connection.responseCode)
+            assertEquals("11", connection.getHeaderField("Content-Length"))
+            assertEquals("bytes", connection.getHeaderField("Accept-Ranges"))
+            assertEquals(0, connection.inputStream.use { it.readBytes().size })
+            connection.disconnect()
+        } finally {
+            server.close()
+            folder.deleteRecursively()
+        }
+    }
+
     private fun request(port: Int, path: String): Pair<Int, ByteArray> {
         val connection = URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection
         return try {
