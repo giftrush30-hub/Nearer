@@ -368,6 +368,8 @@ class MainActivity : ComponentActivity() {
                         message.startsWith("Nearby file transfer cancelled")) {
                         incomingTransferName = null
                         incomingProgress = 0f
+                        incomingTransferredBytes = 0L
+                        incomingTotalBytes = 0L
                     }
                 }
             }
@@ -1854,6 +1856,8 @@ class MainActivity : ComponentActivity() {
                                         runOnUiThread {
                                             incomingTransferName = null
                                             incomingProgress = 0f
+                                            incomingTransferredBytes = 0L
+                                            incomingTotalBytes = 0L
                                             receivedFiles.add(0, ReceivedFile(transfer.name, transfer.file))
                                             chatNotice = "Received and verified: ${transfer.name}. Tap it below to open."
                                         }
@@ -1864,6 +1868,8 @@ class MainActivity : ComponentActivity() {
                                         runOnUiThread {
                                             incomingTransferName = null
                                             incomingProgress = 0f
+                                            incomingTransferredBytes = 0L
+                                            incomingTotalBytes = 0L
                                             chatNotice = "The received file failed its integrity check and was discarded."
                                         }
                                     }
