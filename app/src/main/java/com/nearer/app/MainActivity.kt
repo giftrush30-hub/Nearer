@@ -6378,6 +6378,39 @@ private fun formatTransferSize(bytes: Long): String {
     }
 }
 
+private data class CommunityGroup(
+    val code: String,
+    val name: String,
+    val members: List<String>,
+    val ownerId: String = "",
+    val memberIds: Map<String, String> = emptyMap(),
+    val moderators: Set<String> = emptySet(),
+    val pendingMembers: Map<String, String> = emptyMap()
+)
+private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
+private data class GameInvite(val matchId: String, val sender: String)
+private data class TicTacToeMatch(val matchId: String, val board: String, val turn: String, val localSymbol: String, val status: String, val opponent: String)
+private data class NearbyPerson(val name: String, val lastSeenAt: Long)
+
+private data class ChatMessage(
+    val id: String,
+    val body: String,
+    val outgoing: Boolean,
+    val delivery: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val conversationId: String = "legacy",
+    val conversationName: String = "Nearby contact"
+)
+
+private fun formatMessageTime(timestamp: Long): String =
+    android.text.format.DateFormat.format("h:mm a", timestamp).toString()
+
+private fun transferProgressDetail(transferred: Long, total: Long, speed: Long): String {
+    val progress = if (total > 0L) "${formatTransferSize(transferred)} / ${formatTransferSize(total)}" else formatTransferSize(transferred)
+    val rate = if (speed > 0L) " • ${formatTransferSize(speed)}/s" else ""
+    return progress + rate
+}
+
 private data class ReceivedFile(val displayName: String, val file: File)
 private data class SentFile(val name: String, val uri: String, val sizeBytes: Long, val timestamp: Long)
 private data class ShareableApp(val label: String, val packageName: String, val apkPaths: List<String>, val icon: androidx.compose.ui.graphics.ImageBitmap)
