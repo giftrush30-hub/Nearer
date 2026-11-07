@@ -340,6 +340,10 @@ class MainActivity : ComponentActivity() {
             flashRoleReady = true
             return
         }
+        if (!roles.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) {
+            statusMessage = "This Android device does not offer the call-screening role."
+            return
+        }
         startActivityForResult(roles.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING), 7041)
     }
 
