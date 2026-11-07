@@ -750,6 +750,7 @@ class MainActivity : ComponentActivity() {
         var importedIdsChanged = false
         var flashMessagesNeedCommit = false
         val flashMessageIdsToMarkPersisted = mutableSetOf<String>()
+        val flashEventIdsToMarkImported = mutableSetOf<String>()
 
         try {
             val events = JSONArray(rawEvents)
@@ -818,8 +819,10 @@ class MainActivity : ComponentActivity() {
                     changed = true
                 }
                 flashMessageIdsToMarkPersisted.add(messageId)
+                if (eventId !in importedIds) {
+                    flashEventIdsToMarkImported.add(eventId)
+                    importedIdsChanged = true
                 }
-                if (importedIds.add(eventId)) importedIdsChanged = true
             }
         } catch (_: Exception) {
             // Leave malformed or unavailable event data untouched; normal chat remains usable.
@@ -833,7 +836,8 @@ class MainActivity : ComponentActivity() {
                 try { serializeChatMessages() } catch (_: Exception) { null }
             } else null
             val canCommit = !(changed || flashMessagesNeedCommit) || messageSnapshot != null
-            val importedIdSnapshot = importedIds.toList().takeLast(150).toSet()
+            val importedIdSnapshot = (importedIds + flashEventIdsToMarkImported)
+                .toList().takeLast(150).toSet()
             messagePersistence.execute {
                 val messagesSaved = canCommit && (
                     messageSnapshot == null ||
@@ -841,9 +845,10 @@ class MainActivity : ComponentActivity() {
                     )
                 if (messagesSaved) flashMessageIdsToMarkPersisted.forEach { persistedMessageIds.add(it) }
                 if (messagesSaved && importedIdsChanged) {
-                    localPrefs.edit()
+                    val idsSaved = localPrefs.edit()
                         .putStringSet("flash_imported_event_ids", importedIdSnapshot)
                         .commit()
+                    if (idsSaved) importedIds.addAll(flashEventIdsToMarkImported)
                 }
             }
         }
