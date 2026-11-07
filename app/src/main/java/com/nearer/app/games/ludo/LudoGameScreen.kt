@@ -128,10 +128,10 @@ fun LudoGameScreen(
         if (rolling || !LudoDoubleDiceEngine.canRoll(doubleGame)) return
         rolling = true
         if (soundEnabled && !computer) soundFx.play(LudoSound.ROLL)
-        repeat(if (computer) 8 else 12) {
+        repeat(if (computer) 14 else 14) {
             rollingFirst = Random.nextInt(1, 7)
             rollingSecond = Random.nextInt(1, 7)
-            delay(if (computer) 78 else 62)
+            delay(if (computer) 145 else 88)
         }
         if (roomReady) {
             if (roomCanAct) onRoomAction(LudoRoomAction(LudoRoomActionType.ROLL))
@@ -175,12 +175,12 @@ fun LudoGameScreen(
                 turn.selected == null -> {
                     val slot = LudoTwoDiceRules.playableDice(game.activePlayer, turn).firstOrNull()
                     if (slot != null) {
-                        delay(520)
+                        delay(1550)
                         doubleGame = LudoDoubleDiceEngine.selectDie(doubleGame, slot)
                     }
                 }
                 else -> {
-                    delay(720)
+                    delay(1450)
                     LudoAiEngine.chooseComputerMove(game, aiDifficulty)?.let { moveToken(it) }
                 }
             }
@@ -203,10 +203,10 @@ fun LudoGameScreen(
                         fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                     Text("TRADITIONAL LUDO", color = White, fontSize = 23.sp, fontWeight = FontWeight.Black)
                     Text("01  •  Roll both dice together. Each die is a separate move.", color = White, fontSize = 12.sp)
-                    Text("02  •  Use the dice in either order, on one token twice or two different tokens.", color = White, fontSize = 12.sp)
+                    Text("02  •  Use the dice separately on one or two tokens, or combine both numbers for one longer move.", color = White, fontSize = 12.sp)
                     Text("03  •  A token leaves its yard only when an individual die shows 6.", color = White, fontSize = 12.sp)
-                    Text("04  •  After choosing a die, tap a highlighted token. Then use your remaining playable die.", color = White, fontSize = 12.sp)
-                    Text("05  •  Safe squares protect tokens. You need an exact roll to reach home.", color = White, fontSize = 12.sp)
+                    Text("04  •  Choose a die or combine both, then tap a highlighted token. You can also spend the dice separately.", color = White, fontSize = 12.sp)
+                    Text("05  •  Safe squares protect tokens. You need an exact move to reach home. Combined moves are checked for legal distance.", color = White, fontSize = 12.sp)
                     Text("Double six earns another turn after both dice are resolved. First to bring all four tokens home wins.", color = Color(0xFFFFD98A),
                         fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Button(
@@ -389,6 +389,28 @@ fun LudoGameScreen(
                                     if (doubleGame.turn == null) scope.launch { animateRoll() }
                                     else if (roomReady) { if (roomCanAct) onRoomAction(LudoRoomAction(LudoRoomActionType.SELECT_DIE, dieSlot = LudoDieSlot.SECOND)) } else doubleGame = LudoDoubleDiceEngine.selectDie(doubleGame, LudoDieSlot.SECOND)
                                 })
+                        }
+                    }
+                    if (!roomReady && doubleGame.turn?.selected == null &&
+                        LudoDieSlot.FIRST in (doubleGame.turn?.remaining ?: emptySet()) &&
+                        LudoDieSlot.SECOND in (doubleGame.turn?.remaining ?: emptySet()) &&
+                        LudoTwoDiceRules.legalTokenIndexes(game.activePlayer, doubleGame.turn!!.copy(selected = LudoDieSlot.BOTH)).isNotEmpty()) {
+                        val pairTotal = (doubleGame.dice?.first ?: 0) + (doubleGame.dice?.second ?: 0)
+                        Surface(
+                            color = Color(0xFF263E5B),
+                            shape = RoundedCornerShape(13.dp),
+                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.9f)),
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                doubleGame = LudoDoubleDiceEngine.selectDie(doubleGame, LudoDieSlot.BOTH)
+                            }
+                        ) {
+                            Row(Modifier.padding(horizontal = 13.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("COMBINE BOTH DICE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                                    Text("Move one token $pairTotal spaces in one direction", color = White, fontSize = 11.sp)
+                                }
+                                Text("$pairTotal  ›", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                            }
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -683,8 +705,8 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
                     progress.animateTo(
                         targetValue = target.toFloat(),
                         animationSpec = tween(
-                            durationMillis = (distance * 92f).toInt().coerceIn(220, 1050),
-                            easing = FastOutSlowInEasing
+                            durationMillis = (distance * 265f).toInt().coerceIn(520, 6500),
+                            easing = LinearEasing
                         )
                     )
                 }
