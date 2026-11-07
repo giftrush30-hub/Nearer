@@ -2917,14 +2917,12 @@ private fun NeaRerHome(
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
-    var pendingFileTypes by remember { mutableStateOf<Array<String>?>(null) }
     var receiveMode by remember { mutableStateOf(false) }
     var showInstalledApps by remember { mutableStateOf(false) }
     var showReceivedHistory by remember { mutableStateOf(false) }
     var sharedFilesFilter by remember { mutableStateOf("All") }
     var sharedFilesSearch by remember { mutableStateOf("") }
     var sharedFilesSort by remember { mutableStateOf("Recent") }
-    var pendingAppPicker by remember { mutableStateOf(false) }
     var installedApps by remember { mutableStateOf<List<ShareableApp>>(emptyList()) }
     var isLoadingApps by remember { mutableStateOf(false) }
     var appShareNotice by remember { mutableStateOf<String?>(null) }
@@ -2968,23 +2966,6 @@ private fun NeaRerHome(
             },
             confirmButton = { TextButton(onClick = { showChatAttachmentMenu = false }) { Text("CLOSE", color = Gold) } }
         )
-    }
-    // Keep the exact file-selection intent while nearby discovery establishes a connection.
-    LaunchedEffect(chatReady, pendingFileTypes) {
-        val requestedTypes = pendingFileTypes
-        if (chatReady && requestedTypes != null) {
-            pendingFileTypes = null
-            filePicker.launch(requestedTypes)
-        }
-    }
-    LaunchedEffect(chatReady, pendingAppPicker) {
-        if (chatReady && pendingAppPicker) {
-            pendingAppPicker = false
-            showInstalledApps = true
-            isLoadingApps = true
-            installedApps = withContext(Dispatchers.IO) { onLoadShareableApps() }
-            isLoadingApps = false
-        }
     }
     if (showInstalledApps) {
         AlertDialog(
@@ -3511,13 +3492,7 @@ private fun NeaRerHome(
                                 Button(
                                     onClick = {
                                         receiveMode = false
-                                        if (chatReady) filePicker.launch(arrayOf("*/*"))
-                                        else {
-                                            pendingFileTypes = arrayOf("*/*")
-                                            navigateToSection("nearby")
-                                            if (!scanning && connectingAddress == null) onFindNearby()
-                                            navigationScope.launch { pageScrollState.animateScrollTo(0) }
-                                        }
+                                        filePicker.launch(arrayOf("*/*"))
                                     },
                                     modifier = Modifier.weight(1f).height(52.dp),
                                     shape = RoundedCornerShape(15.dp),
@@ -3562,9 +3537,9 @@ private fun NeaRerHome(
                                 receiveMode && scanning -> "Searching for nearby senders. Keep this screen open; tap a discovered phone to connect."
                                 receiveMode -> "Your phone is ready to receive. Start a nearby search and connect to the sender."
                                 connectingAddress != null -> "Connecting to ${connectedDeviceName ?: "the nearby phone"}. Keep both phones close until verification finishes."
-                                scanning -> "Searching for nearby phones. Choose a discovered person to connect before selecting files or apps."
+                                scanning -> "Searching for nearby phones. You can browse and prepare files while discovery runs."
                                 chatReady -> "Connected to ${connectedDeviceName ?: "a nearby phone"}. Choose any file or app to send."
-                                else -> "Find a nearby phone first. Once connected, choose files or apps to share directly."
+                                else -> "Browse your phone now. Selected files stay queued safely until you connect to a nearby person."
                             }
                             Surface(
                                 modifier = Modifier.fillMaxWidth().animateContentSize(),
@@ -3602,14 +3577,7 @@ private fun NeaRerHome(
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable {
                             receiveMode = false
-                            if (chatReady) {
-                                filePicker.launch(arrayOf("*/*"))
-                            } else {
-                                pendingFileTypes = arrayOf("*/*")
-                                navigateToSection("nearby")
-                                onFindNearby()
-                                navigationScope.launch { pageScrollState.animateScrollTo(0) }
-                            }
+                            filePicker.launch(arrayOf("*/*"))
                         },
                         shape = RoundedCornerShape(21.dp),
                         color = Color(0xFF142F54),
@@ -3640,8 +3608,7 @@ private fun NeaRerHome(
                                     Text("QUICK ROUTE", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Black)
                                 }
                                 Text(
-                                    if (chatReady) "Pick anything and send straight away"
-                                    else "Connect first — file selection opens automatically.",
+                                    "Browse and prepare files now. They'll send when a nearby connection is ready.",
                                     color = Color(0xFFD1E0F5), fontSize = 10.sp, lineHeight = 14.sp
                                 )
                             }
@@ -3684,25 +3651,14 @@ private fun NeaRerHome(
                                         modifier = Modifier.weight(1f).height(108.dp).animateContentSize().clickable {
                                             receiveMode = false
                                             if (item.second == "Apps") {
-                                                if (chatReady) {
-                                                    showInstalledApps = true
-                                                    isLoadingApps = true
-                                                    navigationScope.launch {
-                                                        installedApps = withContext(Dispatchers.IO) { onLoadShareableApps() }
-                                                        isLoadingApps = false
-                                                    }
-                                                } else {
-                                                    pendingAppPicker = true
-                                                    navigateToSection("nearby")
-                                                    onFindNearby()
-                                                    navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                                                showInstalledApps = true
+                                                isLoadingApps = true
+                                                navigationScope.launch {
+                                                    installedApps = withContext(Dispatchers.IO) { onLoadShareableApps() }
+                                                    isLoadingApps = false
                                                 }
-                                            } else if (chatReady) filePicker.launch(item.third)
-                                            else {
-                                                pendingFileTypes = item.third
-                                                navigateToSection("nearby")
-                                                onFindNearby()
-                                                navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                                            } else {
+                                                filePicker.launch(item.third)
                                             }
                                         },
                                         color = tileBlue,
