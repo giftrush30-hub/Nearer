@@ -92,13 +92,20 @@ class FastShareController(private val context: Context) {
                         lastProgressAt = now
                         lastProgressBytes = sent
                         val speedLabel = if (bytesPerSecond > 0.0) " · ${formatProgressSize(bytesPerSecond.toLong())}/s" else ""
+                        val averageSpeed = formatProgressSize(((sent * 1000.0) / (now - transferStartedAt).coerceAtLeast(1L)).toLong())
                         Handler(Looper.getMainLooper()).post {
                             status = when {
                                 interrupted -> "Download interrupted at ${formatProgressSize(sent)}. Keep both phones connected and retry."
-                                complete -> "Download completed · average ${formatProgressSize(((sent * 1000.0) / (now - transferStartedAt).coerceAtLeast(1L)).toLong())}/s"
+                                complete -> "Download completed · average $averageSpeed/s"
                                 total >= 0L -> "Sending ${formatProgressSize(sent)} of ${formatProgressSize(total)}$speedLabel…"
                                 else -> "Sending ${formatProgressSize(sent)}$speedLabel…"
                             }
+                        }
+                        if (complete || interrupted) {
+                            transferStartedAt = 0L
+                            lastProgressAt = 0L
+                            lastProgressBytes = 0L
+                            bytesPerSecond = 0.0
                         }
                     }
                     val address = httpServer.start()
