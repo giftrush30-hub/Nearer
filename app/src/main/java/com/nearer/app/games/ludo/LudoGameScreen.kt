@@ -68,7 +68,21 @@ private val White = Color(0xFFF6F8FF)
 private val Muted = Color(0xFFAABBD4)
 
 @Composable
-fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
+fun LudoGameScreen(
+    playerName: String,
+    onExit: () -> Unit,
+    connectedPeerName: String? = null,
+    roomStatus: String = "Connect to a nearby player to invite them.",
+    incomingInviteName: String? = null,
+    roomPeerName: String? = null,
+    roomMessages: List<String> = emptyList(),
+    onInvitePeer: () -> Unit = {},
+    onAcceptInvite: () -> Unit = {},
+    onDeclineInvite: () -> Unit = {},
+    onSendRoomChat: (String) -> Unit = {},
+    onLeaveRoom: () -> Unit = {}
+) {
+    var roomChatDraft by remember { mutableStateOf("") }
     var playerCount by remember { mutableIntStateOf(4) }
     var computerOpponents by remember { mutableStateOf(true) }
     var doubleGame by remember(playerName) { mutableStateOf(LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents))) }
@@ -450,6 +464,69 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                     }
                 }
                 Text(aiDifficulty.description, color = Color(0xFF9FB5D2), fontSize = 10.sp)
+            }
+
+            Surface(color = Panel, shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, Gold.copy(alpha = 0.48f)), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("NEARBY MULTIPLAYER", color = Gold, fontSize = 10.sp,
+                            fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
+                        Spacer(Modifier.weight(1f))
+                        Text(if (roomPeerName != null) "ROOM ACTIVE" else "OFFLINE READY",
+                            color = if (roomPeerName != null) Color(0xFF79E2B2) else Muted,
+                            fontSize = 8.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                    Text(roomStatus, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                    if (incomingInviteName != null) {
+                        Text("$incomingInviteName wants to play Ludo with you.",
+                            color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = onAcceptInvite, modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF14233A))) {
+                                Text("ACCEPT", fontWeight = FontWeight.Black)
+                            }
+                            Button(onClick = onDeclineInvite, modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Raised, contentColor = White)) {
+                                Text("DECLINE", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    } else if (roomPeerName == null) {
+                        Button(onClick = onInvitePeer, enabled = connectedPeerName != null,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Cobalt, contentColor = White)) {
+                            Text(if (connectedPeerName != null) "INVITE $connectedPeerName" else "CONNECT A NEARBY PLAYER FIRST",
+                                fontWeight = FontWeight.Black, fontSize = 11.sp)
+                        }
+                    } else {
+                        Text("Playing with $roomPeerName", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        if (roomMessages.isNotEmpty()) {
+                            Column(Modifier.fillMaxWidth().heightIn(max = 130.dp)
+                                .clip(RoundedCornerShape(12.dp)).background(Color(0xFF091A2D)).padding(9.dp),
+                                verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                roomMessages.takeLast(12).forEach { message ->
+                                    Text(message, color = White, fontSize = 10.sp)
+                                }
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(value = roomChatDraft, onValueChange = { roomChatDraft = it.take(300) },
+                                modifier = Modifier.weight(1f), singleLine = true,
+                                placeholder = { Text("Message your opponent…", color = Muted, fontSize = 10.sp) })
+                            Button(onClick = {
+                                onSendRoomChat(roomChatDraft)
+                                roomChatDraft = ""
+                            }, enabled = roomChatDraft.isNotBlank(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF14233A))) {
+                                Text("SEND", fontWeight = FontWeight.Black, fontSize = 10.sp)
+                            }
+                        }
+                        Button(onClick = onLeaveRoom, modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Raised, contentColor = White)) {
+                            Text("LEAVE ROOM", fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        }
+                    }
+                }
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
