@@ -2381,8 +2381,10 @@ class MainActivity : ComponentActivity() {
             return
         }
         cancelledOutgoingTransfers.add(id)
+        activeQueuedFileUri = null
         sendWireLine("FILE_CANCEL|$id")
         chatNotice = "Cancelling file transfer…"
+        // The prepared item remains in the queue for a later manual retry.
     }
 
     private fun queueChatFile(uri: Uri, notice: String) {
