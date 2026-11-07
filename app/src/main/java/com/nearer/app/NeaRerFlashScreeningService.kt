@@ -4,6 +4,8 @@ import android.content.Context
 import android.telecom.Call
 import android.telecom.CallScreeningService
 import android.util.Base64
+import org.json.JSONArray
+import org.json.JSONObject
 import java.security.MessageDigest
 import java.security.SecureRandom
 
@@ -45,11 +47,27 @@ class NeaRerFlashScreeningService : CallScreeningService() {
             if (signal == null) {
                 prefs.edit().putString(key, updated.joinToString(",")).apply()
             } else {
+                val receivedAt = System.currentTimeMillis()
+                val eventId = "$receivedAt-$now-$signal"
+                val queued = try {
+                    JSONArray(prefs.getString(PENDING_EVENTS, "[]") ?: "[]")
+                } catch (_: Exception) {
+                    JSONArray()
+                }
+                queued.put(
+                    JSONObject()
+                        .put("id", eventId)
+                        .put("signal", signal)
+                        .put("timestamp", receivedAt)
+                        .put("senderTag", senderKey.takeLast(8))
+                )
+                while (queued.length() > MAX_PENDING_EVENTS) queued.remove(0)
                 prefs.edit()
                     .remove(key)
                     .putString(LAST_SIGNAL, signal)
-                    .putLong(LAST_SIGNAL_AT, System.currentTimeMillis())
+                    .putLong(LAST_SIGNAL_AT, receivedAt)
                     .putString(LAST_SIGNAL_FROM, senderKey)
+                    .putString(PENDING_EVENTS, queued.toString())
                     .apply()
             }
         } catch (_: Exception) {
