@@ -567,7 +567,7 @@ class MainActivity : ComponentActivity() {
                     try {
                         OpenSendForegroundService.start(this)
                     } catch (error: Exception) {
-                        openSendNotice = "Android could not keep OpenSend active in the background: \${error.localizedMessage ?: "foreground service unavailable"}"
+                        openSendNotice = "Android could not keep OpenSend active in the background: ${error.localizedMessage ?: "foreground service unavailable"}"
                         return@runOnUiThread
                     }
                     val manager = OpenSendSessionManager(this)
