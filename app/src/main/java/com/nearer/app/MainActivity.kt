@@ -6104,7 +6104,7 @@ private fun NeaRerWelcomeFlow(
                 }
                 Text("Here's something\njust for you.", color = Color(0xFF142C4B), fontSize = 31.sp, lineHeight = 36.sp,
                     fontWeight = FontWeight.ExtraBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                Text("Bringing your NeaRer space together, \${name.trim().ifBlank { "friend" }}…", color = Color(0xFF647B98),
+                Text("Bringing your NeaRer space together, ${name.trim().ifBlank { "friend" }}…", color = Color(0xFF647B98),
                     fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 LinearProgressIndicator(Modifier.fillMaxWidth(), color = Color(0xFF1769FF), trackColor = Color(0xFFDCE9F8))
             }
