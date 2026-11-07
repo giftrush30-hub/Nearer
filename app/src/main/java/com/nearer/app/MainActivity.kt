@@ -706,7 +706,6 @@ class MainActivity : ComponentActivity() {
                 val signal = event.optString("signal").takeIf { it.isNotBlank() } ?: continue
                 val messageId = "flash:$eventId"
                 if (chatMessages.none { it.id == messageId }) {
-                    val senderTag = event.optString("senderTag").takeIf { it.isNotBlank() }
                     chatMessages.add(
                         ChatMessage(
                             id = messageId,
