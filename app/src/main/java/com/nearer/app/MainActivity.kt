@@ -2450,7 +2450,7 @@ private fun NeaRerHome(
                                         else {
                                             pendingFileTypes = arrayOf("*/*")
                                             navigateToSection("nearby")
-                                            onFindNearby()
+                                            if (!scanning && connectingAddress == null) onFindNearby()
                                             navigationScope.launch { pageScrollState.animateScrollTo(0) }
                                         }
                                     },
@@ -2458,13 +2458,21 @@ private fun NeaRerHome(
                                     shape = RoundedCornerShape(15.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = BrandBlue, contentColor = White)
                                 ) {
-                                    Text(if (chatReady) "↑  SEND NOW" else "↑  FIND & SEND", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                    Text(
+                                        when {
+                                            chatReady -> "↑  SEND NOW"
+                                            connectingAddress != null -> "◌  CONNECTING…"
+                                            scanning -> "◌  SEARCHING…"
+                                            else -> "↑  FIND & SEND"
+                                        },
+                                        fontSize = 10.sp, fontWeight = FontWeight.Black
+                                    )
                                 }
                                 Button(
                                     onClick = {
                                         receiveMode = true
                                         navigateToSection("nearby")
-                                        onFindNearby()
+                                        if (!scanning && connectingAddress == null) onFindNearby()
                                         navigationScope.launch { pageScrollState.animateScrollTo(0) }
                                     },
                                     modifier = Modifier.weight(1f).height(52.dp),
@@ -2472,7 +2480,14 @@ private fun NeaRerHome(
                                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.75f)),
                                     colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
                                 ) {
-                                    Text("↓  RECEIVE", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                    Text(
+                                        when {
+                                            connectingAddress != null -> "◌  CONNECTING…"
+                                            scanning -> "◌  SEARCHING…"
+                                            else -> "↓  RECEIVE"
+                                        },
+                                        fontSize = 10.sp, fontWeight = FontWeight.Black
+                                    )
                                 }
                             }
                             val transferGuidance = when {
