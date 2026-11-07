@@ -25,7 +25,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onMessageWithId(id: String, senderName: String, senderStableId: String, messageId: String, body: String) {
             onMessage(id, senderName, senderStableId, body)
         }
-        fun onDeliveryAck(id: String, messageId: String) {}
+        fun onDeliveryAck(id: String, messageId: String, senderStableId: String = "") {}
         fun onMessageSendFailed(messageId: String) {}
         fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
         fun onFileReceived(id: String, name: String, file: File)
@@ -95,11 +95,17 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             } else listener.onStatus("Nearby connection was not approved. Try again.")
         }
         override fun onDisconnected(id: String) {
-            val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
-            val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
-            if (empty) listener.onDisconnected(id, details.first, details.second)
-            else {
-                listener.onLost(id, details.first)
+            val remainingConnections = synchronized(activeEndpoints) {
+                activeEndpoints.remove(id)
+                activeEndpoints.size
+            }
+            val details = synchronized(names) {
+                (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user")
+            }
+            // Report every endpoint disconnect. The activity decides whether this was
+            // the selected chat or another peer, so one lost peer cannot hide the rest.
+            listener.onDisconnected(id, details.first, details.second)
+            if (remainingConnections > 0) {
                 listener.onStatus("One nearby person disconnected. Your other direct connections remain active.")
             }
         }
@@ -188,7 +194,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val messageId = envelope.optString("id")
             if (kind == "chat_ack") {
                 if (bytes == null || bytes.size > 1024 || messageId.isBlank() || messageId.length > 80) return
-                listener.onDeliveryAck(endpointId, messageId)
+                val ackSenderStableId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                listener.onDeliveryAck(endpointId, messageId, ackSenderStableId)
                 return
             }
             val body = envelope.optString("body")
