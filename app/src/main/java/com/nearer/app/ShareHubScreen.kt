@@ -100,7 +100,7 @@ fun NeaRerShareHub(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = ShareGold, contentColor = ShareMidnight)
-                ) { Text(if (openSendSession == null) "Choose files to share" else "Share more files", fontWeight = FontWeight.Bold) }
+                ) { Text(if (openSendSession == null) "Choose files to share" else "Replace shared files", fontWeight = FontWeight.Bold) }
                 if (openSendSession != null) {
                     Text("YOUR TEMPORARY WI-FI", color = ShareMint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     Text(openSendSession.ssid, color = ShareWhite, fontSize = 17.sp, fontWeight = FontWeight.Bold)
