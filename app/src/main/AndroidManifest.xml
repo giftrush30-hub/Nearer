@@ -39,6 +39,14 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/nearer_file_paths" />
         </provider>
+        <service
+            android:name=".NeaRerFlashScreeningService"
+            android:permission="android.permission.BIND_SCREENING_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
         <activity
             android:name=".MainActivity"
             android:exported="true">
