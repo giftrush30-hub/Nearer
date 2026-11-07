@@ -16,6 +16,12 @@ class LudoRoomProtocolTest {
         val packet = LudoRoomProtocol.parse("""{"type":"chat","roomId":"room-123","body":"Good game"}""")
         assertEquals("Good game", packet?.body)
     }
+    @Test fun roundTripsSequencedMoveIntent() {
+        val raw = LudoRoomProtocol.encode("intent", "room-123", """{"action":"roll"}""", 4L)!!
+        val packet = LudoRoomProtocol.parse(raw)
+        assertEquals(4L, packet?.sequence)
+        assertEquals("""{"action":"roll"}""", packet?.body)
+    }
     @Test fun roundTripsSequencedStateEnvelope() {
         val raw = LudoRoomProtocol.encode("state", "room-123", "snapshot", 7L)!!
         val packet = LudoRoomProtocol.parse(raw)

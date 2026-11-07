@@ -5,9 +5,9 @@ import org.json.JSONObject
 internal data class LudoRoomPacket(val type: String, val roomId: String, val body: String = "", val sequence: Long = 0L)
 
 internal object LudoRoomProtocol {
-    private val types = setOf("invite", "accept", "chat", "leave", "state", "voice_note")
+    private val types = setOf("invite", "accept", "chat", "leave", "state", "intent", "voice_note")
     fun encode(type: String, roomId: String, body: String = "", sequence: Long = 0L): String? {
-        val bodyLimit = if (type == "state") 12_000 else 300
+        val bodyLimit = when (type) { "state" -> 12_000; "intent" -> 100; else -> 300 }
         if (type !in types || roomId.isBlank() || roomId.length > 64 ||
             body.length > bodyLimit || sequence < 0L) return null
         if (type == "chat" && body.isBlank()) return null
