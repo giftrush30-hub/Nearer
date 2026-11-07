@@ -2668,17 +2668,36 @@ private fun NeaRerHome(
                     Modifier.fillMaxWidth().heightIn(max = 430.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        listOf("All", "Received", "Sent").forEach { filter ->
-                            TextButton(onClick = { sharedFilesFilter = filter }) { Text(filter.uppercase(), color = if (sharedFilesFilter == filter) Gold else Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                    OutlinedTextField(
+                        value = sharedFilesSearch,
+                        onValueChange = { sharedFilesSearch = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("Search files by name", color = Muted, fontSize = 12.sp) }
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("All", "Received", "Sent").forEach { filter ->
+                                TextButton(onClick = { sharedFilesFilter = filter }) { Text(filter.uppercase(), color = if (sharedFilesFilter == filter) Gold else Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                            }
                         }
+                        TextButton(onClick = { sharedFilesSort = when (sharedFilesSort) { "Recent" -> "Oldest"; "Oldest" -> "Name"; "Name" -> "Largest"; else -> "Recent" } }) {
+                            Text("SORT: $sharedFilesSort", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    val searchTerm = sharedFilesSearch.trim()
+                    val sortedReceived = receivedFiles.filter { it.displayName.contains(searchTerm, ignoreCase = true) }.let { files ->
+                        when (sharedFilesSort) { "Oldest" -> files.sortedBy { it.file.lastModified() }; "Name" -> files.sortedBy { it.displayName.lowercase() }; "Largest" -> files.sortedByDescending { it.file.length() }; else -> files.sortedByDescending { it.file.lastModified() } }
+                    }
+                    val sortedSent = sentFiles.filter { it.name.contains(searchTerm, ignoreCase = true) }.let { files ->
+                        when (sharedFilesSort) { "Oldest" -> files.sortedBy { it.timestamp }; "Name" -> files.sortedBy { it.name.lowercase() }; "Largest" -> files.sortedByDescending { it.sizeBytes }; else -> files.sortedByDescending { it.timestamp } }
                     }
                     val showReceived = sharedFilesFilter != "Sent"
                     val showSent = sharedFilesFilter != "Received"
-                    if ((!showReceived || receivedFiles.isEmpty()) && (!showSent || sentFiles.isEmpty())) {
+                    if ((!showReceived || sortedReceived.isEmpty()) && (!showSent || sortedSent.isEmpty())) {
                         Text("Successfully received and sent files appear here. Sent files can be reopened while their original location remains available.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                     }
-                    if (showReceived) receivedFiles.forEach { item ->
+                    if (showReceived) sortedReceived.forEach { item ->
                             val exists = item.file.exists()
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
@@ -2696,13 +2715,12 @@ private fun NeaRerHome(
                                         Text(item.displayName, color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Text(if (exists) "${formatTransferSize(item.file.length())} • ${formatMessageTime(item.file.lastModified())}" else "File is no longer available", color = Muted, fontSize = 9.sp)
                                     }
-                                    TextButton(onClick = { if (exists) onOpenFile(item) }) {
-                                        Text(if (exists) "OPEN" else "MISSING", color = if (exists) Gold else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                    }
+                                    TextButton(onClick = { if (exists) onOpenFile(item) }) { Text(if (exists) "OPEN" else "MISSING", color = if (exists) Gold else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
+                                    if (exists) TextButton(onClick = { onShareReceivedFile(item) }) { Text("SHARE", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
                                 }
                             }
                         }
-                    if (showSent) sentFiles.forEach { item ->
+                    if (showSent) sortedSent.forEach { item ->
                         Surface(Modifier.fillMaxWidth(), color = Color(0xFF173F78), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Gold.copy(alpha = 0.25f))) {
                             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                                 Text("↑", color = Gold, fontSize = 18.sp, fontWeight = FontWeight.Black)
@@ -2711,6 +2729,8 @@ private fun NeaRerHome(
                                     Text("${formatTransferSize(item.sizeBytes)} • Sent ${formatMessageTime(item.timestamp)}", color = Muted, fontSize = 9.sp)
                                 }
                                 TextButton(onClick = { onOpenSentFile(item) }) { Text("OPEN", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
+                                TextButton(onClick = { onResendSentFile(item) }) { Text("SEND AGAIN", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Bold) }
+                                TextButton(onClick = { onShareSentFile(item) }) { Text("SHARE", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Bold) }
                             }
                         }
                     }
