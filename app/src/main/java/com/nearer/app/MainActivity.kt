@@ -1491,25 +1491,10 @@ class MainActivity : ComponentActivity() {
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("pending_chat_files", array.toString()).apply()
     }
 
-    private fun persistMessages() {
-        try {
-            val array = JSONArray()
-            chatMessages.takeLast(500).forEach { message ->
-                array.put(JSONObject()
-                    .put("id", message.id)
-                    .put("body", message.body)
-                    .put("outgoing", message.outgoing)
-                    .put("delivery", message.delivery)
-                    .put("timestamp", message.timestamp)
-                    .put("conversationId", message.conversationId)
-                    .put("conversationName", message.conversationName))
-            }
-            getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-                .edit().putString("messages", array.toString()).apply()
-        } catch (_: Exception) { }
-    }
-
-    private fun persistReceivedMessageThenAcknowledge(messageId: String, nearbyEndpointId: String? = null, socket: Socket? = null) {
+    // Capture message state on the UI thread, then serialize every write through one
+    // executor. This prevents an older asynchronous apply() from overwriting a newer
+    // durable snapshot after a delivery receipt has already been sent.
+    private fun serializeChatMessages(): String {
         val array = JSONArray()
         chatMessages.takeLast(500).forEach { message ->
             array.put(JSONObject()
@@ -1521,7 +1506,22 @@ class MainActivity : ComponentActivity() {
                 .put("conversationId", message.conversationId)
                 .put("conversationName", message.conversationName))
         }
-        val snapshot = array.toString()
+        return array.toString()
+    }
+
+    private fun persistMessages() {
+        val snapshot = try { serializeChatMessages() } catch (_: Exception) { return }
+        messagePersistence.execute {
+            getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .edit().putString("messages", snapshot).commit()
+        }
+    }
+
+    private fun persistReceivedMessageThenAcknowledge(messageId: String, nearbyEndpointId: String? = null, socket: Socket? = null) {
+        val snapshot = try { serializeChatMessages() } catch (_: Exception) {
+            chatNotice = "NeaRer could not prepare this message for saving. Please retry."
+            return
+        }
         messagePersistence.execute {
             val saved = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .edit().putString("messages", snapshot).commit()
