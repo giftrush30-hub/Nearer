@@ -319,25 +319,19 @@ private class FastShareHttpServer(
         output.write("Connection: close\r\n\r\n".toByteArray())
         if (headOnly) return
         stream?.use { source ->
-            val buffer = ByteArray(64 * 1024)
-            var remaining = count
             var sent = 0L
             try {
-                while (remaining > 0 && running) {
-                    val read = source.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-                    if (read < 0) break
-                    if (read == 0) continue
-                    output.write(buffer, 0, read)
-                    remaining -= read
-                    sent += read
-                    if (sent == count || sent % (1024L * 1024L) < read) {
-                        output.flush()
-                        onTransferUpdate(sent, count, false, false, partialTransfer)
-                    }
+                val result = StreamCopy.copy(
+                    input = source,
+                    output = output,
+                    expectedBytes = count,
+                    shouldContinue = { running }
+                ) { copied ->
+                    sent = copied
+                    onTransferUpdate(copied, count, false, false, partialTransfer)
                 }
-                output.flush()
-                val completed = sent == count && running
-                onTransferUpdate(sent, count, completed, !completed, partialTransfer)
+                sent = result.bytesCopied
+                onTransferUpdate(sent, count, result.complete, !result.complete, partialTransfer)
             } catch (error: Exception) {
                 onTransferUpdate(sent, count, false, true, partialTransfer)
                 throw error
