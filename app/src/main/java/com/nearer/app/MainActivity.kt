@@ -327,8 +327,29 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     incomingTransferName = null
                     incomingProgress = 0f
-                    receivedFiles.add(0, ReceivedFile(name, file))
-                    chatNotice = "Received and saved: $name. Tap it below to open."
+                    if (name.endsWith(".nearerapp", ignoreCase = true)) {
+                        appShareNotice = "App package received. Verifying its APK components and signing identity…"
+                        io.execute {
+                            try {
+                                val verified = AppShareArchive(this@MainActivity).validateAndExtract(file)
+                                runOnUiThread {
+                                    pendingAppShare = verified
+                                    appShareNotice = "Verified \${verified.label}. Review it below before asking Android to install."
+                                    chatNotice = "Received and verified app package: \${verified.label}."
+                                    file.delete()
+                                }
+                            } catch (error: Exception) {
+                                file.delete()
+                                runOnUiThread {
+                                    appShareNotice = "The received app package was rejected: \${error.localizedMessage ?: "verification failed"}"
+                                    chatNotice = "App package rejected. No installation was started."
+                                }
+                            }
+                        }
+                    } else {
+                        receivedFiles.add(0, ReceivedFile(name, file))
+                        chatNotice = "Received and saved: $name. Tap it below to open."
+                    }
                 }
             }
             override fun onFileStatus(message: String) {
@@ -479,6 +500,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_DISCOVERY_PERMISSION) {
+            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) startDiscovery()
+            else statusMessage = "Nearby permissions were not granted. NeaRer cannot search for nearby devices."
+        }
         if (requestCode == REQUEST_OPEN_SEND_PERMISSION) {
             if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
                 val queued = pendingOpenSendUris
@@ -524,13 +549,13 @@ class MainActivity : ComponentActivity() {
         openSendNotice = "Preparing your files and starting a private local Wi-Fi network…"
         io.execute {
             try {
-                val folder = File(cacheDir, "opensend/\${UUID.randomUUID()}").apply { mkdirs() }
+                val folder = File(cacheDir, "opensend/${UUID.randomUUID()}").apply { mkdirs() }
                 val files = uris.mapIndexed { index, uri ->
                     val displayName = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
                         if (cursor.moveToFirst()) cursor.getString(0) else null
-                    }?.substringAfterLast('/')?.take(120)?.ifBlank { null } ?: "shared-file-\${index + 1}"
-                    val safeName = displayName.replace(Regex("[^A-Za-z0-9._ -]"), "_").ifBlank { "shared-file-\${index + 1}" }
-                    val target = File(folder, "\${index + 1}-$safeName")
+                    }?.substringAfterLast('/')?.take(120)?.ifBlank { null } ?: "shared-file-${index + 1}"
+                    val safeName = displayName.replace(Regex("[^A-Za-z0-9._ -]"), "_").ifBlank { "shared-file-${index + 1}" }
+                    val target = File(folder, "${index + 1}-$safeName")
                     contentResolver.openInputStream(uri)?.use { input ->
                         FileOutputStream(target).use { output -> input.copyTo(output, 64 * 1024) }
                     } ?: throw IllegalStateException("Could not read $displayName.")
@@ -549,7 +574,7 @@ class MainActivity : ComponentActivity() {
                     })
                 }
             } catch (error: Exception) {
-                runOnUiThread { openSendNotice = "Could not prepare files: \${error.localizedMessage ?: "try again"}" }
+                runOnUiThread { openSendNotice = "Could not prepare files: ${error.localizedMessage ?: "try again"}" }
             }
         }
     }
@@ -573,12 +598,12 @@ class MainActivity : ComponentActivity() {
                     shareableApps.clear()
                     shareableApps.addAll(apps)
                     appShareLoading = false
-                    appShareNotice = "\${apps.size} installed apps are available to review. Choose only apps you have permission to share."
+                    appShareNotice = "${apps.size} installed apps are available to review. Choose only apps you have permission to share."
                 }
             } catch (error: Exception) {
                 runOnUiThread {
                     appShareLoading = false
-                    appShareNotice = "Could not read installed apps: \${error.localizedMessage ?: "permission or system error"}"
+                    appShareNotice = "Could not read installed apps: ${error.localizedMessage ?: "permission or system error"}"
                 }
             }
         }
@@ -600,16 +625,16 @@ class MainActivity : ComponentActivity() {
                 selected.forEach { app ->
                     val prepared = catalog.preparePackage(app)
                     val archive = AppShareArchive(this).create(prepared)
-                    val uri = FileProvider.getUriForFile(this, "\$packageName.files", archive)
-                    val sent = nearbyTransport?.sendFile(endpoint, uri, "\${app.label}.nearerapp")
-                    if (sent == null) throw IllegalStateException("Could not start sending \${app.label}.")
+                    val uri = FileProvider.getUriForFile(this, "$packageName.files", archive)
+                    val sent = nearbyTransport?.sendFile(endpoint, uri, "${app.label}.nearerapp")
+                    if (sent == null) throw IllegalStateException("Could not start sending ${app.label}.")
                 }
                 runOnUiThread {
-                    appShareNotice = "App package transfer started for \${selected.size} app(s). The receiver must review and approve installation."
+                    appShareNotice = "App package transfer started for ${selected.size} app(s). The receiver must review and approve installation."
                 }
             } catch (error: Exception) {
                 runOnUiThread {
-                    appShareNotice = "AppShare could not prepare the transfer: \${error.localizedMessage ?: "try again"}"
+                    appShareNotice = "AppShare could not prepare the transfer: ${error.localizedMessage ?: "try again"}"
                 }
             }
         }
@@ -633,7 +658,7 @@ class MainActivity : ComponentActivity() {
                 }
             } catch (error: Exception) {
                 runOnUiThread {
-                    appShareNotice = "Could not prepare Android installation: \${error.localizedMessage ?: "try again"}"
+                    appShareNotice = "Could not prepare Android installation: ${error.localizedMessage ?: "try again"}"
                 }
             }
         }
