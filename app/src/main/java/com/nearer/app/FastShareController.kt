@@ -304,8 +304,9 @@ private class FastShareHttpServer(
         // Start the throughput clock before sending the HTTP response or first byte.
         val partialTransfer = ByteRange.isPartialTransfer(resolvedRange, fileLength)
         if (!headOnly) onTransferUpdate(0L, count, false, false, partialTransfer)
-        val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\nContent-Type: $mimeType\r\nContent-Length: $count\r\nAccept-Ranges: bytes\r\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\r\n".toByteArray())
+        output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\n".toByteArray())
+        output.write(FileHttpHeaders.fileHeaders(mimeType, fileName).toByteArray())
+        output.write("Content-Length: $count\r\nAccept-Ranges: bytes\r\n".toByteArray())
         response.contentRange?.let { output.write("Content-Range: $it\r\n".toByteArray()) }
         output.write("Connection: close\r\n\r\n".toByteArray())
         if (headOnly) return
@@ -347,8 +348,9 @@ private class FastShareHttpServer(
         }
         // Start the throughput clock before the first chunk is read or written.
         if (!headOnly) onTransferUpdate(0L, -1L, false, false, false)
-        val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        output.write("HTTP/1.1 200 OK\r\nContent-Type: $mimeType\r\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".toByteArray())
+        output.write("HTTP/1.1 200 OK\r\n".toByteArray())
+        output.write(FileHttpHeaders.fileHeaders(mimeType, fileName).toByteArray())
+        output.write("Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n".toByteArray())
         if (headOnly) return
         stream?.use { source ->
             var sent = 0L
