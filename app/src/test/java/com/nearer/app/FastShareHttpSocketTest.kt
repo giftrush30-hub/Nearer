@@ -93,6 +93,14 @@ class FastShareHttpSocketTest {
         assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
+    @Test fun unsatisfiableRangeReturns416WithUnsatisfiedContentRange() {
+        val response = exchange("GET /download HTTP/1.1\r\nRange: bytes=99-120\r\n\r\n")
+        assertTrue(response.startsWith("HTTP/1.1 416 Range Not Satisfiable\r\n"))
+        assertTrue(response.contains("Content-Length: 0\r\n"))
+        assertTrue(response.contains("Content-Range: bytes */10\r\n"))
+        assertTrue(response.endsWith("\r\n\r\n"))
+    }
+
     @Test fun headRequestReturnsMetadataWithoutFileBody() {
         val response = exchange("HEAD /download HTTP/1.1\r\n\r\n")
         assertTrue(response.startsWith("HTTP/1.1 200 OK\r\n"))
