@@ -168,7 +168,7 @@ class MainActivity : ComponentActivity() {
     private val io = Executors.newCachedThreadPool()
     private val approvalDecision = LinkedBlockingQueue<Boolean>()
     private val chatMessages = mutableStateListOf<ChatMessage>()
-    private val pendingChatFileUris = mutableListOf<String>()
+    private val pendingChatFileUris = mutableStateListOf<String>()
     private val communityGroups = mutableStateListOf<CommunityGroup>()
     private val communityMessages = mutableStateListOf<CommunityChatMessage>()
     private var selectedCommunityCode by mutableStateOf<String?>(null)
@@ -344,8 +344,6 @@ class MainActivity : ComponentActivity() {
                     approvalMessage = "Connection approved"
                     chatNotice = "Connected to $name. Offline chat is ready."
                     statusMessage = "Connected to $name using Bluetooth / nearby Wi-Fi."
-                    flushQueuedChatMessages()
-                    flushPendingChatFiles()
                 }
             }
             override fun onDisconnected(id: String, stableId: String, name: String) {
@@ -476,6 +474,9 @@ class MainActivity : ComponentActivity() {
                     chatNotice = chatNotice,
                     receivedFiles = receivedFiles,
                     onSendMessage = ::sendChatMessage,
+                    onSendQueuedMessages = ::flushQueuedChatMessages,
+                    pendingChatFilesCount = pendingChatFileUris.size,
+                    onSendQueuedFiles = ::flushPendingChatFiles,
                     groups = communityGroups.toList(),
                     groupMessages = communityMessages.toList(),
                     selectedGroupCode = selectedCommunityCode,
@@ -899,8 +900,6 @@ class MainActivity : ComponentActivity() {
                         connectionMessage = "NeaRer connection approved"
                         chatNotice = "Connected directly to $name. Say hello."
                         statusMessage = "You approved $name. Private chat is ready."
-                        flushQueuedChatMessages()
-                        flushPendingChatFiles()
                     }
                     startMessageReader(socket)
                 } else {
@@ -963,8 +962,6 @@ class MainActivity : ComponentActivity() {
                             connectionMessage = "NeaRer connection approved"
                             chatNotice = "Connected directly to the other phone. Say hello."
                             statusMessage = "Connection approved. Private chat is ready."
-                            flushQueuedChatMessages()
-                            flushPendingChatFiles()
                         }
                         startMessageReader(socket)
                     }
@@ -2166,6 +2163,9 @@ private fun NeaRerHome(
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
     onSendMessage: (String) -> Unit,
+    onSendQueuedMessages: () -> Unit,
+    pendingChatFilesCount: Int,
+    onSendQueuedFiles: () -> Unit,
     groups: List<CommunityGroup>,
     groupMessages: List<CommunityChatMessage>,
     selectedGroupCode: String?,
@@ -3833,6 +3833,16 @@ private fun NeaRerHome(
                             }
                         }
                         Text(chatNotice, color = Muted, fontSize = 10.sp)
+                        if (messages.any { it.outgoing && it.delivery == "Queued" }) {
+                            Button(onClick = onSendQueuedMessages, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(13.dp), colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)) {
+                                Text("SEND SAVED MESSAGES TO ${connectedDeviceName ?: "CONNECTED PHONE"}", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                        if (pendingChatFilesCount > 0) {
+                            Button(onClick = onSendQueuedFiles, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(13.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A4B80), contentColor = White)) {
+                                Text("SEND $pendingChatFilesCount PREPARED ATTACHMENT(S)", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
                         if (receivedFiles.isNotEmpty()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("RECENT FILES", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
@@ -3929,6 +3939,7 @@ private fun NeaRerHome(
                             }
                         }
                         Text(chatNotice, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                        if (pendingChatFilesCount > 0) Text("$pendingChatFilesCount attachment(s) saved on this phone • not sent yet.", color = Gold, fontSize = 9.sp)
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
