@@ -1794,6 +1794,8 @@ class MainActivity : ComponentActivity() {
                                     runOnUiThread {
                                         incomingTransferName = safeName
                                         incomingProgress = 0f
+                                        incomingTransferredBytes = 0L
+                                        incomingTotalBytes = expected
                                     }
                                 }
                             }
@@ -1812,6 +1814,8 @@ class MainActivity : ComponentActivity() {
                                             runOnUiThread {
                                                 incomingTransferName = null
                                                 incomingProgress = 0f
+                                                incomingTransferredBytes = 0L
+                                                incomingTotalBytes = 0L
                                                 chatNotice = "The received file was larger than its declared size. Transfer stopped."
                                             }
                                             synchronized(writerLock) { peerWriter?.println("FILE_DONE|${parts[1]}|ERROR") }
@@ -1822,6 +1826,8 @@ class MainActivity : ComponentActivity() {
                                             } else 0f
                                             runOnUiThread {
                                                 incomingProgress = fraction
+                                                incomingTransferredBytes = transfer.receivedBytes
+                                                incomingTotalBytes = transfer.expectedBytes
                                                 chatNotice = if (transfer.expectedBytes > 0L) {
                                                     "Receiving ${transfer.name} • ${(fraction * 100).toInt()}%"
                                                 } else {
@@ -1837,6 +1843,8 @@ class MainActivity : ComponentActivity() {
                                         runOnUiThread {
                                             incomingTransferName = null
                                             incomingProgress = 0f
+                                            incomingTransferredBytes = 0L
+                                            incomingTotalBytes = 0L
                                             chatNotice = "The received file could not be written. Transfer stopped."
                                         }
                                     }
@@ -1900,6 +1908,8 @@ class MainActivity : ComponentActivity() {
                             runOnUiThread {
                                 incomingTransferName = null
                                 incomingProgress = 0f
+                                incomingTransferredBytes = 0L
+                                incomingTotalBytes = 0L
                                 chatNotice = "The other phone cancelled the file transfer."
                             }
                         }
