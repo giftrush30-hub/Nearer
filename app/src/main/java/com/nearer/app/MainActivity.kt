@@ -391,6 +391,9 @@ class MainActivity : ComponentActivity() {
                     incomingProgress = 0f
                     incomingTransferredBytes = 0L
                     incomingTotalBytes = 0L
+                    incomingSpeedBytesPerSecond = 0L
+                    incomingRateSampleAt = 0L
+                    incomingRateSampleBytes = 0L
                     receivedFiles.add(0, ReceivedFile(name, file))
                     chatNotice = "Received and saved: $name. Tap it below to open."
                 }
@@ -408,6 +411,9 @@ class MainActivity : ComponentActivity() {
                         outgoingProgress = 0f
             outgoingTransferredBytes = 0L
             outgoingTotalBytes = 0L
+            outgoingSpeedBytesPerSecond = 0L
+            outgoingRateSampleAt = 0L
+            outgoingRateSampleBytes = 0L
                     }
                     if (message.startsWith("Nearby file transfer failed") ||
                         message.startsWith("Nearby file transfer cancelled")) {
@@ -415,6 +421,9 @@ class MainActivity : ComponentActivity() {
                         incomingProgress = 0f
                         incomingTransferredBytes = 0L
                         incomingTotalBytes = 0L
+                        incomingSpeedBytesPerSecond = 0L
+                        incomingRateSampleAt = 0L
+                        incomingRateSampleBytes = 0L
                     }
                 }
             }
@@ -1037,6 +1046,9 @@ class MainActivity : ComponentActivity() {
             outgoingProgress = 0f
             outgoingTransferredBytes = 0L
             outgoingTotalBytes = 0L
+            outgoingSpeedBytesPerSecond = 0L
+            outgoingRateSampleAt = 0L
+            outgoingRateSampleBytes = 0L
             chatReady = false
         }
         if (Looper.myLooper() == Looper.getMainLooper()) resetUi() else runOnUiThread { resetUi() }
@@ -1702,6 +1714,9 @@ class MainActivity : ComponentActivity() {
             outgoingProgress = 0f
             outgoingTransferredBytes = 0L
             outgoingTotalBytes = 0L
+            outgoingSpeedBytesPerSecond = 0L
+            outgoingRateSampleAt = 0L
+            outgoingRateSampleBytes = 0L
             chatNotice = "File transfer cancelled."
             return
         }
@@ -1736,6 +1751,9 @@ class MainActivity : ComponentActivity() {
                 outgoingProgress = 0f
             outgoingTransferredBytes = 0L
             outgoingTotalBytes = 0L
+            outgoingSpeedBytesPerSecond = 0L
+            outgoingRateSampleAt = 0L
+            outgoingRateSampleBytes = 0L
                 chatNotice = "Preparing to send $fileName over Nearby Connections…"
             }
             return
@@ -1750,6 +1768,9 @@ class MainActivity : ComponentActivity() {
         outgoingProgress = 0f
             outgoingTransferredBytes = 0L
             outgoingTotalBytes = 0L
+            outgoingSpeedBytesPerSecond = 0L
+            outgoingRateSampleAt = 0L
+            outgoingRateSampleBytes = 0L
         io.execute {
             var fileName = "shared-file"
             var fileSize = 0L
@@ -1812,6 +1833,9 @@ class MainActivity : ComponentActivity() {
                     outgoingProgress = 0f
             outgoingTransferredBytes = 0L
             outgoingTotalBytes = 0L
+            outgoingSpeedBytesPerSecond = 0L
+            outgoingRateSampleAt = 0L
+            outgoingRateSampleBytes = 0L
                     chatNotice = if (e.message?.contains("cancel", ignoreCase = true) == true) {
                         "File transfer cancelled."
                     } else {
@@ -1898,6 +1922,9 @@ class MainActivity : ComponentActivity() {
                                                 incomingProgress = 0f
                                                 incomingTransferredBytes = 0L
                                                 incomingTotalBytes = 0L
+                                                incomingSpeedBytesPerSecond = 0L
+                                                incomingRateSampleAt = 0L
+                                                incomingRateSampleBytes = 0L
                                                 chatNotice = "The received file was larger than its declared size. Transfer stopped."
                                             }
                                             synchronized(writerLock) { peerWriter?.println("FILE_DONE|${parts[1]}|ERROR") }
@@ -1928,6 +1955,9 @@ class MainActivity : ComponentActivity() {
                                             incomingProgress = 0f
                                             incomingTransferredBytes = 0L
                                             incomingTotalBytes = 0L
+                                            incomingSpeedBytesPerSecond = 0L
+                                            incomingRateSampleAt = 0L
+                                            incomingRateSampleBytes = 0L
                                             chatNotice = "The received file could not be written. Transfer stopped."
                                         }
                                     }
@@ -1949,6 +1979,9 @@ class MainActivity : ComponentActivity() {
                                             incomingProgress = 0f
                                             incomingTransferredBytes = 0L
                                             incomingTotalBytes = 0L
+                                            incomingSpeedBytesPerSecond = 0L
+                                            incomingRateSampleAt = 0L
+                                            incomingRateSampleBytes = 0L
                                             receivedFiles.add(0, ReceivedFile(transfer.name, transfer.file))
                                             chatNotice = "Received and verified: ${transfer.name}. Tap it below to open."
                                         }
@@ -1961,6 +1994,9 @@ class MainActivity : ComponentActivity() {
                                             incomingProgress = 0f
                                             incomingTransferredBytes = 0L
                                             incomingTotalBytes = 0L
+                                            incomingSpeedBytesPerSecond = 0L
+                                            incomingRateSampleAt = 0L
+                                            incomingRateSampleBytes = 0L
                                             chatNotice = "The received file failed its integrity check and was discarded."
                                         }
                                     }
@@ -1980,6 +2016,9 @@ class MainActivity : ComponentActivity() {
                                     outgoingProgress = 0f
             outgoingTransferredBytes = 0L
             outgoingTotalBytes = 0L
+            outgoingSpeedBytesPerSecond = 0L
+            outgoingRateSampleAt = 0L
+            outgoingRateSampleBytes = 0L
                                 }
                                 chatNotice = if (ok) "File delivered and verified by the nearby phone." else "The other phone could not verify the file."
                             }
@@ -1995,6 +2034,9 @@ class MainActivity : ComponentActivity() {
                                 incomingProgress = 0f
                                 incomingTransferredBytes = 0L
                                 incomingTotalBytes = 0L
+                                incomingSpeedBytesPerSecond = 0L
+                                incomingRateSampleAt = 0L
+                                incomingRateSampleBytes = 0L
                                 chatNotice = "The other phone cancelled the file transfer."
                             }
                         }
@@ -2017,6 +2059,9 @@ class MainActivity : ComponentActivity() {
                         incomingProgress = 0f
                         incomingTransferredBytes = 0L
                         incomingTotalBytes = 0L
+                        incomingSpeedBytesPerSecond = 0L
+                        incomingRateSampleAt = 0L
+                        incomingRateSampleBytes = 0L
                     }
                     if (wasReady) {
                         chatNotice = "The nearby connection ended. Any unfinished incoming file was discarded. Reconnect to continue chatting."
@@ -2144,6 +2189,7 @@ private fun NeaRerHome(
     var installedApps by remember { mutableStateOf<List<ShareableApp>>(emptyList()) }
     var isLoadingApps by remember { mutableStateOf(false) }
     var appShareNotice by remember { mutableStateOf<String?>(null) }
+    var isPreparingApp by remember { mutableStateOf(false) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
     }
@@ -2267,8 +2313,10 @@ private fun NeaRerHome(
                         Surface(
                             modifier = Modifier.fillMaxWidth().clickable {
                                 showInstalledApps = false
+                                isPreparingApp = true
                                 appShareNotice = "Preparing " + app.label + " for sharing…"
                                 onPrepareAppForSharing(app) { uri ->
+                                    isPreparingApp = false
                                     if (uri != null) {
                                         appShareNotice = app.label + " is prepared. Starting the transfer…"
                                         onSendFile(uri)
@@ -2634,6 +2682,13 @@ private fun NeaRerHome(
                                         Text("▣", color = Gold, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                         Text(notice, color = Color(0xFFFFDFA0), fontSize = 10.sp, lineHeight = 15.sp)
                                     }
+                                }
+                                if (isPreparingApp) {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = Gold,
+                                        trackColor = Color(0xFF24466F)
+                                    )
                                 }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
