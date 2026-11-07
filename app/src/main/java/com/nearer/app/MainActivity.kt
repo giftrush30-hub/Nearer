@@ -150,6 +150,8 @@ class MainActivity : ComponentActivity() {
     private var pendingHybridEndpoint: String? = null
     private var hybridConnected = false
     private var hybridConnectedEndpoint: String? = null
+    private var activeChatPeerId: String = "legacy"
+    private var activeChatPeerName: String = "Nearby person"
     private var meshRelayEnabled by mutableStateOf(false)
     private val discoveryHandler = Handler(Looper.getMainLooper())
     private var discoveryTimeout: Runnable? = null
@@ -345,6 +347,8 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     hybridConnected = true
                     hybridConnectedEndpoint = id
+                    activeChatPeerId = stableId.ifBlank { "nearby:$id" }
+                    activeChatPeerName = name
                     pendingHybridEndpoint = null
                     incomingRequesterName = null
                     connectedDeviceName = name
@@ -361,6 +365,10 @@ class MainActivity : ComponentActivity() {
                     hybridConnectedEndpoint = null
                     val lastName = hybridPeers.remove(id) ?: name
                     recordRecentlySeen(stableId.ifBlank { id }, lastName)
+                    if (activeChatPeerId == stableId || activeChatPeerId == "nearby:$id") {
+                        activeChatPeerId = "legacy"
+                        activeChatPeerName = "Nearby person"
+                    }
                     pendingHybridEndpoint = null
                     val legacyLinkAlive = peerSocket?.isConnected == true && peerSocket?.isClosed == false
                     chatReady = legacyLinkAlive
@@ -391,7 +399,11 @@ class MainActivity : ComponentActivity() {
                         handleCommunityPacket(senderName, senderStableId, body.removePrefix("NR_COMMUNITY:"))
                     } else {
                         if (receivedMessageIds.add(messageId)) {
-                            chatMessages.add(ChatMessage(messageId, body, outgoing = false, delivery = "Received"))
+                            chatMessages.add(ChatMessage(
+                                messageId, body, outgoing = false, delivery = "Received",
+                                conversationId = senderStableId.ifBlank { "nearby:$id" },
+                                conversationName = senderName
+                            ))
                             persistMessages()
                             chatNotice = "Message received and saved from $senderName."
                         }
@@ -1236,7 +1248,9 @@ class MainActivity : ComponentActivity() {
                         body = item.getString("body"),
                         outgoing = item.getBoolean("outgoing"),
                         delivery = item.optString("delivery", "Sent"),
-                        timestamp = item.optLong("timestamp", 0L).takeIf { it > 0L } ?: System.currentTimeMillis()
+                        timestamp = item.optLong("timestamp", 0L).takeIf { it > 0L } ?: System.currentTimeMillis(),
+                        conversationId = item.optString("conversationId", "legacy"),
+                        conversationName = item.optString("conversationName", "Previous chat")
                     )
                     chatMessages.add(message)
                     if (!message.outgoing) receivedMessageIds.add(message.id)
@@ -1269,7 +1283,9 @@ class MainActivity : ComponentActivity() {
                     .put("body", message.body)
                     .put("outgoing", message.outgoing)
                     .put("delivery", message.delivery)
-                    .put("timestamp", message.timestamp))
+                    .put("timestamp", message.timestamp)
+                    .put("conversationId", message.conversationId)
+                    .put("conversationName", message.conversationName))
             }
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .edit().putString("messages", array.toString()).apply()
@@ -1418,7 +1434,12 @@ class MainActivity : ComponentActivity() {
     private fun sendChatMessage(rawText: String) {
         val body = rawText.trim()
         if (body.isEmpty()) return
-        val message = ChatMessage(UUID.randomUUID().toString(), body, outgoing = true, delivery = if (chatReady) "Sending" else "Queued")
+        val message = ChatMessage(
+            UUID.randomUUID().toString(), body, outgoing = true,
+            delivery = if (chatReady) "Sending" else "Queued",
+            conversationId = activeChatPeerId,
+            conversationName = activeChatPeerName
+        )
         chatMessages.add(message)
         persistMessages()
         if (!chatReady) {
@@ -2157,7 +2178,11 @@ class MainActivity : ComponentActivity() {
                                 } catch (_: Exception) { "" }
                                 if (body.isNotBlank() && receivedMessageIds.add(id)) {
                                     runOnUiThread {
-                                        chatMessages.add(ChatMessage(id, body, outgoing = false, delivery = "Received"))
+                                        chatMessages.add(ChatMessage(
+                                    id, body, outgoing = false, delivery = "Received",
+                                    conversationId = activeChatPeerId,
+                                    conversationName = activeChatPeerName
+                                ))
                                         persistMessages()
                                         chatNotice = "New message received directly."
                                     }
@@ -4899,7 +4924,9 @@ private data class ChatMessage(
     val body: String,
     val outgoing: Boolean,
     val delivery: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val conversationId: String = "legacy",
+    val conversationName: String = "Previous chat"
 )
 
 private fun formatMessageTime(timestamp: Long): String =
