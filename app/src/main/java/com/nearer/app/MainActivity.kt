@@ -421,6 +421,7 @@ class MainActivity : ComponentActivity() {
         })
         if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
         restoreLocalData()
+        restoreReceivedFiles()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
         restoreCommunityData()
         nearbyTransport?.setDisplayName(displayName)
@@ -1039,6 +1040,21 @@ class MainActivity : ComponentActivity() {
             chatReady = false
         }
         if (Looper.myLooper() == Looper.getMainLooper()) resetUi() else runOnUiThread { resetUi() }
+    }
+
+    private fun restoreReceivedFiles() {
+        val folder = File(filesDir, "received")
+        if (!folder.exists() || !folder.isDirectory) return
+        val restored = folder.listFiles()
+            ?.filter { it.isFile && it.length() > 0L }
+            ?.sortedByDescending { it.lastModified() }
+            ?.take(30)
+            .orEmpty()
+        receivedFiles.clear()
+        restored.forEach { file ->
+            val visibleName = file.name.replaceFirst(Regex("^\\d{10,}-"), "").ifBlank { file.name }
+            receivedFiles.add(ReceivedFile(visibleName, file))
+        }
     }
 
     private fun restoreLocalData() {
@@ -2123,6 +2139,7 @@ private fun NeaRerHome(
     var pendingFileTypes by remember { mutableStateOf<Array<String>?>(null) }
     var receiveMode by remember { mutableStateOf(false) }
     var showInstalledApps by remember { mutableStateOf(false) }
+    var showReceivedHistory by remember { mutableStateOf(false) }
     var pendingAppPicker by remember { mutableStateOf(false) }
     var installedApps by remember { mutableStateOf<List<ShareableApp>>(emptyList()) }
     var isLoadingApps by remember { mutableStateOf(false) }
@@ -2288,6 +2305,54 @@ private fun NeaRerHome(
                 }
             },
             confirmButton = { TextButton(onClick = { showInstalledApps = false }) { Text("CLOSE", color = Gold) } }
+        )
+    }
+    if (showReceivedHistory) {
+        AlertDialog(
+            onDismissRequest = { showReceivedHistory = false },
+            containerColor = Color(0xFF102B50),
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("RECEIVED FILES", color = White, fontWeight = FontWeight.Black)
+                    Text("${receivedFiles.size} saved on this phone", color = Muted, fontSize = 10.sp)
+                }
+            },
+            text = {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 430.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (receivedFiles.isEmpty()) {
+                        Text("Files you receive will appear here. Your recent received files stay listed when you reopen NeaRer.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    } else {
+                        receivedFiles.forEach { item ->
+                            val exists = item.file.exists()
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Color(0xFF173F78),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Color(0xFF347CEB).copy(alpha = 0.45f))
+                            ) {
+                                Row(
+                                    Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                                ) {
+                                    Text(if (exists) "✓" else "!" , color = if (exists) Color(0xFF8EF0C6) else Color(0xFFFFA5AE), fontSize = 17.sp, fontWeight = FontWeight.Black)
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(item.displayName, color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(if (exists) "${formatTransferSize(item.file.length())} • Saved on this phone" else "File is no longer available", color = Muted, fontSize = 9.sp)
+                                    }
+                                    TextButton(onClick = { if (exists) onOpenFile(item) }) {
+                                        Text(if (exists) "OPEN" else "MISSING", color = if (exists) Gold else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showReceivedHistory = false }) { Text("DONE", color = Gold) } }
         )
     }
     if (!hasChosenName) {
@@ -2987,6 +3052,15 @@ private fun NeaRerHome(
                                         }
                                     }
                                 }
+                                if (receivedFiles.isNotEmpty()) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("RECENTLY RECEIVED", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 0.7.sp)
+                                        Spacer(Modifier.weight(1f))
+                                        TextButton(onClick = { showReceivedHistory = true }) {
+                                            Text("VIEW ALL · ${receivedFiles.size}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                        }
+                                    }
+                                }
                                 receivedFiles.take(2).forEach { fileItem ->
                                     val sizeBytes = fileItem.file.length()
                                     val sizeLabel = when {
@@ -3594,6 +3668,15 @@ private fun NeaRerHome(
                             }
                         }
                         Text(chatNotice, color = Muted, fontSize = 10.sp)
+                        if (receivedFiles.isNotEmpty()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("RECENT FILES", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                Spacer(Modifier.weight(1f))
+                                TextButton(onClick = { showReceivedHistory = true }) {
+                                    Text("VIEW ALL", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                }
+                            }
+                        }
                         receivedFiles.take(3).forEach { fileItem ->
                             Button(
                                 onClick = { onOpenFile(fileItem) },
