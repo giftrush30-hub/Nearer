@@ -2295,6 +2295,18 @@ private fun NeaRerHome(
                         ) { Text("Fast Share • multiple large files", fontWeight = FontWeight.Bold) }
                         Text("Send a large video to a phone without NeaRer using a temporary local Wi-Fi connection. No mobile data.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                         Text(fastShare.status, color = if (fastShare.details != null) Mint else Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        if (fastShare.history.isNotEmpty()) {
+                            Text("RECENT FAST SHARE ACTIVITY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            fastShare.history.take(5).forEach { entry ->
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(entry.fileName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("${entry.bytesTransferred / (1024 * 1024)} MB · ${entry.result}", color = Muted, fontSize = 10.sp)
+                                    }
+                                    Text(java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(entry.timestampMillis)), color = Muted, fontSize = 10.sp)
+                                }
+                            }
+                        }
                         fastShare.details?.let { share ->
                             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Midnight) {
                                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
