@@ -453,6 +453,7 @@ internal fun FileCentreScreen(
             pickedItems.forEach { picked ->
                 if (items.none { it.id == picked.id }) items.add(picked)
                 if (picked.id !in selected) selected.add(picked.id)
+                markRecent(picked.id)
             }
             notice = "${pickedItems.size} file(s) added to your selection basket."
         }
@@ -474,6 +475,7 @@ internal fun FileCentreScreen(
                 folderItems.forEach { found ->
                     if (items.none { it.id == found.id }) items.add(found)
                     if (found.id !in selected) selected.add(found.id)
+                    markRecent(found.id)
                 }
                 loading = false
                 notice = if (folderItems.isEmpty()) "No shareable files were found in that folder."
