@@ -1,10 +1,15 @@
 package com.nearer.app
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.os.Build
+import android.os.CancellationSignal
+import android.util.Size
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,6 +18,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,7 +65,11 @@ fun PhoneFolderBrowser(treeUri: Uri, onSelectFiles: (List<Uri>) -> Unit, onClose
                         val directory = item.mime == DocumentsContract.Document.MIME_TYPE_DIR
                         Surface(modifier = Modifier.fillMaxWidth().clickable { if (directory) { stack.add(item.uri); folder = item.uri; search = "" } else selected = if (item.uri in selected) selected - item.uri else selected + item.uri }, color = if (item.uri in selected) Color(0xFF087FCE) else Color(0xFF0647C9), shape = RoundedCornerShape(11.dp)) {
                             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(if (directory) "📁" else documentGlyph(item.mime), fontSize = 20.sp)
+                                if (!directory && (item.mime.startsWith("image/") || item.mime.startsWith("video/"))) {
+                                    PhoneMediaThumbnail(uri = item.uri, mime = item.mime)
+                                } else {
+                                    Text(if (directory) "📁" else documentGlyph(item.mime), fontSize = 20.sp)
+                                }
                                 Column(Modifier.weight(1f).padding(start = 10.dp)) {
                                     Text(item.name, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
                                     Text(if (directory) "FOLDER • OPEN" else "TAP TO PREPARE • " + readableSize(item.size), color = Color(0xFFFFD84D), fontSize = 8.sp)
@@ -78,6 +89,39 @@ fun PhoneFolderBrowser(treeUri: Uri, onSelectFiles: (List<Uri>) -> Unit, onClose
             }
         }
     )
+}
+
+@Composable
+private fun PhoneMediaThumbnail(uri: Uri, mime: String) {
+    val context = LocalContext.current
+    var bitmap by remember(uri) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(uri) {
+        bitmap = withContext(Dispatchers.IO) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                runCatching {
+                    context.contentResolver.loadThumbnail(uri, Size(192, 192), CancellationSignal())
+                }.getOrNull()
+            } else null
+        }
+    }
+    Surface(
+        modifier = Modifier.size(52.dp),
+        shape = RoundedCornerShape(9.dp),
+        color = Color(0xFF123B91)
+    ) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap!!.asImageBitmap(),
+                contentDescription = if (mime.startsWith("video/")) "Video thumbnail" else "Image thumbnail",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(if (mime.startsWith("video/")) "▶" else "▧", color = Color(0xFFFFD84D), fontSize = 23.sp)
+            }
+        }
+    }
 }
 
 private fun queryPhoneFolder(context: Context, treeUri: Uri, folderUri: Uri): Pair<List<PhoneDocumentEntry>, String?> = try {
