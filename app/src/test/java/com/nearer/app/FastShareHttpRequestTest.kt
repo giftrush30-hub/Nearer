@@ -9,6 +9,7 @@ class FastShareHttpRequestTest {
         assertNotNull(request)
         assertEquals("GET", request!!.method)
         assertEquals("/download", request.path)
+        assertEquals("source=phone", request.query)
         assertEquals(FastShareHttpRequest.Route.DOWNLOAD, request.route)
         assertTrue(request.supportsMethod)
         assertFalse(request.isHeadOnly)
@@ -92,6 +93,18 @@ class FastShareHttpRequestTest {
     @Test fun requestTargetContainingControlCharactersIsRejected() {
         assertNull(FastShareHttpRequest.parse("GET /download\u0001bad HTTP/1.1"))
         assertNull(FastShareHttpRequest.parse("GET /download\u007f HTTP/1.1"))
+    }
+
+    @Test fun accessKeyMustAppearExactlyOnceInQuery() {
+        val key = "a".repeat(64)
+        val valid = FastShareHttpRequest.parse("GET /?key=$key HTTP/1.1")!!
+        val missing = FastShareHttpRequest.parse("GET / HTTP/1.1")!!
+        val duplicate = FastShareHttpRequest.parse("GET /?key=$key&key=$key HTTP/1.1")!!
+        val wrong = FastShareHttpRequest.parse("GET /?key=${"b".repeat(64)} HTTP/1.1")!!
+        assertTrue(valid.hasAccessKey(key))
+        assertFalse(missing.hasAccessKey(key))
+        assertFalse(duplicate.hasAccessKey(key))
+        assertFalse(wrong.hasAccessKey(key))
     }
 
 }

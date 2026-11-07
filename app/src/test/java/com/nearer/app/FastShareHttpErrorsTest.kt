@@ -47,4 +47,12 @@ class FastShareHttpErrorsTest {
         assertEquals("", body)
         assertContentLength(headers, body)
     }
+    @Test fun missingOrInvalidSessionKeyReturns403() {
+        val (headers, body) = headersAndBody(FastShareHttpErrors.forbidden())
+        assertTrue(headers.startsWith("HTTP/1.1 403 Forbidden"))
+        assertTrue(headers.contains("Content-Type: text/plain; charset=utf-8"))
+        assertTrue(body.contains("invalid"))
+        assertContentLength(headers, body)
+    }
+
 }

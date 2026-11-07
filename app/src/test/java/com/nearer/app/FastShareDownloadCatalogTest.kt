@@ -26,10 +26,10 @@ class FastShareDownloadCatalogTest {
                 FastShareDownloadItem(0, "photo.jpg", "image/jpeg", 1024L),
                 FastShareDownloadItem(1, "video.mp4", "video/mp4", -1L)
             )
-        ).receiverPage()
+        ).receiverPage("a".repeat(64))
 
-        assertTrue(page.contains("href=\"/download/0\""))
-        assertTrue(page.contains("href=\"/download/1\""))
+        assertTrue(page.contains("href=\"/download/0?key=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""))
+        assertTrue(page.contains("href=\"/download/1?key=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""))
         assertTrue(page.contains("photo.jpg"))
         assertTrue(page.contains("video.mp4"))
         assertTrue(page.contains("Size unavailable"))

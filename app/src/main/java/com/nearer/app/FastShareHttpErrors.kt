@@ -26,6 +26,9 @@ internal object FastShareHttpErrors {
             "Another download is already in progress.\n"
         )
 
+    fun forbidden(): ByteArray =
+        response("403 Forbidden", "Content-Type: text/plain; charset=utf-8\\r\\n", "This Fast Share link is missing or invalid. Ask the sender for the current link.\\n")
+
     fun notFound(): ByteArray =
         response("404 Not Found")
 }

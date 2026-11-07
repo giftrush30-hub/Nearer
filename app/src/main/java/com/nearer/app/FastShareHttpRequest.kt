@@ -4,8 +4,15 @@ package com.nearer.app
 internal data class FastShareHttpRequest(
     val method: String,
     val path: String,
-    val version: String
+    val version: String,
+    val query: String = ""
 ) {
+    fun hasAccessKey(expected: String): Boolean {
+        val values = query.split('&').mapNotNull { part ->
+            if (part.startsWith("key=")) part.substringAfter("key=") else null
+        }
+        return values.size == 1 && FastShareAccessKey.matches(expected, values.single())
+    }
     val isHeadOnly: Boolean get() = method == "HEAD"
     val supportsMethod: Boolean get() = method == "GET" || isHeadOnly
 
@@ -43,7 +50,8 @@ internal data class FastShareHttpRequest(
             return FastShareHttpRequest(
                 method = method.uppercase(java.util.Locale.ROOT),
                 path = target.substringBefore('?'),
-                version = version
+                version = version,
+                query = target.substringAfter('?', "")
             )
         }
     }

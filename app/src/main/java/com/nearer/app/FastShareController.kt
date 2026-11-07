@@ -99,11 +99,12 @@ class FastShareController(private val context: Context) {
                         FastShareDownloadItem(index, name, mime, length)
                     }
                     val catalog = FastShareDownloadCatalog(items)
+                    val accessKey = FastShareAccessKey.create()
                     var transferStartedAt = 0L
                     var lastProgressAt = 0L
                     var lastProgressBytes = 0L
                     var bytesPerSecond = 0.0
-                    val httpServer = FastShareHttpServer(context, selectedUris, catalog) { fileName, sent, total, complete, interrupted, partialResponse ->
+                    val httpServer = FastShareHttpServer(context, selectedUris, catalog, accessKey) { fileName, sent, total, complete, interrupted, partialResponse ->
                         val now = android.os.SystemClock.elapsedRealtime()
                         if (transferStartedAt == 0L || sent < lastProgressBytes) {
                             transferStartedAt = now
@@ -145,7 +146,7 @@ class FastShareController(private val context: Context) {
                     }
                     val address = httpServer.start()
                     server = httpServer
-                    details = FastShareDetails(ssid, password, "http://$address:8765")
+                    details = FastShareDetails(ssid, password, "http://$address:8765/?key=$accessKey")
                     status = "Fast Share is ready · ${selectedUris.size} file(s). Keep NeaRer open while the other phone downloads."
                 } catch (error: Exception) {
                     status = "Could not start the download page: ${error.message ?: "please try again"}"
@@ -274,6 +275,7 @@ private class FastShareHttpServer(
     private val context: Context,
     private val uris: List<Uri>,
     private val catalog: FastShareDownloadCatalog,
+    private val accessKey: String,
     private val onTransferUpdate: (fileName: String, sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean, partialResponse: Boolean) -> Unit
 ) {
     private val executor = Executors.newCachedThreadPool()
@@ -347,9 +349,14 @@ private class FastShareHttpServer(
             val request = exchange.request
             val headOnly = request.isHeadOnly
             val rangeHeader = exchange.rangeHeader
+            if (!request.hasAccessKey(accessKey)) {
+                output.write(FastShareHttpErrors.forbidden())
+                output.flush()
+                return
+            }
             when (request.route) {
                 FastShareHttpRequest.Route.RECEIVER_PAGE -> {
-                    val bytes = catalog.receiverPage().toByteArray(Charsets.UTF_8)
+                    val bytes = catalog.receiverPage(accessKey).toByteArray(Charsets.UTF_8)
                     output.write(FastShareHttpWire.responseHead("HTTP/1.1 200 OK", listOf("Content-Type" to "text/html; charset=utf-8", "Content-Length" to bytes.size.toString(), "Connection" to "close")))
                     if (!headOnly) output.write(bytes)
                 }
