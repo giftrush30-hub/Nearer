@@ -197,7 +197,27 @@ internal object AndroidFileCatalog {
         }
         return String.format(Locale.getDefault(), if (unit == 0) "%.0f %s" else "%.1f %s", value, units[unit])
     }
-}
+
+
+    fun formatModified(seconds: Long): String {
+        if (seconds <= 0L) return "Date unavailable"
+        return java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM, Locale.getDefault())
+            .format(java.util.Date(seconds * 1000L))
+    }
+
+    fun formatType(item: FileCentreItem): String {
+        val subtype = item.mimeType?.substringAfter("/", "")?.substringBefore(";")
+        if (!subtype.isNullOrBlank() && subtype != "*") return subtype.uppercase(Locale.getDefault())
+        return when (item.category) {
+            FileCentreCategory.PICTURES -> "IMAGE"
+            FileCentreCategory.VIDEOS -> "VIDEO"
+            FileCentreCategory.MUSIC -> "AUDIO"
+            FileCentreCategory.APPS -> "APP"
+            FileCentreCategory.DOCUMENTS -> "DOCUMENT"
+            FileCentreCategory.DOWNLOADS -> "DOWNLOAD"
+            FileCentreCategory.OTHER -> "FILE"
+        }
+    }}
 
 @Composable
 internal fun FileCentreScreen(
@@ -498,7 +518,8 @@ private fun FileCentreTile(
                 )
             }
             Text(item.name, color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
-            Text(if (item.packageName != null) "Installed app" else AndroidFileCatalog.formatSize(item.sizeBytes), color = Muted, fontSize = 9.sp)
+            Text(if (item.packageName != null) "Installed app" else AndroidFileCatalog.formatSize(item.sizeBytes) + " • " + AndroidFileCatalog.formatType(item), color = Muted, fontSize = 9.sp)
+            if (item.modifiedSeconds > 0L) Text(AndroidFileCatalog.formatModified(item.modifiedSeconds), color = Muted, fontSize = 8.sp)
             if (selected) Text("✓ Selected", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
     }
@@ -531,7 +552,7 @@ private fun FileCentreRow(
             )
             Column(Modifier.weight(1f).padding(start = 11.dp)) {
                 Text(item.name, color = White, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, maxLines = 1)
-                Text(if (item.packageName != null) item.packageName else AndroidFileCatalog.formatSize(item.sizeBytes), color = Muted, fontSize = 10.sp, maxLines = 1)
+                Text(if (item.packageName != null) item.packageName else AndroidFileCatalog.formatSize(item.sizeBytes) + " • " + AndroidFileCatalog.formatType(item) + " • " + AndroidFileCatalog.formatModified(item.modifiedSeconds), color = Muted, fontSize = 9.sp, maxLines = 1)
             }
             Text(if (selected) "✓" else "＋", color = if (selected) Gold else Muted, fontWeight = FontWeight.Bold)
         }
