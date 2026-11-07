@@ -267,6 +267,7 @@ private class FastShareHttpServer(
                 while (remaining > 0 && running) {
                     val read = stream.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
                     if (read < 0) break
+                    if (read == 0) continue
                     output.write(buffer, 0, read)
                     remaining -= read
                     sent += read
