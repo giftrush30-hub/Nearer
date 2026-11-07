@@ -7,7 +7,7 @@ package com.nearer.app
  */
 object FlashSignalPattern {
     private val patterns = listOf(
-        Signal("PING", listOf(5_000L)),
+        Signal("PING", listOf(5_000L, 12_000L)),
         Signal("COME", listOf(11_000L, 8_000L)),
         Signal("URGENT", listOf(14_000L, 14_000L, 14_000L)),
         Signal("CALL_ME", listOf(20_000L, 17_000L))
