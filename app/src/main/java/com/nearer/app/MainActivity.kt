@@ -2236,6 +2236,11 @@ private fun NeaRerHome(
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val fastShare = remember(context) { FastShareController(context) }
+    val unifiedTransferHistory = remember(transferHistory, fastShare.history) {
+        (transferHistory.map { UnifiedTransferHistoryEntry(it.direction, it.fileName, it.bytes, it.status, it.timestamp, "Nearby") } +
+            fastShare.history.map { UnifiedTransferHistoryEntry("Fast Share", it.fileName, it.bytesTransferred, it.result, it.timestampMillis, "Fast Share") })
+            .sortedByDescending { it.timestamp }
+    }
     var pendingFastShareUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     val fastSharePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         val allowed = grants.values.all { it }
@@ -2352,18 +2357,18 @@ private fun NeaRerHome(
                         ) { Text("Fast Share • multiple large files", fontWeight = FontWeight.Bold) }
                         Text("Send a large video to a phone without NeaRer using a temporary local Wi-Fi connection. No mobile data.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                         Text(fastShare.status, color = if (fastShare.details != null) Mint else Muted, fontSize = 12.sp, lineHeight = 18.sp)
-                        if (fastShare.history.isNotEmpty()) {
+                        if (unifiedTransferHistory.isNotEmpty()) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("RECENT FAST SHARE ACTIVITY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                Text("Clear", color = Muted, fontSize = 11.sp, modifier = Modifier.clickable { fastShare.clearHistory() })
+                                Text("RECENT TRANSFERS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("Clear Fast Share", color = Muted, fontSize = 10.sp, modifier = Modifier.clickable { fastShare.clearHistory() })
                             }
-                            fastShare.history.take(5).forEach { entry ->
+                            unifiedTransferHistory.take(8).forEach { entry ->
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(entry.fileName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text("${String.format(java.util.Locale.US, "%.1f MB", entry.bytesTransferred / 1048576.0)} · ${entry.result}", color = Muted, fontSize = 10.sp)
+                                        Text("${entry.source} · ${entry.direction} · ${entry.fileName}", color = White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("${formatTransferBytes(entry.bytes)} · ${entry.result}", color = Muted, fontSize = 10.sp)
                                     }
-                                    Text(java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(entry.timestampMillis)), color = Muted, fontSize = 10.sp)
+                                    Text(java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(entry.timestamp)), color = Muted, fontSize = 10.sp)
                                 }
                             }
                         }
@@ -2954,6 +2959,15 @@ internal data class ChatMessage(
 )
 
 private data class ReceivedFile(val displayName: String, val file: File)
+
+private data class UnifiedTransferHistoryEntry(
+    val direction: String,
+    val fileName: String,
+    val bytes: Long,
+    val result: String,
+    val timestamp: Long,
+    val source: String
+)
 
 private data class DirectOutgoingTransfer(val fileName: String, val bytes: Long)
 
