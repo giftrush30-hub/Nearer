@@ -1,42 +1,36 @@
-# NeaRer Royal Neutral visual refresh
+# NeaRer original first-creation visual system
 
-## Product direction
-Blue remains NeaRer's signature accent, not a universal background. Use a calm graphite foundation, warm ivory content surfaces, clean white cards, and a restrained blue/gold accent system. Add teal for positive/connected states and terracotta for secondary game/community accents. Avoid full-screen saturated blue except for a purposeful brand moment.
+## Product identity
+Restore and preserve the original NeaRer visual identity. The app uses a midnight-navy foundation, deep-blue surfaces, soft-white typography, royal-blue actions, mint connection indicators, and restrained gold highlights. Do not introduce the later graphite/ivory/terracotta redesign or scatter unrelated accent colours across screens.
 
-## Palette tokens
-- Graphite canvas: #111827
-- Warm ivory surface: #F8F7F3
-- Clean white: #FFFFFF
-- Brand blue: #3478C8 (actions, selected states, links, discovery pulse)
-- Deep blue: #285F9E (brand depth)
-- Gold: #D9AE4B (premium highlight, not body text)
-- Teal: #16877A (connected/success)
-- Terracotta: #C17A52 (secondary accent)
-- Primary ink: #202B3C
-- Muted text: #667085
-- Soft surface: #ECEAE4
+## Original palette tokens
+- Midnight navy canvas: #101A2B
+- Deep navy panel: #1A2940
+- Raised blue panel: #203858
+- Subtle outline: #26364D
+- Royal blue: #2563EB
+- Gold: #FFD12D
+- Mint connection accent: #69E0C0
+- Soft white: #F6F8FC
+- Muted text: #A8B6C9
+- Existing deep green connection state: #173C3A / #174B43
+- Existing subdued destructive surface: #633D4B
 
-## Screen identities
-- Home: warm ivory and white surfaces; blue only on key actions and active navigation.
-- Transfer: bright neutral file workspace; file-type accents and clear progress states.
-- Nearby: graphite radar canvas with blue/teal live nodes, readable peer cards, and explicit radio readiness.
-- Chats: light conversation canvas with strong message contrast and clear delivery labels.
-- Communities: warm neutral cards with distinct group identity colours.
-- Games: dedicated dark game-table treatment with rich board colours; never use the global blue page background as the board.
-- Flash: neutral communication console with distinct cellular-signal and nearby-message paths.
+## Usage
+- Keep the app's main surfaces midnight navy or deep navy.
+- Use raised blue panels for cards, controls and grouped content.
+- Use soft white for primary text and muted text for secondary information.
+- Use royal blue for the main action and selected state.
+- Use mint only for live/connected/positive states.
+- Use gold sparingly for important highlights and the NeaRer wordmark accent.
+- Avoid warm ivory, graphite-grey redesign surfaces, terracotta, purple, and extra pastel palettes.
+- Preserve distinct traditional Ludo piece colours inside the game board; those are game rules/board identity, not the app-wide interface palette.
 
-## Typography and hierarchy
-Use a consistent type scale: page title 26-30sp bold, section title 16-18sp semibold, body 14-16sp regular, metadata 11-12sp medium. Avoid all-caps for long explanatory copy. Keep muted text readable and reserve gold for short labels or key highlights.
-
-## Motion and live states
-Use short, purposeful transitions (150-250ms), shimmer/pulse only for actual active work, and never imply a peer is connected unless transport confirms it. Empty states should explain the next useful action; queued/offline work should remain visible and clearly labelled.
+## Screen consistency
+Home, Nearby, Chat, Transfer, Flash, Communities, Settings and other app screens must share this navy visual language. Individual screens may use different panel layouts and hierarchy, but must not switch to a different unrelated colour theme.
 
 ## Logo and launch
-The approved NeaRer identity is the original premium wordmark and connection symbol: a dotted luminous N, four bright white lights at its four ends/corners, cyan glow, deep royal-blue glossy rounded-square icon, and the gold R in the wordmark. Preserve that identity; do not replace it with a generic glyph, dice, or a newly invented mark. The four lights should illuminate in sequence as the app opens, then settle into a steady restrained glow. The deep-blue background is reserved for the logo/brand moment; it must not become the background for every app screen. Keep the system splash animation short (around 1 second) and follow Android's SplashScreen API constraints.
+Preserve the approved NeaRer identity: dotted luminous N, four bright white lights, cyan/mint glow, deep royal-blue/navy glossy rounded-square icon, and gold R in the wordmark. Do not invent or substitute a new mark. Keep the four lights legible and luminous.
 
-## Implementation references
-- Material 3 brand theming and semantic color roles: https://developer.android.com/codelabs/m3-design-theming
-- Android color roles: https://developer.android.google.cn/design/ui/mobile/guides/styles/color
-- Android SplashScreen animation requirements: https://developer.android.com/develop/ui/views/launch/splash-screen
-- Apple HIG foundations for color, layout and typography: https://developer.apple.com/design/human-interface-guidelines/
-- Nielsen Norman Group visual hierarchy: https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+## Accessibility
+Maintain readable contrast between soft-white/muted text and navy surfaces. Never use gold or mint for long body copy.
