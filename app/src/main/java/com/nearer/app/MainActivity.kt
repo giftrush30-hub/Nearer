@@ -2373,7 +2373,7 @@ private fun NeaRerHome(
                 }
             }
 
-            if (selectedTab == "Files") {\n                FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles)\n            }\n\n            if (selectedTab == "Nearby") {
+            if (selectedTab == "Files") {\n                FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, modifier = Modifier.weight(1f))\n            }\n\n            if (selectedTab == "Nearby") {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), color = Panel) {
                 Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("NEARBY CONNECTION", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
