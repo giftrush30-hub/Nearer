@@ -135,7 +135,7 @@ fun NeaRerShareHub(
                         else Text("Refresh", color = ShareText)
                     }
                 }
-                Text("NeaRer copies install packages only. It does not copy app accounts, chats, passwords or private app data. APK installation is Android-only; iPhones and iPads cannot install APK files.", color = ShareMuted, fontSize = 11.sp, lineHeight = 16.sp)
+                Text("Privacy: when you tap Refresh, NeaRer reads installed app names and package details on this phone to build the list. The list stays on this device unless you choose an app to send. NeaRer never copies app accounts, chats, passwords or private app data. APK installation is Android-only; iPhones and iPads cannot install APK files.", color = ShareMuted, fontSize = 11.sp, lineHeight = 16.sp)
                 if (apps.isEmpty() && !appsLoading) {
                     Text("Tap Refresh to load apps available for sharing.", color = ShareMuted, fontSize = 12.sp)
                 } else {
