@@ -2,11 +2,12 @@
 <resources>
     <style name="Theme.NeaRer" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#FFD84D</item>
-        <item name="android:windowBackground">@color/nearer_brand_blue</item>
-        <item name="android:statusBarColor">#1769FF</item>
-        <item name="android:navigationBarColor">#1769FF</item>
+        <item name="android:colorAccent">@color/nearer_royal_gold</item>
+        <item name="android:windowBackground">@color/nearer_ivory</item>
+        <item name="android:statusBarColor">@color/nearer_graphite</item>
+        <item name="android:navigationBarColor">@color/nearer_graphite</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowSplashScreenBackground">#1769FF</item>
+        <!-- Preserve the branded launch moment; in-app screens use a richer neutral palette. -->
+        <item name="android:windowSplashScreenBackground">#111827</item>
     </style>
 </resources>
