@@ -90,6 +90,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
@@ -2301,7 +2302,7 @@ private fun NeaRerHome(
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(entry.fileName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text("${entry.bytesTransferred / (1024 * 1024)} MB · ${entry.result}", color = Muted, fontSize = 10.sp)
+                                        Text("${String.format(java.util.Locale.US, "%.1f MB", entry.bytesTransferred / 1048576.0)} · ${entry.result}", color = Muted, fontSize = 10.sp)
                                     }
                                     Text(java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(entry.timestampMillis)), color = Muted, fontSize = 10.sp)
                                 }
