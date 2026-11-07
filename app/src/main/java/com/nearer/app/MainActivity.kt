@@ -2226,20 +2226,6 @@ private fun NeaRerHome(
             }
 
             if (selectedTab == "Nearby") {
-            if (incomingRequesterName != null) {
-                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("NEARER CONNECTION REQUEST", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Text("$incomingRequesterName wants to connect with you.", color = White, fontWeight = FontWeight.SemiBold)
-                        Text("Compare the six-digit code on both phones. Accept only if it matches and you recognise this person.", color = Muted, fontSize = 12.sp)
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Button(onClick = onAccept, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Accept") }
-                            Button(onClick = onReject, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Reject") }
-                        }
-                    }
-                }
-            }
-
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
                 Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -2427,6 +2413,36 @@ private fun NeaRerHome(
                 }
             }
         }
+    }
+
+    // Connection approval is global: users must not miss a request just because
+    // they navigated away from the Nearby tab.
+    incomingRequesterName?.let { requester ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = onReject,
+            containerColor = Panel,
+            title = { Text("NeaRer connection request", color = Mint, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("$requester wants to connect with you.", color = White)
+                    Text("Compare the six-digit code on both phones. Accept only when it matches and you recognise this person.", color = Muted)
+                    pairingCode?.let { code ->
+                        Text("PAIRING CODE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(code, color = White, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 5.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = onAccept) {
+                    Text("Accept", color = Mint, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = onReject) {
+                    Text("Not now", color = Muted)
+                }
+            }
+        )
     }
 }
 
