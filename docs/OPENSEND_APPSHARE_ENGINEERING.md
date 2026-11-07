@@ -1,12 +1,13 @@
 # NeaRer OpenSend + AppShare engineering foundation
 
-This branch introduces the first reusable Android implementation pieces for the no-app receiver and app-transfer workflows. It does **not** yet expose finished screens or claim physical-device validation.
+This branch contains the first integrated Android implementation of the no-app receiver and app-transfer workflows, including the Share Hub UI. It does **not** claim a successful current CI build or physical-device validation.
 
 ## Current branch scope
 
 - `AppShareCatalog`: lists visible installed applications, excludes unmodified system apps by default, detects base and split APK paths, and copies all readable APK components into app-private cache for transfer.
 - `OpenSendHotspot`: requests a temporary Android `LocalOnlyHotspot` and returns the SSID/password supplied by Android. The reservation must remain open while sharing.
-- `OpenSendHttpServer`: hosts a NeaRer-branded browser download page on a local TCP port, requires a random per-session token, supports multiple clients, and implements HTTP byte ranges for resumable downloads.
+- `OpenSendHttpServer`: hosts a NeaRer-branded browser download page on a local TCP port, requires a random per-session token, supports bounded concurrent clients, and implements HTTP byte ranges for resumable downloads.
+- `OpenSendSessionManager` and `OpenSendForegroundService`: coordinate the sender-side hotspot/server lifecycle and show an ongoing notification. The service is currently a liveness companion; the Activity still owns the actual transfer resources, so process death ends the share.
 - Manifest declares `QUERY_ALL_PACKAGES` for the complete installed-app catalogue. This permission is restricted by Google Play policy; distribution eligibility must be reviewed before Play Store release.
 
 ## Intended user experience
@@ -56,17 +57,14 @@ For an Android receiver without NeaRer, provide APK download in OpenSend and let
 - OpenSend uses local HTTP, not TLS. The temporary WPA-protected local network plus high-entropy token limits casual access, but this is not equivalent to end-to-end encrypted Nearby Connections. Do not expose the server on a public interface or run it beyond an explicit user-controlled session.
 - The local-only hotspot API and package visibility behavior must be tested on Samsung One UI and other OEM Android versions.
 
-## Required follow-up implementation
+## Remaining implementation and release work
 
-- Add the Share hub and AppShare/ OpenSend screens to `NeaRerHome`.
-- Wire AppShare selection to the existing nearby file-transfer engine; preserve package grouping metadata for receiving-side install.
-- Implement receiving-side package verification and `PackageInstaller.Session` staging.
-- Implement QR generation with a maintained Android QR library, plus distinct Wi-Fi and URL QR actions.
-- Add an OpenSend transfer session manager to coordinate hotspot reservation, HTTP server, foreground notification, timeout, stop/revoke, and cleanup.
-- Add an explicit receiver handshake/acceptance flow and sender-visible download lifecycle.
-- Implement file hashing and compare before marking downloads complete.
-- Add Range/resume integration tests and tests for multiple simultaneous receivers.
-- Add runtime permission UX and Play policy review for `QUERY_ALL_PACKAGES`.
+- Move hotspot/server ownership into a lifecycle-safe service so app process/activity recreation does not silently terminate an active share.
+- Add receiver-side download integrity verification and an explicit receiver acceptance/handshake flow.
+- Add sender-visible connected/download progress only where Android/browser signals make it reliable.
+- Expand tests for multiple simultaneous receivers, zero-byte files, malformed ranges, unknown IDs, and session revocation.
+- Verify package-group metadata end-to-end for split APKs and test installation on real receiving devices.
+- Complete runtime permission UX and Google Play policy review for `QUERY_ALL_PACKAGES`.
 
 ## Validation checklist before calling it ready
 
