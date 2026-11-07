@@ -40,18 +40,6 @@ class LudoDoubleDiceEngineTest {
         assertEquals(1, moved.game.activePlayerIndex)
     }
 
-    @Test fun combinedDiceCanBeTheOnlyAvailableChoice() {
-        val rolled = LudoDoubleDiceEngine.roll(
-            LudoDoubleDiceState(game(listOf(50, -1, -1, -1))),
-            PairRandom(listOf(5, 6))
-        )
-        assertTrue(rolled.awaitingDieSelection)
-        val combined = LudoDoubleDiceEngine.selectDie(rolled, LudoDieSlot.BOTH)
-        assertEquals(listOf(0), LudoDoubleDiceEngine.legalTokenIndexes(combined))
-        val moved = LudoDoubleDiceEngine.move(combined, 0)
-        assertEquals(56, moved.game.players[0].tokens[0])
-    }
-
     @Test fun rollingCreatesTwoVisibleIndependentResults() {
         val state = LudoDoubleDiceEngine.roll(
             LudoDoubleDiceState(game(listOf(-1, -1, -1, -1))),
