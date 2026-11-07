@@ -32,7 +32,7 @@ Use a consistent type scale: page title 26-30sp bold, section title 16-18sp semi
 Use short, purposeful transitions (150-250ms), shimmer/pulse only for actual active work, and never imply a peer is connected unless transport confirms it. Empty states should explain the next useful action; queued/offline work should remain visible and clearly labelled.
 
 ## Logo and launch
-The approved NeaRer mark must be the designed N with four distinct luminous points around it. Do not substitute a generic glyph or dice mark. Animate the four lights in sequence around the N, then settle into a steady low-intensity glow. Keep the system splash animation short (around 1 second) and follow Android's SplashScreen API constraints.
+The approved NeaRer identity is the original premium wordmark and connection symbol: a dotted luminous N, four bright white lights at its four ends/corners, cyan glow, deep royal-blue glossy rounded-square icon, and the gold R in the wordmark. Preserve that identity; do not replace it with a generic glyph, dice, or a newly invented mark. The four lights should illuminate in sequence as the app opens, then settle into a steady restrained glow. The deep-blue background is reserved for the logo/brand moment; it must not become the background for every app screen. Keep the system splash animation short (around 1 second) and follow Android's SplashScreen API constraints.
 
 ## Implementation references
 - Material 3 brand theming and semantic color roles: https://developer.android.com/codelabs/m3-design-theming
