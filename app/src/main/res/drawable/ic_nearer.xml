@@ -12,6 +12,6 @@
         android:strokeLineCap="round" android:strokeLineJoin="round"
         android:pathData="M28,54 C38,38 52,27 78,25 M28,54 C43,57 59,70 78,82 M78,25 C65,42 65,65 78,82" />
     <path android:fillColor="#E7BC55" android:pathData="M28,46 A8,8 0,1 0,28 62 A8,8 0,1 0,28 46" />
-    <path android:fillColor="#FFFFFF" android:pathData="M78,17 A8,8 0,1 0,78 33 A8,8 0,1 0,78 17" />
-    <path android:fillColor="#FFFFFF" android:pathData="M78,74 A8,8 0,1 0,78 90 A8,8 0,1 0,78 74" />
+    <path android:fillColor="#E7BC55" android:pathData="M78,17 A8,8 0,1 0,78 33 A8,8 0,1 0,78 17" />
+    <path android:fillColor="#E7BC55" android:pathData="M78,74 A8,8 0,1 0,78 90 A8,8 0,1 0,78 74" />
 </vector>
