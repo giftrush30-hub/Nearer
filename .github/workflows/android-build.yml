@@ -2,7 +2,7 @@ name: NeaRer code validation
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/opensend-appshare-foundation]
   workflow_dispatch:
 
 concurrency:
@@ -32,7 +32,13 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      # Validation compiles the app and runs JVM tests, but deliberately does
-      # not run assembleDebug or create an APK.
-      - name: Compile app and run unit tests
-        run: gradle --no-daemon --stacktrace testDebugUnitTest
+      - name: Assemble debug APK and run unit tests
+        run: gradle --no-daemon --stacktrace :app:assembleDebug testDebugUnitTest
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nearer-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
