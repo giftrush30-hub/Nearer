@@ -2274,7 +2274,22 @@ class MainActivity : ComponentActivity() {
     private fun openReceivedFile(item: ReceivedFile) {
         val extension = item.file.extension.lowercase()
         if (item.file.name.endsWith(".nearer-app.zip", ignoreCase = true)) {
-            chatNotice = "This app package contains multiple APK parts. Keep the ZIP together and use a split-APK installer that supports installing all parts at once."
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+                chatNotice = "Allow NeaRer to install apps from this source in Android settings, then tap this app package again."
+                startActivity(
+                    Intent(
+                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:$packageName")
+                    )
+                )
+                return
+            }
+            try {
+                SplitApkInstaller.install(this, item.file)
+                chatNotice = "The split app package has been handed to Android. Review and approve the installation prompt."
+            } catch (error: Exception) {
+                chatNotice = error.message ?: "Android could not prepare this split app for installation."
+            }
             return
         }
         try {
