@@ -2667,7 +2667,7 @@ private fun NeaRerHome(
     var flashCallStep by remember { mutableStateOf(0) }
     var flashSenderNotice by remember { mutableStateOf("Choose a signal and enter the recipient's phone number.") }
     var flashTrustedNumber by remember { mutableStateOf("") }
-    var flashTrustedCount by remember { mutableIntStateOf(FlashTrustedSenders.trustedCount(flashContext)) }
+    var flashTrustedCount by remember { mutableStateOf(FlashTrustedSenders.trustedCount(flashContext)) }
     val flashPresets = remember { FlashSignalPattern.presets() }
     val selectedFlashPreset = flashPresets.firstOrNull { it.name == flashPresetName } ?: flashPresets.first()
     val flashCallCount = selectedFlashPreset.gapsMillis.size + 1
