@@ -334,14 +334,14 @@ class MainActivity : ComponentActivity() {
                                 val verified = AppShareArchive(this@MainActivity).validateAndExtract(file)
                                 runOnUiThread {
                                     pendingAppShare = verified
-                                    appShareNotice = "Verified \${verified.label}. Review it below before asking Android to install."
-                                    chatNotice = "Received and verified app package: \${verified.label}."
+                                    appShareNotice = "Verified ${verified.label}. Review it below before asking Android to install."
+                                    chatNotice = "Received and verified app package: ${verified.label}."
                                     file.delete()
                                 }
                             } catch (error: Exception) {
                                 file.delete()
                                 runOnUiThread {
-                                    appShareNotice = "The received app package was rejected: \${error.localizedMessage ?: "verification failed"}"
+                                    appShareNotice = "The received app package was rejected: ${error.localizedMessage ?: "verification failed"}"
                                     chatNotice = "App package rejected. No installation was started."
                                 }
                             }
@@ -442,7 +442,8 @@ class MainActivity : ComponentActivity() {
                     onShareApps = ::shareInstalledApps,
                     openSendSession = openSendSession,
                     openSendNotice = openSendNotice,
-                    onPickOpenSendFiles = { openSendPicker.launch(arrayOf("*/*")) },\n                    onStartOpenSend = ::startOpenSendFromPicker,
+                    onPickOpenSendFiles = { openSendPicker.launch(arrayOf("*/*")) },
+                    onStartOpenSend = ::startOpenSendFromPicker,
                     onStopOpenSend = ::stopOpenSend,
                     pendingApp = pendingAppShare,
                     onInstallPendingApp = ::installPendingApp,
@@ -2093,7 +2094,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val REQUEST_DISCOVERY_PERMISSION = 410
-        private const val REQUEST_OPEN_SEND_PERMISSION = 411\n        private const val REQUEST_OPEN_SEND_PERMISSION = 411
+        private const val REQUEST_OPEN_SEND_PERMISSION = 411
     }
 }
 
@@ -2166,7 +2167,7 @@ private fun NeaRerHome(
     onStopSearch: () -> Unit,
     onConnect: (WifiP2pDevice) -> Unit
 ) {
-    var draft by remember { mutableStateOf("")\n    var unusedShareHubState by remember { mutableStateOf(false) } }
+    var draft by remember { mutableStateOf("") }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
