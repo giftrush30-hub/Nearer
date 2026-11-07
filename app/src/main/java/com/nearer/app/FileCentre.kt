@@ -374,6 +374,35 @@ internal fun FileCentreScreen(
         val savedRecent = context.getSharedPreferences("nearer_file_centre", Context.MODE_PRIVATE)
             .getString("recent_files_order", "").orEmpty()
         recentIds.addAll(savedRecent.split("\n").filter { it.isNotBlank() }.take(100))
+
+        // SAF tree grants survive process restarts. Re-scan only roots NeaRer
+        // previously received a persistable read grant for; stale grants are pruned.
+        val preferences = context.getSharedPreferences("nearer_file_centre", Context.MODE_PRIVATE)
+        val savedRoots = preferences.getStringSet("folder_roots", emptySet()).orEmpty().toSet()
+        val validRoots = context.contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission }
+            .map { it.uri.toString() }
+            .toSet()
+        val rootsToKeep = savedRoots.intersect(validRoots)
+        if (rootsToKeep != savedRoots) {
+            preferences.edit().putStringSet("folder_roots", rootsToKeep).apply()
+        }
+        if (rootsToKeep.isNotEmpty()) {
+            loading = true
+            val restored = withContext(Dispatchers.IO) {
+                rootsToKeep.flatMap { root ->
+                    runCatching { AndroidFileCatalog.scanFolderTree(context, Uri.parse(root)) }
+                        .getOrDefault(emptyList())
+                }.distinctBy { it.id }
+            }
+            restored.forEach { found ->
+                if (items.none { it.id == found.id }) items.add(found)
+            }
+            loading = false
+            if (restored.isNotEmpty()) {
+                notice = "${restored.size} file(s) from your saved folders are available again."
+            }
+        }
     }
     val markRecent: (String) -> Unit = { id ->
         recentIds.remove(id)
@@ -463,8 +492,17 @@ internal fun FileCentreScreen(
         ActivityResultContracts.OpenDocumentTree()
     ) { treeUri ->
         if (treeUri != null) {
-            runCatching {
+            val grantSaved = runCatching {
                 context.contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                context.contentResolver.persistedUriPermissions.any {
+                    it.uri == treeUri && it.isReadPermission
+                }
+            }.getOrDefault(false)
+            if (grantSaved) {
+                val preferences = context.getSharedPreferences("nearer_file_centre", Context.MODE_PRIVATE)
+                val roots = preferences.getStringSet("folder_roots", emptySet()).orEmpty().toMutableSet()
+                roots.add(treeUri.toString())
+                preferences.edit().putStringSet("folder_roots", roots).apply()
             }
             loading = true
             notice = "Reading the folder you approved…"
