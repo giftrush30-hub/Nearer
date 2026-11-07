@@ -199,13 +199,21 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (bytes == null || bytes.size > 16 * 1024 ||
                 messageId.isBlank() || messageId.length > 80 ||
                 body.isBlank() || body.length > 4000 ||
-                ttl !in 0..4 || hops !in 0..4 ||
-                !seenMessageIds.add(messageId)
+                ttl !in 0..4 || hops !in 0..4
             ) return
-            if (seenMessageIds.size > 5000) seenMessageIds.remove(seenMessageIds.first())
             val senderDetails = synchronized(names) {
                 (names[endpointId] ?: "Nearby member") to stableIds[endpointId].orEmpty()
             }
+            if (!seenMessageIds.add(messageId)) {
+                // A sender may retry when the original delivery receipt was lost.
+                // Let the chat layer ACK the already-saved ID again; its persistent
+                // message store prevents a second visible bubble. Never relay duplicates.
+                if (kind == "chat") {
+                    listener.onMessageWithId(endpointId, senderDetails.first, senderDetails.second, messageId, body)
+                }
+                return
+            }
+            if (seenMessageIds.size > 5000) seenMessageIds.remove(seenMessageIds.first())
             listener.onMessageWithId(endpointId, senderDetails.first, senderDetails.second, messageId, body)
             // Only explicitly tagged community packets may be relayed.
             // Private one-to-one chat must stay on its approved direct endpoint;
