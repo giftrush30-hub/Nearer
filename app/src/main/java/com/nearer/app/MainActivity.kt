@@ -2102,13 +2102,14 @@ private fun NeaRerHome(
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(onClick = onFindNearby, modifier = Modifier.weight(1f).height(52.dp), enabled = !scanning,
                             shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
-                            Text(if (scanning) "Searching…" else "Find people", fontWeight = FontWeight.Bold)
+                            Text(if (scanning) "Searching…" else "Find people / Receive", fontWeight = FontWeight.Bold)
                         }
                         if (scanning) {
                             Button(onClick = onStopSearch, modifier = Modifier.height(52.dp), shape = RoundedCornerShape(16.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)) { Text("Stop") }
                         }
                     }
+                    Text("To receive a file from another NeaRer phone, tap Find people / Receive and keep this screen open. Accept the request when it appears. Phones without NeaRer can receive files through Bluetooth or Quick Share instead.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                     Text(status, color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                 }
             }
