@@ -261,9 +261,10 @@ class MainActivity : ComponentActivity() {
                     hybridConnectedStableId = stableId.ifBlank { null }
                     val requestedIncomingResume = nearbyTransport?.requestPendingIncomingFilesForPeer(stableId, id) == true
                     val hasQueuedOutgoingFile = currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()
-                    if (!requestedIncomingResume && hasQueuedOutgoingFile) {
-                        // Give the other phone time to send its receiver-confirmed byte offset.
-                        // A short timeout here can race the resume request and start a duplicate file.
+                    if (hasQueuedOutgoingFile) {
+                        // Schedule the sender-side fallback independently of incoming resume requests.
+                        // A phone can have a queued outgoing file and a partial incoming file at once.
+                        // Wait for any matching resume response before restarting from byte zero.
                         discoveryHandler.postDelayed({
                             if (hybridConnected && hybridConnectedStableId == stableId &&
                                 outgoingTransferId == null &&
