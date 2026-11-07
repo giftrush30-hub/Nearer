@@ -53,4 +53,16 @@ class ByteRangeTest {
     @Test fun emptyFileWithoutRangeHasZeroLengthRepresentation() {
         assertEquals(ResolvedByteRange(0, -1, false), ByteRange.resolve(null, 0))
     }
+
+    @Test fun fullCoverageRangeIsNotReportedAsPartialTransfer() {
+        val wholeFileRange = ByteRange.resolve("bytes=0-", 100)!!
+        val oversizedSuffixRange = ByteRange.resolve("bytes=-500", 100)!!
+        assertFalse(ByteRange.isPartialTransfer(wholeFileRange, 100))
+        assertFalse(ByteRange.isPartialTransfer(oversizedSuffixRange, 100))
+    }
+
+    @Test fun resumedSectionIsReportedAsPartialTransfer() {
+        val section = ByteRange.resolve("bytes=25-49", 100)!!
+        assertTrue(ByteRange.isPartialTransfer(section, 100))
+    }
 }
