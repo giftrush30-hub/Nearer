@@ -38,27 +38,18 @@ class NeaRerFlashScreeningService : CallScreeningService() {
             val key = EVENTS_PREFIX + senderKey
             val now = android.os.SystemClock.elapsedRealtime()
 
-            // Every incoming call from a paired sender is surfaced as a chat event.
-            // Android screening runs before the call is answered, so this is labelled
-            // "Flash call" rather than claiming that the call was definitely missed.
+            // Keep a normal paired call visible in chat, but replace the provisional
+            // call bubble if this call completes a recognised multi-call preset.
             val receivedAt = System.currentTimeMillis()
             val callEventId = "call-$receivedAt-$now"
-            val callQueue = try {
+            val senderTag = senderKey.takeLast(8)
+            val senderName = FlashTrustedSenders.displayName(this, number)
+            val queue = try {
                 JSONArray(prefs.getString(PENDING_EVENTS, "[]") ?: "[]")
             } catch (_: Exception) {
                 JSONArray()
             }
-            callQueue.put(
-                JSONObject()
-                    .put("id", callEventId)
-                    .put("signal", "FLASH_CALL")
-                    .put("timestamp", receivedAt)
-                    .put("senderTag", senderKey.takeLast(8))
-                    .put("senderName", FlashTrustedSenders.displayName(this, number))
-            )
-            while (callQueue.length() > MAX_PENDING_EVENTS) callQueue.remove(0)
-            prefs.edit().putString(PENDING_EVENTS, callQueue.toString()).apply()
-            sendBroadcast(Intent(ACTION_FLASH_MESSAGE_RECEIVED).setPackage(packageName))
+
             val previous = prefs.getString(key, "")
                 .orEmpty()
                 .split(',')
@@ -67,39 +58,55 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                 .takeLast(3)
             val updated = (previous + now).takeLast(4)
             val signal = FlashSignalPattern.decode(updated)
+
             if (signal == null) {
-                prefs.edit().putString(key, updated.joinToString(",")).apply()
-            } else {
-                val receivedAt = System.currentTimeMillis()
-                val eventId = "$receivedAt-$now-$signal"
-                val queued = try {
-                    JSONArray(prefs.getString(PENDING_EVENTS, "[]") ?: "[]")
-                } catch (_: Exception) {
-                    JSONArray()
-                }
-                queued.put(
+                queue.put(
                     JSONObject()
-                        .put("id", eventId)
+                        .put("id", callEventId)
+                        .put("signal", "FLASH_CALL")
+                        .put("timestamp", receivedAt)
+                        .put("senderTag", senderTag)
+                        .put("senderName", senderName)
+                )
+                while (queue.length() > MAX_PENDING_EVENTS) queue.remove(0)
+                prefs.edit()
+                    .putString(key, updated.joinToString(","))
+                    .putString(PENDING_EVENTS, queue.toString())
+                    .apply()
+            } else {
+                // The calls in a recognised pattern are one message, not several
+                // generic call bubbles plus a decoded preset bubble.
+                for (index in queue.length() - 1 downTo 0) {
+                    val queuedEvent = queue.optJSONObject(index) ?: continue
+                    val queuedAt = queuedEvent.optLong("timestamp", 0L)
+                    if (queuedEvent.optString("signal") == "FLASH_CALL" &&
+                        queuedEvent.optString("senderTag") == senderTag &&
+                        queuedAt > 0L && receivedAt >= queuedAt &&
+                        receivedAt - queuedAt <= MAX_SEQUENCE_AGE_MS
+                    ) {
+                        queue.remove(index)
+                    }
+                }
+                queue.put(
+                    JSONObject()
+                        .put("id", "$receivedAt-$now-$signal")
                         .put("signal", signal)
                         .put("timestamp", receivedAt)
-                        .put("senderTag", senderKey.takeLast(8))
-                        .put("senderName", FlashTrustedSenders.displayName(this, number))
+                        .put("senderTag", senderTag)
+                        .put("senderName", senderName)
                 )
-                while (queued.length() > MAX_PENDING_EVENTS) queued.remove(0)
+                while (queue.length() > MAX_PENDING_EVENTS) queue.remove(0)
                 prefs.edit()
                     .remove(key)
                     .putString(LAST_SIGNAL, signal)
                     .putLong(LAST_SIGNAL_AT, receivedAt)
                     .putString(LAST_SIGNAL_FROM, senderKey)
-                    .putString(PENDING_EVENTS, queued.toString())
+                    .putString(PENDING_EVENTS, queue.toString())
                     .apply()
-
-                // Wake an open NeaRer chat so the decoded signal appears as a message
-                // immediately, rather than waiting for the user to reopen the app.
-                sendBroadcast(
-                    Intent(ACTION_FLASH_MESSAGE_RECEIVED).setPackage(packageName)
-                )
             }
+
+            // Wake an open NeaRer chat after the queue has been updated.
+            sendBroadcast(Intent(ACTION_FLASH_MESSAGE_RECEIVED).setPackage(packageName))
         } catch (_: Exception) {
             // Flash is best-effort only; it must never interfere with ordinary calls.
         }
