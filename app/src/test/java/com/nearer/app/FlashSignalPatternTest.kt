@@ -12,6 +12,11 @@ class FlashSignalPatternTest {
         assertEquals("CALL_ME", FlashSignalPattern.decode(listOf(1_000L, 21_000L, 38_000L)))
     }
 
+    @Test fun matchesLatestPresetSuffixEvenWhenAnEarlierCallIsPresent() {
+        assertEquals("PING", FlashSignalPattern.decode(listOf(1_000L, 4_000L, 9_000L, 21_000L)))
+        assertEquals("COME", FlashSignalPattern.decode(listOf(1_000L, 4_000L, 15_000L, 23_000L)))
+    }
+
     @Test fun mapsDecodedPresetsToHumanReadableChatMessages() {
         assertEquals("Flash call received", FlashSignalPattern.toChatMessage("FLASH_CALL"))
         assertEquals("Ping", FlashSignalPattern.toChatMessage("PING"))
