@@ -134,6 +134,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.nearer.app.games.ludo.LudoGameScreen
+import com.nearer.app.games.ludo.LudoRoomSession
+import com.nearer.app.games.ludo.LudoRoomRole
+import com.nearer.app.games.ludo.LudoRoomAction
+import com.nearer.app.games.ludo.LudoRoomActionType
+import com.nearer.app.games.ludo.LudoRoomActionRequest
+import com.nearer.app.games.ludo.LudoRoomActionCodec
+import com.nearer.app.games.ludo.LudoRoomEnvelopeCodec
+import com.nearer.app.games.ludo.LudoDoubleDiceState
 
 private val Midnight = Color(0xFF1769FF)
 private val Panel = Color(0xFF0B54DC)
@@ -210,6 +218,10 @@ class MainActivity : ComponentActivity() {
     private var ludoRoomStatus by mutableStateOf("Connect to a nearby player to invite them.")
     private var incomingLudoInvite by mutableStateOf<LudoPendingInvite?>(null)
     private val ludoRoomMessages = mutableStateListOf<String>()
+    private var ludoRoomSession: LudoRoomSession? = null
+    private var ludoRoomGame by mutableStateOf<LudoDoubleDiceState?>(null)
+    private var ludoRoomIsHost by mutableStateOf(false)
+    private var ludoRoomCanAct by mutableStateOf(false)
     private val receivedFiles = mutableStateListOf<ReceivedFile>()
     private val sentFiles = mutableStateListOf<SentFile>()
     private var pendingSentFileName: String? = null
@@ -730,6 +742,10 @@ class MainActivity : ComponentActivity() {
                     ludoRoomPeerName = ludoRoomPeerName,
                     ludoRoomReady = ludoRoomReady,
                     ludoRoomMessages = ludoRoomMessages.toList(),
+                    ludoRoomGame = ludoRoomGame,
+                    ludoRoomIsHost = ludoRoomIsHost,
+                    ludoRoomCanAct = ludoRoomCanAct,
+                    onLudoRoomAction = ::submitLudoRoomAction,
                     onInviteLudoPeer = ::inviteLudoPeer,
                     onAcceptLudoInvite = ::acceptLudoInvite,
                     onDeclineLudoInvite = ::declineLudoInvite,
@@ -2509,8 +2525,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun sendLudoRoomPacket(peerName: String, type: String, roomId: String, body: String = ""): Boolean {
-        val encoded = LudoRoomProtocol.encode(type, roomId, body) ?: return false
+    private fun sendLudoRoomPacket(peerName: String, type: String, roomId: String, body: String = "", sequence: Long = 0L): Boolean {
+        val encoded = LudoRoomProtocol.encode(type, roomId, body, sequence) ?: return false
         if (!hybridConnected || connectedDeviceName != peerName) return false
         val endpoint = hybridConnectedEndpoint ?: return false
         return nearbyTransport?.sendToEndpoint(endpoint, "NR_LUDO:" + encoded) == true
@@ -2557,8 +2573,12 @@ class MainActivity : ComponentActivity() {
         ludoRoomPeerName = invite.senderName
         ludoRoomPeerStableId = invite.senderStableId
         ludoRoomReady = true
+        ludoRoomSession = null
+        ludoRoomGame = null
+        ludoRoomIsHost = false
+        ludoRoomCanAct = false
         incomingLudoInvite = null
-        ludoRoomStatus = "Connected to " + invite.senderName + " in a nearby Ludo room."
+        ludoRoomStatus = "Accepted. Waiting for the host's official Ludo board…"
         ludoRoomMessages.clear()
     }
 
@@ -2579,6 +2599,10 @@ class MainActivity : ComponentActivity() {
         ludoRoomPeerName = null
         ludoRoomPeerStableId = ""
         ludoRoomReady = false
+        ludoRoomSession = null
+        ludoRoomGame = null
+        ludoRoomIsHost = false
+        ludoRoomCanAct = false
         ludoRoomMessages.clear()
         ludoRoomStatus = "You left the Ludo room."
     }
@@ -2594,6 +2618,40 @@ class MainActivity : ComponentActivity() {
             while (ludoRoomMessages.size > 40) ludoRoomMessages.removeAt(0)
         } else {
             ludoRoomStatus = "Message not sent. Check your nearby connection."
+        }
+    }
+
+    private fun sendLudoRoomSnapshot() {
+        val session = ludoRoomSession ?: return
+        if (session.role != LudoRoomRole.HOST || !ludoRoomReady) return
+        val snapshot = session.snapshot
+        val body = LudoRoomEnvelopeCodec.encode(session.envelope()) ?: run {
+            ludoRoomStatus = "The official Ludo board could not be prepared."
+            return
+        }
+        ludoRoomGame = snapshot.game
+        ludoRoomCanAct = snapshot.game.game.activePlayer.id == session.localPeerId
+        val peer = ludoRoomPeerName ?: return
+        if (!sendLudoRoomPacket(peer, "state", snapshot.roomId, body, snapshot.sequence)) {
+            ludoRoomStatus = "Board update not sent. Check the nearby connection."
+        }
+    }
+
+    private fun submitLudoRoomAction(action: LudoRoomAction) {
+        if (!ludoRoomReady) return
+        val session = ludoRoomSession ?: return
+        if (session.role == LudoRoomRole.HOST) {
+            val updated = session.applyLocalHostAction(action) ?: return
+            ludoRoomGame = updated.game
+            ludoRoomCanAct = updated.game.game.activePlayer.id == session.localPeerId
+            sendLudoRoomSnapshot()
+        } else {
+            val request = session.createGuestRequest(action) ?: return
+            val body = LudoRoomActionCodec.encode(request.action) ?: return
+            val peer = ludoRoomPeerName ?: return
+            if (!sendLudoRoomPacket(peer, "intent", request.roomId, body, request.expectedSequence)) {
+                ludoRoomStatus = "Move request not sent. Check the nearby connection."
+            } else ludoRoomStatus = "Move request sent to the room host…"
         }
     }
 
@@ -2613,9 +2671,47 @@ class MainActivity : ComponentActivity() {
                 if (packet.roomId == ludoRoomId && ludoRoomPeerName == sender &&
                     (ludoRoomPeerStableId.isBlank() || ludoRoomPeerStableId == senderStableId)) {
                     ludoRoomPeerStableId = senderStableId
+                    val localId = nearbyTransport?.localMemberId.orEmpty()
+                    val hostSession = LudoRoomSession.host(packet.roomId, localId, senderStableId, displayName, sender)
+                    if (hostSession == null) {
+                        ludoRoomStatus = "Could not create a verified Ludo board. Reconnect and invite again."
+                        return
+                    }
+                    ludoRoomSession = hostSession
+                    ludoRoomGame = hostSession.snapshot.game
+                    ludoRoomIsHost = true
+                    ludoRoomCanAct = hostSession.snapshot.game.game.activePlayer.id == localId
                     ludoRoomReady = true
-                    ludoRoomStatus = sender + " joined your Ludo room. Room chat is ready."
+                    ludoRoomStatus = sender + " joined. Sending the official Ludo board…"
+                    sendLudoRoomSnapshot()
                 }
+            }
+            "state" -> {
+                if (packet.roomId != ludoRoomId || ludoRoomPeerName != sender || ludoRoomPeerStableId != senderStableId || ludoRoomIsHost) return
+                val envelope = LudoRoomEnvelopeCodec.decode(packet.body) ?: return
+                val localId = nearbyTransport?.localMemberId.orEmpty()
+                val session = ludoRoomSession
+                val accepted = if (session == null) {
+                    val created = LudoRoomSession.guest(envelope, localId)
+                    if (created != null) ludoRoomSession = created
+                    created != null
+                } else session.acceptHostSnapshot(envelope)
+                if (accepted) {
+                    val synced = ludoRoomSession?.snapshot?.game
+                    ludoRoomGame = synced
+                    ludoRoomCanAct = synced?.game?.activePlayer?.id == localId
+                    ludoRoomReady = true
+                    ludoRoomStatus = "Official board synced with " + sender + "."
+                }
+            }
+            "intent" -> {
+                if (packet.roomId != ludoRoomId || ludoRoomPeerName != sender || ludoRoomPeerStableId != senderStableId || !ludoRoomIsHost) return
+                val action = LudoRoomActionCodec.decode(packet.body) ?: return
+                val session = ludoRoomSession ?: return
+                val updated = session.applyGuestRequest(LudoRoomActionRequest(packet.roomId, senderStableId, packet.sequence, action)) ?: return
+                ludoRoomGame = updated.game
+                ludoRoomCanAct = updated.game.game.activePlayer.id == session.localPeerId
+                sendLudoRoomSnapshot()
             }
             "chat" -> {
                 if (packet.roomId == ludoRoomId && ludoRoomPeerName == sender &&
@@ -2632,6 +2728,10 @@ class MainActivity : ComponentActivity() {
                     ludoRoomPeerStableId = ""
                     ludoRoomReady = false
                     ludoRoomStatus = sender + " declined the Ludo invitation."
+                    ludoRoomSession = null
+                    ludoRoomGame = null
+                    ludoRoomIsHost = false
+                    ludoRoomCanAct = false
                 }
             }
             "leave" -> {
@@ -2642,6 +2742,10 @@ class MainActivity : ComponentActivity() {
                     ludoRoomPeerStableId = ""
                     ludoRoomReady = false
                     ludoRoomMessages.clear()
+                    ludoRoomSession = null
+                    ludoRoomGame = null
+                    ludoRoomIsHost = false
+                    ludoRoomCanAct = false
                     ludoRoomStatus = sender + " left the Ludo room."
                 }
             }
@@ -3260,6 +3364,10 @@ private fun NeaRerHome(
     ludoRoomPeerName: String?,
     ludoRoomReady: Boolean,
     ludoRoomMessages: List<String>,
+    ludoRoomGame: LudoDoubleDiceState?,
+    ludoRoomIsHost: Boolean,
+    ludoRoomCanAct: Boolean,
+    onLudoRoomAction: (LudoRoomAction) -> Unit,
     onInviteLudoPeer: () -> Unit,
     onAcceptLudoInvite: () -> Unit,
     onDeclineLudoInvite: () -> Unit,
@@ -3759,6 +3867,10 @@ private fun NeaRerHome(
             roomPeerName = ludoRoomPeerName,
             roomReady = ludoRoomReady,
             roomMessages = ludoRoomMessages,
+            roomGameState = ludoRoomGame,
+            roomIsHost = ludoRoomIsHost,
+            roomCanAct = ludoRoomCanAct,
+            onRoomAction = onLudoRoomAction,
             onInvitePeer = onInviteLudoPeer,
             onAcceptInvite = onAcceptLudoInvite,
             onDeclineInvite = onDeclineLudoInvite,

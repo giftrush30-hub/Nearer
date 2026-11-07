@@ -78,6 +78,10 @@ fun LudoGameScreen(
     roomPeerName: String? = null,
     roomReady: Boolean = false,
     roomMessages: List<String> = emptyList(),
+    roomGameState: LudoDoubleDiceState? = null,
+    roomIsHost: Boolean = false,
+    roomCanAct: Boolean = false,
+    onRoomAction: (LudoRoomAction) -> Unit = {},
     onInvitePeer: () -> Unit = {},
     onAcceptInvite: () -> Unit = {},
     onDeclineInvite: () -> Unit = {},
@@ -88,10 +92,16 @@ fun LudoGameScreen(
     var playerCount by remember { mutableIntStateOf(4) }
     var computerOpponents by remember { mutableStateOf(true) }
     var doubleGame by remember(playerName) { mutableStateOf(LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents))) }
-    val game = doubleGame.game
     var rolling by remember { mutableStateOf(false) }
     var rollingFirst by remember { mutableIntStateOf(1) }
     var rollingSecond by remember { mutableIntStateOf(1) }
+    LaunchedEffect(roomReady, roomGameState) {
+        if (roomReady && roomGameState != null) {
+            doubleGame = roomGameState
+            roomGameState.dice?.let { rollingFirst = it.first; rollingSecond = it.second }
+        }
+    }
+    val game = doubleGame.game
     var soundEnabled by remember { mutableStateOf(true) }
     var aiDifficulty by remember { mutableStateOf(LudoAiDifficulty.MEDIUM) }
     var showRules by remember { mutableStateOf(false) }
@@ -123,7 +133,9 @@ fun LudoGameScreen(
             rollingSecond = Random.nextInt(1, 7)
             delay(if (computer) 78 else 62)
         }
-        doubleGame = LudoDoubleDiceEngine.roll(doubleGame)
+        if (roomReady) {
+            if (roomCanAct) onRoomAction(LudoRoomAction(LudoRoomActionType.ROLL))
+        } else doubleGame = LudoDoubleDiceEngine.roll(doubleGame)
         doubleGame.dice?.let { pair ->
             rollingFirst = pair.first
             rollingSecond = pair.second
@@ -139,6 +151,10 @@ fun LudoGameScreen(
     }
 
     fun moveToken(tokenIndex: Int) {
+        if (roomReady) {
+            if (roomCanAct) onRoomAction(LudoRoomAction(LudoRoomActionType.MOVE, tokenIndex = tokenIndex))
+            return
+        }
         val next = LudoDoubleDiceEngine.move(doubleGame, tokenIndex)
         if (soundEnabled && next != doubleGame) {
             val action = next.game.lastAction.lowercase()
@@ -151,8 +167,8 @@ fun LudoGameScreen(
         doubleGame = next
     }
 
-    LaunchedEffect(game.activePlayerIndex, doubleGame.turn, game.turnNumber, game.winnerId, game.message, showRules) {
-        if (!showRules && !game.isFinished && game.activePlayer.isComputer) {
+    LaunchedEffect(game.activePlayerIndex, doubleGame.turn, game.turnNumber, game.winnerId, game.message, showRules, roomReady) {
+        if (!roomReady && !showRules && !game.isFinished && game.activePlayer.isComputer) {
             val turn = doubleGame.turn
             when {
                 turn == null -> animateRoll(computer = true)
@@ -357,21 +373,21 @@ fun LudoGameScreen(
                             val pair = doubleGame.dice
                             DiceFace(if (rolling) rollingFirst else pair?.first ?: rollingFirst, rolling,
                                 Modifier.size(56.dp).clickable(
-                                    enabled = !rolling && !game.activePlayer.isComputer &&
+                                    enabled = !rolling && !game.activePlayer.isComputer && (!roomReady || roomCanAct) &&
                                         (if (doubleGame.turn == null) LudoDoubleDiceEngine.canRoll(doubleGame)
                                         else doubleGame.turn?.selected == null && LudoDieSlot.FIRST in (doubleGame.turn?.remaining ?: emptySet()))
                                 ) {
                                     if (doubleGame.turn == null) scope.launch { animateRoll() }
-                                    else doubleGame = LudoDoubleDiceEngine.selectDie(doubleGame, LudoDieSlot.FIRST)
+                                    else if (roomReady) { if (roomCanAct) onRoomAction(LudoRoomAction(LudoRoomActionType.SELECT_DIE, dieSlot = LudoDieSlot.FIRST)) } else doubleGame = LudoDoubleDiceEngine.selectDie(doubleGame, LudoDieSlot.FIRST)
                                 })
                             DiceFace(if (rolling) rollingSecond else pair?.second ?: rollingSecond, rolling,
                                 Modifier.size(56.dp).clickable(
-                                    enabled = !rolling && !game.activePlayer.isComputer &&
+                                    enabled = !rolling && !game.activePlayer.isComputer && (!roomReady || roomCanAct) &&
                                         (if (doubleGame.turn == null) LudoDoubleDiceEngine.canRoll(doubleGame)
                                         else doubleGame.turn?.selected == null && LudoDieSlot.SECOND in (doubleGame.turn?.remaining ?: emptySet()))
                                 ) {
                                     if (doubleGame.turn == null) scope.launch { animateRoll() }
-                                    else doubleGame = LudoDoubleDiceEngine.selectDie(doubleGame, LudoDieSlot.SECOND)
+                                    else if (roomReady) { if (roomCanAct) onRoomAction(LudoRoomAction(LudoRoomActionType.SELECT_DIE, dieSlot = LudoDieSlot.SECOND)) } else doubleGame = LudoDoubleDiceEngine.selectDie(doubleGame, LudoDieSlot.SECOND)
                                 })
                         }
                     }
@@ -380,7 +396,7 @@ fun LudoGameScreen(
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             scope.launch { animateRoll() }
                         },
-                            enabled = LudoDoubleDiceEngine.canRoll(doubleGame) && !game.activePlayer.isComputer && !rolling,
+                            enabled = LudoDoubleDiceEngine.canRoll(doubleGame) && !game.activePlayer.isComputer && !rolling && (!roomReady || roomCanAct),
                             modifier = Modifier.weight(1f).height(54.dp), shape = RoundedCornerShape(15.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF14233A),
                                 disabledContainerColor = Color(0xFF59677B), disabledContentColor = Color(0xFFB8C3D1)),
@@ -388,7 +404,7 @@ fun LudoGameScreen(
                             Text(if (rolling) "ROLLING…" else if (LudoDoubleDiceEngine.canRoll(doubleGame)) "ROLL BOTH DICE" else if (doubleGame.turn?.selected != null) "MOVE WITH " + game.dice else "CHOOSE A DIE",
                                 fontWeight = FontWeight.Black, fontSize = 14.sp, letterSpacing = 0.5.sp)
                         }
-                        Button(onClick = { doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents)); rolling = false },
+                        Button(onClick = { if (!roomReady) { doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents)); rolling = false } }, enabled = !roomReady,
                             modifier = Modifier.height(54.dp), shape = RoundedCornerShape(15.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25466F), contentColor = White),
                             contentPadding = PaddingValues(horizontal = 13.dp)) {
@@ -431,7 +447,7 @@ fun LudoGameScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Surface(color = if (computerOpponents) Cobalt else Panel, shape = RoundedCornerShape(11.dp),
                         border = BorderStroke(1.dp, if (computerOpponents) Gold else Color(0xFF294362)),
-                        modifier = Modifier.clickable {
+                        modifier = Modifier.clickable(enabled = !roomReady) {
                             computerOpponents = true
                             doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = true))
                         }) {
@@ -440,7 +456,7 @@ fun LudoGameScreen(
                     }
                     Surface(color = if (!computerOpponents) Cobalt else Panel, shape = RoundedCornerShape(11.dp),
                         border = BorderStroke(1.dp, if (!computerOpponents) Gold else Color(0xFF294362)),
-                        modifier = Modifier.clickable {
+                        modifier = Modifier.clickable(enabled = !roomReady) {
                             computerOpponents = false
                             doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = false))
                         }) {
