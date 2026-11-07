@@ -32,11 +32,18 @@ class FastShareController(private val context: Context) {
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
     private var callback: WifiManager.LocalOnlyHotspotCallback? = null
     private var server: FastShareHttpServer? = null
-    private var pendingUri: Uri? = null
+    private var pendingUris: List<Uri> = emptyList()
 
-    fun start(uri: Uri) {
+    fun start(uri: Uri) = start(listOf(uri))
+
+    fun start(uris: List<Uri>) {
+        val selectedUris = uris.distinct().take(FastShareDownloadCatalog.MAX_FILES)
+        if (selectedUris.isEmpty()) {
+            status = "Choose at least one file to start Fast Share."
+            return
+        }
         stop(updateStatus = false)
-        pendingUri = uri
+        pendingUris = selectedUris
         status = "Preparing a private Wi-Fi connection…"
         val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         if (wifi == null) {
@@ -49,34 +56,38 @@ class FastShareController(private val context: Context) {
                 val config = value.wifiConfiguration
                 val ssid = config?.SSID?.trim('"').orEmpty()
                 val password = config?.preSharedKey.orEmpty()
-                val selectedUri = pendingUri
-                if (selectedUri == null || ssid.isBlank() || password.isBlank()) {
+                val selectedUris = pendingUris
+                if (selectedUris.isEmpty() || ssid.isBlank() || password.isBlank()) {
                     status = "Android started Wi-Fi, but did not provide share details. Stop and try again."
                     return
                 }
                 try {
-                    val name = queryDisplayName(selectedUri)
-                    val mime = context.contentResolver.getType(selectedUri) ?: "application/octet-stream"
-                    val descriptorLength = context.contentResolver.openFileDescriptor(selectedUri, "r")?.use { it.statSize } ?: -1L
-                    val length = if (descriptorLength >= 0L) descriptorLength else {
-                        context.contentResolver.query(
-                            selectedUri,
-                            arrayOf(android.provider.OpenableColumns.SIZE),
-                            null,
-                            null,
-                            null
-                        )?.use { cursor ->
-                            if (cursor.moveToFirst()) {
-                                val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
-                                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex) else -1L
-                            } else -1L
-                        } ?: -1L
+                    val items = selectedUris.mapIndexed { index, selectedUri ->
+                        val name = queryDisplayName(selectedUri)
+                        val mime = context.contentResolver.getType(selectedUri) ?: "application/octet-stream"
+                        val descriptorLength = context.contentResolver.openFileDescriptor(selectedUri, "r")?.use { it.statSize } ?: -1L
+                        val length = if (descriptorLength >= 0L) descriptorLength else {
+                            context.contentResolver.query(
+                                selectedUri,
+                                arrayOf(android.provider.OpenableColumns.SIZE),
+                                null,
+                                null,
+                                null
+                            )?.use { cursor ->
+                                if (cursor.moveToFirst()) {
+                                    val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                                    if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex) else -1L
+                                } else -1L
+                            } ?: -1L
+                        }
+                        FastShareDownloadItem(index, name, mime, length)
                     }
+                    val catalog = FastShareDownloadCatalog(items)
                     var transferStartedAt = 0L
                     var lastProgressAt = 0L
                     var lastProgressBytes = 0L
                     var bytesPerSecond = 0.0
-                    val httpServer = FastShareHttpServer(context, selectedUri, name, mime, length) { sent, total, complete, interrupted, partialResponse ->
+                    val httpServer = FastShareHttpServer(context, selectedUris, catalog) { sent, total, complete, interrupted, partialResponse ->
                         val now = android.os.SystemClock.elapsedRealtime()
                         if (transferStartedAt == 0L || sent < lastProgressBytes) {
                             transferStartedAt = now
@@ -111,7 +122,7 @@ class FastShareController(private val context: Context) {
                     val address = httpServer.start()
                     server = httpServer
                     details = FastShareDetails(ssid, password, "http://$address:8765")
-                    status = "Fast Share is ready. Keep NeaRer open while the other phone downloads."
+                    status = "Fast Share is ready · ${selectedUris.size} file(s). Keep NeaRer open while the other phone downloads."
                 } catch (error: Exception) {
                     status = "Could not start the download page: ${error.message ?: "please try again"}"
                     stop(updateStatus = false)
@@ -150,7 +161,7 @@ class FastShareController(private val context: Context) {
         server?.stop()
         server = null
         details = null
-        pendingUri = null
+        pendingUris = emptyList()
         try { reservation?.close() } catch (_: Exception) {}
         reservation = null
         callback = null
@@ -185,10 +196,8 @@ data class FastShareDetails(val ssid: String, val password: String, val url: Str
 /** Small HTTP server with byte-range support; streams from the selected content URI. */
 private class FastShareHttpServer(
     private val context: Context,
-    private val uri: Uri,
-    private val fileName: String,
-    private val mimeType: String,
-    private val fileLength: Long,
+    private val uris: List<Uri>,
+    private val catalog: FastShareDownloadCatalog,
     private val onTransferUpdate: (sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean, partialResponse: Boolean) -> Unit
 ) {
     private val executor = Executors.newCachedThreadPool()
@@ -239,40 +248,40 @@ private class FastShareHttpServer(
             val rangeHeader = exchange.rangeHeader
             when (request.route) {
                 FastShareHttpRequest.Route.RECEIVER_PAGE -> {
-                    val safeName = escapeHtml(fileName)
-                    val sizeLabel = if (fileLength >= 0L) formatFileSize(fileLength) else "Size unavailable"
-                    val page = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101a2b"><title>NeaRer Fast Share</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;background:radial-gradient(circle at 85% 5%,#29466a 0,transparent 36%),#101a2b;color:#f6f8fc;padding:24px 16px;margin:0;min-height:100vh;display:grid;place-items:center}.card{width:100%;max-width:480px;background:#1a2940;border:1px solid #344963;border-radius:26px;padding:26px;box-shadow:0 18px 50px #07101f88}.brand{color:#69e0c0;font-size:13px;font-weight:800;letter-spacing:2px}.mark{width:52px;height:52px;border-radius:16px;background:#ffd12d;color:#101a2b;display:grid;place-items:center;font-size:28px;font-weight:900;margin:18px 0}.eyebrow{color:#ffd12d;font-size:11px;font-weight:800;letter-spacing:1.5px}h1{font-size:25px;margin:8px 0 12px;overflow-wrap:anywhere}.meta{color:#a8b6c9;font-size:13px;line-height:1.6}.steps{margin:24px 0 8px;padding:16px;background:#101a2b;border-radius:16px;color:#cbd6e5;font-size:13px;line-height:1.7}.download{display:block;background:#69e0c0;color:#101a2b;text-decoration:none;font-weight:800;text-align:center;padding:17px;border-radius:14px;margin-top:20px}.foot{color:#a8b6c9;font-size:11px;text-align:center;margin:18px 0 0}.retry{margin:14px 0 0;padding:13px 14px;border:1px solid #425671;border-radius:13px;color:#cbd6e5;font-size:12px;line-height:1.6}.retry strong{color:#ffd12d}</style></head><body><main class="card"><div class="brand">NEARER</div><div class="mark">N</div><div class="eyebrow">PRIVATE LOCAL TRANSFER</div><h1>$safeName</h1><p class="meta">$sizeLabel · Ready to receive</p><div class="steps"><strong>Almost there.</strong><br>1. Stay connected to the sender's NeaRer Wi-Fi.<br>2. Tap the button below to save your file.<br>3. Keep this page open until the download finishes.</div><a class="download" href="/download">Download file</a><div class="retry"><strong>If the download stops:</strong> stay connected and tap Download file again. Your browser may restart the file or resume it if it sends a supported byte-range request.</div><p class="foot">Transferred over local Wi-Fi. Mobile data is not used.</p></main></body></html>"""
-                    val bytes = page.toByteArray(Charsets.UTF_8)
+                    val bytes = catalog.receiverPage().toByteArray(Charsets.UTF_8)
                     output.write(FastShareHttpWire.responseHead("HTTP/1.1 200 OK", listOf("Content-Type" to "text/html; charset=utf-8", "Content-Length" to bytes.size.toString(), "Connection" to "close")))
                     if (!headOnly) output.write(bytes)
                 }
                 FastShareHttpRequest.Route.DOWNLOAD -> {
-                    if (headOnly) {
-                        streamFile(output, rangeHeader, true)
+                    val index = request.downloadIndex
+                    val item = index?.let { catalog.itemAt(it) }
+                    val uri = index?.let { uris.getOrNull(it) }
+                    if (item == null || uri == null) {
+                        output.write(FastShareHttpErrors.notFound())
+                    } else if (headOnly) {
+                        streamFile(output, uri, item, rangeHeader, true)
                     } else if (!transferActive.compareAndSet(false, true)) {
                         output.write(FastShareHttpErrors.tooManyRequests())
                     } else {
                         try {
-                            streamFile(output, rangeHeader, false)
+                            streamFile(output, uri, item, rangeHeader, false)
                         } finally {
                             transferActive.set(false)
                         }
                     }
                 }
-                FastShareHttpRequest.Route.NOT_FOUND -> {
-                    output.write(FastShareHttpErrors.notFound())
-                }
+                FastShareHttpRequest.Route.NOT_FOUND -> output.write(FastShareHttpErrors.notFound())
             }
             output.flush()
         }
     }
 
-    private fun streamFile(output: BufferedOutputStream, rangeHeader: String?, headOnly: Boolean) {
+    private fun streamFile(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, rangeHeader: String?, headOnly: Boolean) {
         if (fileLength < 0L) {
             streamUnknownLength(output, headOnly)
             return
         }
-        val response = FileHttpResponses.resolve(rangeHeader, fileLength)
+        val response = FileHttpResponses.resolve(rangeHeader, item.fileLength)
         val resolvedRange = response.range
         if (resolvedRange == null) {
             output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\nContent-Range: ${response.contentRange}\r\nContent-Length: ${response.contentLength}\r\nConnection: close\r\n\r\n".toByteArray())
@@ -301,10 +310,10 @@ private class FastShareHttpServer(
             }
         }
         // Start the throughput clock before sending the HTTP response or first byte.
-        val partialTransfer = ByteRange.isPartialTransfer(resolvedRange, fileLength)
+        val partialTransfer = ByteRange.isPartialTransfer(resolvedRange, item.fileLength)
         if (!headOnly) onTransferUpdate(0L, count, false, false, partialTransfer)
         output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\n".toByteArray())
-        output.write(FileHttpHeaders.fileHeaders(mimeType, fileName).toByteArray())
+        output.write(FileHttpHeaders.fileHeaders(item.mimeType, item.fileName).toByteArray())
         output.write("Content-Length: $count\r\nAccept-Ranges: bytes\r\n".toByteArray())
         response.contentRange?.let { output.write("Content-Range: $it\r\n".toByteArray()) }
         output.write("Connection: close\r\n\r\n".toByteArray())
@@ -335,7 +344,7 @@ private class FastShareHttpServer(
      * these files shareable without buffering the entire file in memory.
      * Resume/range requests are not available when the length is unknown.
      */
-    private fun streamUnknownLength(output: BufferedOutputStream, headOnly: Boolean) {
+    private fun streamUnknownLength(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, headOnly: Boolean) {
         val stream = if (headOnly) null else try {
             context.contentResolver.openInputStream(uri)
         } catch (_: Exception) {
@@ -373,24 +382,12 @@ private class FastShareHttpServer(
     }
 
     private fun writeFileUnavailable(output: BufferedOutputStream) {
-        onTransferUpdate(0L, fileLength, false, true, false)
+        onTransferUpdate(0L, item.fileLength, false, true, false)
         val message = "The selected file is no longer available. Choose it again in NeaRer."
         val body = message.toByteArray(Charsets.UTF_8)
         output.write("HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
         output.write(body)
         output.flush()
-    }
-
-    private fun formatFileSize(bytes: Long): String {
-        if (bytes < 1024L) return "$bytes B"
-        val units = arrayOf("KB", "MB", "GB", "TB")
-        var value = bytes.toDouble()
-        var unit = -1
-        do {
-            value /= 1024.0
-            unit++
-        } while (value >= 1024.0 && unit < units.lastIndex)
-        return String.format(java.util.Locale.US, "%.1f %s", value, units[unit])
     }
 
     private fun escapeHtml(value: String): String = value
