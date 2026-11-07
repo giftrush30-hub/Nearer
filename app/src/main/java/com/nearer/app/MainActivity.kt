@@ -1122,9 +1122,10 @@ class MainActivity : ComponentActivity() {
         }
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val bluetoothOn = try { bluetoothManager?.adapter?.isEnabled == true } catch (_: SecurityException) { false }
-        if (!bluetoothOn) {
+        val wifiOn = isWifiEnabled()
+        if (!NearbyRadioReadinessPolicy.canStartNearby(bluetoothOn, wifiOn)) {
             finishDiscovery()
-            statusMessage = "Turn Bluetooth ON on both phones. Wi-Fi ON also helps with faster connections; hotspot and mobile data are not required."
+            statusMessage = "Turn Bluetooth or Wi-Fi ON in Quick Settings on both phones, then search again. Hotspot and mobile data are not required."
             return
         }
         nearbySearchTimeout?.let(discoveryHandler::removeCallbacks)
@@ -1141,7 +1142,7 @@ class MainActivity : ComponentActivity() {
         }
         nearbySearchTimeout = nearbyTimeout
         discoveryHandler.postDelayed(nearbyTimeout, NearbyDiscoveryBudgetPolicy.FOREGROUND_SEARCH_TIMEOUT_MS)
-        if (!isWifiEnabled()) {
+        if (!NearbyRadioReadinessPolicy.shouldStartWifiDirect(wifiOn)) {
             finishDiscovery()
             statusMessage = "Bluetooth discovery is active. Turn Wi-Fi ON on both phones for faster connections and file sharing. Hotspot and mobile data are not required."
             return
