@@ -28,6 +28,8 @@ class FastShareController(private val context: Context) {
         private set
     var details by androidx.compose.runtime.mutableStateOf<FastShareDetails?>(null)
         private set
+    var history by androidx.compose.runtime.mutableStateOf(loadHistory())
+        private set
 
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
     private var callback: WifiManager.LocalOnlyHotspotCallback? = null
@@ -91,7 +93,7 @@ class FastShareController(private val context: Context) {
                     var lastProgressAt = 0L
                     var lastProgressBytes = 0L
                     var bytesPerSecond = 0.0
-                    val httpServer = FastShareHttpServer(context, selectedUris, catalog) { sent, total, complete, interrupted, partialResponse ->
+                    val httpServer = FastShareHttpServer(context, selectedUris, catalog) { fileName, sent, total, complete, interrupted, partialResponse ->
                         val now = android.os.SystemClock.elapsedRealtime()
                         if (transferStartedAt == 0L || sent < lastProgressBytes) {
                             transferStartedAt = now
@@ -114,6 +116,14 @@ class FastShareController(private val context: Context) {
                                 complete -> "Transfer completed · average $averageSpeed/s"
                                 total >= 0L -> "Sending ${formatProgressSize(sent)} of ${formatProgressSize(total)}$speedLabel…"
                                 else -> "Sending ${formatProgressSize(sent)}$speedLabel…"
+                            }
+                            if (complete || interrupted) {
+                                val result = when {
+                                    interrupted -> "Interrupted"
+                                    partialResponse -> "Partial"
+                                    else -> "Completed"
+                                }
+                                recordHistory(fileName, sent, result)
                             }
                         }
                         if (complete || interrupted) {
@@ -172,6 +182,41 @@ class FastShareController(private val context: Context) {
         if (updateStatus) status = "Fast Share stopped."
     }
 
+    private fun recordHistory(fileName: String, bytes: Long, result: String) {
+        val entry = FastShareHistoryEntry(fileName, bytes, result, System.currentTimeMillis())
+        history = (listOf(entry) + history).take(50)
+        val array = org.json.JSONArray()
+        history.forEach { item ->
+            array.put(org.json.JSONObject().apply {
+                put("name", item.fileName)
+                put("bytes", item.bytesTransferred)
+                put("result", item.result)
+                put("time", item.timestampMillis)
+            })
+        }
+        context.getSharedPreferences("nearer_fast_share_history", Context.MODE_PRIVATE)
+            .edit().putString("entries", array.toString()).apply()
+    }
+
+    private fun loadHistory(): List<FastShareHistoryEntry> {
+        val raw = context.getSharedPreferences("nearer_fast_share_history", Context.MODE_PRIVATE)
+            .getString("entries", null) ?: return emptyList()
+        return try {
+            val array = org.json.JSONArray(raw)
+            (0 until array.length()).mapNotNull { index ->
+                val item = array.optJSONObject(index) ?: return@mapNotNull null
+                FastShareHistoryEntry(
+                    item.optString("name", "Shared file"),
+                    item.optLong("bytes", 0L),
+                    item.optString("result", "Unknown"),
+                    item.optLong("time", 0L)
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     private fun formatProgressSize(bytes: Long): String {
         if (bytes < 1024L) return "$bytes B"
         val units = arrayOf("KB", "MB", "GB", "TB")
@@ -197,12 +242,14 @@ class FastShareController(private val context: Context) {
 
 data class FastShareDetails(val ssid: String, val password: String, val url: String)
 
+data class FastShareHistoryEntry(val fileName: String, val bytesTransferred: Long, val result: String, val timestampMillis: Long)
+
 /** Small HTTP server with byte-range support; streams from the selected content URI. */
 private class FastShareHttpServer(
     private val context: Context,
     private val uris: List<Uri>,
     private val catalog: FastShareDownloadCatalog,
-    private val onTransferUpdate: (sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean, partialResponse: Boolean) -> Unit
+    private val onTransferUpdate: (fileName: String, sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean, partialResponse: Boolean) -> Unit
 ) {
     private val executor = Executors.newCachedThreadPool()
     @Volatile private var running = true
@@ -315,7 +362,7 @@ private class FastShareHttpServer(
         }
         // Start the throughput clock before sending the HTTP response or first byte.
         val partialTransfer = ByteRange.isPartialTransfer(resolvedRange, item.fileLength)
-        if (!headOnly) onTransferUpdate(0L, count, false, false, partialTransfer)
+        if (!headOnly) onTransferUpdate(item.fileName, 0L, count, false, false, partialTransfer)
         output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\n".toByteArray())
         output.write(FileHttpHeaders.fileHeaders(item.mimeType, item.fileName).toByteArray())
         output.write("Content-Length: $count\r\nAccept-Ranges: bytes\r\n".toByteArray())
@@ -332,13 +379,13 @@ private class FastShareHttpServer(
                     shouldContinue = { running },
                     onBytesCopied = { copied -> sent = copied },
                     onProgress = { copied ->
-                        onTransferUpdate(copied, count, false, false, partialTransfer)
+                        onTransferUpdate(item.fileName, copied, count, false, false, partialTransfer)
                     }
                 )
                 sent = result.bytesCopied
-                onTransferUpdate(sent, count, result.complete, !result.complete, partialTransfer)
+                onTransferUpdate(item.fileName, sent, count, result.complete, !result.complete, partialTransfer)
             } catch (error: Exception) {
-                onTransferUpdate(sent, count, false, true, partialTransfer)
+                onTransferUpdate(item.fileName, sent, count, false, true, partialTransfer)
                 throw error
             }
         }
@@ -360,7 +407,7 @@ private class FastShareHttpServer(
             return
         }
         // Start the throughput clock before the first chunk is read or written.
-        if (!headOnly) onTransferUpdate(0L, -1L, false, false, false)
+        if (!headOnly) onTransferUpdate(item.fileName, 0L, -1L, false, false, false)
         output.write("HTTP/1.1 200 OK\r\n".toByteArray())
         output.write(FileHttpHeaders.fileHeaders(item.mimeType, item.fileName).toByteArray())
         output.write("Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n".toByteArray())
@@ -374,20 +421,20 @@ private class FastShareHttpServer(
                     shouldContinue = { running },
                     onBytesCopied = { copied -> sent = copied },
                     onProgress = { copied ->
-                        onTransferUpdate(copied, -1L, false, false, false)
+                        onTransferUpdate(item.fileName, copied, -1L, false, false, false)
                     }
                 )
                 sent = result.bytesCopied
-                onTransferUpdate(sent, -1L, result.complete, !result.complete, false)
+                onTransferUpdate(item.fileName, sent, -1L, result.complete, !result.complete, false)
             } catch (error: Exception) {
-                onTransferUpdate(sent, -1L, false, true, false)
+                onTransferUpdate(item.fileName, sent, -1L, false, true, false)
                 throw error
             }
         }
     }
 
     private fun writeFileUnavailable(output: BufferedOutputStream, item: FastShareDownloadItem) {
-        onTransferUpdate(0L, item.fileLength, false, true, false)
+        onTransferUpdate(item.fileName, 0L, item.fileLength, false, true, false)
         val message = "The selected file is no longer available. Choose it again in NeaRer."
         val body = message.toByteArray(Charsets.UTF_8)
         output.write("HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
