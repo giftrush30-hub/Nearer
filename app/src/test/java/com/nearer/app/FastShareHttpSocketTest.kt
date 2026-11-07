@@ -29,6 +29,7 @@ class FastShareHttpSocketTest {
                             val headers = buildString {
                                 append("HTTP/1.1 ").append(response.statusCode).append(' ')
                                     .append(response.statusText).append("\r\n")
+                                append("Accept-Ranges: bytes\r\n")
                                 append("Content-Length: ").append(response.contentLength).append("\r\n")
                                 response.contentRange?.let { append("Content-Range: ").append(it).append("\r\n") }
                                 append("Connection: close\r\n\r\n")
