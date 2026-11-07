@@ -83,6 +83,25 @@ internal object PeerSessionCrypto {
         }
     }
 
+    /**
+     * Six-digit short authentication string. Both phones calculate this locally
+     * from the ECDH session key and the same ordered peer-identity transcript.
+     * Users must compare it on both screens before accepting the session.
+     */
+    fun authenticationCode(key: SecretKey, transcript: String): String {
+        require(transcript.isNotBlank() && transcript.length <= 512) {
+            "Invalid authentication transcript"
+        }
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(key.encoded, "HmacSHA256"))
+        val digest = mac.doFinal(transcript.toByteArray(StandardCharsets.UTF_8))
+        val value = ((digest[0].toLong() and 0xff) shl 24) or
+            ((digest[1].toLong() and 0xff) shl 16) or
+            ((digest[2].toLong() and 0xff) shl 8) or
+            (digest[3].toLong() and 0xff)
+        return String.format(java.util.Locale.ROOT, "%06d", (value and 0x7fffffffL) % 1_000_000L)
+    }
+
     fun encrypt(plaintext: String, key: SecretKey): String {
         val nonce = ByteArray(NONCE_BYTES).also(random::nextBytes)
         val cipher = Cipher.getInstance(TRANSFORMATION)
