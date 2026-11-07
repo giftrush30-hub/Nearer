@@ -144,13 +144,13 @@ import com.nearer.app.games.ludo.LudoRoomEnvelopeCodec
 import com.nearer.app.games.ludo.LudoDoubleDiceState
 
 // NeaRer Royal Neutral palette: blue is the signature accent, not the page background.
-private val Midnight = Color(0xFF101A2B)       // graphite / ink canvas
-private val Panel = Color(0xFF1A2940)           // warm ivory content surfaces
-private val AccentBlue = Color(0xFF2563EB)      // restrained brand blue
-private val Muted = Color(0xFFA8B6C9)           // readable secondary text
-private val White = Color(0xFFF6F8FC)
-private val BrandBlue = Color(0xFF2563EB)
-private val Gold = Color(0xFFFFD12D)
+private val Midnight = NeaRerPalette.Midnight
+private val Panel = NeaRerPalette.Panel
+private val AccentBlue = NeaRerPalette.AccentBlue
+private val Muted = NeaRerPalette.TextMuted
+private val White = NeaRerPalette.TextPrimary
+private val BrandBlue = NeaRerPalette.AccentBlue
+private val Gold = NeaRerPalette.Gold
 
 class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
@@ -682,9 +682,9 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme(
                 background = Midnight,
                 surface = Panel,
-                surfaceVariant = Color(0xFF203858),
+                surfaceVariant = NeaRerPalette.RaisedPanel,
                 primary = AccentBlue,
-                secondary = Color(0xFF69E0C0),
+                secondary = NeaRerPalette.Mint,
                 tertiary = Color(0xFF2563EB),
                 onPrimary = White,
                 onBackground = Color(0xFFF6F8FC),
@@ -3893,7 +3893,7 @@ private fun NeaRerHome(
                         colorStops = arrayOf(
                             0.0f to Color(0xFF101A2B),
                             0.42f to Color(0xFF101A2B),
-                            1.0f to Color(0xFFF6F8FC)
+                            1.0f to Panel
                         )
                     )
                 )
@@ -3949,6 +3949,7 @@ private fun NeaRerHome(
                                 "community" -> "Communities"
                                 "games" -> "Game Zone"
                                 "flash" -> "NeaRer Flash"
+                                "more" -> "More"
                                 else -> "NeaRer"
                             },
                             color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold
@@ -3960,6 +3961,7 @@ private fun NeaRerHome(
                                 "community" -> "Your local circles"
                                 "games" -> "Play together, stay closer"
                                 "flash" -> "Short signals through ordinary phone calls"
+                                "more" -> "Games, Flash and extra features"
                                 else -> "No Data? We Are NeaRer."
                             },
                             color = Muted, fontSize = 11.sp
@@ -4012,16 +4014,16 @@ private fun NeaRerHome(
                 Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = Color(0xFF2563EB),
+                        color = NeaRerPalette.RaisedPanel,
                         shape = RoundedCornerShape(26.dp),
-                        border = BorderStroke(1.dp, Color(0xFF2563EB)),
+                        border = BorderStroke(1.dp, NeaRerPalette.Border),
                         shadowElevation = 12.dp
                     ) {
                         Column(
                             Modifier.fillMaxWidth()
                                 .background(
                                     Brush.linearGradient(
-                                        listOf(Color(0xFF2563EB), Color(0xFF2563EB), Color(0xFF26364D))
+                                        listOf(NeaRerPalette.Panel, NeaRerPalette.RaisedPanel, NeaRerPalette.Panel)
                                     )
                                 )
                                 .padding(19.dp),
@@ -5827,7 +5829,7 @@ private fun NeaRerHome(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Color(0xFFF6F8FC)) {
+            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Panel, border = BorderStroke(1.dp, NeaRerPalette.Border)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("PEOPLE AROUND YOU", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text(if (hybridPeers.isEmpty()) "Your nearby circle" else "${hybridPeers.size} active nearby", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -5866,7 +5868,7 @@ private fun NeaRerHome(
                             hybridPeers.entries.take(5).forEachIndexed { index, entry ->
                                 val drift by searchMotion.animateFloat(0f, if (index % 2 == 0) 5f else -5f, infiniteRepeatable(tween(1300 + index * 170), RepeatMode.Reverse), label = "bubble-$index")
                                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                                    Surface(shape = CircleShape, color = Color(0xFF26364D), modifier = Modifier.size(54.dp).rotate(drift)) {
+                                    Surface(shape = CircleShape, color = Muted, modifier = Modifier.size(54.dp).rotate(drift)) {
                                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(entry.value.take(1).uppercase(), color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
                                     }
                                     Text(entry.value, color = White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
@@ -5876,7 +5878,7 @@ private fun NeaRerHome(
                         }
                     } else {
                         androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(78.dp), contentAlignment = Alignment.Center) {
-                            Surface(shape = CircleShape, color = Color(0xFF26364D), modifier = Modifier.size(68.dp)) {
+                            Surface(shape = CircleShape, color = Muted, modifier = Modifier.size(68.dp)) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("•••", color = AccentBlue, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
                             }
                         }
@@ -5887,7 +5889,7 @@ private fun NeaRerHome(
                             Text("RECENTLY SEEN ON THIS PHONE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                             recentlySeenPeers.values.sortedByDescending { it.lastSeenAt }.take(5).forEach { person ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Surface(shape = CircleShape, color = Color(0xFF26364D), modifier = Modifier.size(32.dp)) {
+                                    Surface(shape = CircleShape, color = Muted, modifier = Modifier.size(32.dp)) {
                                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(person.name.take(1).uppercase(), color = Muted, fontWeight = FontWeight.Bold) }
                                     }
                                     Column(Modifier.weight(1f).padding(start = 9.dp)) {
@@ -5909,7 +5911,7 @@ private fun NeaRerHome(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(19.dp),
-                            color = Color(0xFF26364D),
+                            color = Muted,
                             border = BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.72f)),
                             shadowElevation = 5.dp
                         ) {
@@ -5979,7 +5981,7 @@ private fun NeaRerHome(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF203858),
+                                color = NeaRerPalette.RaisedPanel,
                                 modifier = Modifier.size(38.dp)
                             ) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
@@ -5996,7 +5998,7 @@ private fun NeaRerHome(
                                 Text(
                                     if (scanning) "NeaRer is actively looking. Keep this screen open on both phones."
                                     else "Tap Find people nearby to start live discovery. No mobile data is needed.",
-                                    color = Color(0xFF26364D),
+                                    color = Muted,
                                     fontSize = 12.sp,
                                     lineHeight = 17.sp
                                 )
@@ -6019,7 +6021,7 @@ private fun NeaRerHome(
                         ).forEachIndexed { index, tip ->
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("0${index + 1}", color = Color(0xFF2563EB), fontSize = 10.sp, fontWeight = FontWeight.Black)
-                                Text(tip, color = Color(0xFF26364D), fontSize = 12.sp, lineHeight = 17.sp)
+                                Text(tip, color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
                             }
                         }
                         if (!scanning && connectedDeviceName == null) {
@@ -6066,58 +6068,59 @@ private fun NeaRerHome(
                 }
             }
 
+            if (activeSection == "more") {
+                NeaRerMoreHub(
+                    onOpenGames = { navigateToSection("games") },
+                    onOpenFlash = { navigateToSection("flash") }
+                )
+            }
+
             Spacer(modifier = Modifier.weight(1f, fill = false))
             }
 
             Text("NEARER  •  DIRECT DEVICE DISCOVERY", color = Muted, fontSize = 10.sp, letterSpacing = 1.sp)
             }
             Surface(
-                color = Color(0xFF26364D),
+                color = Panel,
                 modifier = Modifier.fillMaxWidth(),
-                shadowElevation = 18.dp,
-                border = BorderStroke(1.dp, Color(0xFF203858).copy(alpha = 0.65f))
+                shadowElevation = 12.dp,
+                border = BorderStroke(1.dp, NeaRerPalette.Border)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth()
-                        .background(Brush.verticalGradient(listOf(Color(0xFF26364D), Color(0xFF2563EB))))
-                        .padding(horizontal = 7.dp, vertical = 7.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        .background(Panel)
+                        .padding(horizontal = 6.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    listOf(
-                        Triple("⇅", "Transfer", "home"),
-                        Triple("◎", "Nearby", "nearby"),
-                        Triple("✉", "Chats", "chats"),
-                        Triple("♧", "Groups", "community"),
-                        Triple("♜", "Games", "games"),
-                        Triple("⌁", "Flash", "flash")
-                    ).forEach { item ->
-                        val selected = activeSection == item.third
+                    NeaRerNavigation.destinations.forEach { item ->
+                        val selected = activeSection == item.id
                         Surface(
-                            modifier = Modifier.weight(1f).heightIn(min = 60.dp).animateContentSize().semantics(mergeDescendants = true) {
-                                    contentDescription = item.second + " tab"
+                            modifier = Modifier.weight(1f).heightIn(min = 58.dp).animateContentSize()
+                                .semantics(mergeDescendants = true) {
+                                    contentDescription = item.label + " tab"
                                     this.selected = selected
                                     role = Role.Tab
                                 }.clickable {
-                                navigateToSection(item.third)
-                                navigationScope.launch { pageScrollState.animateScrollTo(0) }
-                            },
-                            color = if (selected) Color(0xFF2563EB) else Color.Transparent,
+                                    navigateToSection(item.id)
+                                    navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                                },
+                            color = if (selected) NeaRerPalette.RaisedPanel else Color.Transparent,
                             shape = RoundedCornerShape(15.dp),
-                            border = if (selected) BorderStroke(1.dp, Gold.copy(alpha = 0.8f)) else null
+                            border = if (selected) BorderStroke(1.dp, Gold.copy(alpha = 0.78f)) else null
                         ) {
                             Column(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
                                 Text(
-                                    item.first,
+                                    item.glyph,
                                     color = if (selected) Gold else Muted,
-                                    fontSize = 19.sp,
+                                    fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    item.second,
+                                    item.label,
                                     color = if (selected) White else Muted,
                                     fontSize = 9.sp,
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
@@ -6317,7 +6320,7 @@ private fun CommunityHub(
         }
         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFFF6F8FC)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text("NEARBY BROADCAST", color = Color(0xFF69E0C0), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                Text("NEARBY BROADCAST", color = NeaRerPalette.Mint, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
                 Text("Share an announcement", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Text("Only currently connected NeaRer devices receive broadcasts. This does not send through the internet.", color = Color(0xFFA8B6C9), fontSize = 11.sp, lineHeight = 16.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
