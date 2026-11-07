@@ -260,10 +260,10 @@ class MainActivity : ComponentActivity() {
                     hybridConnectedEndpoint = id
                     hybridConnectedStableId = stableId.ifBlank { null }
                     val requestedIncomingResume = nearbyTransport?.requestPendingIncomingFilesForPeer(stableId, id) == true
-                    if (requestedIncomingResume) {
-                        chatNotice = "Connection restored. Requesting the saved receive position…"
-                    } else if (currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()) {
-                        chatNotice = "Connection restored. Checking whether the other phone has a saved transfer position…"
+                    val hasQueuedOutgoingFile = currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()
+                    if (!requestedIncomingResume && hasQueuedOutgoingFile) {
+                        // Give the other phone time to send its receiver-confirmed byte offset.
+                        // A short timeout here can race the resume request and start a duplicate file.
                         discoveryHandler.postDelayed({
                             if (hybridConnected && hybridConnectedStableId == stableId &&
                                 outgoingTransferId == null &&
@@ -271,7 +271,7 @@ class MainActivity : ComponentActivity() {
                                 chatNotice = "No matching partial transfer was found. Restarting this file safely from the beginning…"
                                 startNextNearbyQueuedFile()
                             }
-                        }, 1800L)
+                        }, 5000L)
                     }
                     pendingHybridEndpoint = null
                     incomingRequesterName = null
@@ -280,7 +280,11 @@ class MainActivity : ComponentActivity() {
                     resumeLudoAfterReconnect(name)
                     connectionMessage = "Secure nearby connection active"
                     approvalMessage = "Connection approved"
-                    chatNotice = "Connected to $name. Offline chat is ready."
+                    chatNotice = when {
+                        requestedIncomingResume -> "Connection restored. Requesting the saved receive position…"
+                        hasQueuedOutgoingFile -> "Connection restored. Checking for a saved transfer position…"
+                        else -> "Connected to $name. Offline chat is ready."
+                    }
                     statusMessage = "Connected to $name using Bluetooth / nearby Wi-Fi."
                 }
             }
