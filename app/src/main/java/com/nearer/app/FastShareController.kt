@@ -303,13 +303,38 @@ private class FastShareHttpServer(
     }
 
     private fun findHotspotAddress(): String {
-        val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+        // A phone can have several 192.168.x.x interfaces at once (for example,
+        // Wi-Fi, VPN, or a virtual adapter). Prefer an active Wi-Fi/AP interface
+        // instead of whichever private address the OS happens to enumerate first.
+        val interfaces = runCatching { Collections.list(NetworkInterface.getNetworkInterfaces()) }
+            .getOrDefault(emptyList())
+            .filter { network ->
+                runCatching { network.isUp && !network.isLoopback }.getOrDefault(false)
+            }
         val candidates = interfaces.flatMap { network ->
+            val wifiLike = network.name.lowercase(java.util.Locale.ROOT).let { name ->
+                name.contains("wlan") || name.contains("wifi") ||
+                    name.startsWith("ap") || name.contains("softap")
+            }
             Collections.list(network.inetAddresses).filterIsInstance<Inet4Address>()
-                .filter { !it.isLoopbackAddress && it.hostAddress?.startsWith("192.168.") == true }
-                .map { it.hostAddress ?: "" }
+                .filter { address ->
+                    !address.isLoopbackAddress &&
+                        address.hostAddress?.startsWith("192.168.") == true
+                }
+                .mapNotNull { address ->
+                    address.hostAddress?.let { addressText ->
+                        Triple(addressText, wifiLike, network.name)
+                    }
+                }
         }
-        return candidates.firstOrNull { it.endsWith(".1") } ?: candidates.firstOrNull()
+        // These are common Android local-hotspot gateway addresses. Keep the
+        // interface-name preference as a fallback for OEM-specific subnets.
+        return candidates.firstOrNull { it.first == "192.168.43.1" }?.first
+            ?: candidates.firstOrNull { it.first == "192.168.49.1" }?.first
+            ?: candidates.firstOrNull { it.second && it.first.endsWith(".1") }?.first
+            ?: candidates.firstOrNull { it.first.endsWith(".1") }?.first
+            ?: candidates.firstOrNull { it.second }?.first
+            ?: candidates.firstOrNull()?.first
             ?: "192.168.43.1"
     }
 
