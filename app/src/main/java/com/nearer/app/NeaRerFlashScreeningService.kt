@@ -86,7 +86,7 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                         queuedAt > 0L && receivedAt >= queuedAt &&
                         receivedAt - queuedAt <= MAX_SEQUENCE_AGE_MS
                     ) {
-                        queuedEvent.optString("id").takeIf { it.isNotBlank() }?.let(replacedEventIds::put)
+                        queuedEvent.optString("id").takeIf { it.isNotBlank() }?.let { replacedEventIds.put(it) }
                         queue.remove(index)
                     }
                 }
