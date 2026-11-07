@@ -250,11 +250,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     // Keep the same Payload instance and its SDK-maintained offset.
                     outgoing.awaitingResume = true
                     outgoing.endpointId = ""
-                    listener.onFileStatus("Nearby file transfer paused. Reconnect to the same phone to resume.")
+                    listener.onFileStatus("Nearby outgoing file transfer paused. Reconnect to the same phone to resume.")
                 } else {
                     // Keep the incoming payload and metadata: its SDK offset is needed
                     // by the sender when the same peer reconnects.
-                    listener.onFileStatus("Nearby file transfer paused. Waiting to resume with the same phone.")
+                    listener.onFileStatus("Nearby incoming file transfer paused. Waiting to resume with the same phone.")
                 }
             }
         }
