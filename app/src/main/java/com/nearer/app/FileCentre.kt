@@ -67,7 +67,7 @@ import java.util.zip.ZipOutputStream
 
 internal enum class FileCentreCategory(val label: String) {
     PICTURES("Pictures"), VIDEOS("Videos"), MUSIC("Music"), APPS("Apps"),
-    DOCUMENTS("Documents"), DOWNLOADS("Downloads"), OTHER("Other files"), FAVOURITES("Favourites")
+    DOCUMENTS("Documents"), DOWNLOADS("Downloads"), OTHER("Other files"), FAVOURITES("Favourites"), RECENT("Recent files")
 }
 
 internal data class FileCentreItem(
@@ -343,6 +343,7 @@ internal object AndroidFileCatalog {
             FileCentreCategory.DOWNLOADS -> "DOWNLOAD"
             FileCentreCategory.OTHER -> "FILE"
             FileCentreCategory.FAVOURITES -> "FAVOURITE"
+            FileCentreCategory.RECENT -> "RECENT"
         }
     }
 }
@@ -358,6 +359,7 @@ internal fun FileCentreScreen(
     val items = remember { mutableStateListOf<FileCentreItem>() }
     val selected = remember { mutableStateListOf<String>() }
     val favouriteIds = remember { mutableStateListOf<String>() }
+    val recentIds = remember { mutableStateListOf<String>() }
     var category by remember { mutableStateOf(FileCentreCategory.PICTURES) }
     var search by remember { mutableStateOf("") }
     var gridMode by remember { mutableStateOf(true) }
@@ -369,7 +371,18 @@ internal fun FileCentreScreen(
         val saved = context.getSharedPreferences("nearer_file_centre", Context.MODE_PRIVATE)
             .getStringSet("favourites", emptySet()).orEmpty()
         favouriteIds.addAll(saved)
+        val savedRecent = context.getSharedPreferences("nearer_file_centre", Context.MODE_PRIVATE)
+            .getString("recent_files_order", "").orEmpty()
+        recentIds.addAll(savedRecent.split("\n").filter { it.isNotBlank() }.take(100))
     }
+    val markRecent: (String) -> Unit = { id ->
+        recentIds.remove(id)
+        recentIds.add(0, id)
+        while (recentIds.size > 100) recentIds.removeAt(recentIds.lastIndex)
+        context.getSharedPreferences("nearer_file_centre", Context.MODE_PRIVATE)
+            .edit().putString("recent_files_order", recentIds.joinToString("\n")).apply()
+    }
+
     val toggleFavourite: (String) -> Unit = { id ->
         if (id in favouriteIds) favouriteIds.remove(id) else favouriteIds.add(id)
         context.getSharedPreferences("nearer_file_centre", Context.MODE_PRIVATE)
@@ -486,13 +499,13 @@ internal fun FileCentreScreen(
     }
 
     val visible = items.filter { item ->
-        (if (category == FileCentreCategory.FAVOURITES) item.id in favouriteIds else item.category == category) &&
+        (when (category) { FileCentreCategory.FAVOURITES -> item.id in favouriteIds; FileCentreCategory.RECENT -> item.id in recentIds; else -> item.category == category }) &&
             (search.isBlank() || item.name.contains(search.trim(), ignoreCase = true))
     }.let { matches ->
         when (sortMode) {
             "Name" -> matches.sortedBy { it.name.lowercase(Locale.getDefault()) }
             "Largest" -> matches.sortedByDescending { it.sizeBytes }
-            else -> matches.sortedByDescending { it.modifiedSeconds }
+            else -> if (category == FileCentreCategory.RECENT) matches.sortedBy { recentIds.indexOf(it.id).let { index -> if (index < 0) Int.MAX_VALUE else index } } else matches.sortedByDescending { it.modifiedSeconds }
         }
     }
     val selectedItems = items.filter { it.id in selected }
@@ -622,6 +635,7 @@ internal fun FileCentreScreen(
                                     }
                                 }
                             } else if (item.uri != null) {
+                                markRecent(item.id)
                                 if (item.id in selected) selected.remove(item.id) else selected.add(item.id)
                             }
                         }
@@ -659,6 +673,7 @@ internal fun FileCentreScreen(
                                     }
                                 }
                             } else if (item.uri != null) {
+                                markRecent(item.id)
                                 if (item.id in selected) selected.remove(item.id) else selected.add(item.id)
                             }
                         }
