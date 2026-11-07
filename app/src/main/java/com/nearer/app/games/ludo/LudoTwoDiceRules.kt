@@ -35,7 +35,7 @@ object LudoTwoDiceRules {
     fun selectDie(player: LudoPlayer, turn: LudoTwoDiceTurn, slot: LudoDieSlot): LudoTwoDiceTurn? {
         val playable = playableDice(player, turn)
         if (slot !in playable) return null
-        return turn.copy(remaining = if (slot == LudoDieSlot.BOTH) setOf(LudoDieSlot.FIRST, LudoDieSlot.SECOND) else playable, selected = slot)
+        return turn.copy(remaining = turn.remaining.filterTo(linkedSetOf()) { it != LudoDieSlot.BOTH }, selected = slot)
     }
 
     fun legalTokenIndexes(player: LudoPlayer, turn: LudoTwoDiceTurn): List<Int> {
