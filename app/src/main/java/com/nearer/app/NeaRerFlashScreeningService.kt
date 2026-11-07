@@ -70,6 +70,12 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                     .putString(LAST_SIGNAL_FROM, senderKey)
                     .putString(PENDING_EVENTS, queued.toString())
                     .apply()
+
+                // Wake an open NeaRer chat so the decoded signal appears as a message
+                // immediately, rather than waiting for the user to reopen the app.
+                sendBroadcast(
+                    Intent(ACTION_FLASH_MESSAGE_RECEIVED).setPackage(packageName)
+                )
             }
         } catch (_: Exception) {
             // Flash is best-effort only; it must never interfere with ordinary calls.
@@ -82,6 +88,7 @@ class NeaRerFlashScreeningService : CallScreeningService() {
         const val LAST_SIGNAL_AT = "last_signal_at"
         const val LAST_SIGNAL_FROM = "last_signal_from"
         const val PENDING_EVENTS = "pending_events"
+        const val ACTION_FLASH_MESSAGE_RECEIVED = "com.nearer.app.FLASH_MESSAGE_RECEIVED"
         private const val MAX_PENDING_EVENTS = 100
         private const val EVENTS_PREFIX = "events_"
         private const val MAX_SEQUENCE_AGE_MS = 55_000L
