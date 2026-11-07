@@ -61,7 +61,7 @@ import java.util.Locale
 
 internal enum class FileCentreCategory(val label: String) {
     PICTURES("Pictures"), VIDEOS("Videos"), MUSIC("Music"), APPS("Apps"),
-    DOCUMENTS("Documents"), OTHER("Other files")
+    DOCUMENTS("Documents"), DOWNLOADS("Downloads"), OTHER("Other files")
 }
 
 internal data class FileCentreItem(
@@ -92,7 +92,7 @@ internal object AndroidFileCatalog {
     }
 
     fun hasMediaAccess(context: Context, category: FileCentreCategory): Boolean {
-        if (category == FileCentreCategory.APPS || category == FileCentreCategory.DOCUMENTS || category == FileCentreCategory.OTHER) return true
+        if (category == FileCentreCategory.APPS || category == FileCentreCategory.DOCUMENTS || category == FileCentreCategory.DOWNLOADS || category == FileCentreCategory.OTHER) return true
         if (Build.VERSION.SDK_INT < 33) {
             return context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
         }
@@ -212,6 +212,7 @@ internal fun FileCentreScreen(
     var category by remember { mutableStateOf(FileCentreCategory.PICTURES) }
     var search by remember { mutableStateOf("") }
     var gridMode by remember { mutableStateOf(true) }
+    var sortMode by remember { mutableStateOf("Recent") }
     var loading by remember { mutableStateOf(false) }
     val hasAccess = AndroidFileCatalog.hasMediaAccess(context, category)
     var notice by remember { mutableStateOf("Your phone's accessible media and apps will appear here.") }
@@ -292,6 +293,12 @@ internal fun FileCentreScreen(
     val visible = items.filter { item ->
         item.category == category &&
             (search.isBlank() || item.name.contains(search.trim(), ignoreCase = true))
+    }.let { matches ->
+        when (sortMode) {
+            "Name" -> matches.sortedBy { it.name.lowercase(Locale.getDefault()) }
+            "Largest" -> matches.sortedByDescending { it.sizeBytes }
+            else -> matches.sortedByDescending { it.modifiedSeconds }
+        }
     }
     val selectedItems = items.filter { it.id in selected }
     val selectedUris = selectedItems.mapNotNull { it.uri }
@@ -329,6 +336,12 @@ internal fun FileCentreScreen(
                 )
             }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Sort:", color = Muted, fontSize = 10.sp)
+            listOf("Recent", "Name", "Largest").forEach { mode ->
+                FilterChip(selected = sortMode == mode, onClick = { sortMode = mode }, label = { Text(mode, fontSize = 10.sp) })
+            }
+        }
         if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Mint)
         if (!hasAccess && category in listOf(FileCentreCategory.PICTURES, FileCentreCategory.VIDEOS, FileCentreCategory.MUSIC)) {
             Surface(color = Panel, shape = RoundedCornerShape(16.dp)) {
@@ -345,8 +358,8 @@ internal fun FileCentreScreen(
         if (category == FileCentreCategory.DOCUMENTS || category == FileCentreCategory.OTHER) {
             Surface(color = Panel, shape = RoundedCornerShape(16.dp)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(if (category == FileCentreCategory.DOCUMENTS) "Browse documents" else "Browse other files", color = White, fontWeight = FontWeight.Bold)
-                    Text("Android protects documents and many folders. Choose files using the system file picker; NeaRer can then send them without scanning private folders.", color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
+                    Text(when (category) { FileCentreCategory.DOCUMENTS -> "Browse documents"; FileCentreCategory.DOWNLOADS -> "Browse downloads"; else -> "Browse other files" }, color = White, fontWeight = FontWeight.Bold)
+                    Text(if (category == FileCentreCategory.DOWNLOADS) "Choose files from your Downloads folder. Android controls access, so NeaRer only lists files you select." else "Android protects documents and many folders. Choose files using the system file picker; NeaRer can then send them without scanning private folders.", color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
                     Button(
                         onClick = { documentPicker.launch(arrayOf("*/*")) },
                         colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
