@@ -98,13 +98,13 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 
 // Original NeaRer palette: midnight, deep panel, mint, soft white and gold.
-private val Midnight = Color(0xFF101A2B)
-private val Panel = Color(0xFF1A2940)
-private val Mint = Color(0xFF69E0C0)
-private val Muted = Color(0xFFA8B6C9)
-private val White = Color(0xFFF6F8FC)
-private val BrandBlue = Color(0xFF2563EB)
-private val Gold = Color(0xFFFFD12D)
+internal val Midnight = Color(0xFF101A2B)
+internal val Panel = Color(0xFF1A2940)
+internal val Mint = Color(0xFF69E0C0)
+internal val Muted = Color(0xFFA8B6C9)
+internal val White = Color(0xFFF6F8FC)
+internal val BrandBlue = Color(0xFF2563EB)
+internal val Gold = Color(0xFFFFD12D)
 
 class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
@@ -2225,7 +2225,7 @@ private fun NeaRerHome(
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 22.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Files") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 22.dp, vertical = 22.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
             Row(
@@ -2371,6 +2371,10 @@ private fun NeaRerHome(
                         ) { Text("Save my nearby name") }
                     }
                 }
+            }
+
+            if (selectedTab == "Files") {
+                FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, modifier = Modifier.weight(1f))
             }
 
             if (selectedTab == "Nearby") {
@@ -2725,7 +2729,7 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Home" to "⌂", "Nearby" to "⌖", "Chats" to "▤", "Groups" to "◎", "More" to "•••").forEach { item ->
+                    listOf("Home" to "⌂", "Files" to "▦", "Nearby" to "⌖", "Chats" to "▤", "Groups" to "◎", "More" to "•••").forEach { item ->
                         val selected = selectedTab == item.first
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
@@ -2738,7 +2742,7 @@ private fun NeaRerHome(
                                 verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
                                 Text(item.second, color = if (selected) Mint else Muted, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text(item.first, color = if (selected) Mint else Muted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                Text(item.first, color = if (selected) Mint else Muted, fontSize = 8.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
                                 Surface(
                                     modifier = Modifier.width(16.dp).height(2.dp),
                                     shape = RoundedCornerShape(2.dp),
