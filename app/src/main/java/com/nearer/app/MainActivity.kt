@@ -443,7 +443,6 @@ class MainActivity : ComponentActivity() {
                     onShareAppsToAnyPhone = ::shareSelectedAppsToAnyPhone,
                     openSendSession = openSendSession,
                     openSendNotice = openSendNotice,
-                    onPickOpenSendFiles = { openSendPicker.launch(arrayOf("*/*")) },
                     onStartOpenSend = ::startOpenSendFromPicker,
                     onStopOpenSend = ::stopOpenSend,
                     pendingApp = pendingAppShare,
