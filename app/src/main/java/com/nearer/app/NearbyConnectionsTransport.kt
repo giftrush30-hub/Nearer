@@ -152,9 +152,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     incomingPayloads[payloadId]?.let { completedPayloads[payloadId] = it }
                     processCompletedFile(payloadId)
                 } else {
-                    outgoingFiles.remove(payloadId)
+                    // Transport SUCCESS means the payload reached the peer's Nearby stack,
+                    // not that NeaRer finished saving it. Keep this pending until file_ack.
                     listener.onFileProgress(id, payloadId, name, update.totalBytes, update.totalBytes, false)
-                    listener.onFileStatus("File sent to the nearby phone: $name")
+                    listener.onFileStatus("File transferred; waiting for the other phone to save it: $name")
                 }
             } else {
                 outgoingFiles.remove(payloadId)
@@ -194,6 +195,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             }
             val kind = envelope.optString("kind", "chat")
             val messageId = envelope.optString("id")
+            if (kind == "file_ack") {
+                if (bytes == null || bytes.size > 1024) return
+                val payloadId = envelope.optLong("payloadId", -1L)
+                val pending = outgoingFiles[payloadId] ?: return
+                if (payloadId < 0L || pending.first != endpointId) return
+                if (outgoingFiles.remove(payloadId, pending)) {
+                    listener.onFileStatus("File sent to the nearby phone: ${pending.second}")
+                }
+                return
+            }
             if (kind == "chat_ack") {
                 if (bytes == null || bytes.size > 1024 || messageId.isBlank() || messageId.length > 80) return
                 val ackSenderStableId = synchronized(names) { stableIds[endpointId].orEmpty() }
@@ -268,6 +279,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 destination = target
                 appContext.contentResolver.delete(uri, null, null)
                 listener.onFileReceived(meta.endpointId, meta.name, target)
+                // Confirm only after the complete file has been copied into NeaRer's
+                // persistent received-files directory and passed its size/checksum checks.
+                val receipt = JSONObject().put("kind", "file_ack").put("payloadId", payloadId)
+                client.sendPayload(payloadEndpoint, Payload.fromBytes(receipt.toString().toByteArray(Charsets.UTF_8)))
+                    .addOnFailureListener {
+                        listener.onFileStatus("The file is saved here, but its delivery receipt could not reach the sender.")
+                    }
             } catch (error: Exception) {
                 destination?.delete()
                 listener.onFileStatus("Could not save the received file: ${error.localizedMessage ?: "transfer error"}")
