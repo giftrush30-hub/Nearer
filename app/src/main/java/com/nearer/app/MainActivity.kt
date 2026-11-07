@@ -3849,6 +3849,79 @@ private fun NeaRerHome(
                     }
 
 
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().animateContentSize(),
+                        shape = RoundedCornerShape(25.dp),
+                        color = Color(0xFFF7FAFF),
+                        border = BorderStroke(1.dp, Color(0xFFBBD4F5)),
+                        shadowElevation = 8.dp
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text("YOUR NEARBY ORBIT", color = Color(0xFF1769FF), fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.15.sp)
+                                    Text(when {
+                                        hybridPeers.isNotEmpty() -> "${hybridPeers.size} NeaRer ${if (hybridPeers.size == 1) "person" else "people"} found"
+                                        scanning -> "Your circle is taking shape…"
+                                        else -> "Your people are closer than you think."
+                                    }, color = Color(0xFF193653), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                                }
+                                Surface(shape = CircleShape, color = Color(0xFFE7F0FF), modifier = Modifier.size(44.dp)) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                        Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer nearby network", modifier = Modifier.size(35.dp))
+                                    }
+                                }
+                            }
+                            if (hybridPeers.isNotEmpty()) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                                    hybridPeers.entries.take(4).forEach { peer ->
+                                        Surface(modifier = Modifier.weight(1f).clickable { onHybridConnect(peer.key) },
+                                            shape = RoundedCornerShape(17.dp), color = Color.White,
+                                            border = BorderStroke(1.dp, Color(0xFFDCE8F7))) {
+                                            Column(Modifier.padding(vertical = 11.dp, horizontal = 5.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                                Surface(shape = CircleShape, color = Color(0xFF1769FF), border = BorderStroke(2.dp, Color(0xFFFFD36B)), modifier = Modifier.size(43.dp)) {
+                                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                                        Text(peer.value.trim().firstOrNull()?.uppercase() ?: "N", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                                    }
+                                                }
+                                                Text(peer.value, color = Color(0xFF193653), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                Text("ACTIVE NOW", color = Color(0xFF16866B), fontSize = 8.sp, fontWeight = FontWeight.Black)
+                                            }
+                                        }
+                                    }
+                                }
+                                Text("Tap a person to start connecting. Only phones actually discovered nearby appear here.", color = Color(0xFF7187A0), fontSize = 10.sp, lineHeight = 15.sp)
+                            } else {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    androidx.compose.foundation.layout.Box(Modifier.size(66.dp), contentAlignment = Alignment.Center) {
+                                        Surface(Modifier.size(62.dp), shape = CircleShape, color = Color.Transparent, border = BorderStroke(1.dp, Color(0xFFBBD4F5))) {}
+                                        Surface(Modifier.size(43.dp), shape = CircleShape, color = Color.Transparent, border = BorderStroke(1.dp, Color(0xFF8BB8F4))) {}
+                                        Surface(Modifier.size(27.dp), shape = CircleShape, color = Color(0xFF1769FF)) {
+                                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                                Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = null, modifier = Modifier.size(23.dp))
+                                            }
+                                        }
+                                    }
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text(if (scanning) "Scanning for real nearby phones" else "Start discovering your circle", color = Color(0xFF193653), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text(if (scanning) "Keep NeaRer open while discovery is active." else "Find people around you and connect directly — even without mobile data.", color = Color(0xFF7187A0), fontSize = 10.sp, lineHeight = 15.sp)
+                                    }
+                                }
+                                Button(onClick = {
+                                    navigateToSection("nearby")
+                                    if (!scanning && connectingAddress == null) onFindNearby()
+                                    navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                                }, modifier = Modifier.fillMaxWidth().height(47.dp), shape = RoundedCornerShape(15.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1769FF), contentColor = Color.White)) {
+                                    Text(if (scanning) "VIEW NEARBY DISCOVERY  →" else "FIND PEOPLE NEAR ME  →", fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+                                }
+                            }
+                            val recentCount = recentlySeenPeers.size
+                            if (recentCount > 0) Text("$recentCount previously seen on this phone · not currently confirmed nearby", color = Color(0xFF8799AD), fontSize = 9.sp)
+                        }
+                    }
+
                     if (pendingChatFilesCount > 0) {
                         Surface(
                             modifier = Modifier.fillMaxWidth().animateContentSize(),
