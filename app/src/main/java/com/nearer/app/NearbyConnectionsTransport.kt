@@ -76,13 +76,22 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     @Volatile private var localName = "NeaRer User"
     @Volatile private var anonymousDiscovery = false
 
-    private val discovery = object : EndpointDiscoveryCallback() {
+    /**
+     * Each scan gets its own callback generation. Nearby callbacks can arrive after
+     * stopDiscovery() has been requested; ignoring callbacks from an older scan
+     * prevents a late endpoint event from resurrecting a stale person in the UI.
+     */
+    private fun discoveryCallback(generation: Int) = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(id: String, info: DiscoveredEndpointInfo) {
+            if (!started || generation != startGeneration) return
             val (name, stableId) = decodeName(info.endpointName)
             synchronized(names) { names[id] = name; stableIds[id] = stableId }
             listener.onFound(id, name, stableId)
         }
         override fun onEndpointLost(id: String) {
+            if (!started || generation != startGeneration) return
+            // Discovery loss is not a disconnect. Keep the endpoint identity while
+            // a direct connection is active; onDisconnected owns that transition.
             if (synchronized(activeEndpoints) { activeEndpoints.contains(id) }) return
             val stableId = synchronized(names) { stableIds.remove(id).orEmpty().also { names.remove(id) } }
             listener.onLost(id, stableId)
@@ -425,7 +434,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val generation = ++startGeneration
         val discovering = DiscoveryOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
         startAdvertising(generation)
-        client.startDiscovery(serviceId, discovery, discovering).addOnFailureListener {
+        client.startDiscovery(serviceId, discoveryCallback(generation), discovering).addOnFailureListener {
             failStart(generation, "Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth and nearby-device permissions"}. Tap Find people to retry.")
         }
         listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
