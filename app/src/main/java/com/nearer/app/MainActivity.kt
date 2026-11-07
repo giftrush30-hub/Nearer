@@ -655,7 +655,10 @@ class MainActivity : ComponentActivity() {
                     onHybridConnect = { id -> nearbyTransport?.request(id) },
                     onFindNearby = ::startDiscovery,
                     onStopSearch = ::stopDiscovery,
-                    onConnect = ::connectToDevice
+                    onConnect = ::connectToDevice,
+                    flashRoleReady = flashRoleReady,
+                    flashLastSignal = flashLastSignal,
+                    onRequestFlashScreeningRole = ::requestFlashScreeningRole
                 )
             }
         }
@@ -2653,7 +2656,10 @@ private fun NeaRerHome(
     onHybridConnect: (String) -> Unit,
     onFindNearby: () -> Unit,
     onStopSearch: () -> Unit,
-    onConnect: (WifiP2pDevice) -> Unit
+    onConnect: (WifiP2pDevice) -> Unit,
+    flashRoleReady: Boolean,
+    flashLastSignal: String?,
+    onRequestFlashScreeningRole: () -> Unit
 ) {
     val localChatPrefs = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
     var draft by remember { mutableStateOf(localChatPrefs.getString("chat_draft", "") ?: "") }
@@ -3945,7 +3951,7 @@ private fun NeaRerHome(
                         }
                         Text(if (flashRoleReady) "Call screening access is enabled on this phone." else "To detect incoming Flash patterns, Android asks you to choose NeaRer as your call-screening app. You can decline; normal calling remains available.", color = if (flashRoleReady) Color(0xFF8EE6B2) else Muted, fontSize = 11.sp)
                         Button(
-                            onClick = { requestFlashScreeningRole() },
+                            onClick = onRequestFlashScreeningRole,
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)
                         ) { Text(if (flashRoleReady) "CALL SCREENING ENABLED" else "ENABLE FLASH ON THIS PHONE", fontWeight = FontWeight.Black) }
