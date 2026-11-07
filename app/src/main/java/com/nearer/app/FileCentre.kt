@@ -91,12 +91,22 @@ internal object AndroidFileCatalog {
         else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
 
-    fun hasMediaAccess(context: Context): Boolean {
-        val permissions = mediaPermissions()
-        return permissions.any { permission ->
-            context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
-        } || (Build.VERSION.SDK_INT < 33 &&
-            context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED)
+    fun hasMediaAccess(context: Context, category: FileCentreCategory): Boolean {
+        if (category == FileCentreCategory.APPS || category == FileCentreCategory.DOCUMENTS || category == FileCentreCategory.OTHER) return true
+        if (Build.VERSION.SDK_INT < 33) {
+            return context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        }
+        val required = when (category) {
+            FileCentreCategory.PICTURES -> listOf(Manifest.permission.READ_MEDIA_IMAGES)
+            FileCentreCategory.VIDEOS -> listOf(Manifest.permission.READ_MEDIA_VIDEO)
+            FileCentreCategory.MUSIC -> listOf(Manifest.permission.READ_MEDIA_AUDIO)
+            else -> emptyList()
+        }
+        val granted = required.any { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+        val selectedVisualAccess = Build.VERSION.SDK_INT >= 34 &&
+            category in listOf(FileCentreCategory.PICTURES, FileCentreCategory.VIDEOS) &&
+            context.checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+        return granted || selectedVisualAccess
     }
 
     fun scanMedia(context: Context): List<FileCentreItem> {
@@ -203,14 +213,13 @@ internal fun FileCentreScreen(
     var search by remember { mutableStateOf("") }
     var gridMode by remember { mutableStateOf(true) }
     var loading by remember { mutableStateOf(false) }
-    var hasAccess by remember { mutableStateOf(AndroidFileCatalog.hasMediaAccess(context)) }
+    val hasAccess = AndroidFileCatalog.hasMediaAccess(context, category)
     var notice by remember { mutableStateOf("Your phone's accessible media and apps will appear here.") }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        hasAccess = AndroidFileCatalog.hasMediaAccess(context)
-        if (hasAccess) {
+        if (AndroidFileCatalog.hasMediaAccess(context, category)) {
             loading = true
             scope.launch {
                 val media = withContext(Dispatchers.IO) { AndroidFileCatalog.scanMedia(context) }
@@ -239,8 +248,7 @@ internal fun FileCentreScreen(
         val apps = withContext(Dispatchers.IO) { AndroidFileCatalog.installedApps(context) }
         items.removeAll { it.category == FileCentreCategory.APPS }
         items.addAll(apps)
-        hasAccess = AndroidFileCatalog.hasMediaAccess(context)
-        if (hasAccess) {
+        if (AndroidFileCatalog.hasMediaAccess(context, category)) {
             val media = withContext(Dispatchers.IO) { AndroidFileCatalog.scanMedia(context) }
             items.removeAll { it.category != FileCentreCategory.APPS }
             items.addAll(media)
