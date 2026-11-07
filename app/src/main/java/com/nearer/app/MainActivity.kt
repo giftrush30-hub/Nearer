@@ -5163,7 +5163,7 @@ private fun NeaRerHome(
             ) {
                 Column(
                     Modifier.fillMaxWidth()
-                        .background(Brush.linearGradient(listOf(Color(0xFF263449), Color(0xFF263449), Color(0xFF1769FF))))
+                        .background(Brush.linearGradient(listOf(Color(0xFF111827), Color(0xFF172B35), Color(0xFF24433F))))
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp)
                 ) {
@@ -5827,7 +5827,7 @@ private fun NeaRerHome(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Color(0xFF1769FF)) {
+            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Color(0xFF202B3C)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("PEOPLE AROUND YOU", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text(if (hybridPeers.isEmpty()) "Your nearby circle" else "${hybridPeers.size} active nearby", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -6156,192 +6156,216 @@ private fun CommunityHub(
     var broadcastText by remember { mutableStateOf("") }
     var gameText by remember { mutableStateOf("") }
     val selected = groups.firstOrNull { it.code == selectedCode }
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("NEARER COMMUNITY", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Text("Groups and nearby broadcasts", color = White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it.take(32) }, Modifier.weight(1f), singleLine = true, label = { Text("Group name") })
-                Button(onClick = { onCreate(name); name = "" }, enabled = name.isNotBlank()) { Text("Create") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6) }, Modifier.weight(1f), singleLine = true, label = { Text("6-digit code") })
-                Button(onClick = { onJoin(code); code = "" }, enabled = code.length == 6) { Text("Join") }
-            }
-            groups.forEach { group ->
-                Button(onClick = { onSelect(group.code) }, Modifier.fillMaxWidth()) {
-                    Text(group.name + " • " + group.code + " • " + group.memberIds.size + " members")
-                }
-            }
-            if (selected != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("GROUP CHAT • " + selected.name, color = AccentBlue, fontWeight = FontWeight.Bold)
-                        Text("Share code " + selected.code + " with connected members.", color = Muted, fontSize = 10.sp)
+    val ink = Color(0xFF202B3C)
+    val mutedInk = Color(0xFF667085)
+    val line = Color(0xFFE5E7EB)
+    val blue = Color(0xFF285F9E)
+    val teal = Color(0xFF16877A)
+    val ivory = Color(0xFFF8F7F3)
+    val fieldColors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+        focusedTextColor = ink, unfocusedTextColor = ink, cursorColor = blue,
+        focusedBorderColor = blue, unfocusedBorderColor = Color(0xFFD2D7DF),
+        focusedLabelColor = blue, unfocusedLabelColor = mutedInk
+    )
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = ivory) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("YOUR PEOPLE, YOUR SPACE", color = teal, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
+                        Text("Communities", color = ink, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                        Text("Create a group for the people you want to stay close to.", color = mutedInk, fontSize = 12.sp, lineHeight = 17.sp)
                     }
-                    val context = androidx.compose.ui.platform.LocalContext.current
-                    Button(onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("NeaRer community code", selected.code))
-                    }) { Text("Copy code") }
-                }
-                val isOwner = selected.ownerId == localMemberId && localMemberId.isNotBlank()
-                val canModerate = isOwner || localMemberId in selected.moderators
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(selected.memberIds.size.toString() + " known members", color = Muted, fontSize = 11.sp)
-                    Spacer(Modifier.weight(1f))
-                    Button(onClick = { onLeaveGroup(selected.code) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Leave") }
-                }
-                Text("MEMBERS", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                selected.memberIds.forEach { (memberId, memberName) ->
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            Text(memberName, color = White, fontSize = 12.sp)
-                            Text(when {
-                                memberId == selected.ownerId -> "Owner"
-                                memberId in selected.moderators -> "Moderator"
-                                else -> "Member"
-                            }, color = Muted, fontSize = 10.sp)
-                        }
-                        if (isOwner && memberId != selected.ownerId && memberId !in selected.moderators) {
-                            TextButton(onClick = { onPromoteMember(selected.code, memberId) }) { Text("Make moderator") }
-                        }
-                        if (isOwner && memberId != selected.ownerId) {
-                            TextButton(onClick = { onTransferOwnership(selected.code, memberId) }) { Text("Make owner") }
-                        }
-                        if (canModerate && memberId != selected.ownerId && (isOwner || memberId !in selected.moderators)) {
-                            TextButton(onClick = { onRemoveMember(selected.code, memberId) }) { Text("Remove") }
+                    Surface(shape = CircleShape, color = Color(0xFFE4F1EC), modifier = Modifier.size(48.dp)) {
+                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                            Text("N", color = teal, fontSize = 21.sp, fontWeight = FontWeight.Black)
                         }
                     }
                 }
-                if (canModerate && selected.pendingMembers.isNotEmpty()) {
-                    Text("JOIN REQUESTS", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    selected.pendingMembers.forEach { (memberId, memberName) ->
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(memberName, color = White, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { onApproveMember(selected.code, memberId) }) { Text("Approve") }
-                            TextButton(onClick = { onRemoveMember(selected.code, memberId) }) { Text("Decline") }
+                Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), color = White, border = BorderStroke(1.dp, line)) {
+                    Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Text("START A COMMUNITY", color = ink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = name, onValueChange = { name = it.take(32) }, modifier = Modifier.weight(1f),
+                                singleLine = true, label = { Text("Community name") }, colors = fieldColors,
+                                shape = RoundedCornerShape(13.dp)
+                            )
+                            Button(
+                                onClick = { onCreate(name); name = "" }, enabled = name.isNotBlank(),
+                                colors = ButtonDefaults.buttonColors(containerColor = blue, contentColor = White),
+                                shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 13.dp, vertical = 12.dp)
+                            ) { Text("Create", fontWeight = FontWeight.Bold) }
+                        }
+                        Text("HAVE AN INVITE CODE?", color = mutedInk, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.7.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = code, onValueChange = { code = it.filter(Char::isDigit).take(6) },
+                                modifier = Modifier.weight(1f), singleLine = true, label = { Text("6-digit code") },
+                                colors = fieldColors, shape = RoundedCornerShape(13.dp)
+                            )
+                            Button(
+                                onClick = { onJoin(code); code = "" }, enabled = code.length == 6,
+                                colors = ButtonDefaults.buttonColors(containerColor = teal, contentColor = White),
+                                shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                            ) { Text("Join", fontWeight = FontWeight.Bold) }
                         }
                     }
                 }
-                Column(Modifier.fillMaxWidth().height(130.dp).verticalScroll(rememberScrollState())) {
-                    messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { Text(it.sender + ": " + it.body, color = White, fontSize = 12.sp) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(groupText, { groupText = it.take(1500) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Group message") })
-                    Button(onClick = { onGroupMessage(groupText); groupText = "" }, enabled = groupText.isNotBlank()) { Text("Send") }
-                }
-            }
-            Text("BROADCAST TO CONNECTED PEOPLE", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(broadcastText, { broadcastText = it.take(500) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Announcement") })
-                Button(onClick = { onBroadcast(broadcastText); broadcastText = "" }, enabled = broadcastText.isNotBlank()) { Text("Send") }
-            }
-            Text("Only currently connected NeaRer devices receive these broadcasts.", color = Muted, fontSize = 10.sp)
-            Text(notice, color = AccentBlue, fontSize = 10.sp)
-        }
-    }
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF263449)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Text("PLAY TOGETHER", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Text("Tic-tac-toe • live nearby match", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Text("Invite a connected player. Board moves and game chat use the offline link.", color = Muted, fontSize = 11.sp)
-            if (invite != null) {
-                Text(invite.sender + " invited you to play.", color = White)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onAccept, Modifier.weight(1f)) { Text("Accept") }
-                    Button(onClick = onReject, Modifier.weight(1f)) { Text("Decline") }
-                }
-            }
-            if (game == null) Button(onClick = onInviteGame, Modifier.fillMaxWidth()) { Text("Challenge nearby players") }
-            else {
-                Text("You are " + game.localSymbol + " • " + game.opponent, color = White, fontWeight = FontWeight.SemiBold)
-                Text(game.status, color = AccentBlue)
-                repeat(3) { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        repeat(3) { col ->
-                            val index = row * 3 + col
-                            val cell = game.board[index].takeIf { it != '.' }?.toString() ?: ""
-                            Button(onClick = { onMove(index) }, Modifier.weight(1f).height(54.dp),
-                                enabled = cell.isEmpty() && game.turn == game.localSymbol && game.status != "Waiting for a player" && !game.status.endsWith("wins") && game.status != "Draw") {
-                                Text(cell.ifBlank { " " }, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("YOUR COMMUNITIES  ·  ${groups.size}", color = mutedInk, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                if (groups.isEmpty()) {
+                    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Color(0xFFECEAE4)) {
+                        Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Your community list is ready", color = ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Create a group or enter a six-digit invite code. Groups appear here when they are saved on this phone.", color = mutedInk, fontSize = 11.sp, lineHeight = 16.sp)
+                        }
+                    }
+                } else {
+                    groups.forEachIndexed { index, group ->
+                        val chosen = group.code == selectedCode
+                        Surface(
+                            Modifier.fillMaxWidth().clickable { onSelect(group.code) },
+                            shape = RoundedCornerShape(15.dp),
+                            color = if (chosen) Color(0xFFE8F0F8) else White,
+                            border = BorderStroke(1.dp, if (chosen) blue.copy(alpha = 0.55f) else line)
+                        ) {
+                            Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                                Surface(shape = RoundedCornerShape(12.dp), color = if (index % 2 == 0) Color(0xFFE8F2EF) else Color(0xFFF4EBDD), modifier = Modifier.size(42.dp)) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                        Text(group.name.firstOrNull()?.uppercase() ?: "N", color = if (index % 2 == 0) teal else Color(0xFF986B35), fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(group.name, color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${group.memberIds.size} members  ·  Code ${group.code}", color = mutedInk, fontSize = 10.sp)
+                                }
+                                Text(if (chosen) "OPEN" else "VIEW", color = blue, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
                             }
                         }
                     }
                 }
-                Text("IN-GAME CHAT", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                Column(Modifier.fillMaxWidth().height(80.dp).verticalScroll(rememberScrollState())) {
-                    gameChat.takeLast(20).forEach { Text(it, color = White, fontSize = 11.sp) }
+                Text(notice, color = if (notice.contains("error", true) || notice.contains("failed", true)) Color(0xFF9C4545) else mutedInk, fontSize = 11.sp, lineHeight = 15.sp)
+            }
+        }
+        if (selected != null) {
+            Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = White, border = BorderStroke(1.dp, line)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("COMMUNITY SPACE", color = teal, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                            Text(selected.name, color = ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                            Text("Invite code ${selected.code}", color = mutedInk, fontSize = 10.sp)
+                        }
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        TextButton(onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("NeaRer community code", selected.code))
+                        }) { Text("COPY CODE", color = blue, fontWeight = FontWeight.Bold) }
+                    }
+                    val isOwner = selected.ownerId == localMemberId && localMemberId.isNotBlank()
+                    val canModerate = isOwner || localMemberId in selected.moderators
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${selected.memberIds.size} known members", color = mutedInk, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { onLeaveGroup(selected.code) }) { Text("Leave group", color = Color(0xFF9C4545)) }
+                    }
+                    Text("MEMBERS", color = ink, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                    selected.memberIds.forEach { (memberId, memberName) ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Surface(shape = CircleShape, color = Color(0xFFEAF0F5), modifier = Modifier.size(34.dp)) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text(memberName.firstOrNull()?.uppercase() ?: "?", color = blue, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(memberName, color = ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text(when { memberId == selected.ownerId -> "Owner"; memberId in selected.moderators -> "Moderator"; else -> "Member" }, color = mutedInk, fontSize = 10.sp)
+                            }
+                            if (isOwner && memberId != selected.ownerId && memberId !in selected.moderators) TextButton(onClick = { onPromoteMember(selected.code, memberId) }) { Text("MOD", color = blue, fontSize = 9.sp) }
+                            if (isOwner && memberId != selected.ownerId) TextButton(onClick = { onTransferOwnership(selected.code, memberId) }) { Text("OWNER", color = teal, fontSize = 9.sp) }
+                            if (canModerate && memberId != selected.ownerId && (isOwner || memberId !in selected.moderators)) TextButton(onClick = { onRemoveMember(selected.code, memberId) }) { Text("REMOVE", color = Color(0xFF9C4545), fontSize = 9.sp) }
+                        }
+                    }
+                    if (canModerate && selected.pendingMembers.isNotEmpty()) {
+                        Text("JOIN REQUESTS", color = ink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        selected.pendingMembers.forEach { (memberId, memberName) ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(memberName, color = ink, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { onApproveMember(selected.code, memberId) }) { Text("Approve", color = teal) }
+                                TextButton(onClick = { onRemoveMember(selected.code, memberId) }) { Text("Decline", color = Color(0xFF9C4545)) }
+                            }
+                        }
+                    }
+                    Text("CONVERSATION", color = ink, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                    Column(Modifier.fillMaxWidth().heightIn(min = 72.dp, max = 190.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        val thread = messages.filter { it.groupCode == selected.code }.takeLast(40)
+                        if (thread.isEmpty()) Text("No messages yet. Start the conversation with your group.", color = mutedInk, fontSize = 11.sp)
+                        thread.forEach { message ->
+                            Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = Color(0xFFF3F4F6)) {
+                                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(message.sender, color = blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text(message.body, color = ink, fontSize = 12.sp, lineHeight = 17.sp)
+                                }
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(groupText, { groupText = it.take(1500) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Write a group message") }, colors = fieldColors)
+                        Button(onClick = { onGroupMessage(groupText); groupText = "" }, enabled = groupText.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = blue)) { Text("Send") }
+                    }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(gameText, { gameText = it.take(300) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Chat while playing") })
-                    Button(onClick = { onGameChat(gameText); gameText = "" }, enabled = gameText.isNotBlank()) { Text("Send") }
+            }
+        }
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF202B3C)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("NEARBY BROADCAST", color = Color(0xFF82C8B9), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                Text("Share an announcement", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Only currently connected NeaRer devices receive broadcasts. This does not send through the internet.", color = Color(0xFFD0D7E2), fontSize = 11.sp, lineHeight = 16.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        broadcastText, { broadcastText = it.take(500) }, Modifier.weight(1f), singleLine = true,
+                        placeholder = { Text("Write an announcement") },
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = White, unfocusedTextColor = White, cursorColor = Color(0xFF82C8B9),
+                            focusedBorderColor = Color(0xFF82C8B9), unfocusedBorderColor = Color(0xFF687587),
+                            focusedPlaceholderColor = Color(0xFFCAD2DD), unfocusedPlaceholderColor = Color(0xFFCAD2DD)
+                        )
+                    )
+                    Button(onClick = { onBroadcast(broadcastText); broadcastText = "" }, enabled = broadcastText.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16877A), contentColor = White)) { Text("Send") }
                 }
-                Button(onClick = onEndGame, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B))) { Text("End match") }
+            }
+        }
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFFF4EBDD)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("PLAY TOGETHER", color = Color(0xFF986B35), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                Text("A little friendly competition", color = ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Invite a connected person to a live nearby Tic-tac-toe match.", color = mutedInk, fontSize = 11.sp, lineHeight = 16.sp)
+                if (invite != null) {
+                    Text(invite.sender + " invited you to play.", color = ink, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onAccept, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = teal)) { Text("Accept") }
+                        Button(onClick = onReject, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8D4545))) { Text("Decline") }
+                    }
+                } else {
+                    Button(onClick = onInviteGame, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF986B35), contentColor = White)) { Text("Invite nearby player") }
+                }
+                if (game != null) {
+                    Text("MATCH IN PROGRESS", color = Color(0xFF986B35), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                    Text("Game state: " + game.toString(), color = ink, fontSize = 11.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        (0..8).forEach { cell ->
+                            TextButton(onClick = { onMove(cell) }) { Text((cell + 1).toString(), color = blue) }
+                        }
+                    }
+                    gameChat.takeLast(8).forEach { Text(it, color = ink, fontSize = 11.sp) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(gameText, { gameText = it.take(300) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Game chat") }, colors = fieldColors)
+                        Button(onClick = { onGameChat(gameText); gameText = "" }, enabled = gameText.isNotBlank()) { Text("Send") }
+                    }
+                    TextButton(onClick = onEndGame) { Text("End match", color = Color(0xFF9C4545)) }
+                }
             }
         }
     }
-}
-private fun ticTacToeWinner(board: String): String? {
-    val lines = listOf("012", "345", "678", "036", "147", "258", "048", "246")
-    for (line in lines) {
-        val a = board[line[0].digitToInt()]
-        val b = board[line[1].digitToInt()]
-        val c = board[line[2].digitToInt()]
-        if (a != '.' && a == b && b == c) return a.toString()
-    }
-    return null
-}
-private data class CommunityGroup(
-    val code: String,
-    val name: String,
-    val members: List<String>,
-    val ownerId: String = "",
-    val memberIds: Map<String, String> = emptyMap(),
-    val moderators: Set<String> = emptySet(),
-    val pendingMembers: Map<String, String> = emptyMap()
-)
-private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
-private data class GameInvite(val matchId: String, val sender: String)
-private data class TicTacToeMatch(val matchId: String, val board: String, val turn: String, val localSymbol: String, val status: String, val opponent: String)
-
-private data class NearbyPerson(val name: String, val lastSeenAt: Long)
-
-private fun seenAgo(timestamp: Long): String {
-    val seconds = (System.currentTimeMillis() - timestamp).coerceAtLeast(0L) / 1000L
-    return when {
-        seconds < 60 -> "Seen just now"
-        seconds < 3600 -> "Seen ${seconds / 60}m ago"
-        seconds < 86400 -> "Seen ${seconds / 3600}h ago"
-        else -> "Seen ${seconds / 86400}d ago"
-    }
-}
-
-private data class ChatMessage(
-    val id: String,
-    val body: String,
-    val outgoing: Boolean,
-    val delivery: String,
-    val timestamp: Long = System.currentTimeMillis(),
-    val conversationId: String = "legacy",
-    val conversationName: String = "Previous chat"
-)
-
-private fun formatMessageTime(timestamp: Long): String =
-    java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
-        .format(java.util.Date(timestamp))
-
-private fun transferProgressDetail(transferred: Long, total: Long, speed: Long): String {
-    if (total <= 0L) return if (speed > 0L) "${formatTransferSize(speed)}/s" else "Transferring data…"
-    if (speed <= 0L) return "${formatTransferSize(transferred)} / ${formatTransferSize(total)}"
-    val seconds = ((total - transferred).coerceAtLeast(0L) / speed.toDouble()).toLong()
-    val eta = when {
-        seconds < 60L -> "~${seconds}s left"
-        seconds < 3600L -> "~${seconds / 60}m ${seconds % 60}s left"
-        else -> "~${seconds / 3600}h ${(seconds % 3600) / 60}m left"
-    }
-    return "${formatTransferSize(speed)}/s • $eta"
 }
 
 private fun formatTransferSize(bytes: Long): String {
