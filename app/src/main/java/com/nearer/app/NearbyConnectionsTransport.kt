@@ -287,6 +287,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     outgoing.stablePeerId != requesterStableId || offset < 0L || offset > outgoing.size) return
                 outgoing.endpointId = endpointId
                 outgoing.awaitingResume = false
+                listener.onFileProgress(endpointId, payloadId, outgoing.name, offset, outgoing.size, false)
                 sendPreparedFile(payloadId, outgoing, offset)
                 return
             }
