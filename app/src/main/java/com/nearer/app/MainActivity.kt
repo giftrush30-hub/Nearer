@@ -499,7 +499,7 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_DISCOVERY_PERMISSION) {
             if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) startDiscovery()
@@ -1193,7 +1193,10 @@ class MainActivity : ComponentActivity() {
                         id = item.getString("id"),
                         body = item.getString("body"),
                         outgoing = item.getBoolean("outgoing"),
-                        delivery = item.optString("delivery", "Sent")
+                        delivery = item.optString("delivery", "Sent"),
+                        conversationId = item.optString("conversationId", "legacy"),
+                        conversationName = item.optString("conversationName", "Nearby person"),
+                        timestamp = item.optLong("timestamp", System.currentTimeMillis())
                     )
                     chatMessages.add(message)
                     if (!message.outgoing) receivedMessageIds.add(message.id)
@@ -1218,7 +1221,10 @@ class MainActivity : ComponentActivity() {
                     .put("id", message.id)
                     .put("body", message.body)
                     .put("outgoing", message.outgoing)
-                    .put("delivery", message.delivery))
+                    .put("delivery", message.delivery)
+                    .put("conversationId", message.conversationId)
+                    .put("conversationName", message.conversationName)
+                    .put("timestamp", message.timestamp))
             }
             // commit() is intentional here: a delivery receipt must follow the disk write,
             // not just an in-memory SharedPreferences update queued by apply().
@@ -2718,11 +2724,14 @@ private fun seenAgo(timestamp: Long): String {
     }
 }
 
-private data class ChatMessage(
+internal data class ChatMessage(
     val id: String,
     val body: String,
     val outgoing: Boolean,
-    val delivery: String
+    val delivery: String,
+    val conversationId: String = "legacy",
+    val conversationName: String = "Nearby person",
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 private data class ReceivedFile(val displayName: String, val file: File)
