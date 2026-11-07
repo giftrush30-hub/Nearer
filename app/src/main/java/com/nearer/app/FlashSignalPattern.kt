@@ -17,7 +17,7 @@ internal object FlashSignalPattern {
         Preset("CALL_ME", listOf(1_500L, 500L))
     )
 
-    fun decode(eventTimesMillis: List<Long>, toleranceMillis: Long = 650L): String? {
+    fun decode(eventTimesMillis: List<Long>, toleranceMillis: Long = 250L): String? {
         if (eventTimesMillis.size < 2 || toleranceMillis < 0L) return null
         val ordered = eventTimesMillis.zipWithNext().map { (a, b) -> b - a }
         if (ordered.any { it <= 0L }) return null
