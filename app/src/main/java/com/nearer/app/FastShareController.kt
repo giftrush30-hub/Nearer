@@ -265,20 +265,37 @@ private class FastShareHttpServer(
         val end = resolvedRange.endInclusive
         val partial = resolvedRange.partial
         val count = end - start + 1
+        val stream = if (headOnly) null else try {
+            context.contentResolver.openInputStream(uri)
+        } catch (_: Exception) {
+            null
+        }
+        if (!headOnly && stream == null) {
+            writeFileUnavailable(output)
+            return
+        }
+        if (stream != null) {
+            try {
+                skipFully(stream, start)
+            } catch (_: Exception) {
+                stream.close()
+                writeFileUnavailable(output)
+                return
+            }
+        }
         val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
         val statusLine = if (partial) "206 Partial Content" else "200 OK"
         output.write("HTTP/1.1 $statusLine\r\nContent-Type: $mimeType\r\nContent-Length: $count\r\nAccept-Ranges: bytes\r\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\r\n".toByteArray())
         if (partial) output.write("Content-Range: bytes $start-$end/$fileLength\r\n".toByteArray())
         output.write("Connection: close\r\n\r\n".toByteArray())
         if (headOnly) return
-        context.contentResolver.openInputStream(uri)?.use { stream ->
-            skipFully(stream, start)
+        stream?.use { source ->
             val buffer = ByteArray(64 * 1024)
             var remaining = count
             var sent = 0L
             try {
                 while (remaining > 0 && running) {
-                    val read = stream.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                    val read = source.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
                     if (read < 0) break
                     if (read == 0) continue
                     output.write(buffer, 0, read)
@@ -296,7 +313,7 @@ private class FastShareHttpServer(
                 onTransferUpdate(sent, count, false, true)
                 throw error
             }
-        } ?: throw IllegalStateException("Cannot read the selected file")
+        }
     }
 
     /**
@@ -335,6 +352,14 @@ private class FastShareHttpServer(
                 throw error
             }
         } ?: throw IllegalStateException("Cannot read the selected file")
+    }
+
+    private fun writeFileUnavailable(output: BufferedOutputStream) {
+        val message = "The selected file is no longer available. Choose it again in NeaRer."
+        val body = message.toByteArray(Charsets.UTF_8)
+        output.write("HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
+        output.write(body)
+        output.flush()
     }
 
     private fun skipFully(stream: InputStream, count: Long) {
