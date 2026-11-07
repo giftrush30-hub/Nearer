@@ -4144,7 +4144,7 @@ private fun NeaRerHome(
                                     flashTrustedCount = FlashTrustedSenders.trustedCount(flashContext)
                                     flashTrustedNumber = ""
                                     flashTrustedName = ""
-                                    flashSenderNotice = "Sender paired. Their chosen name will label their Flash chat; only a salted number fingerprint is stored."
+                                    flashSenderNotice = "Sender paired. Their chosen name will label their Flash chat; the raw phone number is not stored."
                                 } else {
                                     flashSenderNotice = "Enter a valid phone number with at least 7 digits."
                                 }
