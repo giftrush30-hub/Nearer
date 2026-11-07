@@ -399,6 +399,9 @@ class MainActivity : ComponentActivity() {
                     // unchanged, so a recipient that already saved one can ACK the retry
                     // without showing a duplicate bubble.
                     flushQueuedChatMessages()
+                    // Resume the durable attachment queue only after this peer's
+                    // connection has been accepted again.
+                    flushPendingChatFiles()
                 }
             }
             override fun onDisconnected(id: String, stableId: String, name: String) {
@@ -573,8 +576,18 @@ class MainActivity : ComponentActivity() {
                         message.startsWith("Nearby file transfer cancelled") ||
                         message.startsWith("Could not start file transfer") ||
                         message.startsWith("Could not send file details") ||
-                        message.startsWith("File could not be prepared")) {
-                        // Preserve the failed head item for an explicit retry.
+                        message.startsWith("File could not be prepared") ||
+                        message.startsWith("Connection lost before the other phone confirmed saving") ||
+                        message.startsWith("file transfers lost their connection before recipient confirmation")) {
+                        // A disconnected recipient cannot ACK this transfer. Clear the
+                        // spinner but keep the prepared item; reconnecting will retry it.
+                        outgoingTransferId = null
+                        outgoingProgress = 0f
+                        outgoingTransferredBytes = 0L
+                        outgoingTotalBytes = 0L
+                        outgoingSpeedBytesPerSecond = 0L
+                        outgoingRateSampleAt = 0L
+                        outgoingRateSampleBytes = 0L
                         activeQueuedFileUri = null
                     }
                 }
