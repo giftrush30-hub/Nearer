@@ -105,7 +105,7 @@ object LudoEngine {
     }
 
     fun legalMoves(player: LudoPlayer, dice: Int): List<Int> {
-        if (dice !in 1..6) return emptyList()
+        if (dice !in 1..12) return emptyList()
         return player.tokens.indices.filter { index ->
             val progress = player.tokens[index]
             when {
