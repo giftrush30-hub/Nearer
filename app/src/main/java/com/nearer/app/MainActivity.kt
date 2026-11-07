@@ -367,12 +367,12 @@ class MainActivity : ComponentActivity() {
                         outgoingTransferId = "nearby:$payloadId"
                         outgoingProgress = fraction
                     }
-                    val rateText = if (rate >= 1_000_000L) " • \${String.format(java.util.Locale.US, "%.1f", rate / 1_000_000.0)} MB/s"
-                        else if (rate >= 1_000L) " • \${String.format(java.util.Locale.US, "%.0f", rate / 1_000.0)} KB/s" else ""
+                    val rateText = if (rate >= 1_000_000L) " • ${String.format(java.util.Locale.US, "%.1f", rate / 1_000_000.0)} MB/s"
+                        else if (rate >= 1_000L) " • ${String.format(java.util.Locale.US, "%.0f", rate / 1_000.0)} KB/s" else ""
                     val remaining = if (total > transferred && rate > 0L) (total - transferred) / rate else -1L
-                    val etaText = if (remaining >= 0L) " • ~\${remaining / 60}:\${(remaining % 60).toString().padStart(2, '0')} left" else ""
+                    val etaText = if (remaining >= 0L) " • ~${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')} left" else ""
                     val action = if (incoming) "Receiving" else "Sending"
-                    chatNotice = if (total > 0L) "$action $name • \${(fraction * 100).toInt()}%$rateText$etaText" else "$action $name…"
+                    chatNotice = if (total > 0L) "$action $name • ${(fraction * 100).toInt()}%$rateText$etaText" else "$action $name…"
                 }
             }
             override fun onFileReceived(id: String, name: String, file: File) {
