@@ -2650,7 +2650,7 @@ private fun NeaRerHome(
                                     Text(if (exists) "✓" else "!" , color = if (exists) Color(0xFF8EF0C6) else Color(0xFFFFA5AE), fontSize = 17.sp, fontWeight = FontWeight.Black)
                                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                         Text(item.displayName, color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(if (exists) "${formatTransferSize(item.file.length())} • Saved on this phone" else "File is no longer available", color = Muted, fontSize = 9.sp)
+                                        Text(if (exists) "${formatTransferSize(item.file.length())} • ${formatMessageTime(item.file.lastModified())}" else "File is no longer available", color = Muted, fontSize = 9.sp)
                                     }
                                     TextButton(onClick = { if (exists) onOpenFile(item) }) {
                                         Text(if (exists) "OPEN" else "MISSING", color = if (exists) Gold else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -2658,7 +2658,6 @@ private fun NeaRerHome(
                                 }
                             }
                         }
-                    }
                     if (showSent) sentFiles.forEach { item ->
                         Surface(Modifier.fillMaxWidth(), color = Color(0xFF173F78), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Gold.copy(alpha = 0.25f))) {
                             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
