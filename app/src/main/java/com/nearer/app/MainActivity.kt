@@ -161,6 +161,12 @@ class MainActivity : ComponentActivity() {
     private var nearbyQueueCompleted = 0
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
+    private var outgoingLastSampleBytes = 0L
+    private var outgoingLastSampleAt = 0L
+    private var outgoingRateBytesPerSecond = 0L
+    private var incomingLastSampleBytes = 0L
+    private var incomingLastSampleAt = 0L
+    private var incomingRateBytesPerSecond = 0L
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
@@ -339,15 +345,34 @@ class MainActivity : ComponentActivity() {
             override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {
                 runOnUiThread {
                     val fraction = if (total > 0L) (transferred.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    val previousBytes = if (incoming) incomingLastSampleBytes else outgoingLastSampleBytes
+                    val previousAt = if (incoming) incomingLastSampleAt else outgoingLastSampleAt
+                    var rate = if (incoming) incomingRateBytesPerSecond else outgoingRateBytesPerSecond
+                    if (previousAt == 0L || transferred < previousBytes) {
+                        rate = 0L
+                    } else if (now - previousAt >= 500L) {
+                        rate = ((transferred - previousBytes) * 1000L / (now - previousAt).coerceAtLeast(1L)).coerceAtLeast(0L)
+                    }
                     if (incoming) {
+                        incomingLastSampleBytes = transferred
+                        incomingLastSampleAt = now
+                        incomingRateBytesPerSecond = rate
                         incomingTransferName = name
                         incomingProgress = fraction
-                        chatNotice = if (total > 0L) "Receiving $name • ${(fraction * 100).toInt()}%" else "Receiving $name…"
                     } else {
+                        outgoingLastSampleBytes = transferred
+                        outgoingLastSampleAt = now
+                        outgoingRateBytesPerSecond = rate
                         outgoingTransferId = "nearby:$payloadId"
                         outgoingProgress = fraction
-                        chatNotice = if (total > 0L) "Sending $name • ${(fraction * 100).toInt()}%" else "Sending $name…"
                     }
+                    val rateText = if (rate >= 1_000_000L) " • \${String.format(java.util.Locale.US, "%.1f", rate / 1_000_000.0)} MB/s"
+                        else if (rate >= 1_000L) " • \${String.format(java.util.Locale.US, "%.0f", rate / 1_000.0)} KB/s" else ""
+                    val remaining = if (total > transferred && rate > 0L) (total - transferred) / rate else -1L
+                    val etaText = if (remaining >= 0L) " • ~\${remaining / 60}:\${(remaining % 60).toString().padStart(2, '0')} left" else ""
+                    val action = if (incoming) "Receiving" else "Sending"
+                    chatNotice = if (total > 0L) "$action $name • \${(fraction * 100).toInt()}%$rateText$etaText" else "$action $name…"
                 }
             }
             override fun onFileReceived(id: String, name: String, file: File) {
