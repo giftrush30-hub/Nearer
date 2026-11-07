@@ -1786,22 +1786,26 @@ class MainActivity : ComponentActivity() {
         chatNotice = "Cancelling file transfer…"
     }
 
+    private fun queueChatFile(uri: Uri, notice: String) {
+        try { contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
+        if (uri.toString() !in pendingChatFileUris) pendingChatFileUris.add(uri.toString())
+        persistPendingChatFiles()
+        chatNotice = notice
+    }
+
     private fun sendFile(uri: Uri) {
         if (!chatReady) {
-            try { contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
-            if (uri.toString() !in pendingChatFileUris) pendingChatFileUris.add(uri.toString())
-            persistPendingChatFiles()
-            chatNotice = "Attachment saved on this phone • it will wait here until you connect to someone nearby."
+            queueChatFile(uri, "Attachment saved on this phone • it will wait here until you connect to someone nearby.")
+            return
+        }
+        if (outgoingTransferId != null) {
+            queueChatFile(uri, "Added to your prepared attachments. It will send after the current transfer finishes.")
             return
         }
         if (hybridConnected) {
             val endpoint = hybridConnectedEndpoint
             if (endpoint == null) {
                 chatNotice = "The nearby connection is not ready. Reconnect and try again."
-                return
-            }
-            if (outgoingTransferId != null) {
-                chatNotice = "Finish or cancel the current file transfer first."
                 return
             }
             var fileName = "shared-file"
@@ -1827,10 +1831,6 @@ class MainActivity : ComponentActivity() {
             return
         }
         if (!chatReady) return
-        if (outgoingTransferId != null) {
-            chatNotice = "Finish or cancel the current file transfer first."
-            return
-        }
         val transferId = UUID.randomUUID().toString()
         outgoingTransferId = transferId
         outgoingProgress = 0f
@@ -2264,8 +2264,8 @@ private fun NeaRerHome(
     var isLoadingApps by remember { mutableStateOf(false) }
     var appShareNotice by remember { mutableStateOf<String?>(null) }
     var isPreparingApp by remember { mutableStateOf(false) }
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onSendFile(uri)
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.forEach(onSendFile)
     }
     if (showChatAttachmentMenu) {
         AlertDialog(
