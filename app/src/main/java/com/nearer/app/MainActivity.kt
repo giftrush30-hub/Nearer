@@ -365,10 +365,8 @@ class MainActivity : ComponentActivity() {
                     hybridConnectedEndpoint = null
                     val lastName = hybridPeers.remove(id) ?: name
                     recordRecentlySeen(stableId.ifBlank { id }, lastName)
-                    if (activeChatPeerId == stableId || activeChatPeerId == "nearby:$id") {
-                        activeChatPeerId = "legacy"
-                        activeChatPeerName = "Nearby person"
-                    }
+                    // Keep the last peer identity after disconnect so queued messages
+                    // remain attached to that conversation and can be retried later.
                     pendingHybridEndpoint = null
                     val legacyLinkAlive = peerSocket?.isConnected == true && peerSocket?.isClosed == false
                     chatReady = legacyLinkAlive
