@@ -152,11 +152,18 @@ class OpenSendHttpServer(
     }
 
     private fun landingPage(): String {
+        val includesApk = sharedFiles.values.any { it.file.extension.equals("apk", ignoreCase = true) }
         val rows = sharedFiles.values.joinToString("\n") { item ->
             val name = htmlEscape(item.displayName)
             val size = humanSize(item.file.length())
             val href = "/download/${item.id}?token=$accessToken"
             "<li><div><strong>$name</strong><small>$size</small></div><a href=\"$href\">Download</a></li>"
+        }
+        val title = if (includesApk) "Android apps shared with you" else "Files shared with you"
+        val intro = if (includesApk) {
+            "Download the APK file to an Android phone, then open it from Downloads. Android may ask you to allow your browser to install unknown apps. iPhone and iPad cannot install Android APK files."
+        } else {
+            "Choose a file below to download it to this device. No NeaRer installation is required."
         }
         return """
             <!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -172,10 +179,12 @@ class OpenSendHttpServer(
             background:#182943;border:1px solid #2b405d;border-radius:18px;padding:18px;margin:12px 0}
             strong{display:block;overflow-wrap:anywhere}small{display:block;color:#aebbd0;margin-top:5px}
             a{background:#f4c64e;color:#172338;text-decoration:none;font-weight:800;padding:11px 16px;border-radius:12px;white-space:nowrap}
+            .notice{background:#26364d;border-left:3px solid #f4c64e;border-radius:10px;padding:12px}
             footer{color:#8393aa;font-size:12px;margin-top:30px}
             </style></head><body><main><div class="brand">NEARER OPENSEND</div>
-            <h1>Files shared with you</h1><p>Choose a file below to download it to this device. No NeaRer installation is required.</p>
-            <ul>$rows</ul><footer>Shared locally by NeaRer. This link works only while the sender keeps sharing.</footer>
+            <h1>$title</h1><p>$intro</p>
+            ${if (includesApk) "<p class=\"notice\">Only install apps from people and sources you trust. Android will display its own install confirmation; review the app before accepting.</p>" else ""}
+            <ul>$rows</ul><footer>Shared locally by NeaRer. This private link works only while the sender keeps sharing.</footer>
             </main></body></html>
         """.trimIndent()
     }
