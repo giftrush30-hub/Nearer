@@ -1730,7 +1730,9 @@ class MainActivity : ComponentActivity() {
                 // reconnect callback cannot flush this message in the meantime.
                 pendingOutgoingMessageSaves.remove(message.id)
                 if (!saved) {
-                    chatNotice = "NeaRer could not save this message. It has not been sent; please try again."
+                    val failedIndex = chatMessages.indexOfFirst { it.id == message.id && it.outgoing }
+                    if (failedIndex >= 0) chatMessages[failedIndex] = chatMessages[failedIndex].copy(delivery = "Save failed")
+                    chatNotice = "NeaRer could not save this message, so it was not sent. Please copy it and try again."
                     return@runOnUiThread
                 }
                 val index = chatMessages.indexOfFirst { it.id == message.id && it.outgoing }
