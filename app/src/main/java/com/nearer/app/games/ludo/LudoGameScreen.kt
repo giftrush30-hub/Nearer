@@ -64,9 +64,11 @@ private val Muted = Color(0xFFAABBD4)
 fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
     var playerCount by remember { mutableIntStateOf(4) }
     var computerOpponents by remember { mutableStateOf(true) }
-    var game by remember(playerName) { mutableStateOf(LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents)) }
+    var doubleGame by remember(playerName) { mutableStateOf(LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents))) }
+    val game = doubleGame.game
     var rolling by remember { mutableStateOf(false) }
-    var rollingFace by remember { mutableIntStateOf(1) }
+    var rollingFirst by remember { mutableIntStateOf(1) }
+    var rollingSecond by remember { mutableIntStateOf(1) }
     var soundEnabled by remember { mutableStateOf(true) }
     var showRules by remember { mutableStateOf(false) }
     val tones = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 48) }
@@ -88,17 +90,21 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
     }
 
     suspend fun animateRoll(computer: Boolean = false) {
-        if (rolling || !game.canRoll) return
+        if (rolling || !LudoDoubleDiceEngine.canRoll(doubleGame)) return
         rolling = true
         if (soundEnabled && !computer) tones.startTone(ToneGenerator.TONE_PROP_BEEP, 90)
-        repeat(if (computer) 7 else 10) {
-            rollingFace = Random.nextInt(1, 7)
-            delay(if (computer) 75 else 58)
+        repeat(if (computer) 8 else 12) {
+            rollingFirst = Random.nextInt(1, 7)
+            rollingSecond = Random.nextInt(1, 7)
+            delay(if (computer) 78 else 62)
         }
-        game = LudoEngine.roll(game)
-        rollingFace = game.dice ?: rollingFace
+        doubleGame = LudoDoubleDiceEngine.roll(doubleGame)
+        doubleGame.dice?.let { pair ->
+            rollingFirst = pair.first
+            rollingSecond = pair.second
+        }
         rolling = false
-        if (soundEnabled && game.dice != null) tones.startTone(ToneGenerator.TONE_PROP_ACK, 110)
+        if (soundEnabled && doubleGame.dice != null) tones.startTone(ToneGenerator.TONE_PROP_ACK, 110)
     }
 
     LaunchedEffect(game.winnerId) {
@@ -110,20 +116,30 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
     }
 
     fun moveToken(tokenIndex: Int) {
-        val next = LudoEngine.move(game, tokenIndex)
-        if (soundEnabled && next != game) {
-            val captured = next.lastAction.contains("captured", ignoreCase = true)
+        val next = LudoDoubleDiceEngine.move(doubleGame, tokenIndex)
+        if (soundEnabled && next != doubleGame) {
+            val captured = next.game.lastAction.contains("captured", ignoreCase = true)
             tones.startTone(if (captured) ToneGenerator.TONE_PROP_PROMPT else ToneGenerator.TONE_PROP_ACK, if (captured) 170 else 75)
         }
-        game = next
+        doubleGame = next
     }
 
-    LaunchedEffect(game.activePlayerIndex, game.dice, game.turnNumber, game.winnerId, game.message, showRules) {
+    LaunchedEffect(game.activePlayerIndex, doubleGame.turn, game.turnNumber, game.winnerId, game.message, showRules) {
         if (!showRules && !game.isFinished && game.activePlayer.isComputer) {
-            if (game.dice == null) animateRoll(computer = true)
-            else {
-                delay(720)
-                LudoEngine.chooseComputerMove(game)?.let { moveToken(it) }
+            val turn = doubleGame.turn
+            when {
+                turn == null -> animateRoll(computer = true)
+                turn.selected == null -> {
+                    val slot = LudoTwoDiceRules.playableDice(game.activePlayer, turn).firstOrNull()
+                    if (slot != null) {
+                        delay(520)
+                        doubleGame = LudoDoubleDiceEngine.selectDie(doubleGame, slot)
+                    }
+                }
+                else -> {
+                    delay(720)
+                    LudoEngine.chooseComputerMove(game)?.let { moveToken(it) }
+                }
             }
         }
     }
@@ -143,12 +159,12 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                     Text("HOW TO PLAY", color = Gold, fontSize = 11.sp,
                         fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                     Text("TRADITIONAL LUDO", color = White, fontSize = 23.sp, fontWeight = FontWeight.Black)
-                    Text("01  •  Roll a six to bring a token out of your yard.", color = White, fontSize = 12.sp)
-                    Text("02  •  Tap one of the highlighted tokens to move it.", color = White, fontSize = 12.sp)
-                    Text("03  •  Roll a six, capture an opponent, or reach home to earn another turn.", color = White, fontSize = 12.sp)
-                    Text("04  •  Safe squares protect tokens from capture.", color = White, fontSize = 12.sp)
-                    Text("05  •  You need the exact number to reach the centre. First to bring all four tokens home wins.", color = White, fontSize = 12.sp)
-                    Text("A third consecutive six forfeits your turn.", color = Color(0xFFFFD98A),
+                    Text("01  •  Roll both dice together. Each die is a separate move.", color = White, fontSize = 12.sp)
+                    Text("02  •  Use the dice in either order, on one token twice or two different tokens.", color = White, fontSize = 12.sp)
+                    Text("03  •  A token leaves its yard only when an individual die shows 6.", color = White, fontSize = 12.sp)
+                    Text("04  •  After choosing a die, tap a highlighted token. Then use your remaining playable die.", color = White, fontSize = 12.sp)
+                    Text("05  •  Safe squares protect tokens. You need an exact roll to reach home.", color = White, fontSize = 12.sp)
+                    Text("Double six earns another turn after both dice are resolved. First to bring all four tokens home wins.", color = Color(0xFFFFD98A),
                         fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Button(
                         onClick = { showRules = false },
@@ -282,7 +298,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                             fontWeight = FontWeight.ExtraBold, letterSpacing = 1.8.sp)
                         Text("All four tokens have reached home.", color = Muted, fontSize = 11.sp)
                         Button(
-                            onClick = { game = LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents); rolling = false },
+                            onClick = { doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents)); rolling = false },
                             modifier = Modifier.fillMaxWidth().padding(top = 5.dp).height(48.dp),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF14233A))
@@ -303,30 +319,48 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                                 game.isFinished -> "A champion has been crowned"
                                 rolling -> "The dice are rolling…"
                                 game.activePlayer.isComputer -> "NeaRer is taking its turn"
-                                game.dice == null -> "Tap the golden dice to play"
-                                game.legalTokenIndexes.isEmpty() -> "No legal move this turn"
+                                doubleGame.turn == null -> "Tap either die to roll both together"
+                                doubleGame.turn?.selected == null -> "Choose one of your remaining dice"
+                                game.legalTokenIndexes.isEmpty() -> "No legal move with this die"
                                 else -> "Choose a token to move"
                             }, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                         }
-                        DiceFace(if (rolling) rollingFace else game.dice ?: rollingFace, rolling, Modifier.size(66.dp).clickable(enabled = game.canRoll && !game.activePlayer.isComputer && !rolling) {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            scope.launch { animateRoll() }
-                        })
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            val pair = doubleGame.dice
+                            DiceFace(if (rolling) rollingFirst else pair?.first ?: rollingFirst, rolling,
+                                Modifier.size(56.dp).clickable(
+                                    enabled = !rolling && !game.activePlayer.isComputer &&
+                                        (if (doubleGame.turn == null) LudoDoubleDiceEngine.canRoll(doubleGame)
+                                        else doubleGame.turn?.selected == null && LudoDieSlot.FIRST in (doubleGame.turn?.remaining ?: emptySet()))
+                                ) {
+                                    if (doubleGame.turn == null) scope.launch { animateRoll() }
+                                    else doubleGame = LudoDoubleDiceEngine.selectDie(doubleGame, LudoDieSlot.FIRST)
+                                })
+                            DiceFace(if (rolling) rollingSecond else pair?.second ?: rollingSecond, rolling,
+                                Modifier.size(56.dp).clickable(
+                                    enabled = !rolling && !game.activePlayer.isComputer &&
+                                        (if (doubleGame.turn == null) LudoDoubleDiceEngine.canRoll(doubleGame)
+                                        else doubleGame.turn?.selected == null && LudoDieSlot.SECOND in (doubleGame.turn?.remaining ?: emptySet()))
+                                ) {
+                                    if (doubleGame.turn == null) scope.launch { animateRoll() }
+                                    else doubleGame = LudoDoubleDiceEngine.selectDie(doubleGame, LudoDieSlot.SECOND)
+                                })
+                        }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
                         Button(onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             scope.launch { animateRoll() }
                         },
-                            enabled = game.canRoll && !game.activePlayer.isComputer && !rolling,
+                            enabled = LudoDoubleDiceEngine.canRoll(doubleGame) && !game.activePlayer.isComputer && !rolling,
                             modifier = Modifier.weight(1f).height(54.dp), shape = RoundedCornerShape(15.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF14233A),
                                 disabledContainerColor = Color(0xFF59677B), disabledContentColor = Color(0xFFB8C3D1)),
                             elevation = ButtonDefaults.buttonElevation(defaultElevation = 5.dp, pressedElevation = 1.dp)) {
-                            Text(if (rolling) "ROLLING…" else if (game.dice == null) "ROLL DICE  ⚄" else "DICE: " + game.dice,
+                            Text(if (rolling) "ROLLING…" else if (LudoDoubleDiceEngine.canRoll(doubleGame)) "ROLL BOTH DICE" else if (doubleGame.turn?.selected != null) "MOVE WITH " + game.dice else "CHOOSE A DIE",
                                 fontWeight = FontWeight.Black, fontSize = 14.sp, letterSpacing = 0.5.sp)
                         }
-                        Button(onClick = { game = LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents); rolling = false },
+                        Button(onClick = { doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents)); rolling = false },
                             modifier = Modifier.height(54.dp), shape = RoundedCornerShape(15.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25466F), contentColor = White),
                             contentPadding = PaddingValues(horizontal = 13.dp)) {
@@ -336,7 +370,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                     if (game.activePlayer.isComputer && !game.isFinished) {
                         Text("NEARER BOT • THINKING", color = Color(0xFF9FC1FF), fontSize = 9.sp,
                             fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp)
-                    } else if (game.dice != null && game.legalTokenIndexes.isNotEmpty()) {
+                    } else if (doubleGame.turn?.selected != null && game.legalTokenIndexes.isNotEmpty()) {
                         Text("SELECT YOUR TOKEN", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
                             game.legalTokenIndexes.forEach { tokenIndex ->
@@ -371,7 +405,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                         border = BorderStroke(1.dp, if (computerOpponents) Gold else Color(0xFF294362)),
                         modifier = Modifier.clickable {
                             computerOpponents = true
-                            game = LudoEngine.newGame(playerName, playerCount, computerOpponents = true)
+                            doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = true))
                         }) {
                         Text("VS COMPUTER", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 9.sp,
                             modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp))
@@ -380,7 +414,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                         border = BorderStroke(1.dp, if (!computerOpponents) Gold else Color(0xFF294362)),
                         modifier = Modifier.clickable {
                             computerOpponents = false
-                            game = LudoEngine.newGame(playerName, playerCount, computerOpponents = false)
+                            doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = false))
                         }) {
                         Text("PASS & PLAY", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 9.sp,
                             modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp))
@@ -397,7 +431,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                             border = BorderStroke(1.dp, if (playerCount == count) Gold else Color(0xFF294362)),
                             modifier = Modifier.clickable {
                                 playerCount = count
-                                game = LudoEngine.newGame(playerName, count, computerOpponents = computerOpponents)
+                                doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, count, computerOpponents = computerOpponents))
                                 rolling = false
                             }) {
                             Text(count.toString(), color = White, fontWeight = FontWeight.ExtraBold,
