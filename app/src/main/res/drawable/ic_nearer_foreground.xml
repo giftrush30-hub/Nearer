@@ -4,14 +4,25 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Bold, unmistakable N monogram with a gold-to-blue orbital identity. -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#F6F8FC"
-        android:strokeWidth="4.8"
+        android:strokeColor="#F6B92F"
+        android:strokeWidth="5.2"
         android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M29,54 C42,43 58,34 78,32 M29,54 C44,59 62,71 78,76 M78,32 C68,45 68,63 78,76" />
-    <path android:fillColor="#FFD12D" android:pathData="M29,46.5 A7.5,7.5 0,1 0,29 61.5 A7.5,7.5 0,1 0,29 46.5" />
-    <path android:fillColor="#FFD12D" android:pathData="M78,24.5 A7.5,7.5 0,1 0,78 39.5 A7.5,7.5 0,1 0,78 24.5" />
-    <path android:fillColor="#FFD12D" android:pathData="M78,68.5 A7.5,7.5 0,1 0,78 83.5 A7.5,7.5 0,1 0,78 68.5" />
+        android:pathData="M12,61 C24,12 80,7 96,42 C108,68 83,98 49,96 C32,95 20,86 13,75" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#36B9FF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M14,67 C27,25 75,18 91,45" />
+    <path
+        android:fillColor="#F7C64A"
+        android:pathData="M25,77 L25,32 Q25,25 32,25 L38,25 Q42,25 45,30 L66,61 L66,32 Q66,25 73,25 L78,25 Q85,25 85,32 L85,76 Q85,83 78,83 L72,83 Q68,83 65,78 L44,48 L44,76 Q44,83 37,83 L32,83 Q25,83 25,77 Z" />
+    <path
+        android:fillColor="#1C8FE8"
+        android:pathData="M44,48 L66,61 L66,69 L44,56 Z" />
+    <path android:fillColor="#FFE38A" android:pathData="M18,34 A4,4 0,1 0,18 42 A4,4 0,1 0,18 34" />
+    <path android:fillColor="#36B9FF" android:pathData="M91,40 A4,4 0,1 0,91 48 A4,4 0,1 0,91 40" />
 </vector>
