@@ -15,8 +15,11 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.UUID
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 data class OpenSendFile(
@@ -47,7 +50,8 @@ class OpenSendHttpServer(
 ) : Closeable {
     private val sharedFiles = files.associateBy { it.id }
     private val running = AtomicBoolean(false)
-    private val clients: ExecutorService = Executors.newCachedThreadPool()
+    private val clients = ThreadPoolExecutor(2, 4, 30L, TimeUnit.SECONDS, ArrayBlockingQueue(12))
+    private val activeSockets = ConcurrentHashMap.newKeySet<Socket>()
     @Volatile private var listener: ServerSocket? = null
     private var acceptThread: Thread? = null
 
@@ -68,7 +72,14 @@ class OpenSendHttpServer(
             while (running.get()) {
                 try {
                     val socket = server.accept()
-                    clients.execute { handleClient(socket) }
+                    if (!running.get()) { socket.close(); break }
+                    activeSockets.add(socket)
+                    try {
+                        clients.execute { handleClient(socket) }
+                    } catch (_: RejectedExecutionException) {
+                        activeSockets.remove(socket)
+                        try { socket.close() } catch (_: Exception) { }
+                    }
                 } catch (_: Exception) {
                     if (running.get()) close()
                 }
@@ -85,7 +96,8 @@ class OpenSendHttpServer(
     fun landingPath(): String = "/?token=$accessToken"
 
     private fun handleClient(socket: Socket) {
-        socket.use { client ->
+        try {
+            socket.use { client ->
             client.soTimeout = 15_000
             val input = BufferedInputStream(client.getInputStream())
             val output = BufferedOutputStream(client.getOutputStream())
@@ -133,6 +145,9 @@ class OpenSendHttpServer(
             } catch (_: Exception) {
                 // A receiver may close the browser or move out of range mid-download.
             }
+            }
+        } finally {
+            activeSockets.remove(socket)
         }
     }
 
@@ -304,6 +319,8 @@ class OpenSendHttpServer(
         if (!running.getAndSet(false)) return
         try { listener?.close() } catch (_: Exception) { }
         listener = null
+        activeSockets.toList().forEach { socket -> try { socket.close() } catch (_: Exception) { } }
+        activeSockets.clear()
         clients.shutdownNow()
     }
 
