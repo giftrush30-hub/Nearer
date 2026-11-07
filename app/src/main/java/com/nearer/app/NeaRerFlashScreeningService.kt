@@ -1,5 +1,6 @@
 package com.nearer.app
 
+import android.content.Context
 import android.telecom.Call
 import android.telecom.CallScreeningService
 import android.util.Base64
@@ -14,7 +15,7 @@ class NeaRerFlashScreeningService : CallScreeningService() {
     override fun onScreenCall(callDetails: Call.Details) {
         if (callDetails.callDirection != Call.Details.DIRECTION_INCOMING) return
 
-        // Keep the phone's normal incoming-call behaviour intact before doing any local work.
+        // Respond first: ordinary incoming calls must not wait for Flash processing.
         respondToCall(
             callDetails,
             CallResponse.Builder()
@@ -27,10 +28,9 @@ class NeaRerFlashScreeningService : CallScreeningService() {
             val handle = callDetails.handle ?: return
             if (handle.scheme != "tel") return
             val number = handle.schemeSpecificPart.orEmpty()
-            val digits = number.filter(Char::isDigit)
-            if (digits.length < 7) return
+            if (!FlashTrustedSenders.isTrusted(this, number)) return
 
-            val senderKey = senderFingerprint(digits)
+            val senderKey = FlashTrustedSenders.fingerprint(this, number) ?: return
             val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
             val key = EVENTS_PREFIX + senderKey
             val now = android.os.SystemClock.elapsedRealtime()
@@ -57,27 +57,65 @@ class NeaRerFlashScreeningService : CallScreeningService() {
         }
     }
 
-    private fun senderFingerprint(number: String): String {
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        var salt = prefs.getString(SALT, null)
-        if (salt == null) {
-            val bytes = ByteArray(32).also { SecureRandom().nextBytes(it) }
-            salt = Base64.encodeToString(bytes, Base64.NO_WRAP)
-            prefs.edit().putString(SALT, salt).commit()
-        }
-        val digest = MessageDigest.getInstance("SHA-256")
-        digest.update(Base64.decode(salt, Base64.NO_WRAP))
-        return digest.digest(number.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-    }
-
     companion object {
         const val PREFS = "nearer_flash_signals"
         const val LAST_SIGNAL = "last_signal"
         const val LAST_SIGNAL_AT = "last_signal_at"
         const val LAST_SIGNAL_FROM = "last_signal_from"
-        private const val SALT = "sender_hash_salt"
         private const val EVENTS_PREFIX = "events_"
         private const val MAX_SEQUENCE_AGE_MS = 12_000L
     }
+}
+
+/**
+ * Local allowlist for Flash senders. Only salted SHA-256 fingerprints are persisted;
+ * raw telephone numbers are never written to preferences.
+ *
+ * Number matching deliberately uses the digits as presented by Android. Users should
+ * pair using the same country-code/local format that appears on the receiving phone.
+ */
+object FlashTrustedSenders {
+    private const val PREFS = "nearer_flash_trusted_senders"
+    private const val SALT_KEY = "salt"
+    private const val ALLOWLIST_KEY = "trusted_fingerprints"
+
+    fun normalize(number: String): String = number.filter(Char::isDigit)
+
+    fun fingerprint(context: Context, number: String): String? {
+        val normalized = normalize(number)
+        if (normalized.length < 7) return null
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        var salt = prefs.getString(SALT_KEY, null)
+        if (salt == null) {
+            val bytes = ByteArray(32).also { SecureRandom().nextBytes(it) }
+            salt = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            if (!prefs.edit().putString(SALT_KEY, salt).commit()) return null
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(Base64.decode(salt, Base64.NO_WRAP))
+        return digest.digest(normalized.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    fun addTrusted(context: Context, number: String): Boolean {
+        val hash = fingerprint(context, number) ?: return false
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val current = prefs.getStringSet(ALLOWLIST_KEY, emptySet()).orEmpty().toMutableSet()
+        current.add(hash)
+        return prefs.edit().putStringSet(ALLOWLIST_KEY, current).commit()
+    }
+
+    fun isTrusted(context: Context, number: String): Boolean {
+        val hash = fingerprint(context, number) ?: return false
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getStringSet(ALLOWLIST_KEY, emptySet())
+            .orEmpty()
+            .contains(hash)
+    }
+
+    fun trustedCount(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getStringSet(ALLOWLIST_KEY, emptySet())
+            .orEmpty()
+            .size
 }
