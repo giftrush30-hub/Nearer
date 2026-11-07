@@ -13,6 +13,7 @@ import java.io.FileInputStream
 
 object AppShareInstaller {
     const val ACTION_INSTALL_STATUS = "com.nearer.app.APPSHARE_INSTALL_STATUS"
+    const val ACTION_INSTALL_RESULT = "com.nearer.app.APPSHARE_INSTALL_RESULT"
     private const val EXTRA_PACKAGE = "package_name"
     private const val EXTRA_LABEL = "app_label"
 
@@ -30,7 +31,7 @@ object AppShareInstaller {
         }
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-            .setAppPackageName(app.packageName)
+        params.setAppPackageName(app.packageName)
         val sessionId = installer.createSession(params)
         try {
             installer.openSession(sessionId).use { session ->
@@ -62,7 +63,7 @@ object AppShareInstaller {
     }
 
     internal fun statusIntent(context: Context, packageName: String, label: String, status: Int, message: String?): Intent =
-        Intent(ACTION_INSTALL_STATUS).setPackage(context.packageName)
+        Intent(ACTION_INSTALL_RESULT).setPackage(context.packageName)
             .putExtra(EXTRA_PACKAGE, packageName)
             .putExtra(EXTRA_LABEL, label)
             .putExtra(PackageInstaller.EXTRA_STATUS, status)
