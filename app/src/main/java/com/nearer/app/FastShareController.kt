@@ -237,12 +237,12 @@ private class FastShareHttpServer(
             val requestLine = readLine(input) ?: return
             val request = FastShareHttpRequest.parse(requestLine)
             if (request == null) {
-                output.write("HTTP/1.1 400 Bad Request\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n".toByteArray())
+                output.write(FastShareHttpErrors.badRequest())
                 output.flush()
                 return
             }
             if (!request.supportsMethod) {
-                output.write("HTTP/1.1 405 Method Not Allowed\\r\\nAllow: GET, HEAD\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n".toByteArray())
+                output.write(FastShareHttpErrors.methodNotAllowed())
                 output.flush()
                 return
             }
@@ -266,7 +266,7 @@ private class FastShareHttpServer(
                     if (headOnly) {
                         streamFile(output, rangeHeader, true)
                     } else if (!transferActive.compareAndSet(false, true)) {
-                        output.write("HTTP/1.1 429 Too Many Requests\\r\\nRetry-After: 2\\r\\nContent-Type: text/plain; charset=utf-8\\r\\nContent-Length: 41\\r\\nConnection: close\\r\\n\\r\\nAnother download is already in progress.\\n".toByteArray())
+                        output.write(FastShareHttpErrors.tooManyRequests())
                     } else {
                         try {
                             streamFile(output, rangeHeader, false)
@@ -276,7 +276,7 @@ private class FastShareHttpServer(
                     }
                 }
                 FastShareHttpRequest.Route.NOT_FOUND -> {
-                    output.write("HTTP/1.1 404 Not Found\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n".toByteArray())
+                    output.write(FastShareHttpErrors.notFound())
                 }
             }
             output.flush()
