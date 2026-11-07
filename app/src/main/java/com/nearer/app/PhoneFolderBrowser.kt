@@ -18,7 +18,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private data class PhoneDocumentEntry(val name: String, val mime: String, val uri: Uri, val size: Long)
@@ -26,7 +25,6 @@ private data class PhoneDocumentEntry(val name: String, val mime: String, val ur
 @Composable
 fun PhoneFolderBrowser(treeUri: Uri, onSelectFiles: (List<Uri>) -> Unit, onClose: () -> Unit) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val stack = remember(treeUri) { mutableListOf(DocumentsContract.buildDocumentUriUsingTree(treeUri, DocumentsContract.getTreeDocumentId(treeUri))) }
     var folder by remember(treeUri) { mutableStateOf(stack.last()) }
     var rows by remember { mutableStateOf<List<PhoneDocumentEntry>>(emptyList()) }
