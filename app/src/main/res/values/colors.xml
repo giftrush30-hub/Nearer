@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- NeaRer brand accents: blue is intentional emphasis, not a universal surface. -->
-    <color name="nearer_icon_background">#111827</color>
-    <color name="nearer_brand_blue">#3478C8</color>
-    <color name="nearer_surface_blue">#EAF1F8</color>
-    <color name="nearer_electric_blue">#3478C8</color>
-    <color name="nearer_royal_gold">#D9AE4B</color>
-    <color name="nearer_electric_cyan">#36BFCB</color>
-    <color name="nearer_text_white">#FFFFFF</color>
-    <color name="nearer_graphite">#111827</color>
-    <color name="nearer_ivory">#F8F7F3</color>
-    <color name="nearer_ink">#202B3C</color>
-    <color name="nearer_muted">#667085</color>
-    <color name="nearer_teal">#16877A</color>
-    <color name="nearer_terracotta">#C17A52</color>
+    <!-- Original NeaRer first-creation palette. Legacy resource names are retained for compatibility. -->
+    <color name="nearer_icon_background">#101A2B</color>
+    <color name="nearer_brand_blue">#2563EB</color>
+    <color name="nearer_surface_blue">#203858</color>
+    <color name="nearer_electric_blue">#2563EB</color>
+    <color name="nearer_royal_gold">#FFD12D</color>
+    <color name="nearer_electric_cyan">#69E0C0</color>
+    <color name="nearer_text_white">#F6F8FC</color>
+    <color name="nearer_graphite">#101A2B</color>
+    <color name="nearer_ivory">#1A2940</color>
+    <color name="nearer_ink">#F6F8FC</color>
+    <color name="nearer_muted">#A8B6C9</color>
+    <color name="nearer_teal">#69E0C0</color>
+    <color name="nearer_terracotta">#2563EB</color>
 </resources>
