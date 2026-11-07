@@ -72,7 +72,7 @@ object LudoRoomStateCodec {
                 players.map { it.color }.toSet().size != players.size) return null
             val active = root.optInt("activePlayerIndex", -1)
             if (active !in players.indices) return null
-            val dice = if (root.isNull("dice")) null else root.optInt("dice", -1).takeIf { it in 1..6 } ?: return null
+            val dice = if (root.isNull("dice")) null else root.optInt("dice", -1).takeIf { it in 1..12 } ?: return null
             val legalJson = root.optJSONArray("legalTokenIndexes") ?: JSONArray()
             val legal = (0 until legalJson.length()).map { legalJson.optInt(it, -1) }
             if (legal.any { it !in 0..3 } || legal.toSet().size != legal.size) return null
@@ -87,7 +87,8 @@ object LudoRoomStateCodec {
                 val selected = if (item.isNull("selected")) null else {
                     try { LudoDieSlot.valueOf(item.optString("selected")) } catch (_: Exception) { return null }
                 }
-                if (selected != null && selected !in remaining) return null
+                if (selected != null && selected != LudoDieSlot.BOTH && selected !in remaining) return null
+                if (selected == LudoDieSlot.BOTH && !(LudoDieSlot.FIRST in remaining && LudoDieSlot.SECOND in remaining)) return null
                 LudoTwoDiceTurn(pair, remaining, selected)
             }
             val winner = if (root.isNull("winnerId")) null else root.optString("winnerId").takeIf { id -> players.any { it.id == id } } ?: return null
