@@ -7,8 +7,8 @@
         <item name="android:statusBarColor">@color/nearer_graphite</item>
         <item name="android:navigationBarColor">@color/nearer_graphite</item>
         <item name="android:windowLightStatusBar">false</item>
-        <!-- Preserve the branded launch moment; in-app screens use a richer neutral palette. -->
-        <item name="android:windowSplashScreenBackground">#111827</item>
+        <!-- Preserve the branded launch moment; all app screens retain the original navy palette. -->
+        <item name="android:windowSplashScreenBackground">#101A2B</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/nearer_splash_avd</item>
         <item name="android:windowSplashScreenAnimationDuration">800</item>
     </style>
