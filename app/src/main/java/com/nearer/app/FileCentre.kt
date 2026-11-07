@@ -200,6 +200,8 @@ internal object AndroidFileCatalog {
         val safePackage = packageName.replace(Regex("[^A-Za-z0-9._-]"), "_")
         val output = java.io.File(outputDir, "$safePackage-app-bundle.zip")
         ZipOutputStream(output.outputStream().buffered()).use { zip ->
+            // APK files are already compressed; avoid spending CPU recompressing them.
+            zip.setLevel(0)
             fun addApk(file: java.io.File, entryName: String) {
                 zip.putNextEntry(ZipEntry(entryName))
                 file.inputStream().buffered().use { input -> input.copyTo(zip, 64 * 1024) }
@@ -451,7 +453,7 @@ internal fun FileCentreScreen(
                         selected = item.id in selected,
                         context = context,
                         onClick = {
-                            if (item.category == FileCentreCategory.APPS && item.packageName != null) {
+                            if (item.category == FileCentreCategory.APPS && item.packageName != null && item.uri == null) {
                                 if (item.id in selected) selected.remove(item.id)
                                 else {
                                     notice = "Packaging ${item.name}, including any split APK parts…"
@@ -486,7 +488,7 @@ internal fun FileCentreScreen(
                         selected = item.id in selected,
                         context = context,
                         onClick = {
-                            if (item.category == FileCentreCategory.APPS && item.packageName != null) {
+                            if (item.category == FileCentreCategory.APPS && item.packageName != null && item.uri == null) {
                                 if (item.id in selected) selected.remove(item.id)
                                 else {
                                     notice = "Packaging ${item.name}, including any split APK parts…"
