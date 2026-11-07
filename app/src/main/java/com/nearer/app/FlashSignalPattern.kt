@@ -7,10 +7,10 @@ package com.nearer.app
  */
 object FlashSignalPattern {
     private val patterns = listOf(
-        Signal("PING", listOf(900L)),
-        Signal("COME", listOf(1_400L, 300L)),
-        Signal("URGENT", listOf(450L, 450L, 450L)),
-        Signal("CALL_ME", listOf(2_200L, 900L))
+        Signal("PING", listOf(5_000L)),
+        Signal("COME", listOf(11_000L, 8_000L)),
+        Signal("URGENT", listOf(14_000L, 14_000L, 14_000L)),
+        Signal("CALL_ME", listOf(20_000L, 17_000L))
     )
 
     data class Signal(val name: String, val gapsMillis: List<Long>)
@@ -29,7 +29,7 @@ object FlashSignalPattern {
 
     fun presets(): List<Signal> = patterns.toList()
 
-    fun decode(eventTimesMillis: List<Long>, toleranceMillis: Long = 200L): String? {
+    fun decode(eventTimesMillis: List<Long>, toleranceMillis: Long = 1_000L): String? {
         if (toleranceMillis < 0L || eventTimesMillis.size < 2) return null
         val times = eventTimesMillis.takeLast(4)
         val gaps = times.zipWithNext { first, second -> second - first }

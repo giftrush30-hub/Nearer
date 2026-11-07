@@ -84,7 +84,7 @@ class NeaRerFlashScreeningService : CallScreeningService() {
         const val PENDING_EVENTS = "pending_events"
         private const val MAX_PENDING_EVENTS = 100
         private const val EVENTS_PREFIX = "events_"
-        private const val MAX_SEQUENCE_AGE_MS = 12_000L
+        private const val MAX_SEQUENCE_AGE_MS = 55_000L
     }
 }
 

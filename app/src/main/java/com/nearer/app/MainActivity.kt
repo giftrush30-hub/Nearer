@@ -4057,7 +4057,7 @@ private fun NeaRerHome(
                                         (selectedFlashPreset.gapsMillis.joinToString(" → ") { "${it / 1000.0}s" }.ifBlank { "one call" }),
                                     color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
                                 )
-                                Text("Choose the same signal on both phones. The receiver recognises the timing of incoming calls and displays the matching words as a chat message. It does not depend on SMS or internet data.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                                Text("The sender chooses a signal; the receiver does not need to select anything. NeaRer recognises the incoming-call timing and turns it into a normal chat message, without SMS or mobile data.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                             }
                         }
                         Text("SEND A FLASH SIGNAL", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
@@ -4077,9 +4077,9 @@ private fun NeaRerHome(
                         )
                         Text("Call step ${(flashCallStep + 1).coerceAtMost(flashCallCount)} of $flashCallCount", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         if (flashStepGap != null) {
-                            Text("After the previous call, aim for about ${flashStepGap} ms between call start times. Carrier delays can affect recognition.", color = Muted, fontSize = 10.sp)
+                            Text("Aim for about ${String.format(java.util.Locale.ROOT, "%.1f", flashStepGap / 1000.0)} seconds between the START of this call and the START of the next one. End the call quickly, return here, and use the interval as a guide. Carrier delays can affect recognition.", color = Muted, fontSize = 10.sp)
                         } else {
-                            Text("Start with the first call. Open the dialer, place the call yourself, then end it and return here.", color = Muted, fontSize = 10.sp)
+                            Text("Start the sequence. Open the dialer, place the call yourself, end it quickly, and return here for the next call. The intervals are deliberately longer to make manual dialling more realistic.", color = Muted, fontSize = 10.sp)
                         }
                         Button(
                             onClick = {
