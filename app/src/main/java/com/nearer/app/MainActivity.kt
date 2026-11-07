@@ -704,6 +704,18 @@ class MainActivity : ComponentActivity() {
                 if (eventId in importedIds) continue
 
                 val signal = event.optString("signal").takeIf { it.isNotBlank() } ?: continue
+                // Keep each trusted sender in a separate chat thread. The service stores
+                // only a short fingerprint tag here, never the sender's raw phone number.
+                val senderTag = event.optString("senderTag")
+                    .filter { it.isLetterOrDigit() }
+                    .takeLast(8)
+                    .ifBlank { "unknown" }
+                val flashConversationId = "nearer-flash:$senderTag"
+                val flashConversationName = if (senderTag == "unknown") {
+                    "NeaRer Flash"
+                } else {
+                    "Flash • $senderTag"
+                }
                 val messageId = "flash:$eventId"
                 if (chatMessages.none { it.id == messageId }) {
                     chatMessages.add(
@@ -714,8 +726,8 @@ class MainActivity : ComponentActivity() {
                             delivery = "Flash • Received",
                             timestamp = event.optLong("timestamp", System.currentTimeMillis())
                                 .takeIf { it > 0L } ?: System.currentTimeMillis(),
-                            conversationId = "nearer-flash",
-                            conversationName = "NeaRer Flash"
+                            conversationId = flashConversationId,
+                            conversationName = flashConversationName
                         )
                     )
                     receivedMessageIds.add(messageId)
