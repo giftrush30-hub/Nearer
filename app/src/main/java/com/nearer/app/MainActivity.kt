@@ -1921,6 +1921,7 @@ private fun NeaRerHome(
     incomingRequesterName: String?,
     approvalMessage: String,
     pairingCode: String?,
+    pairingCode: String?,
     chatReady: Boolean,
     usingNearbyConnections: Boolean,
     messages: List<ChatMessage>,
