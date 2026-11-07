@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/nearer_splash_base">
+    <target android:name="light_top_left" android:animation="@animator/nearer_light_1"/>
+    <target android:name="light_top_right" android:animation="@animator/nearer_light_2"/>
+    <target android:name="light_bottom_right" android:animation="@animator/nearer_light_3"/>
+    <target android:name="light_bottom_left" android:animation="@animator/nearer_light_4"/>
+</animated-vector>
