@@ -164,6 +164,8 @@ class MainActivity : ComponentActivity() {
     private var connectedDeviceName by mutableStateOf<String?>(null)
     private var connectionMessage by mutableStateOf("Not connected")
     private var incomingRequesterName by mutableStateOf<String?>(null)
+    private var pendingHybridStableId: String = ""
+    private val blockedPeerIds = ConcurrentHashMap.newKeySet<String>()
     private var approvalMessage by mutableStateOf("Waiting for app approval")
     private var pairingCode by mutableStateOf<String?>(null)
     private var chatReady by mutableStateOf(false)
@@ -354,10 +356,19 @@ class MainActivity : ComponentActivity() {
         channel = wifiManager?.initialize(this, mainLooper, null)
         nearbyTransport = NearbyConnectionsTransport(this, object : NearbyConnectionsTransport.Listener {
             override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
-            override fun onFound(id: String, name: String, stableId: String) { runOnUiThread { hybridPeers[id] = name; if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId) } }
+            override fun onFound(id: String, name: String, stableId: String) { runOnUiThread {
+                val normalizedId = BlockedPeerPolicy.normalize(stableId)
+                if (normalizedId != null && normalizedId in blockedPeerIds) {
+                    hybridPeers.remove(id)
+                } else {
+                    hybridPeers[id] = name
+                    if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId)
+                }
+            } }
             override fun onLost(id: String, stableId: String) { runOnUiThread {
                 val name = hybridPeers.remove(id)
-                if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
+                val normalizedId = BlockedPeerPolicy.normalize(stableId)
+                if (name != null && (normalizedId == null || normalizedId !in blockedPeerIds)) recordRecentlySeen(stableId.ifBlank { id }, name)
                 if (hybridConnectedEndpoint == id) {
                     hybridConnected = false
                     hybridConnectedEndpoint = null
@@ -370,9 +381,16 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             } }
-            override fun onRequest(id: String, name: String, token: String) {
+            override fun onRequest(id: String, name: String, token: String, stableId: String) {
                 runOnUiThread {
+                    val normalizedId = BlockedPeerPolicy.normalize(stableId)
+                    if (normalizedId != null && normalizedId in blockedPeerIds) {
+                        nearbyTransport?.reject(id)
+                        statusMessage = "A connection request from a blocked nearby device was automatically declined."
+                        return@runOnUiThread
+                    }
                     pendingHybridEndpoint = id
+                    pendingHybridStableId = normalizedId.orEmpty()
                     incomingRequesterName = name
                     pairingCode = token
                     approvalMessage = "Compare the security code on both phones before accepting"
@@ -388,6 +406,7 @@ class MainActivity : ComponentActivity() {
                     connectedChatPeerName = name
                     activeChatPeerName = name
                     pendingHybridEndpoint = null
+                    pendingHybridStableId = ""
                     incomingRequesterName = null
                     connectedDeviceName = name
                     chatReady = true
@@ -608,6 +627,10 @@ class MainActivity : ComponentActivity() {
         restoreReceivedFiles()
         restoreSentFiles()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            .getStringSet("blocked_nearby_peer_ids", emptySet())
+            ?.mapNotNull(BlockedPeerPolicy::normalize)
+            ?.forEach { blockedPeerIds.add(it) }
         restoreCommunityData()
         nearbyTransport?.setDisplayName(displayName)
         restoreRecentlySeen()
@@ -715,13 +738,24 @@ class MainActivity : ComponentActivity() {
                     onDisconnect = ::disconnectFromPeer,
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
+                    onBlockIncoming = ::blockIncomingPeer,
+                    blockedPeerIds = blockedPeerIds.toList().sorted(),
+                    onUnblockPeer = ::unblockPeer,
                     hybridPeers = hybridPeers.toMap(),
                     recentlySeenPeers = recentlySeenPeers.toMap(),
                     displayName = displayName,
                     onSaveDisplayName = ::saveDisplayName,
                     meshRelayEnabled = meshRelayEnabled,
                     onMeshRelayChange = ::updateMeshRelayEnabled,
-                    onHybridConnect = { id -> nearbyTransport?.request(id) },
+                    onHybridConnect = { id ->
+                        val stableId = BlockedPeerPolicy.normalize(nearbyTransport?.stableIdForEndpoint(id))
+                        if (stableId != null && stableId in blockedPeerIds) {
+                            hybridPeers.remove(id)
+                            statusMessage = "This nearby device is blocked on your phone."
+                        } else {
+                            nearbyTransport?.request(id)
+                        }
+                    },
                     onFindNearby = ::startDiscovery,
                     onStopSearch = ::stopDiscovery,
                     onConnect = ::connectToDevice,
@@ -1406,6 +1440,46 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun blockIncomingPeer() {
+        val stableId = BlockedPeerPolicy.normalize(pendingHybridStableId)
+        val endpoint = pendingHybridEndpoint
+        if (stableId == null) {
+            statusMessage = "NeaRer cannot safely block this device because it did not provide a valid nearby identity."
+            rejectIncoming()
+            return
+        }
+        val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val updated = (prefs.getStringSet("blocked_nearby_peer_ids", emptySet()) ?: emptySet()).toMutableSet()
+        updated.add(stableId)
+        if (!prefs.edit().putStringSet("blocked_nearby_peer_ids", updated).commit()) {
+            statusMessage = "The block could not be saved. Please try again."
+            return
+        }
+        blockedPeerIds.add(stableId)
+        hybridPeers.keys.filter { nearbyTransport?.stableIdForEndpoint(it) == stableId }.forEach { hybridPeers.remove(it) }
+        endpoint?.let { nearbyTransport?.reject(it) }
+        pendingHybridEndpoint = null
+        pendingHybridStableId = ""
+        pairingCode = null
+        incomingRequesterName = null
+        approvalMessage = "Nearby device blocked"
+        statusMessage = "This device is blocked. Future nearby requests using this device ID will be declined."
+    }
+
+    private fun unblockPeer(stableId: String) {
+        val normalized = BlockedPeerPolicy.normalize(stableId) ?: return
+        val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val updated = (prefs.getStringSet("blocked_nearby_peer_ids", emptySet()) ?: emptySet())
+            .mapNotNull(BlockedPeerPolicy::normalize).toMutableSet()
+        updated.remove(normalized)
+        if (prefs.edit().putStringSet("blocked_nearby_peer_ids", updated).commit()) {
+            blockedPeerIds.remove(normalized)
+            statusMessage = "Nearby device unblocked. It can appear in discovery again."
+        } else {
+            statusMessage = "Could not update the blocked-device list. Please try again."
+        }
+    }
+
     private fun approveIncoming() {
         val endpoint = pendingHybridEndpoint
         if (endpoint != null) {
@@ -1423,6 +1497,7 @@ class MainActivity : ComponentActivity() {
         if (endpoint != null) {
             nearbyTransport?.reject(endpoint)
             pendingHybridEndpoint = null
+            pendingHybridStableId = ""
             pairingCode = null
             approvalMessage = "Nearby connection declined"
         } else {
@@ -2957,6 +3032,9 @@ private fun NeaRerHome(
     onDisconnect: () -> Unit,
     onAccept: () -> Unit,
     onReject: () -> Unit,
+    onBlockIncoming: () -> Unit,
+    blockedPeerIds: List<String>,
+    onUnblockPeer: (String) -> Unit,
     hybridPeers: Map<String, String>,
     recentlySeenPeers: Map<String, NearbyPerson>,
     displayName: String,
@@ -4644,6 +4722,22 @@ private fun NeaRerHome(
                         colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
                     ) { Text("SAVE MY NAME", fontWeight = FontWeight.Black, letterSpacing = 0.4.sp) }
                     Text(nameSaveFeedback ?: "Your chosen name is shown to people discovering nearby phones.", color = Color(0xFFB8CBE3), fontSize = 10.sp, lineHeight = 15.sp)
+                    if (blockedPeerIds.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Text("BLOCKED NEARBY DEVICES", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                            blockedPeerIds.forEach { blockedId ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().background(Color(0xFF123D70), RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Device " + blockedId.take(8) + "…", color = White, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                                    TextButton(onClick = { onUnblockPeer(blockedId) }) {
+                                        Text("UNBLOCK", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -4808,6 +4902,10 @@ private fun NeaRerHome(
                                     Button(onClick = onReject, modifier = Modifier.weight(1f),
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) {
                                         Text("DECLINE", fontWeight = FontWeight.Black)
+                                    }
+                                    Button(onClick = onBlockIncoming, modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B2635), contentColor = White)) {
+                                        Text("BLOCK", fontWeight = FontWeight.Black)
                                     }
                                 }
                             }

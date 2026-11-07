@@ -18,7 +18,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onStatus(message: String)
         fun onFound(id: String, name: String, stableId: String)
         fun onLost(id: String, stableId: String)
-        fun onRequest(id: String, name: String, token: String)
+        fun onRequest(id: String, name: String, token: String, stableId: String)
         fun onConnected(id: String, name: String, stableId: String)
         fun onDisconnected(id: String, stableId: String, name: String)
         fun onMessage(id: String, senderName: String, senderStableId: String, body: String)
@@ -91,7 +91,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         override fun onConnectionInitiated(id: String, info: ConnectionInfo) {
             val (name, stableId) = decodeName(info.endpointName)
             synchronized(names) { names[id] = name; stableIds[id] = stableId }
-            listener.onRequest(id, name, info.authenticationToken)
+            listener.onRequest(id, name, info.authenticationToken, stableId)
         }
         override fun onConnectionResult(id: String, result: ConnectionResolution) {
             if (result.status.isSuccess) {
@@ -429,6 +429,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             listener.onStatus("Connection request failed: ${it.localizedMessage ?: "try again"}")
         }
     }
+    fun stableIdForEndpoint(id: String): String = synchronized(names) { stableIds[id].orEmpty() }
+
     fun accept(id: String) { client.acceptConnection(id, payloads).addOnFailureListener { listener.onStatus("Could not accept nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun reject(id: String) { client.rejectConnection(id).addOnFailureListener { listener.onStatus("Could not reject nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun setRelayEnabled(enabled: Boolean) { relayEnabled = enabled }
