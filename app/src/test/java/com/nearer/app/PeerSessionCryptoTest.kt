@@ -22,6 +22,29 @@ class PeerSessionCryptoTest {
     }
 
     @Test
+    fun bothPeersCalculateTheSameAuthenticationCode() {
+        val alice = PeerSessionCrypto.createEphemeralKeyPair()
+        val bob = PeerSessionCrypto.createEphemeralKeyPair()
+        val context = "alice-id|bob-id|pairing-v1"
+        val aliceKey = PeerSessionCrypto.deriveSessionKey(alice.privateKey, bob.publicKeyBase64, context)
+        val bobKey = PeerSessionCrypto.deriveSessionKey(bob.privateKey, alice.publicKeyBase64, context)
+        assertEquals(
+            PeerSessionCrypto.authenticationCode(aliceKey, context),
+            PeerSessionCrypto.authenticationCode(bobKey, context)
+        )
+    }
+
+    @Test
+    fun authenticationCodeChangesWithTranscript() {
+        val alice = PeerSessionCrypto.createEphemeralKeyPair()
+        val bob = PeerSessionCrypto.createEphemeralKeyPair()
+        val key = PeerSessionCrypto.deriveSessionKey(alice.privateKey, bob.publicKeyBase64, "session")
+        val first = PeerSessionCrypto.authenticationCode(key, "alice|bob")
+        val second = PeerSessionCrypto.authenticationCode(key, "alice|mallory")
+        assertNotEquals(first, second)
+    }
+
+    @Test
     fun eachEncryptionUsesAFreshNonce() {
         val alice = PeerSessionCrypto.createEphemeralKeyPair()
         val bob = PeerSessionCrypto.createEphemeralKeyPair()
