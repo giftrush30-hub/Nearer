@@ -342,6 +342,7 @@ internal object AndroidFileCatalog {
             FileCentreCategory.DOCUMENTS -> "DOCUMENT"
             FileCentreCategory.DOWNLOADS -> "DOWNLOAD"
             FileCentreCategory.OTHER -> "FILE"
+            FileCentreCategory.FAVOURITES -> "FAVOURITE"
         }
     }
 }
