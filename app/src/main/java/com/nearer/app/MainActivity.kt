@@ -3743,7 +3743,7 @@ private fun NeaRerHome(
                         }
                     }
                     if (installedApps.any { it.apkPaths.size > 1 }) {
-                        Text("Some apps contain split APKs. NeaRer sends those together in a ZIP package; the receiver will need a compatible split-APK installer.", color = Color(0xFFFFDFA0), fontSize = 10.sp, lineHeight = 15.sp)
+                        Text("Some apps contain split APKs. NeaRer sends those together in a ZIP package; the receiver will need a compatible split-APK installer.", color = Color(0xFFE8C879), fontSize = 10.sp, lineHeight = 15.sp)
                     }
                     Text(
                         "App availability depends on what Android allows NeaRer to access. Some protected system components may not appear.",
@@ -3891,9 +3891,9 @@ private fun NeaRerHome(
                 .background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
-                            0.0f to Color(0xFF1769FF),
-                            0.38f to Midnight,
-                            1.0f to Color(0xFF1769FF)
+                            0.0f to Color(0xFF172338),
+                            0.42f to Color(0xFF111827),
+                            1.0f to Color(0xFF202B3C)
                         )
                     )
                 )
@@ -3923,7 +3923,7 @@ private fun NeaRerHome(
                         Text("No Data? We Are NeaRer.", color = Muted, fontSize = 12.sp)
                         Text(
                             "Welcome back, ${displayName.trim().ifBlank { "friend" }}",
-                            color = Color(0xFFBFD8FF), fontSize = 11.sp,
+                            color = Color(0xFFE4EAF2), fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
@@ -3968,7 +3968,7 @@ private fun NeaRerHome(
                 }
                 Surface(
                     shape = CircleShape,
-                    color = Color(0xFF347CEB),
+                    color = Color(0xFF285F9E),
                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.72f)),
                     modifier = Modifier.size(46.dp)
                 ) {
