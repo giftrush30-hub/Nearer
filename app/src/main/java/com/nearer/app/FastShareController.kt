@@ -73,13 +73,31 @@ class FastShareController(private val context: Context) {
                             } else -1L
                         } ?: -1L
                     }
+                    var transferStartedAt = 0L
+                    var lastProgressAt = 0L
+                    var lastProgressBytes = 0L
+                    var bytesPerSecond = 0.0
                     val httpServer = FastShareHttpServer(context, selectedUri, name, mime, length) { sent, total, complete, interrupted ->
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        if (transferStartedAt == 0L || sent < lastProgressBytes) {
+                            transferStartedAt = now
+                            lastProgressAt = now
+                            lastProgressBytes = 0L
+                            bytesPerSecond = 0.0
+                        }
+                        val elapsed = now - lastProgressAt
+                        if (elapsed > 0L && sent >= lastProgressBytes) {
+                            bytesPerSecond = (sent - lastProgressBytes) * 1000.0 / elapsed
+                        }
+                        lastProgressAt = now
+                        lastProgressBytes = sent
+                        val speedLabel = if (bytesPerSecond > 0.0) " · ${formatProgressSize(bytesPerSecond.toLong())}/s" else ""
                         Handler(Looper.getMainLooper()).post {
                             status = when {
-                                interrupted -> "Download interrupted. Keep both phones connected and retry the download."
-                                complete -> "Download completed successfully."
-                                total >= 0L -> "Sending ${formatProgressSize(sent)} of ${formatProgressSize(total)}…"
-                                else -> "Sending ${formatProgressSize(sent)}…"
+                                interrupted -> "Download interrupted at ${formatProgressSize(sent)}. Keep both phones connected and retry."
+                                complete -> "Download completed · average ${formatProgressSize(((sent * 1000.0) / (now - transferStartedAt).coerceAtLeast(1L)).toLong())}/s"
+                                total >= 0L -> "Sending ${formatProgressSize(sent)} of ${formatProgressSize(total)}$speedLabel…"
+                                else -> "Sending ${formatProgressSize(sent)}$speedLabel…"
                             }
                         }
                     }
