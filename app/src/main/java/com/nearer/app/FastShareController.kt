@@ -1,6 +1,8 @@
 package com.nearer.app
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Handler
@@ -102,8 +104,6 @@ class FastShareController(private val context: Context) {
         pendingUri = null
         try { reservation?.close() } catch (_: Exception) {}
         reservation = null
-        val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        try { callback?.let { wifi?.cancelLocalOnlyHotspotRequest() } } catch (_: Exception) {}
         callback = null
         if (updateStatus) status = "Fast Share stopped."
     }
