@@ -711,7 +711,7 @@ class MainActivity : ComponentActivity() {
                     chatMessages.add(
                         ChatMessage(
                             id = messageId,
-                            body = "Received Flash signal: $signal\\n$senderLabel",
+                            body = "Received Flash signal: $signal\n$senderLabel",
                             outgoing = false,
                             delivery = "Received",
                             timestamp = event.optLong("timestamp", System.currentTimeMillis())
