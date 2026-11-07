@@ -253,14 +253,19 @@ class MainActivity : ComponentActivity() {
                     hybridConnected = true
                     hybridConnectedEndpoint = id
                     hybridConnectedStableId = stableId.ifBlank { null }
-                    if (currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()) {
-                        val resumedLivePayload = nearbyTransport?.resumePendingFilesForPeer(stableId, id) == true
-                        chatNotice = if (resumedLivePayload) {
-                            "Connection restored. Resuming the interrupted file from its saved transfer offset…"
-                        } else {
-                            "Connection restored. Restarting the interrupted file safely…"
-                        }
-                        if (!resumedLivePayload) startNextNearbyQueuedFile()
+                    val requestedIncomingResume = nearbyTransport?.requestPendingIncomingFilesForPeer(stableId, id) == true
+                    if (requestedIncomingResume) {
+                        chatNotice = "Connection restored. Requesting the saved receive position…"
+                    } else if (currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()) {
+                        chatNotice = "Connection restored. Checking whether the other phone has a saved transfer position…"
+                        discoveryHandler.postDelayed({
+                            if (hybridConnected && hybridConnectedStableId == stableId &&
+                                outgoingTransferId == null &&
+                                (currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty())) {
+                                chatNotice = "No matching partial transfer was found. Restarting this file safely from the beginning…"
+                                startNextNearbyQueuedFile()
+                            }
+                        }, 1800L)
                     }
                     pendingHybridEndpoint = null
                     incomingRequesterName = null
