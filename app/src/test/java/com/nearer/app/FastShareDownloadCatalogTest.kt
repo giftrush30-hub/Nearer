@@ -38,7 +38,7 @@ class FastShareDownloadCatalogTest {
     @Test fun receiverPageEscapesUntrustedFileNames() {
         val page = FastShareDownloadCatalog(
             listOf(FastShareDownloadItem(0, "<script>alert('x')</script>.txt", "text/plain", 1L))
-        ).receiverPage()
+        ).receiverPage("b".repeat(64))
 
         assertTrue(page.contains("&lt;script&gt;"))
         assertTrue(!page.contains("<script>alert"))
