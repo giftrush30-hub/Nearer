@@ -13,16 +13,21 @@ internal data class StreamCopyResult(
  * A short source or a stopped transfer is reported as incomplete, never success.
  */
 internal object StreamCopy {
+    // Larger bounded buffers reduce read/write calls on high-throughput local Wi-Fi links.
+    const val DEFAULT_BUFFER_SIZE = 256 * 1024
+
     fun copy(
         input: InputStream,
         output: OutputStream,
         expectedBytes: Long,
         shouldContinue: () -> Boolean = { true },
         onBytesCopied: (Long) -> Unit = {},
-        onProgress: (Long) -> Unit = {}
+        onProgress: (Long) -> Unit = {},
+        bufferSize: Int = DEFAULT_BUFFER_SIZE
     ): StreamCopyResult {
         require(expectedBytes >= 0L) { "Expected byte count cannot be negative" }
-        val buffer = ByteArray(64 * 1024)
+        require(bufferSize > 0) { "Buffer size must be positive" }
+        val buffer = ByteArray(bufferSize)
         var copied = 0L
         while (copied < expectedBytes && shouldContinue()) {
             val requested = minOf(buffer.size.toLong(), expectedBytes - copied).toInt()
