@@ -621,6 +621,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        if (isRecordingVoiceNote) finishVoiceNoteRecording(queueOnly = true)
         if (receiverRegistered) {
             unregisterReceiver(receiver)
             receiverRegistered = false
@@ -1306,7 +1307,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun finishVoiceNoteRecording() {
+    private fun finishVoiceNoteRecording(queueOnly: Boolean = false) {
         val recorder = voiceNoteRecorder
         val file = activeVoiceNoteFile
         try { recorder?.stop() } catch (_: Exception) {
@@ -1321,8 +1322,12 @@ class MainActivity : ComponentActivity() {
         if (file != null && file.exists() && file.length() > 0L) {
             try {
                 val uri = FileProvider.getUriForFile(this, "${packageName}.files", file)
-                chatNotice = "Voice note saved • ${formatTransferSize(file.length())}. Preparing it for nearby sharing."
-                sendFile(uri)
+                if (queueOnly) {
+                    queueChatFile(uri, "Voice note saved safely on this phone • it will wait until you return and choose to send it.")
+                } else {
+                    chatNotice = "Voice note saved • ${formatTransferSize(file.length())}. Preparing it for nearby sharing."
+                    sendFile(uri)
+                }
             } catch (_: Exception) {
                 chatNotice = "Voice note was recorded but could not be prepared for sharing."
             }
@@ -2224,6 +2229,21 @@ class MainActivity : ComponentActivity() {
             outgoingSpeedBytesPerSecond = 0L
             outgoingRateSampleAt = 0L
             outgoingRateSampleBytes = 0L
+                                }
+                                if (ok) {
+                                    val savedUri = pendingSentFileUri
+                                    val savedName = pendingSentFileName
+                                    if (!savedUri.isNullOrBlank() && !savedName.isNullOrBlank()) {
+                                        sentFiles.add(0, SentFile(savedName, savedUri, pendingSentFileSize, System.currentTimeMillis()))
+                                        persistSentFiles()
+                                    }
+                                    pendingSentFileUri = null
+                                    pendingSentFileName = null
+                                    pendingSentFileSize = 0L
+                                } else {
+                                    pendingSentFileUri = null
+                                    pendingSentFileName = null
+                                    pendingSentFileSize = 0L
                                 }
                                 chatNotice = if (ok) "File delivered and verified by the nearby phone." else "The other phone could not verify the file."
                             }
