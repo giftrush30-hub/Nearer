@@ -198,8 +198,11 @@ internal object AndroidFileCatalog {
         val splitApks = appInfo.splitSourceDirs.orEmpty().map { java.io.File(it) }.filter { it.isFile }
         val outputDir = java.io.File(context.cacheDir, "nearer-share").apply { mkdirs() }
         val safePackage = packageName.replace(Regex("[^A-Za-z0-9._-]"), "_")
-        val output = java.io.File(outputDir, "$safePackage-app-bundle.zip")
+        // Keep each export separate so a later export cannot overwrite a bundle being shared.
+        val output = java.io.File.createTempFile("$safePackage-", "-app-bundle.zip", outputDir)
         ZipOutputStream(output.outputStream().buffered()).use { zip ->
+            // APK entries are already compressed; avoid wasting CPU recompressing them.
+            zip.setLevel(0)
             // APK files are already compressed; avoid spending CPU recompressing them.
             zip.setLevel(0)
             fun addApk(file: java.io.File, entryName: String) {
