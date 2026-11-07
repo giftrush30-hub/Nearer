@@ -2522,11 +2522,14 @@ private fun seenAgo(timestamp: Long): String {
     }
 }
 
-private data class ChatMessage(
+internal data class ChatMessage(
     val id: String,
     val body: String,
     val outgoing: Boolean,
-    val delivery: String
+    val delivery: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val conversationId: String = "",
+    val conversationName: String = ""
 )
 
 private data class ReceivedFile(val displayName: String, val file: File)
