@@ -318,18 +318,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val roles = getSystemService(RoleManager::class.java)
-            flashRoleReady = roles?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
-        } else {
-            flashRoleReady = false
-        }
-        flashLastSignal = getSharedPreferences(NeaRerFlashScreeningService.PREFS, MODE_PRIVATE)
-            .getString(NeaRerFlashScreeningService.LAST_SIGNAL, null)
-    }
-
     private fun requestFlashScreeningRole() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             statusMessage = "NeaRer Flash call signalling requires Android 10 or newer."
@@ -699,6 +687,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roles = getSystemService(RoleManager::class.java)
+            flashRoleReady = roles?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
+        } else {
+            flashRoleReady = false
+        }
+        flashLastSignal = getSharedPreferences(NeaRerFlashScreeningService.PREFS, MODE_PRIVATE)
+            .getString(NeaRerFlashScreeningService.LAST_SIGNAL, null)
         val filter = IntentFilter().apply {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
