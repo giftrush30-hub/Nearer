@@ -3576,11 +3576,11 @@ private fun NeaRerHome(
     if (showChatAttachmentMenu) {
         AlertDialog(
             onDismissRequest = { showChatAttachmentMenu = false },
-            containerColor = Color(0xFF263449),
-            title = { Text("SHARE SOMETHING", color = White, fontWeight = FontWeight.Black) },
+            containerColor = Color(0xFFF8F7F3),
+            title = { Text("Choose what to share", color = Color(0xFF202B3C), fontWeight = FontWeight.Bold, fontSize = 20.sp) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Choose what you want to share. Files can wait here until someone connects nearby.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                    Text("Select files from your phone. NeaRer can queue them while you get connected to another device.", color = Color(0xFF667085), fontSize = 12.sp, lineHeight = 17.sp)
                     listOf(Triple("Photos & videos", "Images and clips", "media"), Triple("Documents", "PDF, Word, Excel and more", "docs"), Triple("Audio & music", "Sound files and recordings", "audio"), Triple("Browse phone folders", "Explore a folder inside NeaRer", "folders"), Triple("Any file", "Browse phone storage", "files"), Triple("Installed apps", "Share an app package", "apps")).forEach { item ->
                         Surface(modifier = Modifier.fillMaxWidth().clickable {
                             showChatAttachmentMenu = false
@@ -3599,16 +3599,16 @@ private fun NeaRerHome(
                                 }
                                 else -> filePicker.launch(arrayOf("*/*"))
                             }
-                        }, color = Color(0xFF263449), shape = RoundedCornerShape(13.dp), border = BorderStroke(1.dp, Color(0xFF63A7FF))) {
+                        }, color = White, shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, Color(0xFFE1E5EB))) {
                             Column(Modifier.padding(12.dp)) {
-                                Text(item.first, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                Text(item.second, color = Muted, fontSize = 9.sp)
+                                Text(item.first, color = Color(0xFF202B3C), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text(item.second, color = Color(0xFF667085), fontSize = 11.sp)
                             }
                         }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showChatAttachmentMenu = false }) { Text("CLOSE", color = Gold) } }
+            confirmButton = { TextButton(onClick = { showChatAttachmentMenu = false }) { Text("CLOSE", color = Color(0xFF285F9E)) } }
         )
     }
     if (showInstalledApps) {
