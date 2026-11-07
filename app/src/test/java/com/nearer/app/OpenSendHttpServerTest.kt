@@ -126,4 +126,82 @@ class OpenSendHttpServerTest {
             connection.disconnect()
         }
     }
+
+    @Test
+    fun unknownFileIdReturns404AndWrongTokenReturns403() {
+        val folder = createTempDir(prefix = "nearer-opensend-deny")
+        val file = File(folder, "visible.txt").apply { writeText("visible") }
+        val server = OpenSendHttpServer(
+            listOf(OpenSendFile(id = "known", displayName = "visible.txt", file = file)),
+            accessToken = "e".repeat(32)
+        )
+        try {
+            val info = server.start()
+            val unknown = URL("http://127.0.0.1:${info.port}/download/not-shared?token=${info.accessToken}")
+                .openConnection() as HttpURLConnection
+            assertEquals(404, unknown.responseCode)
+            unknown.disconnect()
+
+            val wrongToken = URL("http://127.0.0.1:${info.port}/download/known?token=${"f".repeat(32)}")
+                .openConnection() as HttpURLConnection
+            assertEquals(403, wrongToken.responseCode)
+            wrongToken.disconnect()
+        } finally {
+            server.close()
+            folder.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun emptyFileCanBeDownloadedWithZeroLengthAndNoRange() {
+        val folder = createTempDir(prefix = "nearer-opensend-empty")
+        val file = File(folder, "empty.txt").apply { writeBytes(ByteArray(0)) }
+        val server = OpenSendHttpServer(
+            listOf(OpenSendFile(id = "empty", displayName = "empty.txt", file = file)),
+            accessToken = "g".repeat(32)
+        )
+        try {
+            val info = server.start()
+            val connection = URL("http://127.0.0.1:${info.port}/download/empty?token=${info.accessToken}")
+                .openConnection() as HttpURLConnection
+            assertEquals(200, connection.responseCode)
+            assertEquals("0", connection.getHeaderField("Content-Length"))
+            assertEquals(0, connection.inputStream.use { it.readBytes().size })
+            connection.disconnect()
+        } finally {
+            server.close()
+            folder.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closingServerRevokesPreviouslyValidShareLink() {
+        val folder = createTempDir(prefix = "nearer-opensend-revoke")
+        val file = File(folder, "private.txt").apply { writeText("private") }
+        val server = OpenSendHttpServer(
+            listOf(OpenSendFile(id = "private", displayName = "private.txt", file = file)),
+            accessToken = "h".repeat(32)
+        )
+        val info = server.start()
+        val url = URL("http://127.0.0.1:${info.port}/?token=${info.accessToken}")
+        try {
+            assertEquals(200, (url.openConnection() as HttpURLConnection).responseCode)
+            server.close()
+            val afterClose = url.openConnection() as HttpURLConnection
+            try {
+                afterClose.connectTimeout = 1_000
+                afterClose.readTimeout = 1_000
+                afterClose.responseCode
+                throw AssertionError("Closed OpenSend server should not serve the old link.")
+            } catch (_: java.io.IOException) {
+                // Expected: the listener is closed and the old session URL is dead.
+            } finally {
+                afterClose.disconnect()
+            }
+        } finally {
+            server.close()
+            folder.deleteRecursively()
+        }
+    }
+
 }
