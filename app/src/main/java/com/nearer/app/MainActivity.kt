@@ -688,8 +688,59 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun importPendingFlashMessages() {
+        val flashPrefs = getSharedPreferences(NeaRerFlashScreeningService.PREFS, Context.MODE_PRIVATE)
+        val rawEvents = flashPrefs.getString(NeaRerFlashScreeningService.PENDING_EVENTS, "[]") ?: "[]"
+        val localPrefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val importedIds = localPrefs.getStringSet("flash_imported_event_ids", emptySet())
+            .orEmpty().toMutableSet()
+        var changed = false
+
+        try {
+            val events = JSONArray(rawEvents)
+            for (index in 0 until events.length()) {
+                val event = events.optJSONObject(index) ?: continue
+                val eventId = event.optString("id").takeIf { it.isNotBlank() } ?: continue
+                if (eventId in importedIds) continue
+
+                val signal = event.optString("signal").takeIf { it.isNotBlank() } ?: continue
+                val messageId = "flash:$eventId"
+                if (chatMessages.none { it.id == messageId }) {
+                    val senderTag = event.optString("senderTag").takeIf { it.isNotBlank() }
+                    val senderLabel = senderTag?.let { "Trusted sender • $it" } ?: "Trusted paired sender"
+                    chatMessages.add(
+                        ChatMessage(
+                            id = messageId,
+                            body = "Received Flash signal: $signal\\n$senderLabel",
+                            outgoing = false,
+                            delivery = "Received",
+                            timestamp = event.optLong("timestamp", System.currentTimeMillis())
+                                .takeIf { it > 0L } ?: System.currentTimeMillis(),
+                            conversationId = "nearer-flash",
+                            conversationName = "NeaRer Flash"
+                        )
+                    )
+                    receivedMessageIds.add(messageId)
+                    persistedMessageIds.add(messageId)
+                    changed = true
+                }
+                importedIds.add(eventId)
+            }
+        } catch (_: Exception) {
+            // Leave malformed or unavailable event data untouched; normal chat remains usable.
+        }
+
+        if (changed) persistMessages()
+        if (importedIds.isNotEmpty()) {
+            localPrefs.edit()
+                .putStringSet("flash_imported_event_ids", importedIds.toList().takeLast(150).toSet())
+                .apply()
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        importPendingFlashMessages()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val roles = getSystemService(RoleManager::class.java)
             flashRoleReady = roles?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
