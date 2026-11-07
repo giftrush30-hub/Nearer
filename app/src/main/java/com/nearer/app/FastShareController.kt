@@ -325,9 +325,9 @@ private class FastShareHttpServer(
                     input = source,
                     output = output,
                     expectedBytes = count,
-                    shouldContinue = { running }
+                    shouldContinue = { running },
+                    onBytesCopied = { copied -> sent = copied }
                 ) { copied ->
-                    sent = copied
                     onTransferUpdate(copied, count, false, false, partialTransfer)
                 }
                 sent = result.bytesCopied
