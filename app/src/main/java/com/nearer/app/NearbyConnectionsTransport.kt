@@ -52,10 +52,20 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
 
     private data class FileMeta(val endpointId: String, val name: String, val size: Long, val sha256: String = "")
+    private data class OutgoingFile(
+        @Volatile var endpointId: String,
+        val stablePeerId: String,
+        val name: String,
+        val size: Long,
+        val payload: Payload,
+        @Volatile var sha256: String = "",
+        @Volatile var metadataReady: Boolean = false,
+        @Volatile var awaitingResume: Boolean = false
+    )
     private val incomingMetadata = ConcurrentHashMap<Long, FileMeta>()
     private val incomingPayloads = ConcurrentHashMap<Long, Payload>()
     private val completedPayloads = ConcurrentHashMap<Long, Payload>()
-    private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
+    private val outgoingFiles = ConcurrentHashMap<Long, OutgoingFile>()
     private val fileIo = Executors.newSingleThreadExecutor()
     // Hash large files away from the UI thread before the receiver is given the payload.
     private val transferPreparation = Executors.newFixedThreadPool(2)
@@ -186,6 +196,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
         override fun onDisconnected(id: String) {
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
+            pauseOutgoingFilesForEndpoint(id)
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
             if (empty) listener.onDisconnected(id, details.first, details.second)
             else {
@@ -213,7 +224,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val payloadId = update.payloadId
             val outgoing = outgoingFiles[payloadId]
             val incoming = incomingMetadata[payloadId]
-            val name = outgoing?.second ?: incoming?.name ?: "Incoming file"
+            val name = outgoing?.name ?: incoming?.name ?: "Incoming file"
             val isIncoming = outgoing == null
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
                 listener.onFileProgress(id, payloadId, name, update.bytesTransferred, update.totalBytes, isIncoming)
@@ -224,16 +235,23 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     incomingPayloads[payloadId]?.let { completedPayloads[payloadId] = it }
                     processCompletedFile(payloadId)
                 } else {
-                    outgoingFiles.remove(payloadId)
+                    if (outgoingFiles.remove(payloadId, outgoing)) {
+                        try { outgoing.payload.close() } catch (_: Exception) { }
+                    }
                     listener.onFileProgress(id, payloadId, name, update.totalBytes, update.totalBytes, false)
                     listener.onFileStatus("File sent to the nearby phone: $name")
                 }
             } else {
-                outgoingFiles.remove(payloadId)
-                incomingMetadata.remove(payloadId)
-                incomingPayloads.remove(payloadId)?.close()
-                completedPayloads.remove(payloadId)?.close()
-                listener.onFileStatus("Nearby file transfer failed or was cancelled.")
+                if (outgoing != null) {
+                    // Keep the same Payload instance and its SDK-maintained offset.
+                    outgoing.awaitingResume = true
+                    outgoing.endpointId = ""
+                    listener.onFileStatus("Nearby file transfer paused. Reconnect to the same phone to resume.")
+                } else {
+                    incomingMetadata.remove(payloadId)
+                    completedPayloads.remove(payloadId)?.close()
+                    listener.onFileStatus("Nearby file transfer failed or was cancelled.")
+                }
             }
         }
     }
@@ -496,7 +514,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             payload.setFileName(name)
             payload.setSensitive(true)
             val id = payload.id
-            outgoingFiles[id] = endpointId to name
+            val peerStableId = synchronized(names) { stableIds[endpointId].orEmpty() }
+            val outgoing = OutgoingFile(endpointId, peerStableId, name, size, payload)
+            outgoingFiles[id] = outgoing
             listener.onFileProgress(endpointId, id, name, 0L, size, false)
             // Compute the checksum on a worker thread. This keeps multi-gigabyte
             // selections from freezing the Compose/UI thread.
@@ -512,26 +532,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                         }
                     } ?: throw IllegalStateException("The selected file can no longer be read")
                     val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
+                    outgoing.sha256 = sha256
                     if (!synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) {
                         throw IllegalStateException("Nearby connection ended before transfer started")
                     }
-                    val metadata = JSONObject().put("kind", "file_meta").put("payloadId", id)
-                        .put("name", name).put("size", size).put("sha256", sha256)
-                    client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
-                        .addOnSuccessListener {
-                            client.sendPayload(endpointId, payload)
-                                .addOnFailureListener { error ->
-                                    outgoingFiles.remove(id)
-                                    try { payload.close() } catch (_: Exception) { }
-                                    listener.onFileStatus("Could not start file transfer: ${error.localizedMessage ?: "connection error"}")
-                                }
-                        }
-                        .addOnFailureListener { error ->
-                            outgoingFiles.remove(id)
-                            try { client.cancelPayload(id) } catch (_: Exception) { }
-                            try { payload.close() } catch (_: Exception) { }
-                            listener.onFileStatus("Could not send file details: ${error.localizedMessage ?: "connection error"}")
-                        }
+                    sendPreparedFile(id, outgoing)
                 } catch (error: Exception) {
                     outgoingFiles.remove(id)
                     try { client.cancelPayload(id) } catch (_: Exception) { }
@@ -548,9 +553,57 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
+    private fun sendPreparedFile(payloadId: Long, outgoing: OutgoingFile) {
+        val endpointId = outgoing.endpointId
+        if (endpointId.isBlank() || outgoing.sha256.isBlank()) return
+        val metadata = JSONObject().put("kind", "file_meta").put("payloadId", payloadId)
+            .put("name", outgoing.name).put("size", outgoing.size).put("sha256", outgoing.sha256)
+        client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
+            .addOnSuccessListener {
+                outgoing.metadataReady = true
+                try {
+                    outgoing.payload.setOffset(outgoing.payload.offset)
+                    client.sendPayload(endpointId, outgoing.payload)
+                        .addOnSuccessListener { outgoing.awaitingResume = false }
+                        .addOnFailureListener {
+                            outgoing.awaitingResume = true
+                            listener.onFileStatus("Nearby file transfer paused. Reconnect to the same phone to resume.")
+                        }
+                } catch (_: Exception) {
+                    outgoing.awaitingResume = true
+                    listener.onFileStatus("Nearby file transfer paused. Reconnect to the same phone to resume.")
+                }
+            }
+            .addOnFailureListener { error ->
+                outgoing.awaitingResume = true
+                listener.onFileStatus("Nearby file transfer paused. Reconnect to the same phone to resume. ${error.localizedMessage ?: ""}".trim())
+            }
+    }
+
+    private fun pauseOutgoingFilesForEndpoint(endpointId: String) {
+        outgoingFiles.values.filter { it.endpointId == endpointId && it.metadataReady }.forEach {
+            it.awaitingResume = true
+            it.endpointId = ""
+        }
+    }
+
+    fun resumePendingFilesForPeer(peerStableId: String, endpointId: String): Boolean {
+        if (peerStableId.isBlank() || !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) return false
+        val pending = outgoingFiles.values.filter { it.stablePeerId == peerStableId && it.awaitingResume && it.metadataReady }
+        if (pending.isEmpty()) return false
+        pending.forEach { outgoing ->
+            outgoing.endpointId = endpointId
+            outgoing.awaitingResume = false
+            val id = outgoing.payload.id
+            listener.onFileProgress(endpointId, id, outgoing.name, outgoing.payload.offset, outgoing.size, false)
+            sendPreparedFile(id, outgoing)
+        }
+        return true
+    }
+
     fun cancelFile(payloadId: Long) {
         try { client.cancelPayload(payloadId) } catch (_: Exception) { }
-        outgoingFiles.remove(payloadId)
+        outgoingFiles.remove(payloadId)?.let { try { it.payload.close() } catch (_: Exception) { } }
     }
 
     private fun broadcast(content: String, excludeEndpoint: String?): Boolean {
@@ -581,6 +634,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         disconnect()
         pendingOutgoingMessages.values.forEach { it.retryTask?.let(deliveryHandler::removeCallbacks); it.retryTask = null }
         deliveryHandler.removeCallbacksAndMessages(null)
+        outgoingFiles.values.forEach { try { it.payload.close() } catch (_: Exception) { } }
+        outgoingFiles.clear()
         fileIo.shutdownNow()
         transferPreparation.shutdownNow()
     }
