@@ -2366,6 +2366,24 @@ private fun NeaRerHome(
                                 .padding(19.dp),
                             verticalArrangement = Arrangement.spacedBy(13.dp)
                         ) {
+                            val homeConnectionLabel = when {
+                                chatReady -> "CONNECTED"
+                                connectingAddress != null -> "CONNECTING"
+                                scanning -> "SEARCHING"
+                                else -> "OFFLINE READY"
+                            }
+                            val homeConnectionColor = when {
+                                chatReady -> Color(0xFF155B4B)
+                                connectingAddress != null -> Color(0xFF765A20)
+                                scanning -> Color(0xFF174A58)
+                                else -> Color(0xFF173F78)
+                            }
+                            val homeConnectionTextColor = when {
+                                chatReady -> Color(0xFF8EF0C6)
+                                connectingAddress != null -> Gold
+                                scanning -> Color(0xFF9DEBFF)
+                                else -> Color(0xFFD5E6FF)
+                            }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Surface(
                                     shape = CircleShape,
@@ -2386,11 +2404,20 @@ private fun NeaRerHome(
                                     )
                                     Text("Fast. Direct. NeaRer.", color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                 }
-                                Surface(shape = RoundedCornerShape(30.dp), color = if (chatReady) Color(0xFF155B4B) else Color(0xFF173F78)) {
-                                    Text(if (chatReady) "● CONNECTED" else "● OFFLINE READY",
-                                        color = if (chatReady) Color(0xFF8EF0C6) else Color(0xFFD5E6FF),
-                                        fontSize = 8.sp, fontWeight = FontWeight.Black,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
+                                Surface(shape = RoundedCornerShape(30.dp), color = homeConnectionColor) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = homeConnectionTextColor,
+                                            modifier = Modifier.size(5.dp).alpha(if (chatReady) 1f else if (scanning || connectingAddress != null) homePulse else 0.8f)
+                                        ) {}
+                                        Text(homeConnectionLabel, color = homeConnectionTextColor,
+                                            fontSize = 8.sp, fontWeight = FontWeight.Black)
+                                    }
                                 }
                             }
                             Text("Share anything.\nStay connected.", color = White, fontSize = 29.sp,
@@ -2451,7 +2478,11 @@ private fun NeaRerHome(
                             val transferGuidance = when {
                                 receiveMode && incomingTransferName != null -> "Receiving ${incomingTransferName} from a nearby phone. Keep NeaRer open until it finishes."
                                 receiveMode && chatReady -> "You're connected. Ask the sender to select a file; it will arrive here automatically."
-                                receiveMode -> "Your phone is ready to receive. Find a nearby sender and keep NeaRer open."
+                                receiveMode && connectingAddress != null -> "Connecting to the sender. Keep NeaRer open while both phones verify the connection."
+                                receiveMode && scanning -> "Searching for nearby senders. Keep this screen open; tap a discovered phone to connect."
+                                receiveMode -> "Your phone is ready to receive. Start a nearby search and connect to the sender."
+                                connectingAddress != null -> "Connecting to ${connectedDeviceName ?: "the nearby phone"}. Keep both phones close until verification finishes."
+                                scanning -> "Searching for nearby phones. Choose a discovered person to connect before selecting files or apps."
                                 chatReady -> "Connected to ${connectedDeviceName ?: "a nearby phone"}. Choose any file or app to send."
                                 else -> "Find a nearby phone first. Once connected, choose files or apps to share directly."
                             }
