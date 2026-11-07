@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
 <defs>
- <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#061a9c"/><stop offset=".52" stop-color="#075bff"/><stop offset="1" stop-color="#04105a"/></linearGradient>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#1769ff"/><stop offset=".52" stop-color="#075bff"/><stop offset="1" stop-color="#0647d9"/></linearGradient>
  <radialGradient id="shine"><stop stop-color="#fff" stop-opacity=".9"/><stop offset=".35" stop-color="#35dfff" stop-opacity=".42"/><stop offset="1" stop-color="#35dfff" stop-opacity="0"/></radialGradient>
  <filter id="glow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
 </defs>
 <rect width="512" height="512" rx="116" fill="url(#bg)"/>
-<path d="M0 350 C140 245 240 520 512 280 V512 H0Z" fill="#001a88" opacity=".34"/>
+<path d="M0 350 C140 245 240 520 512 280 V512 H0Z" fill="#0b54dc" opacity=".34"/>
 <rect x="10" y="10" width="492" height="492" rx="108" fill="none" stroke="#35dcff" stroke-width="7" opacity=".9"/>
 <g fill="#35dfff" opacity=".26" filter="url(#glow)"><circle cx="132.72" cy="379.20000000000005" r="45"/><circle cx="132.72" cy="132.72" r="45"/><circle cx="379.20000000000005" cy="379.20000000000005" r="45"/><circle cx="379.20000000000005" cy="132.72" r="45"/></g>
 <g fill="#35dfff" opacity=".9"><circle cx="132.72" cy="322.32" r="8"/><circle cx="132.72" cy="274.92" r="8"/><circle cx="132.72" cy="227.52" r="8"/><circle cx="132.72" cy="180.12" r="8"/><circle cx="189.60000000000002" cy="189.60000000000002" r="8"/><circle cx="232.26000000000002" cy="232.26000000000002" r="8"/><circle cx="274.92" cy="274.92" r="8"/><circle cx="317.58000000000004" cy="317.58000000000004" r="8"/><circle cx="379.20000000000005" cy="322.32" r="8"/><circle cx="379.20000000000005" cy="274.92" r="8"/><circle cx="379.20000000000005" cy="227.52" r="8"/><circle cx="379.20000000000005" cy="180.12" r="8"/></g>
