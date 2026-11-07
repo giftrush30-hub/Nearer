@@ -28,7 +28,7 @@ internal data class FastShareHttpRequest(
             val target = parts[1]
             val version = parts[2]
             if (!method.matches(Regex("[A-Za-z!#$%&'*+.^_`|~0-9-]+"))) return null
-            if (!target.startsWith("/") || target.any { it <= ' ' || it == '\\u007f' }) return null
+            if (!target.startsWith("/") || target.any { it <= ' ' || it.code == 127 }) return null
             if (version != "HTTP/1.0" && version != "HTTP/1.1") return null
 
             return FastShareHttpRequest(
