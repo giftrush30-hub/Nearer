@@ -4198,7 +4198,7 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B416C), contentColor = White)
                         ) { Text("ADD TRUSTED SENDER", fontWeight = FontWeight.Bold) }
-                        Text("Pair each sender before they send you a Flash. NeaRer stores a salted number fingerprint and your optional chat name, not the raw phone number. Use the same number format shown on incoming calls (include +234 if that is how it appears). Calls from saved contacts may not reach this service unless you separately grant Contacts permission; NeaRer does not request it here.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                        Text("Pair each sender before they send you a Flash. NeaRer stores a salted number fingerprint and your optional chat name, not the raw phone number. Nigerian numbers saved as 080… will also match incoming +234… format. For other countries, use the number format shown on incoming calls.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
 
                         if (flashLastSignal != null) {
                             Text("LAST SIGNAL RECEIVED", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -4206,7 +4206,7 @@ private fun NeaRerHome(
                         } else {
                             Text("No Flash signal received on this phone yet.", color = Muted, fontSize = 11.sp)
                         }
-                        Text("Important: Android may not pass calls from saved contacts to a screening service unless NeaRer is also granted Contacts access. We are not requesting that permission in this prototype. Call-network timing and charges vary, so this feature remains experimental until tested on real networks.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                        Text("Android may hide calls from saved contacts from screening apps unless you grant the optional Contacts permission above. NeaRer does not read or upload your address book. Unknown, hidden or unavailable caller IDs may not be delivered to the screening service. Flash remains experimental until tested on real networks; call charges and timing depend on your carrier.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                     }
                 }
             }

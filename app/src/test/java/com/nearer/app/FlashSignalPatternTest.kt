@@ -35,6 +35,12 @@ class FlashSignalPatternTest {
         assertNull(FlashSignalPattern.decode(listOf(1_000L, 15_000L, 23_000L), 1_000L))
     }
 
+    @Test fun normalizesNigerianLocalAndInternationalPhoneFormats() {
+        assertEquals("2348031234567", FlashTrustedSenders.normalize("0803 123 4567"))
+        assertEquals("2348031234567", FlashTrustedSenders.normalize("+234 803 123 4567"))
+        assertEquals("447700900123", FlashTrustedSenders.normalize("+44 7700 900123"))
+    }
+
     @Test fun acceptsTimingVariationWithinOneSecond() {
         assertEquals("PING", FlashSignalPattern.decode(listOf(1_000L, 5_850L)))
         assertEquals("COME", FlashSignalPattern.decode(listOf(1_000L, 11_900L, 19_100L)))

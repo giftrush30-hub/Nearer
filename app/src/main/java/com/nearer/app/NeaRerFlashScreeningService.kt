@@ -100,7 +100,15 @@ object FlashTrustedSenders {
     private const val SALT_KEY = "salt"
     private const val ALLOWLIST_KEY = "trusted_fingerprints"
 
-    fun normalize(number: String): String = number.filter(Char::isDigit)
+    fun normalize(number: String): String {
+        val digits = number.filter(Char::isDigit)
+        // Nigerian local mobile numbers and their international +234 form match.
+        return when {
+            digits.length == 11 && digits.startsWith("0") -> "234" + digits.drop(1)
+            digits.length == 13 && digits.startsWith("234") -> digits
+            else -> digits
+        }
+    }
 
     fun fingerprint(context: Context, number: String): String? {
         val normalized = normalize(number)
