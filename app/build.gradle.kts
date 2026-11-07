@@ -12,8 +12,8 @@ android {
         applicationId = "com.nearer.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.6.1"
+        versionCode = 15
+        versionName = "0.7.0"
     }
 
     buildFeatures {
@@ -49,4 +49,5 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

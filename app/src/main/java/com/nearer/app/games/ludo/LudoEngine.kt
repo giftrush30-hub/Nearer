@@ -27,6 +27,7 @@ data class LudoState(
     val winnerId: String? = null,
     val message: String = "Red rolls first",
     val turnNumber: Int = 1,
+    val consecutiveSixes: Int = 0,
     val lastAction: String = "Match ready"
 ) {
     val activePlayer: LudoPlayer get() = players[activePlayerIndex]
@@ -64,29 +65,47 @@ object LudoEngine {
     fun roll(state: LudoState, random: Random = Random.Default): LudoState {
         if (!state.canRoll) return state
         val value = random.nextInt(1, 7)
+        val sixes = if (value == 6) state.consecutiveSixes + 1 else 0
+        val playerName = state.activePlayer.name
+        // Traditional Ludo: a third consecutive six forfeits the turn, even if a move is available.
+        if (value == 6 && sixes == 3) {
+            val next = (state.activePlayerIndex + 1) % state.players.size
+            return state.copy(
+                activePlayerIndex = next,
+                dice = null,
+                legalTokenIndexes = emptyList(),
+                consecutiveSixes = 0,
+                message = "$playerName rolled three consecutive sixes. Turn forfeited. ${state.players[next].name}'s turn",
+                turnNumber = state.turnNumber + 1,
+                lastAction = "Third consecutive six • turn forfeited"
+            )
+        }
         val legal = legalMoves(state.activePlayer, value)
         if (legal.isEmpty()) {
-            val next = if (value == 6) state.activePlayerIndex else (state.activePlayerIndex + 1) % state.players.size
+            val keepsTurn = value == 6
+            val next = if (keepsTurn) state.activePlayerIndex else (state.activePlayerIndex + 1) % state.players.size
             val player = state.players[next]
             return state.copy(
                 activePlayerIndex = next,
                 dice = null,
                 legalTokenIndexes = emptyList(),
-                message = if (value == 6) "${state.activePlayer.name} rolled 6 but has no legal move. Roll again!" else "${state.activePlayer.name} has no move. ${player.name}'s turn",
-                turnNumber = state.turnNumber + if (value == 6) 0 else 1,
+                consecutiveSixes = if (keepsTurn) sixes else 0,
+                message = if (keepsTurn) "$playerName rolled 6 but has no legal move. Roll again!" else "$playerName has no move. ${player.name}'s turn",
+                turnNumber = state.turnNumber + if (keepsTurn) 0 else 1,
                 lastAction = "Rolled $value • no legal move"
             )
         }
         return state.copy(
             dice = value,
             legalTokenIndexes = legal,
-            message = if (legal.size == 1) "Move the highlighted token" else "${state.activePlayer.name}, choose a token",
+            consecutiveSixes = sixes,
+            message = if (legal.size == 1) "Move the highlighted token" else "$playerName, choose a token",
             lastAction = "Rolled $value"
         )
     }
 
     fun legalMoves(player: LudoPlayer, dice: Int): List<Int> {
-        if (dice !in 1..6) return emptyList()
+        if (dice !in 1..12) return emptyList()
         return player.tokens.indices.filter { index ->
             val progress = player.tokens[index]
             when {
@@ -146,6 +165,7 @@ object LudoEngine {
             winnerId = if (won) updatedPlayer.id else null,
             message = if (won) "${updatedPlayer.name} has won the game!" else if (extraTurn) "${updatedPlayer.name} gets another turn" else "${nextPlayer.name}'s turn",
             turnNumber = state.turnNumber + if (extraTurn || won) 0 else 1,
+            consecutiveSixes = if (dice == 6) state.consecutiveSixes else 0,
             lastAction = action
         )
     }
