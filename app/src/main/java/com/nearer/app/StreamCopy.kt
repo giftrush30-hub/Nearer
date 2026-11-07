@@ -18,6 +18,7 @@ internal object StreamCopy {
         output: OutputStream,
         expectedBytes: Long,
         shouldContinue: () -> Boolean = { true },
+        onBytesCopied: (Long) -> Unit = {},
         onProgress: (Long) -> Unit = {}
     ): StreamCopyResult {
         require(expectedBytes >= 0L) { "Expected byte count cannot be negative" }
@@ -30,6 +31,7 @@ internal object StreamCopy {
             if (read == 0) continue
             output.write(buffer, 0, read)
             copied += read
+            onBytesCopied(copied)
             if (copied == expectedBytes || copied % (1024L * 1024L) < read) {
                 output.flush()
                 onProgress(copied)
