@@ -211,7 +211,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             when (payload.type) {
                 Payload.Type.BYTES -> handleBytes(id, payload.asBytes())
                 Payload.Type.FILE -> {
-                    incomingPayloads[payload.id] = payload
+                    incomingPayloads.put(payload.id, payload)?.let { previous ->
+                        if (previous !== payload) try { previous.close() } catch (_: Exception) { }
+                    }
                     val meta = incomingMetadata[payload.id]
                     listener.onFileProgress(id, payload.id, meta?.name ?: "Incoming file", 0L, meta?.size ?: -1L, true)
                     processCompletedFile(payload.id)
