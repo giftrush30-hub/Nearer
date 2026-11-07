@@ -545,6 +545,9 @@ class MainActivity : ComponentActivity() {
                     outgoingSpeedBytesPerSecond = outgoingSpeedBytesPerSecond,
                     onOpenFile = ::openReceivedFile,
                     onOpenSentFile = ::openSentFile,
+                    onShareReceivedFile = ::shareReceivedFile,
+                    onResendSentFile = { sendFile(Uri.parse(it.uri)) },
+                    onShareSentFile = { shareFileUri(Uri.parse(it.uri), it.name) },
                     onDisconnect = ::disconnectFromPeer,
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
@@ -1131,6 +1134,28 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {
             chatNotice = "The original sent file is no longer available. It may have been moved or deleted."
         }
+    }
+
+    private fun shareReceivedFile(item: ReceivedFile) {
+        if (!item.file.exists()) { chatNotice = "This received file is no longer available."; return }
+        try {
+            val uri = FileProvider.getUriForFile(this, "${packageName}.files", item.file)
+            shareFileUri(uri, item.displayName)
+        } catch (_: Exception) { chatNotice = "NeaRer could not prepare this file for sharing." }
+    }
+
+    private fun shareFileUri(uri: Uri, name: String) {
+        try {
+            val extension = name.substringAfterLast(".", "").lowercase()
+            val mime = contentResolver.getType(uri) ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "*/*"
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = mime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = android.content.ClipData.newUri(contentResolver, name, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Share $name"))
+        } catch (_: Exception) { chatNotice = "No compatible app could open the Android share menu." }
     }
 
     private fun restoreReceivedFiles() {
@@ -2361,6 +2386,9 @@ private fun NeaRerHome(
     outgoingSpeedBytesPerSecond: Long,
     onOpenFile: (ReceivedFile) -> Unit,
     onOpenSentFile: (SentFile) -> Unit,
+    onShareReceivedFile: (ReceivedFile) -> Unit,
+    onResendSentFile: (SentFile) -> Unit,
+    onShareSentFile: (SentFile) -> Unit,
     onDisconnect: () -> Unit,
     onAccept: () -> Unit,
     onReject: () -> Unit,
@@ -2416,6 +2444,8 @@ private fun NeaRerHome(
     var showInstalledApps by remember { mutableStateOf(false) }
     var showReceivedHistory by remember { mutableStateOf(false) }
     var sharedFilesFilter by remember { mutableStateOf("All") }
+    var sharedFilesSearch by remember { mutableStateOf("") }
+    var sharedFilesSort by remember { mutableStateOf("Recent") }
     var pendingAppPicker by remember { mutableStateOf(false) }
     var installedApps by remember { mutableStateOf<List<ShareableApp>>(emptyList()) }
     var isLoadingApps by remember { mutableStateOf(false) }
