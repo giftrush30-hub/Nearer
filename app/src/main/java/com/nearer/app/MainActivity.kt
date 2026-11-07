@@ -6093,7 +6093,7 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     NeaRerNavigation.destinations.forEach { item ->
-                        val selected = activeSection == item.id
+                        val selected = activeSection == item.id || (item.id == "more" && activeSection in setOf("games", "flash"))
                         Surface(
                             modifier = Modifier.weight(1f).heightIn(min = 58.dp).animateContentSize()
                                 .semantics(mergeDescendants = true) {
