@@ -182,6 +182,9 @@ class MainActivity : ComponentActivity() {
     private val approvalDecision = LinkedBlockingQueue<Boolean>()
     private val chatMessages = mutableStateListOf<ChatMessage>()
     private val pendingChatFileUris = mutableStateListOf<String>()
+    // The head item stays in the durable queue while in flight. It is removed
+    // only after the receiver confirms that the verified file was saved.
+    private var activeQueuedFileUri: String? = null
     private val communityGroups = mutableStateListOf<CommunityGroup>()
     private val communityMessages = mutableStateListOf<CommunityChatMessage>()
     private var selectedCommunityCode by mutableStateOf<String?>(null)
@@ -558,12 +561,21 @@ class MainActivity : ComponentActivity() {
                         incomingRateSampleAt = 0L
                         incomingRateSampleBytes = 0L
                     }
-                    if (message.startsWith("File sent to the nearby phone") ||
-                        message.startsWith("Nearby file transfer failed") ||
+                    if (message.startsWith("File sent to the nearby phone")) {
+                        activeQueuedFileUri?.let { completedUri ->
+                            pendingChatFileUris.remove(completedUri)
+                            persistPendingChatFiles()
+                        }
+                        activeQueuedFileUri = null
+                        flushPendingChatFiles()
+                    }
+                    if (message.startsWith("Nearby file transfer failed") ||
                         message.startsWith("Nearby file transfer cancelled") ||
                         message.startsWith("Could not start file transfer") ||
+                        message.startsWith("Could not send file details") ||
                         message.startsWith("File could not be prepared")) {
-                        flushPendingChatFiles()
+                        // Preserve the failed head item for an explicit retry.
+                        activeQueuedFileUri = null
                     }
                 }
             }
@@ -1375,6 +1387,7 @@ class MainActivity : ComponentActivity() {
             incomingTransferName = null
             incomingProgress = 0f
             outgoingTransferId = null
+            activeQueuedFileUri = null
             outgoingProgress = 0f
             outgoingTransferredBytes = 0L
             outgoingTotalBytes = 0L
@@ -1647,18 +1660,21 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun flushPendingChatFiles() {
-        if (!chatReady || outgoingTransferId != null || pendingChatFileUris.isEmpty()) return
-        // Keep the item durably queued until sendFile has actually acquired a
-        // transfer slot. A missing URI or a connection race must never silently
-        // discard a prepared attachment.
+        if (!chatReady || outgoingTransferId != null || activeQueuedFileUri != null || pendingChatFileUris.isEmpty()) return
+        // Keep the head item persisted while it is in flight. A Nearby SUCCESS
+        // only means bytes reached the peer's Nearby stack; the receiver's
+        // file_ack is the event that proves the file was actually saved.
         val next = pendingChatFileUris.first()
+        activeQueuedFileUri = next
         try {
             sendFile(Uri.parse(next))
-            if (outgoingTransferId != null) {
-                pendingChatFileUris.remove(next)
-                persistPendingChatFiles()
+            if (outgoingTransferId == null) {
+                // sendFile may have had to re-queue the item because the peer
+                // disappeared between the readiness check and payload creation.
+                activeQueuedFileUri = null
             }
         } catch (_: Exception) {
+            activeQueuedFileUri = null
             chatNotice = "This prepared attachment could not be opened. It remains in your queue; choose it again if Android revoked access."
         }
     }
