@@ -65,6 +65,8 @@ fun NeaRerShareHub(
     onInstallPendingApp: () -> Unit
 ) {
     var selectedPackages by remember { mutableStateOf(setOf<String>()) }
+    val selectedApps = apps.filter { it.packageName in selectedPackages }
+    val anyPhoneEligible = selectedApps.isNotEmpty() && selectedApps.all { it.packageFiles.size == 1 }
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 18.dp),
@@ -133,7 +135,7 @@ fun NeaRerShareHub(
                         else Text("Refresh", color = ShareText)
                     }
                 }
-                Text("NeaRer copies install packages only. It does not copy app accounts, chats, passwords or private app data. Some apps are split into several APK files and must be sent as a complete set.", color = ShareMuted, fontSize = 11.sp, lineHeight = 16.sp)
+                Text("NeaRer copies install packages only. It does not copy app accounts, chats, passwords or private app data. APK installation is Android-only; iPhones and iPads cannot install APK files.", color = ShareMuted, fontSize = 11.sp, lineHeight = 16.sp)
                 if (apps.isEmpty() && !appsLoading) {
                     Text("Tap Refresh to load apps available for sharing.", color = ShareMuted, fontSize = 12.sp)
                 } else {
@@ -157,9 +159,12 @@ fun NeaRerShareHub(
                         }
                     }
                     Text("${selectedPackages.size} app(s) selected", color = ShareGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    if (selectedApps.any { it.packageFiles.size > 1 }) {
+                        Text("Some selected apps are split into several APK parts. They can be sent as a complete set to another NeaRer phone, but browser-only installation is supported only for single-APK apps.", color = ShareGold, fontSize = 10.sp, lineHeight = 15.sp)
+                    }
                     Button(
                         onClick = { onShareAppsToAnyPhone(selectedPackages.toList()) },
-                        enabled = selectedPackages.isNotEmpty() && openSendSession == null,
+                        enabled = anyPhoneEligible && openSendSession == null,
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = ShareGold, contentColor = ShareNavy)
                     ) { Text("Send selected apps to any Android phone", fontWeight = FontWeight.Bold) }
