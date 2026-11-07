@@ -94,7 +94,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 
-// NeaRer Royal palette: restrained midnight, warm graphite, royal blue and champagne gold.
+// Original NeaRer palette: midnight, deep panel, mint, soft white and gold.
 private val Midnight = Color(0xFF101A2B)
 private val Panel = Color(0xFF1A2940)
 private val Mint = Color(0xFF69E0C0)
