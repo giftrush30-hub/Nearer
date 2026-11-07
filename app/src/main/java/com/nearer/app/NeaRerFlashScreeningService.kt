@@ -130,18 +130,19 @@ object FlashTrustedSenders {
 
     private fun matchingFingerprints(context: Context, number: String): Set<String> {
         val digits = number.filter(Char::isDigit)
-        return listOfNotNull(
-            fingerprintDigits(context, normalize(number)),
-            // Also recognise hashes saved by earlier builds before Nigerian
-            // local numbers were canonicalised to their +234 form.
-            fingerprintDigits(context, digits)
-        ).toSet()
+        val canonical = normalize(number)
+        val candidates = mutableSetOf(canonical, digits)
+        // Check the pre-normalisation local form too, so old pairings survive
+        // when a carrier presents the same Nigerian line as +234 instead of 0.
+        if (canonical.length == 13 && canonical.startsWith("234")) {
+            candidates.add("0" + canonical.drop(3))
+        }
+        return candidates.mapNotNull { fingerprintDigits(context, it) }.toSet()
     }
 
     fun addTrusted(context: Context, number: String, displayName: String = ""): Boolean {
         val hash = fingerprint(context, number) ?: return false
-        val legacyHash = fingerprintDigits(context, number.filter(Char::isDigit))
-        val hashesToReplace = setOfNotNull(hash, legacyHash)
+        val hashesToReplace = matchingFingerprints(context, number) + hash
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val current = prefs.getStringSet(ALLOWLIST_KEY, emptySet()).orEmpty().toMutableSet()
         current.removeAll(hashesToReplace)
