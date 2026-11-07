@@ -1,6 +1,6 @@
 # NeaRer OpenSend + AppShare engineering foundation
 
-This branch contains the first integrated Android implementation of the no-app receiver and app-transfer workflows, including the Share Hub UI. It does **not** claim a successful current CI build or physical-device validation.
+This branch contains the first integrated Android implementation of the no-app receiver and app-transfer workflows, including the Share Hub UI. GitHub Actions successfully assembled the debug APK and ran the unit-test task on commit `9618856d42ce687742c1eebdfcf2aca36171a0eb`. Physical-device validation is still outstanding.
 
 ## Current branch scope
 
@@ -66,7 +66,7 @@ For an Android receiver without NeaRer, provide APK download in OpenSend and let
 - Verify package-group metadata end-to-end for split APKs and test installation on real receiving devices.
 - Complete runtime permission UX and Google Play policy review for `QUERY_ALL_PACKAGES`.
 
-## Validation checklist before calling it ready
+## Validation status\n\n- [x] CI debug APK assembly and unit-test task succeeded on the commit above.\n- [x] Debug APK artifact uploaded by GitHub Actions (`nearer-debug-apk`).\n- [ ] Physical-device and OEM hotspot behavior not yet validated.\n\n## Validation checklist before calling it ready
 
 ### AppShare
 - [ ] Samsung A12 / Android 12 installed-app catalogue
