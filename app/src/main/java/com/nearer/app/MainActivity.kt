@@ -747,6 +747,7 @@ class MainActivity : ComponentActivity() {
         val importedIds = localPrefs.getStringSet("flash_imported_event_ids", emptySet())
             .orEmpty().toMutableSet()
         var changed = false
+        var importedIdsChanged = false
 
         try {
             val events = JSONArray(rawEvents)
@@ -805,17 +806,32 @@ class MainActivity : ComponentActivity() {
                     persistedMessageIds.add(messageId)
                     changed = true
                 }
-                importedIds.add(eventId)
+                if (importedIds.add(eventId)) importedIdsChanged = true
             }
         } catch (_: Exception) {
             // Leave malformed or unavailable event data untouched; normal chat remains usable.
         }
 
-        if (changed) persistMessages()
-        if (importedIds.isNotEmpty()) {
-            localPrefs.edit()
-                .putStringSet("flash_imported_event_ids", importedIds.toList().takeLast(150).toSet())
-                .apply()
+        if (changed || importedIdsChanged) {
+            // Save the imported chat bubbles before recording their event IDs. If the
+            // message write fails or the app is interrupted, the same Flash event can
+            // be imported again on the next launch instead of silently disappearing.
+            val messageSnapshot = if (changed) {
+                try { serializeChatMessages() } catch (_: Exception) { null }
+            } else null
+            val canCommit = !changed || messageSnapshot != null
+            val importedIdSnapshot = importedIds.toList().takeLast(150).toSet()
+            messagePersistence.execute {
+                val messagesSaved = canCommit && (
+                    messageSnapshot == null ||
+                        localPrefs.edit().putString("messages", messageSnapshot).commit()
+                    )
+                if (messagesSaved && importedIdsChanged) {
+                    localPrefs.edit()
+                        .putStringSet("flash_imported_event_ids", importedIdSnapshot)
+                        .commit()
+                }
+            }
         }
     }
 
