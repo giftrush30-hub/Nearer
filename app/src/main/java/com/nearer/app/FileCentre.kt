@@ -344,13 +344,25 @@ internal fun FileCentreScreen(
                         }
                     }
                 }
+                val mimeType = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+                val resolvedCategory = if (pickedCategory == FileCentreCategory.DOCUMENTS || pickedCategory == FileCentreCategory.OTHER) {
+                    when {
+                        mimeType?.startsWith("image/") == true -> FileCentreCategory.PICTURES
+                        mimeType?.startsWith("video/") == true -> FileCentreCategory.VIDEOS
+                        mimeType?.startsWith("audio/") == true -> FileCentreCategory.MUSIC
+                        mimeType == "application/vnd.android.package-archive" -> FileCentreCategory.APPS
+                        mimeType?.contains("pdf") == true || mimeType?.contains("word") == true ||
+                            mimeType?.contains("sheet") == true || mimeType?.contains("text") == true -> FileCentreCategory.DOCUMENTS
+                        else -> pickedCategory
+                    }
+                } else pickedCategory
                 FileCentreItem(
                     id = uri.toString(),
                     name = displayName,
-                    category = pickedCategory,
+                    category = resolvedCategory,
                     uri = uri,
                     sizeBytes = sizeBytes,
-                    mimeType = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+                    mimeType = mimeType
                 )
             }
             pickedItems.forEach { picked ->
