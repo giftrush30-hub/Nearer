@@ -58,6 +58,12 @@ class FastShareController(private val context: Context) {
         }
         val hotspotCallback = object : WifiManager.LocalOnlyHotspotCallback() {
             override fun onStarted(value: WifiManager.LocalOnlyHotspotReservation) {
+                // Android may deliver this callback after the user has stopped or
+                // replaced the session. Never resurrect a server for an old request.
+                if (callback !== this) {
+                    runCatching { value.close() }
+                    return
+                }
                 reservation = value
                 val config = value.wifiConfiguration
                 val ssid = config?.SSID?.trim('"').orEmpty()
@@ -144,14 +150,19 @@ class FastShareController(private val context: Context) {
             }
 
             override fun onStopped() {
+                if (callback !== this) return
                 server?.stop()
                 server = null
                 reservation = null
+                pendingUris = emptyList()
                 details = null
+                callback = null
                 status = "The temporary Wi-Fi connection stopped."
             }
 
             override fun onFailed(reason: Int) {
+                if (callback !== this) return
+                stop(updateStatus = false)
                 status = when (reason) {
                     ERROR_NO_CHANNEL -> "Wi-Fi is busy. Close other hotspot sharing and try again."
                     ERROR_INCOMPATIBLE_MODE -> "Turn off your phone's personal hotspot, then try Fast Share again."
