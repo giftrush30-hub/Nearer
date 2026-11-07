@@ -78,7 +78,9 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                 // generic call bubbles plus a decoded preset bubble. Tell the chat
                 // importer which provisional call bubbles must be replaced too.
                 val replacedEventIds = JSONArray()
+                val priorCallsInPattern = (FlashSignalPattern.callCount(signal) ?: 1) - 1
                 for (index in queue.length() - 1 downTo 0) {
+                    if (replacedEventIds.length() >= priorCallsInPattern) break
                     val queuedEvent = queue.optJSONObject(index) ?: continue
                     val queuedAt = queuedEvent.optLong("timestamp", 0L)
                     if (queuedEvent.optString("signal") == "FLASH_CALL" &&
