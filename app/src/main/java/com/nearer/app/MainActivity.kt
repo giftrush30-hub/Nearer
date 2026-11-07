@@ -2068,6 +2068,28 @@ private fun NeaRerHome(
                             colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)
                         ) { Text("Send to any phone • no NeaRer needed", fontWeight = FontWeight.Bold) }
                         Text("Choose a file, then select Bluetooth or Quick Share. The receiving phone does not need NeaRer.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                        Button(
+                            onClick = {
+                                try {
+                                    val shareFolder = java.io.File(context.cacheDir, "nearer-share").apply { mkdirs() }
+                                    val apkCopy = java.io.File(shareFolder, "NeaRer.apk")
+                                    java.io.File(context.applicationInfo.sourceDir).copyTo(apkCopy, overwrite = true)
+                                    val apkUri = FileProvider.getUriForFile(context, "${context.packageName}.files", apkCopy)
+                                    val apkIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "application/vnd.android.package-archive"
+                                        putExtra(Intent.EXTRA_STREAM, apkUri)
+                                        clipData = ClipData.newUri(context.contentResolver, "NeaRer APK", apkUri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(apkIntent, "Share NeaRer APK"))
+                                } catch (_: Exception) {
+                                    android.widget.Toast.makeText(context, "Could not prepare the NeaRer APK to share.", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Gold)
+                        ) { Text("Share NeaRer app (APK)", fontWeight = FontWeight.Bold) }
                     }
                 }
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
