@@ -10,10 +10,17 @@ class LudoRoomProtocolTest {
         val packet = LudoRoomProtocol.parse(raw!!)
         assertEquals("invite", packet?.type)
         assertEquals("room-123", packet?.roomId)
+        assertEquals(0L, packet?.sequence)
     }
     @Test fun parsesRoomChat() {
         val packet = LudoRoomProtocol.parse("""{"type":"chat","roomId":"room-123","body":"Good game"}""")
         assertEquals("Good game", packet?.body)
+    }
+    @Test fun roundTripsSequencedStateEnvelope() {
+        val raw = LudoRoomProtocol.encode("state", "room-123", "snapshot", 7L)!!
+        val packet = LudoRoomProtocol.parse(raw)
+        assertEquals("snapshot", packet?.body)
+        assertEquals(7L, packet?.sequence)
     }
     @Test fun rejectsUnknownTypesAndOversizedPayloads() {
         assertNull(LudoRoomProtocol.parse("""{"type":"admin","roomId":"x"}"""))
