@@ -80,6 +80,12 @@ class OpenSendHttpServerTest {
             assertEquals(416, invalid.responseCode)
             assertEquals("bytes */10", invalid.getHeaderField("Content-Range"))
             invalid.disconnect()
+
+            val multiple = URL("http://127.0.0.1:${info.port}/download/sample?token=${info.accessToken}")
+                .openConnection() as HttpURLConnection
+            multiple.setRequestProperty("Range", "bytes=0-1,4-5")
+            assertEquals(416, multiple.responseCode)
+            multiple.disconnect()
         } finally {
             server.close()
             folder.deleteRecursively()
