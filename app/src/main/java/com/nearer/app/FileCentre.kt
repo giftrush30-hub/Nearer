@@ -548,6 +548,8 @@ internal fun FileCentreScreen(
                     FileCentreRow(
                         item = item,
                         selected = item.id in selected,
+                        favourite = item.id in favouriteIds,
+                        onToggleFavourite = { toggleFavourite(item.id) },
                         context = context,
                         onClick = {
                             if (item.category == FileCentreCategory.APPS && item.packageName != null && item.uri == null) {
@@ -703,6 +705,8 @@ private fun FileCentreTile(
 private fun FileCentreRow(
     item: FileCentreItem,
     selected: Boolean,
+    favourite: Boolean,
+    onToggleFavourite: () -> Unit,
     context: Context,
     onClick: () -> Unit
 ) {
@@ -728,6 +732,7 @@ private fun FileCentreRow(
                 Text(item.name, color = White, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, maxLines = 1)
                 Text(if (item.packageName != null) item.packageName else AndroidFileCatalog.formatSize(item.sizeBytes) + " • " + AndroidFileCatalog.formatType(item) + " • " + AndroidFileCatalog.formatModified(item.modifiedSeconds), color = Muted, fontSize = 9.sp, maxLines = 1)
             }
+            TextButton(onClick = onToggleFavourite) { Text(if (favourite) "★" else "☆", color = Gold, fontSize = 17.sp) }
             if (item.uri != null) {
                 TextButton(onClick = { AndroidFileCatalog.openPreview(context, item) }) {
                     Text("Preview", color = Mint, fontSize = 10.sp)
