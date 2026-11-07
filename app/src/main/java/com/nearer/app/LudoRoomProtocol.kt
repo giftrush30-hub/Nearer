@@ -23,7 +23,7 @@ internal object LudoRoomProtocol {
             val roomId = json.optString("roomId")
             val body = json.optString("body")
             val sequence = json.optLong("sequence", 0L)
-            val bodyLimit = if (type == "state") 12_000 else 300
+            val bodyLimit = when (type) { "state" -> 12_000; "intent" -> 100; else -> 300 }
             if (type !in types || roomId.isBlank() || roomId.length > 64 ||
                 body.length > bodyLimit || sequence < 0L) null
             else if (type == "chat" && body.isBlank()) null
