@@ -312,29 +312,43 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val folder = File(appContext.filesDir, "received").apply { mkdirs() }
                 val target = File(folder, "${System.currentTimeMillis()}-${meta.name}")
                 destination = target
-                val uri: Uri = payload.asFile()?.asUri() ?: throw IllegalStateException("Nearby file content is unavailable")
-                appContext.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(target).use { output ->
-                        val buffer = ByteArray(32 * 1024)
-                        var copied = 0L
-                        val digest = MessageDigest.getInstance("SHA-256")
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            copied += count
-                            digest.update(buffer, 0, count)
-                            if (copied > meta.size) throw IllegalStateException("Received file exceeded its declared size")
-                            output.write(buffer, 0, count)
+                val receivedFile = payload.asFile() ?: throw IllegalStateException("Nearby file content is unavailable")
+                val sourceFile = receivedFile.asJavaFile()
+                // Nearby has already written the completed payload to disk. Move it into
+                // NeaRer's private received folder when possible, avoiding a second full
+                // read/write pass for multi-gigabyte videos.
+                val moved = sourceFile != null && sourceFile.exists() && sourceFile.renameTo(target)
+                if (!moved) {
+                    val uri: Uri = receivedFile.asUri() ?: throw IllegalStateException("Nearby file content is unavailable")
+                    appContext.contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(target).use { output ->
+                            val buffer = ByteArray(256 * 1024)
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                output.write(buffer, 0, count)
+                            }
+                            output.fd.sync()
                         }
-                        output.flush()
-                        if (copied != meta.size) throw IllegalStateException("Received file size did not match")
-                        val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
-                        if (meta.sha256.isNotBlank() && !actualHash.equals(meta.sha256, ignoreCase = true)) {
-                            throw IllegalStateException("File integrity check failed. The received file was not kept.")
-                        }
+                    } ?: throw IllegalStateException("Could not open the received file")
+                    appContext.contentResolver.delete(uri, null, null)
+                }
+                if (!target.isFile || target.length() != meta.size) {
+                    throw IllegalStateException("Received file size did not match")
+                }
+                val digest = MessageDigest.getInstance("SHA-256")
+                target.inputStream().buffered(256 * 1024).use { input ->
+                    val buffer = ByteArray(256 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        digest.update(buffer, 0, count)
                     }
-                } ?: throw IllegalStateException("Could not open the received file")
-                appContext.contentResolver.delete(uri, null, null)
+                }
+                val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
+                if (meta.sha256.isNotBlank() && !actualHash.equals(meta.sha256, ignoreCase = true)) {
+                    throw IllegalStateException("File integrity check failed. The received file was not kept.")
+                }
                 listener.onFileReceived(meta.endpointId, meta.name, target)
             } catch (error: Exception) {
                 destination?.delete()
