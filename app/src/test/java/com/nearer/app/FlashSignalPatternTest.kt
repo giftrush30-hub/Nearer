@@ -13,6 +13,7 @@ class FlashSignalPatternTest {
     }
 
     @Test fun mapsDecodedPresetsToHumanReadableChatMessages() {
+        assertEquals("Flash call received", FlashSignalPattern.toChatMessage("FLASH_CALL"))
         assertEquals("Ping", FlashSignalPattern.toChatMessage("PING"))
         assertEquals("Please come", FlashSignalPattern.toChatMessage("COME"))
         assertEquals("Urgent — please check this", FlashSignalPattern.toChatMessage("URGENT"))
