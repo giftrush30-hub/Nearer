@@ -218,8 +218,8 @@ private class FastShareHttpServer(
     }
 
     private fun streamFile(output: BufferedOutputStream, rangeHeader: String?, headOnly: Boolean) {
-        if (fileLength < 0) {
-            output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+        if (fileLength < 0L) {
+            streamUnknownLength(output, headOnly)
             return
         }
         val resolvedRange = ByteRange.resolve(rangeHeader, fileLength)
@@ -247,6 +247,31 @@ private class FastShareHttpServer(
                 output.write(buffer, 0, read)
                 remaining -= read
             }
+        } ?: throw IllegalStateException("Cannot read the selected file")
+    }
+
+    /**
+     * Some Android providers cannot report a file size. Chunked HTTP keeps
+     * these files shareable without buffering the entire file in memory.
+     * Resume/range requests are not available when the length is unknown.
+     */
+    private fun streamUnknownLength(output: BufferedOutputStream, headOnly: Boolean) {
+        val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
+        output.write("HTTP/1.1 200 OK\r\nContent-Type: $mimeType\r\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".toByteArray())
+        if (headOnly) return
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            val buffer = ByteArray(64 * 1024)
+            while (running) {
+                val read = stream.read(buffer)
+                if (read < 0) break
+                if (read == 0) continue
+                output.write(Integer.toHexString(read).toByteArray(Charsets.US_ASCII))
+                output.write("\r\n".toByteArray(Charsets.US_ASCII))
+                output.write(buffer, 0, read)
+                output.write("\r\n".toByteArray(Charsets.US_ASCII))
+                output.flush()
+            }
+            output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
         } ?: throw IllegalStateException("Cannot read the selected file")
     }
 
