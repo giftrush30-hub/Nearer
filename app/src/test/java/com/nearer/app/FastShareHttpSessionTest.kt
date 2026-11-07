@@ -89,4 +89,31 @@ class FastShareHttpSessionTest {
         assertNull(exchange)
         assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
+
+    @Test fun duplicateRangeHeadersAreRejected() {
+        val (exchange, response) = read(
+            "GET /download HTTP/1.1\\r\\nRange: bytes=0-9\\r\\nrange: bytes=10-19\\r\\n\\r\\n"
+        )
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+    }
+
+    @Test fun nonAsciiHeaderNameIsRejected() {
+        val (exchange, response) = read("GET /download HTTP/1.1\\r\\nRangé: bytes=0-9\\r\\n\\r\\n")
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+    }
+
+    @Test fun controlCharacterInHeaderValueIsRejected() {
+        val raw = "GET /download HTTP/1.1\\r\\nX-Test: ok" + 1.toChar() + "bad\\r\\n\\r\\n"
+        val (exchange, response) = read(raw)
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+    }
+
+    @Test fun horizontalTabInHeaderValueRemainsAllowed() {
+        val (exchange, response) = read("GET /download HTTP/1.1\\r\\nX-Test:\\tok\\r\\n\\r\\n")
+        assertNotNull(exchange)
+        assertTrue(response.isEmpty())
+    }
 }
