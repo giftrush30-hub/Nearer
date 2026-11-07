@@ -3734,7 +3734,7 @@ private fun NeaRerHome(
                                         modifier = Modifier.weight(1f).height(108.dp).animateContentSize().clickable {
                                             receiveMode = false
                                             if (item.second == "Phone folders") {
-                                                phoneFolderPicker.launch(null)
+                                                openPhoneFolderBrowser()
                                             } else if (item.second == "Apps") {
                                                 showInstalledApps = true
                                                 isLoadingApps = true
