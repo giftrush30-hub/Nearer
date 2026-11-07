@@ -101,7 +101,8 @@ object LudoDoubleDiceEngine {
         val samePlayerBoard = moved.copy(
             activePlayerIndex = playerIndex,
             dice = null,
-            legalTokenIndexes = emptyList()
+            legalTokenIndexes = emptyList(),
+            turnNumber = state.game.turnNumber
         )
         val afterDie = turn.copy(
             remaining = turn.remaining - slot,
@@ -132,7 +133,7 @@ object LudoDoubleDiceEngine {
                 activePlayerIndex = nextIndex,
                 message = if (getsAnotherTurn) "${player.name} gets another turn"
                     else "${nextPlayer.name}'s turn",
-                turnNumber = samePlayerBoard.turnNumber + if (getsAnotherTurn) 0 else 1,
+                turnNumber = state.game.turnNumber + if (getsAnotherTurn) 0 else 1,
                 lastAction = action
             ),
             turn = null,

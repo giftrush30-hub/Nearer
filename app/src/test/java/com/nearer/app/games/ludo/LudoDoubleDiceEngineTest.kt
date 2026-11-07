@@ -55,6 +55,7 @@ class LudoDoubleDiceEngineTest {
         val first = LudoDoubleDiceEngine.selectDie(rolled, LudoDieSlot.FIRST)
         val afterFirst = LudoDoubleDiceEngine.move(first, 0)
         assertEquals(0, afterFirst.game.activePlayerIndex)
+        assertEquals(1, afterFirst.game.turnNumber)
         assertEquals(setOf(LudoDieSlot.SECOND), afterFirst.turn?.remaining)
         val second = LudoDoubleDiceEngine.selectDie(afterFirst, LudoDieSlot.SECOND)
         assertEquals(5, second.game.dice)
@@ -62,6 +63,7 @@ class LudoDoubleDiceEngineTest {
         val complete = LudoDoubleDiceEngine.move(second, 1)
         assertNull(complete.turn)
         assertEquals(1, complete.game.activePlayerIndex)
+        assertEquals(2, complete.game.turnNumber)
         assertEquals(6, complete.game.players[0].tokens[0])
         assertEquals(25, complete.game.players[0].tokens[1])
     }
@@ -74,11 +76,13 @@ class LudoDoubleDiceEngineTest {
         val first = LudoDoubleDiceEngine.selectDie(rolled, LudoDieSlot.FIRST)
         val afterFirst = LudoDoubleDiceEngine.move(first, 0)
         assertEquals(0, afterFirst.game.activePlayerIndex)
+        assertEquals(1, afterFirst.game.turnNumber)
         assertEquals(setOf(LudoDieSlot.SECOND), afterFirst.turn?.remaining)
         val second = LudoDoubleDiceEngine.selectDie(afterFirst, LudoDieSlot.SECOND)
         val complete = LudoDoubleDiceEngine.move(second, 0)
         assertNull(complete.turn)
         assertEquals(0, complete.game.activePlayerIndex)
+        assertEquals(1, complete.game.turnNumber)
         assertTrue(complete.game.message.contains("another turn"))
     }
 
