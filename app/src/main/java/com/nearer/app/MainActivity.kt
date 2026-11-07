@@ -440,6 +440,7 @@ class MainActivity : ComponentActivity() {
                     appNotice = appShareNotice,
                     onLoadApps = ::loadShareableApps,
                     onShareApps = ::shareInstalledApps,
+                    onShareAppsToAnyPhone = ::shareSelectedAppsToAnyPhone,
                     openSendSession = openSendSession,
                     openSendNotice = openSendNotice,
                     onPickOpenSendFiles = { openSendPicker.launch(arrayOf("*/*")) },
@@ -576,6 +577,57 @@ class MainActivity : ComponentActivity() {
                 }
             } catch (error: Exception) {
                 runOnUiThread { openSendNotice = "Could not prepare files: ${error.localizedMessage ?: "try again"}" }
+            }
+        }
+    }
+
+    private fun startOpenSendWithFiles(files: List<OpenSendFile>) {
+        if (files.isEmpty()) return
+        runOnUiThread {
+            val manager = OpenSendSessionManager(this)
+            openSendManager = manager
+            manager.start(files, onReady = { session ->
+                openSendSession = session
+                openSendNotice = "OpenSend is ready. Share the Wi-Fi details and download link with the receiver."
+            }, onFailure = { message ->
+                openSendSession = null
+                openSendNotice = message
+            })
+        }
+    }
+
+    private fun shareSelectedAppsToAnyPhone(packageNames: List<String>) {
+        if (packageNames.isEmpty()) return
+        val selected = shareableApps.filter { it.packageName in packageNames }
+        if (selected.size != packageNames.distinct().size) {
+            appShareNotice = "Refresh the installed-app list and select again."
+            return
+        }
+        val splitApps = selected.filter { it.packageFiles.size != 1 }
+        if (splitApps.isNotEmpty()) {
+            appShareNotice = "These app(s) use split APKs: \${splitApps.joinToString { it.label }}. Send them to a NeaRer phone for complete installation, or use a universal APK from the developer. A browser-only phone cannot install split APK sets by itself."
+            return
+        }
+        stopOpenSend()
+        appShareNotice = "Preparing installable APK file(s) for phones without NeaRer…"
+        io.execute {
+            try {
+                val folder = File(cacheDir, "appshare/outgoing").apply { mkdirs() }
+                val uris = selected.map { app ->
+                    val source = app.packageFiles.first()
+                    val safeLabel = app.label.replace(Regex("[^A-Za-z0-9._ -]"), "_").ifBlank { "Android-app" }
+                    val destination = File(folder, "\${UUID.randomUUID()}-$safeLabel.apk")
+                    source.inputStream().use { input -> destination.outputStream().use { output -> input.copyTo(output, 64 * 1024) } }
+                    FileProvider.getUriForFile(this, "$packageName.files", destination)
+                }
+                runOnUiThread {
+                    appShareNotice = "Your APK file(s) are ready. OpenSend is starting for any Android phone."
+                    startOpenSendFromPicker(uris)
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    appShareNotice = "Could not prepare app APKs: \${error.localizedMessage ?: "try again"}"
+                }
             }
         }
     }
