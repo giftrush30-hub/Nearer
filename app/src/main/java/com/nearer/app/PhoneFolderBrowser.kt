@@ -133,6 +133,9 @@ private fun queryPhoneFolder(context: Context, treeUri: Uri, folderUri: Uri): Pa
         val nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
         val mimeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
         val sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+        if (idCol < 0 || nameCol < 0 || mimeCol < 0) {
+            throw IllegalStateException("This storage provider did not return the required file details.")
+        }
         while (cursor.moveToNext()) {
             val id = cursor.getString(idCol) ?: continue
             val name = cursor.getString(nameCol) ?: "Unnamed file"
