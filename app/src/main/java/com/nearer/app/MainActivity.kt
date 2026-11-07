@@ -251,6 +251,11 @@ class MainActivity : ComponentActivity() {
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
+                NeaRerFlashScreeningService.ACTION_FLASH_MESSAGE_RECEIVED -> {
+                    // The screening service has already persisted the event. Import it
+                    // through the same idempotent path used when the app resumes.
+                    importPendingFlashMessages()
+                }
                 WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> {
                     val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1)
                     if (state == WifiP2pManager.WIFI_P2P_STATE_DISABLED) {
@@ -763,6 +768,7 @@ class MainActivity : ComponentActivity() {
         val filter = IntentFilter().apply {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
+            addAction(NeaRerFlashScreeningService.ACTION_FLASH_MESSAGE_RECEIVED)
             addAction(WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
         }
