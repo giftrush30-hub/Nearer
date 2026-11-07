@@ -9,6 +9,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class StreamCopyTest {
+    @Test fun defaultBufferIsLargeEnoughForEfficientLocalStreaming() {
+        assertEquals(256 * 1024, StreamCopy.DEFAULT_BUFFER_SIZE)
+        val source = ByteArray(700 * 1024) { (it % 239).toByte() }
+        val output = ByteArrayOutputStream()
+        val result = StreamCopy.copy(ByteArrayInputStream(source), output, source.size.toLong())
+        assertTrue(result.complete)
+        assertArrayEquals(source, output.toByteArray())
+    }
+
     @Test fun copiesExactlyTheRequestedBytes() {
         val source = byteArrayOf(1, 2, 3, 4, 5)
         val output = ByteArrayOutputStream()
