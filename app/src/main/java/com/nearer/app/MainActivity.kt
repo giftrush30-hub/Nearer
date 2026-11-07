@@ -2179,20 +2179,20 @@ private fun NeaRerHome(
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val fastShare = remember(context) { FastShareController(context) }
-    var pendingFastShareUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingFastShareUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     val fastSharePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         val allowed = grants.values.all { it }
-        val pending = pendingFastShareUri
-        pendingFastShareUri = null
-        if (allowed && pending != null) fastShare.start(pending)
+        val pending = pendingFastShareUris
+        pendingFastShareUris = emptyList()
+        if (allowed && pending.isNotEmpty()) fastShare.start(pending)
         else if (!allowed) android.widget.Toast.makeText(context, "Nearby Wi-Fi permission is needed for Fast Share.", android.widget.Toast.LENGTH_LONG).show()
     }
-    val fastSharePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
+    val fastSharePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) {
             val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.NEARBY_WIFI_DEVICES else Manifest.permission.ACCESS_FINE_LOCATION
-            if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) fastShare.start(uri)
+            if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) fastShare.start(uris)
             else {
-                pendingFastShareUri = uri
+                pendingFastShareUris = uris
                 fastSharePermissionLauncher.launch(arrayOf(permission))
             }
         }
@@ -2292,7 +2292,7 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
-                        ) { Text("Fast Share • large files", fontWeight = FontWeight.Bold) }
+                        ) { Text("Fast Share • multiple large files", fontWeight = FontWeight.Bold) }
                         Text("Send a large video to a phone without NeaRer using a temporary local Wi-Fi connection. No mobile data.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                         Text(fastShare.status, color = if (fastShare.details != null) Mint else Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         fastShare.details?.let { share ->

@@ -9,10 +9,19 @@ internal data class FastShareHttpRequest(
     val isHeadOnly: Boolean get() = method == "HEAD"
     val supportsMethod: Boolean get() = method == "GET" || isHeadOnly
 
+    /** Zero-based item requested by /download/N; legacy /download means item zero. */
+    val downloadIndex: Int?
+        get() = when {
+            path == "/download" -> 0
+            path.startsWith("/download/") -> path.removePrefix("/download/").toIntOrNull()
+            else -> null
+        }
+
     val route: Route
-        get() = when (path) {
-            "/", "/index.html" -> Route.RECEIVER_PAGE
-            "/download" -> Route.DOWNLOAD
+        get() = when {
+            path == "/" || path == "/index.html" -> Route.RECEIVER_PAGE
+            path == "/download" -> Route.DOWNLOAD
+            path.matches(Regex("/download/[0-9]{1,4}")) && downloadIndex != null -> Route.DOWNLOAD
             else -> Route.NOT_FOUND
         }
 
