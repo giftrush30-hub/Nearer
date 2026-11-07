@@ -62,6 +62,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val incomingPayloadEndpoints = ConcurrentHashMap<Long, String>()
     private val completedPayloads = ConcurrentHashMap<Long, Payload>()
     private val successfulIncomingPayloadIds = ConcurrentHashMap.newKeySet<Long>()
+    // Some device/service callback schedules may report terminal progress before our
+    // payload bookkeeping is populated. Retain a bounded endpoint-scoped success marker.
+    private val earlySuccessfulPayloadEndpoints = ConcurrentHashMap<Long, String>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
     private val outgoingPayloads = ConcurrentHashMap<Long, Payload>()
     private val fileHashIo = Executors.newSingleThreadExecutor()
@@ -119,6 +122,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     outgoingPayloads.remove(entry.key)?.let { try { it.close() } catch (_: Exception) { } }
                 }
             }
+            earlySuccessfulPayloadEndpoints.entries.removeIf { it.value == id }
             val interruptedIncoming = incomingPayloadEndpoints.entries
                 .filter { it.value == id }
                 .map { it.key }
@@ -151,6 +155,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 Payload.Type.FILE -> {
                     incomingPayloadEndpoints[payload.id] = id
                     incomingPayloads[payload.id] = payload
+                    if (earlySuccessfulPayloadEndpoints.remove(payload.id) == id) {
+                        successfulIncomingPayloadIds.add(payload.id)
+                        completedPayloads[payload.id] = payload
+                    }
                     val meta = incomingMetadata[payload.id]
                     listener.onFileProgress(id, payload.id, meta?.name ?: "Incoming file", 0L, meta?.size ?: -1L, true)
                     // The payload callback and SUCCESS update are not guaranteed to arrive
@@ -172,7 +180,19 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             // File metadata is a BYTES payload and may arrive before or after the FILE
             // payload. Identify the transfer from the FILE callback too, not metadata alone.
             // This prevents a fast file completion from being ignored while metadata is late.
-            if (outgoing == null && incoming == null && incomingPayload == null) return
+            if (outgoing == null && incoming == null && incomingPayload == null) {
+                // Preserve a success event that beats onPayloadReceived(). BYTES
+                // metadata may also create an unused marker, so keep this cache bounded.
+                if (update.status == PayloadTransferUpdate.Status.SUCCESS &&
+                    synchronized(activeEndpoints) { activeEndpoints.contains(id) }) {
+                    earlySuccessfulPayloadEndpoints[payloadId] = id
+                    while (earlySuccessfulPayloadEndpoints.size > 128) {
+                        val oldestKey = earlySuccessfulPayloadEndpoints.keys.firstOrNull() ?: break
+                        earlySuccessfulPayloadEndpoints.remove(oldestKey)
+                    }
+                }
+                return
+            }
             val name = outgoing?.second ?: incoming?.name ?: "Incoming file"
             val isIncoming = outgoing == null
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
@@ -617,6 +637,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         completedPayloads.clear()
         incomingMetadata.clear()
         successfulIncomingPayloadIds.clear()
+        earlySuccessfulPayloadEndpoints.clear()
         outgoingFiles.keys.forEach { payloadId ->
             try { client.cancelPayload(payloadId) } catch (_: Exception) { }
             outgoingPayloads.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
