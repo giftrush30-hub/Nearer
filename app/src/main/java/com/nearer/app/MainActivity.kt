@@ -130,13 +130,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.nearer.app.games.ludo.LudoGameScreen
 
-private val Midnight = Color(0xFF071A38)
-private val Panel = Color(0xFF102B50)
-private val AccentBlue = Color(0xFF3B82F6)
-private val Muted = Color(0xFFAABBD4)
-private val White = Color(0xFFF6F8FF)
+private val Midnight = Color(0xFF0647C9)
+private val Panel = Color(0xFF0B54DC)
+private val AccentBlue = Color(0xFF63A7FF)
+private val Muted = Color(0xFFDCEBFF)
+private val White = Color(0xFFFFFFFF)
 private val BrandBlue = Color(0xFF1769FF)
-private val Gold = Color(0xFFFFD34E)
+private val Gold = Color(0xFFFFD84D)
 
 class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
@@ -2933,7 +2933,7 @@ private fun NeaRerHome(
     if (showChatAttachmentMenu) {
         AlertDialog(
             onDismissRequest = { showChatAttachmentMenu = false },
-            containerColor = Color(0xFF102B50),
+            containerColor = Color(0xFF0B54DC),
             title = { Text("SHARE SOMETHING", color = White, fontWeight = FontWeight.Black) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2955,7 +2955,7 @@ private fun NeaRerHome(
                                 }
                                 else -> filePicker.launch(arrayOf("*/*"))
                             }
-                        }, color = Color(0xFF173A67), shape = RoundedCornerShape(13.dp), border = BorderStroke(1.dp, Color(0xFF315B8D))) {
+                        }, color = Color(0xFF0B54DC), shape = RoundedCornerShape(13.dp), border = BorderStroke(1.dp, Color(0xFF63A7FF))) {
                             Column(Modifier.padding(12.dp)) {
                                 Text(item.first, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                 Text(item.second, color = Muted, fontSize = 9.sp)
@@ -2970,7 +2970,7 @@ private fun NeaRerHome(
     if (showInstalledApps) {
         AlertDialog(
             onDismissRequest = { showInstalledApps = false },
-            containerColor = Color(0xFF102B50),
+            containerColor = Color(0xFF0B54DC),
             title = { Text("SHARE AN APP", color = White, fontWeight = FontWeight.Black) },
             text = {
                 Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3002,7 +3002,7 @@ private fun NeaRerHome(
                         LinearProgressIndicator(
                             modifier = Modifier.fillMaxWidth(),
                             color = Gold,
-                            trackColor = Color(0xFF24466F)
+                            trackColor = Color(0xFF4D8FEA)
                         )
                     }
                     var appSearch by remember { mutableStateOf("") }
@@ -3022,9 +3022,9 @@ private fun NeaRerHome(
                             val selected = appFilter == filter
                             Surface(
                                 modifier = Modifier.weight(1f).clickable { appFilter = filter },
-                                color = if (selected) Color(0xFF1B5EB5) else Color(0xFF0B2342),
+                                color = if (selected) Color(0xFF1B5EB5) else Color(0xFF073DA8),
                                 shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, if (selected) Gold.copy(alpha = 0.8f) else Color(0xFF31547E))
+                                border = BorderStroke(1.dp, if (selected) Gold.copy(alpha = 0.8f) else Color(0xFF63A7FF))
                             ) {
                                 Text(
                                     filter,
@@ -3080,8 +3080,8 @@ private fun NeaRerHome(
                                     } else appShareNotice = "Could not prepare " + app.label + " for sharing."
                                 }
                             },
-                            color = Color(0xFF173F78), shape = RoundedCornerShape(14.dp),
-                            border = BorderStroke(1.dp, Color(0xFF347CEB).copy(alpha = 0.55f))
+                            color = Color(0xFF1769FF), shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, Color(0xFF78B8FF).copy(alpha = 0.55f))
                         ) {
                             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Image(
@@ -3115,7 +3115,7 @@ private fun NeaRerHome(
     if (showReceivedHistory) {
         AlertDialog(
             onDismissRequest = { showReceivedHistory = false },
-            containerColor = Color(0xFF102B50),
+            containerColor = Color(0xFF0B54DC),
             title = {
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text("SHARED FILES", color = White, fontWeight = FontWeight.Black)
@@ -3160,9 +3160,9 @@ private fun NeaRerHome(
                             val exists = item.file.exists()
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
-                                color = Color(0xFF173F78),
+                                color = Color(0xFF1769FF),
                                 shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.dp, Color(0xFF347CEB).copy(alpha = 0.45f))
+                                border = BorderStroke(1.dp, Color(0xFF78B8FF).copy(alpha = 0.45f))
                             ) {
                                 Row(
                                     Modifier.padding(10.dp),
@@ -3180,7 +3180,7 @@ private fun NeaRerHome(
                             }
                         }
                     if (showSent) sortedSent.forEach { item ->
-                        Surface(Modifier.fillMaxWidth(), color = Color(0xFF173F78), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Gold.copy(alpha = 0.25f))) {
+                        Surface(Modifier.fillMaxWidth(), color = Color(0xFF1769FF), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Gold.copy(alpha = 0.25f))) {
                             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                                 Text("↑", color = Gold, fontSize = 18.sp, fontWeight = FontWeight.Black)
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -3206,7 +3206,7 @@ private fun NeaRerHome(
             androidx.compose.foundation.layout.Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Brush.verticalGradient(listOf(Color(0xFF102D56), Midnight, Color(0xFF061329))))
+                    .background(Brush.verticalGradient(listOf(Color(0xFF0B54DC), Midnight, Color(0xFF0647C9))))
                     .padding(horizontal = 25.dp, vertical = 30.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -3218,7 +3218,7 @@ private fun NeaRerHome(
                     Surface(
                         modifier = Modifier.size(86.dp),
                         shape = RoundedCornerShape(28.dp),
-                        color = Color(0xFF1554A8),
+                        color = Color(0xFF1769FF),
                         border = BorderStroke(1.dp, Color(0xFF4A91FF))
                     ) {
                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
@@ -3284,9 +3284,9 @@ private fun NeaRerHome(
                 .background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
-                            0.0f to Color(0xFF0B2852),
+                            0.0f to Color(0xFF0848BA),
                             0.38f to Midnight,
-                            1.0f to Color(0xFF050F22)
+                            1.0f to Color(0xFF063DA8)
                         )
                     )
                 )
@@ -3390,16 +3390,16 @@ private fun NeaRerHome(
                 Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = Color(0xFF0D3474),
+                        color = Color(0xFF1257C9),
                         shape = RoundedCornerShape(26.dp),
-                        border = BorderStroke(1.dp, Color(0xFF347CEB)),
+                        border = BorderStroke(1.dp, Color(0xFF78B8FF)),
                         shadowElevation = 12.dp
                     ) {
                         Column(
                             Modifier.fillMaxWidth()
                                 .background(
                                     Brush.linearGradient(
-                                        listOf(Color(0xFF123F87), Color(0xFF0B2854), Color(0xFF102F65))
+                                        listOf(Color(0xFF1769FF), Color(0xFF0848BA), Color(0xFF0B54DC))
                                     )
                                 )
                                 .padding(19.dp),
@@ -3415,7 +3415,7 @@ private fun NeaRerHome(
                                 chatReady -> Color(0xFF155B4B)
                                 connectingAddress != null -> Color(0xFF765A20)
                                 scanning -> Color(0xFF174A58)
-                                else -> Color(0xFF173F78)
+                                else -> Color(0xFF1769FF)
                             }
                             val homeConnectionTextColor = when {
                                 chatReady -> Color(0xFF8EF0C6)
@@ -3467,7 +3467,7 @@ private fun NeaRerHome(
                             appShareNotice?.let { notice ->
                                 Surface(
                                     modifier = Modifier.fillMaxWidth().animateContentSize(),
-                                    color = Color(0xFF0B2342),
+                                    color = Color(0xFF073DA8),
                                     shape = RoundedCornerShape(11.dp),
                                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f))
                                 ) {
@@ -3484,7 +3484,7 @@ private fun NeaRerHome(
                                     LinearProgressIndicator(
                                         modifier = Modifier.fillMaxWidth(),
                                         color = Gold,
-                                        trackColor = Color(0xFF24466F)
+                                        trackColor = Color(0xFF4D8FEA)
                                     )
                                 }
                             }
@@ -3544,7 +3544,7 @@ private fun NeaRerHome(
                             Surface(
                                 modifier = Modifier.fillMaxWidth().animateContentSize(),
                                 shape = RoundedCornerShape(12.dp),
-                                color = if (incomingTransferName != null) Color(0xFF123F3A) else Color(0xFF0B2342),
+                                color = if (incomingTransferName != null) Color(0xFF123F3A) else Color(0xFF073DA8),
                                 border = BorderStroke(
                                     1.dp,
                                     if (incomingTransferName != null) Color(0xFF54D6A5).copy(alpha = 0.55f)
@@ -3748,20 +3748,20 @@ private fun NeaRerHome(
                     if (incomingTransferName != null || outgoingTransferId != null || receivedFiles.isNotEmpty() || hasTransferResult) {
                         Surface(
                             modifier = Modifier.fillMaxWidth().animateContentSize(),
-                            color = Color(0xFF102B50),
+                            color = Color(0xFF0B54DC),
                             shape = RoundedCornerShape(19.dp),
                             border = BorderStroke(
                                 1.dp,
                                 if (hasTransferResult && incomingTransferName == null && outgoingTransferId == null)
                                     transferResultAccent.copy(alpha = 0.58f)
-                                else Color(0xFF347CEB).copy(alpha = 0.55f)
+                                else Color(0xFF78B8FF).copy(alpha = 0.55f)
                             ),
                             shadowElevation = 5.dp
                         ) {
                             Column(
                                 Modifier.background(
                                     Brush.linearGradient(
-                                        listOf(Color(0xFF153A68), Color(0xFF102B50), Color(0xFF0D2442))
+                                        listOf(Color(0xFF153A68), Color(0xFF0B54DC), Color(0xFF0D2442))
                                     )
                                 )
                             ) {
@@ -3811,14 +3811,14 @@ private fun NeaRerHome(
                                             LinearProgressIndicator(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 color = BrandBlue,
-                                                trackColor = Color(0xFF24436D)
+                                                trackColor = Color(0xFF1557C8)
                                             )
                                         } else {
                                             LinearProgressIndicator(
                                                 progress = { smoothIncomingProgress },
                                                 modifier = Modifier.fillMaxWidth(),
                                                 color = BrandBlue,
-                                                trackColor = Color(0xFF24436D)
+                                                trackColor = Color(0xFF1557C8)
                                             )
                                         }
                                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3855,14 +3855,14 @@ private fun NeaRerHome(
                                             LinearProgressIndicator(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 color = Gold,
-                                                trackColor = Color(0xFF24436D)
+                                                trackColor = Color(0xFF1557C8)
                                             )
                                         } else {
                                             LinearProgressIndicator(
                                                 progress = { smoothOutgoingProgress },
                                                 modifier = Modifier.fillMaxWidth(),
                                                 color = Gold,
-                                                trackColor = Color(0xFF24436D)
+                                                trackColor = Color(0xFF1557C8)
                                             )
                                         }
                                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3950,7 +3950,7 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth(),
                             color = Color(0xFF0D2545),
                             shape = RoundedCornerShape(19.dp),
-                            border = BorderStroke(1.dp, Color(0xFF31547E).copy(alpha = 0.75f))
+                            border = BorderStroke(1.dp, Color(0xFF63A7FF).copy(alpha = 0.75f))
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
@@ -4014,9 +4014,9 @@ private fun NeaRerHome(
                     }
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = Color(0xFF10294D),
+                        color = Color(0xFF0B54DC),
                         shape = RoundedCornerShape(20.dp),
-                        border = BorderStroke(1.dp, Color(0xFF244A7A))
+                        border = BorderStroke(1.dp, Color(0xFF1769FF))
                     ) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 5.dp)) {
                             if (messages.isEmpty()) {
@@ -4049,7 +4049,7 @@ private fun NeaRerHome(
                                         }
                                         Text(message.delivery, color = if (message.outgoing) Color(0xFF8DBAFF) else Gold, fontSize = 9.sp)
                                     }
-                                    if (index < minOf(messages.size, 3) - 1) androidx.compose.material3.HorizontalDivider(color = Color(0xFF24436D))
+                                    if (index < minOf(messages.size, 3) - 1) androidx.compose.material3.HorizontalDivider(color = Color(0xFF1557C8))
                                 }
                             }
                         }
@@ -4061,8 +4061,8 @@ private fun NeaRerHome(
                                 navigateToSection("community")
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                             },
-                            color = Color(0xFF10294D), shape = RoundedCornerShape(17.dp),
-                            border = BorderStroke(1.dp, Color(0xFF244A7A))
+                            color = Color(0xFF0B54DC), shape = RoundedCornerShape(17.dp),
+                            border = BorderStroke(1.dp, Color(0xFF1769FF))
                         ) {
                             Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Text("♧", color = Gold, fontSize = 22.sp)
@@ -4075,8 +4075,8 @@ private fun NeaRerHome(
                                 navigateToSection("games")
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                             },
-                            color = Color(0xFF10294D), shape = RoundedCornerShape(17.dp),
-                            border = BorderStroke(1.dp, Color(0xFF244A7A))
+                            color = Color(0xFF0B54DC), shape = RoundedCornerShape(17.dp),
+                            border = BorderStroke(1.dp, Color(0xFF1769FF))
                         ) {
                             Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Text("♟", color = Gold, fontSize = 22.sp)
@@ -4093,14 +4093,14 @@ private fun NeaRerHome(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(22.dp),
-                    color = Color(0xFF102B50),
+                    color = Color(0xFF0B54DC),
                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.55f))
                 ) {
                     Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                         Text("NEARER FLASH • CALL-TO-CHAT", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
                         Text("A quick call. A message in your chat.", color = White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
                         Text("Send a short Flash call pattern and NeaRer turns the recognised signal into a normal message bubble on the other phone. No SMS and no mobile data are used for the Flash signal. Calls use your carrier network, so any call charges depend on your plan.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
-                        Surface(color = Color(0xFF0A203D), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                        Surface(color = Color(0xFF073DA8), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("CHOOSE A SIGNAL", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -4114,7 +4114,7 @@ private fun NeaRerHome(
                                             },
                                             color = if (selected) AccentBlue else Color(0xFF17375F),
                                             shape = RoundedCornerShape(10.dp),
-                                            border = BorderStroke(1.dp, if (selected) Gold else Color(0xFF31527A))
+                                            border = BorderStroke(1.dp, if (selected) Gold else Color(0xFF347CEB))
                                         ) {
                                             Text(
                                                 preset.name.replace('_', ' '),
@@ -4134,9 +4134,9 @@ private fun NeaRerHome(
                             }
                         }
                         Surface(
-                            color = Color(0xFF0A203D),
+                            color = Color(0xFF073DA8),
                             shape = RoundedCornerShape(14.dp),
-                            border = BorderStroke(1.dp, Color(0xFF31527A)),
+                            border = BorderStroke(1.dp, Color(0xFF347CEB)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -4155,7 +4155,7 @@ private fun NeaRerHome(
                                     placeholder = { Text("Type anything you want…") },
                                     colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                                         focusedTextColor = White, unfocusedTextColor = White,
-                                        focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF42618B),
+                                        focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF347CEB),
                                         focusedLabelColor = AccentBlue, unfocusedLabelColor = Muted,
                                         cursorColor = Gold
                                     )
@@ -4202,7 +4202,7 @@ private fun NeaRerHome(
                             placeholder = { Text("e.g. 080… or +234…") },
                             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = White, unfocusedTextColor = White,
-                                focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF42618B),
+                                focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF347CEB),
                                 focusedLabelColor = AccentBlue, unfocusedLabelColor = Muted,
                                 cursorColor = Gold
                             )
@@ -4243,7 +4243,7 @@ private fun NeaRerHome(
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B416C), contentColor = White)
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1257C9), contentColor = White)
                         ) { Text(if (flashCallStep + 1 >= flashCallCount) "FINISH SIGNAL SEQUENCE" else "I ENDED THIS CALL • NEXT STEP", fontWeight = FontWeight.Bold) }
                         Text(flashSenderNotice, color = Gold, fontSize = 10.sp, lineHeight = 15.sp)
                         Text("NeaRer does not place calls automatically and does not request permission to call. You must tap Call in the phone app and end each call yourself. Your carrier may charge for calls. The number is used only to open the dialer and is not saved by this screen.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
@@ -4256,9 +4256,9 @@ private fun NeaRerHome(
 
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            color = Color(0xFF0A203D),
+                            color = Color(0xFF073DA8),
                             shape = RoundedCornerShape(13.dp),
-                            border = BorderStroke(1.dp, if (flashContactsPermission) Color(0xFF34765C) else Color(0xFF31527A))
+                            border = BorderStroke(1.dp, if (flashContactsPermission) Color(0xFF34765C) else Color(0xFF347CEB))
                         ) {
                             Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                                 Text(
@@ -4279,7 +4279,7 @@ private fun NeaRerHome(
                                     Button(
                                         onClick = { flashContactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
                                         modifier = Modifier.fillMaxWidth(),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B416C), contentColor = White)
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1257C9), contentColor = White)
                                     ) {
                                         Text("ALLOW FLASH FROM SAVED CONTACTS", fontWeight = FontWeight.Bold)
                                     }
@@ -4297,7 +4297,7 @@ private fun NeaRerHome(
                             placeholder = { Text("Number as it appears on this phone") },
                             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = White, unfocusedTextColor = White,
-                                focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF42618B),
+                                focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF347CEB),
                                 focusedLabelColor = AccentBlue, unfocusedLabelColor = Muted,
                                 cursorColor = Gold
                             )
@@ -4311,7 +4311,7 @@ private fun NeaRerHome(
                             placeholder = { Text("e.g. Tunde") },
                             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = White, unfocusedTextColor = White,
-                                focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF42618B),
+                                focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF347CEB),
                                 focusedLabelColor = AccentBlue, unfocusedLabelColor = Muted,
                                 cursorColor = Gold
                             )
@@ -4328,7 +4328,7 @@ private fun NeaRerHome(
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B416C), contentColor = White)
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1257C9), contentColor = White)
                         ) { Text("ADD TRUSTED SENDER", fontWeight = FontWeight.Bold) }
                         Text("Pair each sender before they send you a Flash. NeaRer stores a salted number fingerprint and your optional chat name, not the raw phone number. Nigerian numbers saved as 080… will also match incoming +234… format. For other countries, use the number format shown on incoming calls.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
 
@@ -4344,7 +4344,7 @@ private fun NeaRerHome(
             }
 
             AnimatedVisibility(visible = activeSection == "games", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF15315A), border = BorderStroke(1.dp, Color(0xFF42618B))) {
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF15315A), border = BorderStroke(1.dp, Color(0xFF347CEB))) {
                 Column(modifier = Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
@@ -4368,14 +4368,14 @@ private fun NeaRerHome(
             AnimatedVisibility(visible = activeSection == "nearby", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = Color(0xFF102B50),
+                color = Color(0xFF0B54DC),
                 shape = RoundedCornerShape(22.dp),
                 border = BorderStroke(1.dp, Color(0xFF477FC0).copy(alpha = 0.65f)),
                 shadowElevation = 8.dp
             ) {
                 Column(
                     Modifier.fillMaxWidth()
-                        .background(Brush.linearGradient(listOf(Color(0xFF163D70), Color(0xFF102B50), Color(0xFF0B203D))))
+                        .background(Brush.linearGradient(listOf(Color(0xFF163D70), Color(0xFF0B54DC), Color(0xFF0B203D))))
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp)
                 ) {
@@ -4645,7 +4645,7 @@ private fun NeaRerHome(
                             navigationScope.launch { pageScrollState.animateScrollTo(0) }
                         },
                         color = Color(0xFF123D7A), shape = RoundedCornerShape(15.dp),
-                        border = BorderStroke(1.dp, Color(0xFF347CEB))
+                        border = BorderStroke(1.dp, Color(0xFF78B8FF))
                     ) {
                         Row(Modifier.padding(horizontal = 12.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("+", color = Gold, fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -4675,7 +4675,7 @@ private fun NeaRerHome(
                     modifier = Modifier.fillMaxWidth(),
                     color = Color(0xFF0D2545),
                     shape = RoundedCornerShape(19.dp),
-                    border = BorderStroke(1.dp, Color(0xFF31547E))
+                    border = BorderStroke(1.dp, Color(0xFF63A7FF))
                 ) {
                     Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4718,13 +4718,13 @@ private fun NeaRerHome(
             Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
                 sectionPositions["chats"] = it.positionInParent().y.toInt()
             }, shape = RoundedCornerShape(23.dp), color = Panel,
-                border = BorderStroke(1.dp, if (chatReady) Color(0xFF3A9B7B) else Color(0xFF315B8D)),
+                border = BorderStroke(1.dp, if (chatReady) Color(0xFF3A9B7B) else Color(0xFF63A7FF)),
                 shadowElevation = 9.dp) {
                 Column(
                     modifier = Modifier.fillMaxWidth()
                         .background(Brush.linearGradient(
                             listOf(
-                                if (chatReady) Color(0xFF16453F) else Color(0xFF173A67),
+                                if (chatReady) Color(0xFF16453F) else Color(0xFF0B54DC),
                                 Color(0xFF10294A),
                                 Color(0xFF0C203B)
                             )
@@ -4762,7 +4762,7 @@ private fun NeaRerHome(
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                         Surface(
                             modifier = Modifier.weight(1f),
-                            color = Color(0xFF173A67),
+                            color = Color(0xFF0B54DC),
                             shape = RoundedCornerShape(10.dp),
                             border = BorderStroke(1.dp, Color(0xFF315F96))
                         ) {
@@ -4816,7 +4816,7 @@ private fun NeaRerHome(
                                         horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
                                     ) {
                                         Surface(
-                                            color = if (message.outgoing) Color(0xFF174A9B) else Color(0xFF19375D),
+                                            color = if (message.outgoing) Color(0xFF174A9B) else Color(0xFF0848BA),
                                             shape = if (message.outgoing) RoundedCornerShape(17.dp, 17.dp, 5.dp, 17.dp)
                                                 else RoundedCornerShape(17.dp, 17.dp, 17.dp, 5.dp),
                                             modifier = Modifier.fillMaxWidth(0.86f).animateContentSize()
@@ -4859,7 +4859,7 @@ private fun NeaRerHome(
                                 onClick = { onOpenFile(fileItem) },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF19375D), contentColor = White)
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0848BA), contentColor = White)
                             ) { Text("Open ${fileItem.displayName}", maxLines = 1) }
                         }
                         Row(
@@ -4870,8 +4870,8 @@ private fun NeaRerHome(
                             Surface(
                                 modifier = Modifier.size(48.dp).clickable { showChatAttachmentMenu = true },
                                 shape = CircleShape,
-                                color = Color(0xFF173F78),
-                                border = BorderStroke(1.dp, Color(0xFF347CEB))
+                                color = Color(0xFF1769FF),
+                                border = BorderStroke(1.dp, Color(0xFF78B8FF))
                             ) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                                     Text("+", color = Gold, fontSize = 27.sp, fontWeight = FontWeight.Medium)
@@ -4897,7 +4897,7 @@ private fun NeaRerHome(
                                     }
                                 },
                                 shape = CircleShape,
-                                color = if (draft.isNotBlank()) BrandBlue else Color(0xFF24436D)
+                                color = if (draft.isNotBlank()) BrandBlue else Color(0xFF1557C8)
                             ) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                                     Text("➤", color = White, fontSize = 19.sp, fontWeight = FontWeight.Black)
@@ -4910,7 +4910,7 @@ private fun NeaRerHome(
                                 progress = { incomingProgress },
                                 modifier = Modifier.fillMaxWidth(),
                                 color = AccentBlue,
-                                trackColor = Color(0xFF19375D)
+                                trackColor = Color(0xFF0848BA)
                             )
                         }
                         if (outgoingTransferId != null) {
@@ -4918,7 +4918,7 @@ private fun NeaRerHome(
                                 progress = { outgoingProgress },
                                 modifier = Modifier.fillMaxWidth(),
                                 color = AccentBlue,
-                                trackColor = Color(0xFF19375D)
+                                trackColor = Color(0xFF0848BA)
                             )
                             Button(
                                 onClick = onCancelTransfer,
@@ -5142,8 +5142,8 @@ private fun NeaRerHome(
                 Surface(
                     modifier = Modifier.fillMaxWidth().animateContentSize(),
                     shape = RoundedCornerShape(19.dp),
-                    color = Color(0xFF102B50),
-                    border = BorderStroke(1.dp, Color(0xFF31547E))
+                    color = Color(0xFF0B54DC),
+                    border = BorderStroke(1.dp, Color(0xFF63A7FF))
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -5270,7 +5270,7 @@ private fun NeaRerHome(
                                 navigateToSection(item.third)
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                             },
-                            color = if (selected) Color(0xFF1554A8) else Color.Transparent,
+                            color = if (selected) Color(0xFF1769FF) else Color.Transparent,
                             shape = RoundedCornerShape(15.dp),
                             border = if (selected) BorderStroke(1.dp, Gold.copy(alpha = 0.8f)) else null
                         ) {
