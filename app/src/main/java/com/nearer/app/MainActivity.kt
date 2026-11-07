@@ -1377,6 +1377,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun disconnectFromPeer() {
+        stopNearbyTransferKeepAlive()
         nearbyTransport?.disconnect()
         hybridConnected = false
         val activeChannel = channel
@@ -2453,6 +2454,7 @@ class MainActivity : ComponentActivity() {
         cancelledOutgoingTransfers.add(id)
         activeQueuedFileUri = null
         sendWireLine("FILE_CANCEL|$id")
+        stopNearbyTransferKeepAlive()
         chatNotice = "Cancelling file transfer…"
         // The prepared item remains in the queue for a later manual retry.
     }
