@@ -35,4 +35,18 @@ class ByteRangeTest {
     @Test fun unsupportedMultiRangeFallsBackToFullResponse() {
         assertEquals(ResolvedByteRange(0, 99, false), ByteRange.resolve("bytes=0-1,5-8", 100))
     }
+
+    @Test fun rangeUnitIsCaseInsensitiveAndAllowsWhitespace() {
+        assertEquals(ResolvedByteRange(5, 9, true), ByteRange.resolve(" BYTES=5-9 ", 10))
+    }
+
+    @Test fun overflowingAndNegativeRangeNumbersAreRejected() {
+        assertNull(ByteRange.resolve("bytes=9223372036854775808-", 100))
+        assertNull(ByteRange.resolve("bytes=-9223372036854775808", 100))
+        assertNull(ByteRange.resolve("bytes=-5--1", 100))
+    }
+
+    @Test fun unsupportedRangeUnitReturnsWholeFile() {
+        assertEquals(ResolvedByteRange(0, 9, false), ByteRange.resolve("items=2-4", 10))
+    }
 }
