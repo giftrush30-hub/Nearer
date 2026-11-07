@@ -21,6 +21,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onConnected(id: String, name: String, stableId: String)
         fun onDisconnected(id: String, stableId: String, name: String)
         fun onMessage(id: String, senderName: String, senderStableId: String, body: String)
+        /** Message IDs are preserved end-to-end so the chat layer can deduplicate and acknowledge delivery. */
+        fun onMessageWithId(id: String, senderName: String, senderStableId: String, messageId: String, body: String) {
+            onMessage(id, senderName, senderStableId, body)
+        }
+        fun onDeliveryAck(id: String, messageId: String) {}
         fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
@@ -178,7 +183,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 processCompletedFile(payloadId)
                 return
             }
+            val kind = envelope.optString("kind", "chat")
             val messageId = envelope.optString("id")
+            if (kind == "chat_ack") {
+                if (bytes == null || bytes.size > 1024 || messageId.isBlank() || messageId.length > 80) return
+                listener.onDeliveryAck(endpointId, messageId)
+                return
+            }
             val body = envelope.optString("body")
             val ttl = envelope.optInt("ttl", 0)
             val hops = envelope.optInt("hops", 0)
@@ -194,10 +205,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val senderDetails = synchronized(names) {
                 (names[endpointId] ?: "Nearby member") to stableIds[endpointId].orEmpty()
             }
-            listener.onMessage(endpointId, senderDetails.first, senderDetails.second, body)
+            listener.onMessageWithId(endpointId, senderDetails.first, senderDetails.second, messageId, body)
             if (relayEnabled && ttl > 0 && hops < 4) {
-                val forwarded = JSONObject().put("id", messageId).put("body", body)
-                    .put("ttl", ttl - 1).put("hops", envelope.optInt("hops", 0) + 1)
+                val forwarded = JSONObject().put("kind", kind).put("id", messageId).put("body", body)
+                    .put("ttl", ttl - 1).put("hops", hops + 1)
                     .put("origin", envelope.optString("origin", "nearby"))
                 broadcast(forwarded.toString(), endpointId)
             }
@@ -317,6 +328,31 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
      * Sends a private chat packet to exactly one approved endpoint.
      * Community broadcasts use send(); one-to-one conversations must never fan out.
      */
+    /** Send a private chat message with its original local ID. Delivery is confirmed separately by chat_ack. */
+    fun sendChatToEndpoint(endpointId: String, messageId: String, body: String): Boolean {
+        if (endpointId.isBlank() || messageId.isBlank() || messageId.length > 80 || body.isBlank() || body.length > 4000) return false
+        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return false
+        val envelope = JSONObject().put("kind", "chat").put("id", messageId).put("body", body)
+            .put("ttl", 0).put("hops", 0).put("origin", localName).toString()
+        return try {
+            client.sendPayload(endpointId, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener { listener.onStatus("Private message could not be delivered. Check the nearby connection.") }
+            true
+        } catch (_: Exception) { false }
+    }
+
+    /** Acknowledge only after the chat layer has saved the received message locally. */
+    fun sendDeliveryAck(endpointId: String, messageId: String): Boolean {
+        if (endpointId.isBlank() || messageId.isBlank() || messageId.length > 80) return false
+        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return false
+        val envelope = JSONObject().put("kind", "chat_ack").put("id", messageId).toString()
+        return try {
+            client.sendPayload(endpointId, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener { listener.onStatus("The message was saved, but its delivery receipt could not be returned yet.") }
+            true
+        } catch (_: Exception) { false }
+    }
+
     fun sendToEndpoint(endpointId: String, body: String): Boolean {
         if (endpointId.isBlank() || body.isBlank() || body.length > 4000) return false
         if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return false
