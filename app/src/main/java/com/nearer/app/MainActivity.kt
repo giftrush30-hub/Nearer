@@ -177,6 +177,8 @@ class MainActivity : ComponentActivity() {
     private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
     private var outgoingTransferId by mutableStateOf<String?>(null)
     private var outgoingProgress by mutableStateOf(0f)
+    private var outgoingTransferredBytes by mutableStateOf(0L)
+    private var outgoingTotalBytes by mutableStateOf(0L)
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
     private var incomingTransferredBytes by mutableStateOf(0L)
@@ -338,6 +340,8 @@ class MainActivity : ComponentActivity() {
                     } else {
                         outgoingTransferId = "nearby:$payloadId"
                         outgoingProgress = fraction
+                        outgoingTransferredBytes = transferred.coerceAtLeast(0L)
+                        outgoingTotalBytes = total.coerceAtLeast(0L)
                         chatNotice = if (total > 0L) "Sending $name • ${(fraction * 100).toInt()}%" else "Sending $name…"
                     }
                 }
@@ -363,6 +367,8 @@ class MainActivity : ComponentActivity() {
                         message.startsWith("File could not be prepared")) {
                         outgoingTransferId = null
                         outgoingProgress = 0f
+            outgoingTransferredBytes = 0L
+            outgoingTotalBytes = 0L
                     }
                     if (message.startsWith("Nearby file transfer failed") ||
                         message.startsWith("Nearby file transfer cancelled")) {
@@ -985,6 +991,8 @@ class MainActivity : ComponentActivity() {
             incomingProgress = 0f
             outgoingTransferId = null
             outgoingProgress = 0f
+            outgoingTransferredBytes = 0L
+            outgoingTotalBytes = 0L
             chatReady = false
         }
         if (Looper.myLooper() == Looper.getMainLooper()) resetUi() else runOnUiThread { resetUi() }
@@ -1633,6 +1641,8 @@ class MainActivity : ComponentActivity() {
             if (payloadId != null && endpoint != null) nearbyTransport?.cancelFile(payloadId)
             outgoingTransferId = null
             outgoingProgress = 0f
+            outgoingTransferredBytes = 0L
+            outgoingTotalBytes = 0L
             chatNotice = "File transfer cancelled."
             return
         }
@@ -1665,6 +1675,8 @@ class MainActivity : ComponentActivity() {
             if (payloadId != null) {
                 outgoingTransferId = "nearby:$payloadId"
                 outgoingProgress = 0f
+            outgoingTransferredBytes = 0L
+            outgoingTotalBytes = 0L
                 chatNotice = "Preparing to send $fileName over Nearby Connections…"
             }
             return
@@ -1677,6 +1689,8 @@ class MainActivity : ComponentActivity() {
         val transferId = UUID.randomUUID().toString()
         outgoingTransferId = transferId
         outgoingProgress = 0f
+            outgoingTransferredBytes = 0L
+            outgoingTotalBytes = 0L
         io.execute {
             var fileName = "shared-file"
             var fileSize = 0L
@@ -1688,6 +1702,10 @@ class MainActivity : ComponentActivity() {
                         if (nameIndex >= 0) fileName = cursor.getString(nameIndex) ?: fileName
                         if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) fileSize = cursor.getLong(sizeIndex)
                     }
+                }
+                runOnUiThread {
+                    outgoingTransferredBytes = 0L
+                    outgoingTotalBytes = fileSize.coerceAtLeast(0L)
                 }
                 val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("Cannot open selected file")
                 input.use { stream ->
@@ -1714,6 +1732,8 @@ class MainActivity : ComponentActivity() {
                             val progress = if (fileSize > 0L) " • ${(fraction * 100).toInt()}%" else " • ${sentBytes / 1024} KB"
                             runOnUiThread {
                                 outgoingProgress = fraction
+                                outgoingTransferredBytes = sentBytes
+                                outgoingTotalBytes = fileSize.coerceAtLeast(0L)
                                 chatNotice = "Sending $fileName$progress"
                             }
                         }
@@ -1730,6 +1750,8 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     outgoingTransferId = null
                     outgoingProgress = 0f
+            outgoingTransferredBytes = 0L
+            outgoingTotalBytes = 0L
                     chatNotice = if (e.message?.contains("cancel", ignoreCase = true) == true) {
                         "File transfer cancelled."
                     } else {
@@ -1895,6 +1917,8 @@ class MainActivity : ComponentActivity() {
                                 if (outgoingTransferId == transferId) {
                                     outgoingTransferId = null
                                     outgoingProgress = 0f
+            outgoingTransferredBytes = 0L
+            outgoingTotalBytes = 0L
                                 }
                                 chatNotice = if (ok) "File delivered and verified by the nearby phone." else "The other phone could not verify the file."
                             }
@@ -2903,6 +2927,11 @@ private fun NeaRerHome(
                                         }
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text("${(smoothOutgoingProgress * 100).toInt().coerceIn(0, 100)}% sent", color = Muted, fontSize = 9.sp)
+                                            Spacer(Modifier.weight(1f))
+                                            Text(
+                                                if (outgoingTotalBytes > 0L) "${formatTransferSize(outgoingTransferredBytes)} / ${formatTransferSize(outgoingTotalBytes)}" else "Sending data…",
+                                                color = Color(0xFFB9CBE2), fontSize = 9.sp
+                                            )
                                             Spacer(Modifier.weight(1f))
                                             TextButton(onClick = onCancelTransfer) {
                                                 Text("CANCEL", color = Color(0xFFFFA5AE), fontSize = 9.sp, fontWeight = FontWeight.Black)
