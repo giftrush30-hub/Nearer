@@ -1833,14 +1833,28 @@ class MainActivity : ComponentActivity() {
         try {
             val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
             val items = JSONArray(prefs.getString("nearby_file_queue", "[]") ?: "[]")
+            val inaccessible = mutableListOf<String>()
             for (i in 0 until items.length()) {
                 val raw = items.optString(i)
-                if (raw.isNotBlank()) pendingNearbyFileQueue.addLast(Uri.parse(raw))
+                if (raw.isBlank()) continue
+                val uri = Uri.parse(raw)
+                val readable = try {
+                    contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false
+                } catch (_: Exception) {
+                    false
+                }
+                if (readable) pendingNearbyFileQueue.addLast(uri) else inaccessible.add(uri.lastPathSegment ?: "selected file")
             }
-            nearbyQueueTotal = prefs.getInt("nearby_file_queue_total", pendingNearbyFileQueue.size)
-            nearbyQueueCompleted = prefs.getInt("nearby_file_queue_completed", 0)
+            nearbyQueueCompleted = prefs.getInt("nearby_file_queue_completed", 0).coerceAtLeast(0)
+            nearbyQueueTotal = prefs.getInt("nearby_file_queue_total", pendingNearbyFileQueue.size + nearbyQueueCompleted)
+                .coerceAtLeast(nearbyQueueCompleted + pendingNearbyFileQueue.size)
             nearbyQueuePeerStableId = prefs.getString("nearby_file_queue_peer", null)
-            if (pendingNearbyFileQueue.isNotEmpty()) {
+            if (inaccessible.isNotEmpty()) {
+                nearbyQueueTotal = nearbyQueueCompleted + pendingNearbyFileQueue.size
+                persistNearbyFileQueue()
+                chatNotice = inaccessible.size.toString() + " saved file(s) are no longer accessible. " +
+                    pendingNearbyFileQueue.size + " readable file(s) remain in the queue."
+            } else if (pendingNearbyFileQueue.isNotEmpty()) {
                 chatNotice = if (nearbyQueuePeerStableId.isNullOrBlank()) {
                     "An older saved transfer has no verified recipient. Cancel it and select the files again for safety."
                 } else {
