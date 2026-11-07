@@ -97,6 +97,7 @@ class FastShareHttpSocketTest {
         val response = exchange("GET /download HTTP/1.1\r\nRange: bytes=99-120\r\n\r\n")
         assertTrue(response.startsWith("HTTP/1.1 416 Range Not Satisfiable\r\n"))
         assertTrue(response.contains("Content-Length: 0\r\n"))
+        assertTrue(response.contains("Accept-Ranges: bytes\r\n"))
         assertTrue(response.contains("Content-Range: bytes */10\r\n"))
         assertTrue(response.endsWith("\r\n\r\n"))
     }
