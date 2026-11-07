@@ -233,7 +233,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
 
     private fun handleBytes(endpointId: String, bytes: ByteArray?) {
         try {
-            val envelope = JSONObject(bytes?.toString(Charsets.UTF_8).orEmpty())
+            val frame = bytes ?: return
+            if (frame.isEmpty() || frame.size > NearbyControlFramePolicy.MAX_BYTES) {
+                listener.onStatus("A nearby phone sent an oversized or empty control packet. It was ignored.")
+                return
+            }
+            val envelope = JSONObject(frame.toString(Charsets.UTF_8))
             if (envelope.optString("kind") == "file_meta") {
                 val payloadId = envelope.optLong("payloadId", -1L)
                 val name = safeFileName(envelope.optString("name", "shared-file"))

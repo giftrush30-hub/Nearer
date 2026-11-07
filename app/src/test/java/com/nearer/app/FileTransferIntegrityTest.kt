@@ -55,4 +55,15 @@ class FileTransferIntegrityTest {
         }
     }
 
+    @Test fun rejectsTransfersThatExceedAvailableStorageWithoutApplyingAnArbitraryFileLimit() {
+        FileTransferIntegrity.requireAvailableSpace(1024L, 1024L)
+        FileTransferIntegrity.requireAvailableSpace(5L * 1024L * 1024L * 1024L, 6L * 1024L * 1024L * 1024L)
+        try {
+            FileTransferIntegrity.requireAvailableSpace(1025L, 1024L)
+            fail("Expected insufficient-storage rejection")
+        } catch (expected: java.io.IOException) {
+            assertTrue(expected.message!!.contains("storage"))
+        }
+    }
+
 }

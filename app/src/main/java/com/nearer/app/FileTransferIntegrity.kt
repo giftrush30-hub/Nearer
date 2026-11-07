@@ -6,6 +6,13 @@ import java.util.UUID
 
 /** Writes to a private partial file and publishes it only after size and optional SHA-256 checks pass. */
 internal object FileTransferIntegrity {
+    fun requireAvailableSpace(expectedSize: Long, availableBytes: Long) {
+        require(expectedSize >= 0L) { "Invalid expected file size" }
+        if (availableBytes < 0L || expectedSize > availableBytes) {
+            throw java.io.IOException("Not enough free storage to receive this file")
+        }
+    }
+
     fun copyAndVerify(
         input: java.io.InputStream,
         directory: File,
@@ -19,6 +26,7 @@ internal object FileTransferIntegrity {
             "Invalid file checksum metadata"
         }
         if (!directory.exists() && !directory.mkdirs()) throw java.io.IOException("Could not create received-files directory")
+        requireAvailableSpace(expectedSize, directory.usableSpace)
         val safeName = displayName.substringAfterLast('/').substringAfterLast('\\')
             .replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100).ifBlank { "shared-file" }
         val target = File(directory, "${System.currentTimeMillis()}-${UUID.randomUUID().toString().take(8)}-$safeName")
