@@ -2511,7 +2511,9 @@ class MainActivity : ComponentActivity() {
 
     private fun sendLudoRoomPacket(peerName: String, type: String, roomId: String, body: String = ""): Boolean {
         val encoded = LudoRoomProtocol.encode(type, roomId, body) ?: return false
-        return nearbyTransport?.sendToNames("NR_LUDO:" + encoded, setOf(peerName)) == true
+        if (!hybridConnected || connectedDeviceName != peerName) return false
+        val endpoint = hybridConnectedEndpoint ?: return false
+        return nearbyTransport?.sendToEndpoint(endpoint, "NR_LUDO:" + encoded) == true
     }
 
     private fun inviteLudoPeer() {
@@ -2525,10 +2527,14 @@ class MainActivity : ComponentActivity() {
             return
         }
         val roomId = UUID.randomUUID().toString()
+        ludoRoomPeerStableId = connectedChatPeerId.orEmpty()
+        if (ludoRoomPeerStableId.isBlank()) {
+            ludoRoomStatus = "The nearby connection has no verified device identity. Reconnect and try again."
+            return
+        }
         if (sendLudoRoomPacket(peer, "invite", roomId, displayName)) {
             ludoRoomId = roomId
             ludoRoomPeerName = peer
-            ludoRoomPeerStableId = ""
             ludoRoomReady = false
             ludoRoomStatus = "Invitation sent to " + peer + ". Waiting for acceptance…"
             ludoRoomMessages.clear()
@@ -2539,6 +2545,10 @@ class MainActivity : ComponentActivity() {
 
     private fun acceptLudoInvite() {
         val invite = incomingLudoInvite ?: return
+        if (invite.senderStableId != connectedChatPeerId) {
+            ludoRoomStatus = "Reconnect to the same player who sent this invitation before accepting."
+            return
+        }
         if (!sendLudoRoomPacket(invite.senderName, "accept", invite.roomId, displayName)) {
             ludoRoomStatus = "Could not accept. Reconnect to " + invite.senderName + " and try again."
             return
@@ -2553,6 +2563,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun declineLudoInvite() {
+        val invite = incomingLudoInvite
+        if (invite != null && invite.senderStableId == connectedChatPeerId) {
+            sendLudoRoomPacket(invite.senderName, "decline", invite.roomId, displayName)
+        }
         incomingLudoInvite = null
         ludoRoomStatus = "Invitation declined."
     }
@@ -2608,6 +2622,16 @@ class MainActivity : ComponentActivity() {
                     ludoRoomPeerStableId == senderStableId) {
                     ludoRoomMessages.add(sender + ": " + packet.body)
                     while (ludoRoomMessages.size > 40) ludoRoomMessages.removeAt(0)
+                }
+            }
+            "decline" -> {
+                if (packet.roomId == ludoRoomId && ludoRoomPeerName == sender &&
+                    ludoRoomPeerStableId == senderStableId && !ludoRoomReady) {
+                    ludoRoomId = null
+                    ludoRoomPeerName = null
+                    ludoRoomPeerStableId = ""
+                    ludoRoomReady = false
+                    ludoRoomStatus = sender + " declined the Ludo invitation."
                 }
             }
             "leave" -> {
