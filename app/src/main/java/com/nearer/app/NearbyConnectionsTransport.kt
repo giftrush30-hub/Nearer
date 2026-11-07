@@ -343,7 +343,6 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         incomingPayloads.remove(payloadId)
         incomingMetadata.remove(payloadId)
         incomingPeerIds.remove(payloadId)
-        incomingPeerIds.remove(payloadId)
         fileIo.execute {
             var destination: File? = null
             try {
