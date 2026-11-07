@@ -2731,6 +2731,17 @@ private fun NeaRerHome(
     var flashTrustedNumber by remember { mutableStateOf("") }
     var flashTrustedName by remember { mutableStateOf("") }
     var flashTrustedCount by remember { mutableStateOf(FlashTrustedSenders.trustedCount(flashContext)) }
+    var flashContactsPermission by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(flashContext, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED)
+    }
+    val flashContactsPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        flashContactsPermission = granted
+        flashSenderNotice = if (granted) {
+            "Saved-contact Flash access enabled. NeaRer can now receive screening events for paired numbers saved in your contacts."
+        } else {
+            "Contacts access was declined. Flash can still work with paired numbers that are not saved in your contacts."
+        }
+    }
     val flashPresets = remember { FlashSignalPattern.presets() }
     val selectedFlashPreset = flashPresets.firstOrNull { it.name == flashPresetName } ?: flashPresets.first()
     val flashCallCount = selectedFlashPreset.gapsMillis.size + 1
@@ -4108,6 +4119,39 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)
                         ) { Text(if (flashRoleReady) "CALL SCREENING ENABLED" else "ENABLE FLASH ON THIS PHONE", fontWeight = FontWeight.Black) }
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF0A203D),
+                            shape = RoundedCornerShape(13.dp),
+                            border = BorderStroke(1.dp, if (flashContactsPermission) Color(0xFF34765C) else Color(0xFF31527A))
+                        ) {
+                            Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Text(
+                                    if (flashContactsPermission) "SAVED-CONTACT FLASH • ENABLED" else "FLASH FROM SAVED CONTACTS",
+                                    color = if (flashContactsPermission) Color(0xFF8CE4B2) else Gold,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                                Text(
+                                    if (flashContactsPermission) {
+                                        "Android can now pass incoming calls from saved contacts to NeaRer Flash. NeaRer does not read or upload your address book."
+                                    } else {
+                                        "Android normally hides calls from numbers saved in your contacts from call-screening apps. You can grant Contacts permission to allow Flash to recognise paired contacts. NeaRer does not read or upload your address book."
+                                    },
+                                    color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                                )
+                                if (!flashContactsPermission) {
+                                    Button(
+                                        onClick = { flashContactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B416C), contentColor = White)
+                                    ) {
+                                        Text("ALLOW FLASH FROM SAVED CONTACTS", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
 
                         Text("TRUSTED SENDERS • $flashTrustedCount PAIRED", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                         OutlinedTextField(
