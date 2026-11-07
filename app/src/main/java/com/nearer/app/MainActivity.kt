@@ -196,6 +196,12 @@ class MainActivity : ComponentActivity() {
     private fun updateTransferRate(incoming: Boolean, bytes: Long) {
         val now = android.os.SystemClock.elapsedRealtime()
         if (incoming) {
+            if (incomingRateSampleAt > 0L && bytes < incomingRateSampleBytes) {
+                incomingSpeedBytesPerSecond = 0L
+                incomingRateSampleAt = now
+                incomingRateSampleBytes = bytes
+                return
+            }
             val elapsed = now - incomingRateSampleAt
             if (incomingRateSampleAt > 0L && elapsed >= 700L && bytes >= incomingRateSampleBytes) {
                 val rate = ((bytes - incomingRateSampleBytes) * 1000L / elapsed).coerceAtLeast(0L)
@@ -203,6 +209,12 @@ class MainActivity : ComponentActivity() {
                 incomingRateSampleAt = now; incomingRateSampleBytes = bytes
             } else if (incomingRateSampleAt == 0L) { incomingRateSampleAt = now; incomingRateSampleBytes = bytes }
         } else {
+            if (outgoingRateSampleAt > 0L && bytes < outgoingRateSampleBytes) {
+                outgoingSpeedBytesPerSecond = 0L
+                outgoingRateSampleAt = now
+                outgoingRateSampleBytes = bytes
+                return
+            }
             val elapsed = now - outgoingRateSampleAt
             if (outgoingRateSampleAt > 0L && elapsed >= 700L && bytes >= outgoingRateSampleBytes) {
                 val rate = ((bytes - outgoingRateSampleBytes) * 1000L / elapsed).coerceAtLeast(0L)
@@ -2921,8 +2933,7 @@ private fun NeaRerHome(
                                             Text("${(smoothIncomingProgress * 100).toInt().coerceIn(0, 100)}% received", color = Muted, fontSize = 9.sp)
                                             Spacer(Modifier.weight(1f))
                                             Text(
-                                                transferProgressDetail(incomingTransferredBytes, incomingTotalBytes, incomingSpeedBytesPerSecond)
-                                                else "Receiving data…",
+                                                transferProgressDetail(incomingTransferredBytes, incomingTotalBytes, incomingSpeedBytesPerSecond),
                                                 color = Color(0xFFB9CBE2),
                                                 fontSize = 9.sp
                                             )
@@ -2966,7 +2977,7 @@ private fun NeaRerHome(
                                             Text("${(smoothOutgoingProgress * 100).toInt().coerceIn(0, 100)}% sent", color = Muted, fontSize = 9.sp)
                                             Spacer(Modifier.weight(1f))
                                             Text(
-                                                transferProgressDetail(outgoingTransferredBytes, outgoingTotalBytes, outgoingSpeedBytesPerSecond) else "Sending data…",
+                                                transferProgressDetail(outgoingTransferredBytes, outgoingTotalBytes, outgoingSpeedBytesPerSecond),
                                                 color = Color(0xFFB9CBE2), fontSize = 9.sp
                                             )
                                             Spacer(Modifier.weight(1f))
