@@ -2,6 +2,7 @@ package com.nearer.app
 
 import android.Manifest
 import android.content.BroadcastReceiver
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -1985,10 +1986,13 @@ private fun NeaRerHome(
                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                     type = context.contentResolver.getType(uri) ?: "*/*"
                     putExtra(Intent.EXTRA_STREAM, uri)
+                    clipData = ClipData.newUri(context.contentResolver, "File to share", uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 context.startActivity(Intent.createChooser(shareIntent, "Send file to another phone"))
-            } catch (_: Exception) { }
+            } catch (_: Exception) {
+                android.widget.Toast.makeText(context, "Could not open sharing. Please try again.", android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
@@ -2398,6 +2402,7 @@ private fun NeaRerHome(
                                     val apkIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "application/vnd.android.package-archive"
                                         putExtra(Intent.EXTRA_STREAM, apkUri)
+                                        clipData = ClipData.newUri(context.contentResolver, "NeaRer APK", apkUri)
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
                                     context.startActivity(Intent.createChooser(apkIntent, "Share NeaRer APK"))
