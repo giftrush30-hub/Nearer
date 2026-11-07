@@ -37,7 +37,7 @@ object SplitApkInstaller {
                     while (true) {
                         val entry = zip.nextEntry ?: break
                         if (!entry.isDirectory && entry.name.endsWith(".apk", ignoreCase = true)) {
-                            require('/' !in entry.name && '\\\\' !in entry.name && entry.name.isNotBlank()) {
+                            require('/' !in entry.name && '\\' !in entry.name && entry.name.isNotBlank()) {
                                 "The app package contains an unsafe APK entry name."
                             }
                             require(names.add(entry.name)) { "The app package contains duplicate APK parts." }
