@@ -2959,7 +2959,7 @@ private fun NeaRerHome(
     if (showPhoneFolderBrowser && phoneFolderTreeUri != null) {
         PhoneFolderBrowser(
             treeUri = phoneFolderTreeUri!!,
-            onSelectFile = { uri -> onSendFile(uri) },
+            onSelectFiles = { uris -> uris.forEach(onSendFile) },
             onClose = { showPhoneFolderBrowser = false }
         )
     }
