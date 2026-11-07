@@ -20,7 +20,6 @@ class NeaRerFlashScreeningService : CallScreeningService() {
             CallResponse.Builder()
                 .setDisallowCall(false)
                 .setRejectCall(false)
-                .setSilenceCall(false)
                 .build()
         )
 
