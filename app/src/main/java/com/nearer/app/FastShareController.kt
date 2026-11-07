@@ -72,9 +72,10 @@ class FastShareController(private val context: Context) {
                             } else -1L
                         } ?: -1L
                     }
-                    val httpServer = FastShareHttpServer(context, selectedUri, name, mime, length) { sent, total, complete ->
+                    val httpServer = FastShareHttpServer(context, selectedUri, name, mime, length) { sent, total, complete, interrupted ->
                         Handler(Looper.getMainLooper()).post {
                             status = when {
+                                interrupted -> "Download interrupted. Keep both phones connected and retry the download."
                                 complete -> "Download completed successfully."
                                 total >= 0L -> "Sending ${formatProgressSize(sent)} of ${formatProgressSize(total)}…"
                                 else -> "Sending ${formatProgressSize(sent)}…"
@@ -162,7 +163,7 @@ private class FastShareHttpServer(
     private val fileName: String,
     private val mimeType: String,
     private val fileLength: Long,
-    private val onTransferUpdate: (sentBytes: Long, totalBytes: Long, complete: Boolean) -> Unit
+    private val onTransferUpdate: (sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean) -> Unit
 ) {
     private val executor = Executors.newCachedThreadPool()
     @Volatile private var running = true
@@ -277,9 +278,10 @@ private class FastShareHttpServer(
                     }
                 }
                 output.flush()
-                onTransferUpdate(sent, count, sent == count)
+                val completed = sent == count && running
+                onTransferUpdate(sent, count, completed, !completed)
             } catch (error: Exception) {
-                onTransferUpdate(sent, count, false)
+                onTransferUpdate(sent, count, false, true)
                 throw error
             }
         } ?: throw IllegalStateException("Cannot read the selected file")
