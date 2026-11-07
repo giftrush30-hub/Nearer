@@ -56,7 +56,6 @@ class OpenSendHotspot(context: Context) : Closeable {
                     ERROR_NO_CHANNEL -> "Wi-Fi is busy. Close other hotspot or Wi-Fi Direct sessions and try again."
                     ERROR_GENERIC -> "Android could not start the temporary sharing hotspot."
                     ERROR_INCOMPATIBLE_MODE -> "This phone is using an incompatible Wi-Fi mode. Turn off its existing hotspot and try again."
-                    ERROR_TETHERING_DISALLOWED -> "This phone or its administrator does not allow a local sharing hotspot."
                     else -> "Could not start the sharing hotspot (Android error $reason)."
                 })
             }
