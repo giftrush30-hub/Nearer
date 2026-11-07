@@ -73,6 +73,7 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                 .takeLast(3)
             val updated = (previous + now).takeLast(4)
             val signal = FlashSignalPattern.decode(updated)
+            var eventQueueSaved = false
 
             if (signal == null) {
                 queue.put(
@@ -88,7 +89,7 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                 prefs.edit()
                     .putString(key, updated.joinToString(","))
                     .putString(PENDING_EVENTS, queue.toString())
-                    .commit()
+                    .commit().also { eventQueueSaved = it }
             } else {
                 // The calls in a recognised pattern are one message, not several
                 // generic call bubbles plus a decoded preset bubble. Tell the chat
@@ -125,10 +126,13 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                     .putLong(LAST_SIGNAL_AT, receivedAt)
                     .putString(LAST_SIGNAL_FROM, senderKey)
                     .putString(PENDING_EVENTS, queue.toString())
-                    .commit()
+                    .commit().also { eventQueueSaved = it }
             }
 
-            // Wake an open NeaRer chat after the queue has been updated.
+            // Never announce an event that failed to reach durable storage.
+            if (!eventQueueSaved) return
+
+            // Wake an open NeaRer chat only after the queue has been committed.
             sendBroadcast(Intent(ACTION_FLASH_MESSAGE_RECEIVED).setPackage(packageName))
         } catch (_: Exception) {
             // Flash is best-effort only; it must never interfere with ordinary calls.
