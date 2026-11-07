@@ -6,6 +6,7 @@ import java.io.Closeable
 import java.io.File
 import java.io.RandomAccessFile
 import java.net.NetworkInterface
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
@@ -41,7 +42,8 @@ data class OpenSendServerInfo(
  */
 class OpenSendHttpServer(
     files: List<OpenSendFile>,
-    private val accessToken: String = createToken()
+    private val accessToken: String = createToken(),
+    private val bindAddress: InetAddress? = null
 ) : Closeable {
     private val sharedFiles = files.associateBy { it.id }
     private val running = AtomicBoolean(false)
@@ -59,7 +61,7 @@ class OpenSendHttpServer(
     @Synchronized
     fun start(): OpenSendServerInfo {
         check(!running.get()) { "OpenSend is already running." }
-        val server = ServerSocket(0, 16)
+        val server = ServerSocket(0, 16, bindAddress)
         listener = server
         running.set(true)
         acceptThread = Thread({
