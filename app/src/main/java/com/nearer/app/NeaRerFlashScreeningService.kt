@@ -80,6 +80,8 @@ class NeaRerFlashScreeningService : CallScreeningService() {
         const val LAST_SIGNAL = "last_signal"
         const val LAST_SIGNAL_AT = "last_signal_at"
         const val LAST_SIGNAL_FROM = "last_signal_from"
+        const val PENDING_EVENTS = "pending_events"
+        private const val MAX_PENDING_EVENTS = 100
         private const val EVENTS_PREFIX = "events_"
         private const val MAX_SEQUENCE_AGE_MS = 12_000L
     }
