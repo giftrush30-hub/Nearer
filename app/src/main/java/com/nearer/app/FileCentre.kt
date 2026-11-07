@@ -324,7 +324,7 @@ internal fun FileCentreScreen(
             FileCentreCategory.entries.forEach { entry ->
                 FilterChip(
                     selected = category == entry,
-                    onClick = { category = entry; selected.clear() },
+                    onClick = { category = entry },
                     label = { Text(entry.label, fontSize = 10.sp) }
                 )
             }
