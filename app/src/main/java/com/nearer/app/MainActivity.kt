@@ -4061,6 +4061,48 @@ private fun NeaRerHome(
                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp))
                         }
                     }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            color = Color(0xFF173A67),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFF315F96))
+                        ) {
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
+                                Text("DIRECT LINK", color = Muted, fontSize = 7.sp, fontWeight = FontWeight.Black)
+                                Text(
+                                    if (!chatReady) "Waiting" else if (usingNearbyConnections) "Bluetooth + Wi-Fi" else "Wi-Fi Direct",
+                                    color = White, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1
+                                )
+                            }
+                        }
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            color = if (meshRelayEnabled) Color(0xFF214B45) else Color(0xFF25364D),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, if (meshRelayEnabled) Color(0xFF398A70) else Color(0xFF3A526E))
+                        ) {
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
+                                Text("MESH RELAY", color = Muted, fontSize = 7.sp, fontWeight = FontWeight.Black)
+                                Text(if (meshRelayEnabled) "ON • Communities" else "OFF", color = White, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                        }
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            color = Color(0xFF493C27),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFF80652E))
+                        ) {
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
+                                Text("NEARER FLASH", color = Muted, fontSize = 7.sp, fontWeight = FontWeight.Black)
+                                Text("Experimental", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                        }
+                    }
+                    Text(
+                        "Private chat uses the active direct link. Addressed mesh delivery and Flash call-signal decoding are being integrated separately; neither is shown as delivered until it is verified.",
+                        color = Muted, fontSize = 9.sp, lineHeight = 13.sp
+                    )
                     if (chatReady) {
                         if (messages.isEmpty()) {
                             Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
