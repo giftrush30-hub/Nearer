@@ -115,6 +115,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 if (entry.value.first == id && outgoingFiles.remove(entry.key, entry.value)) {
                     interruptedFiles += 1
                     try { client.cancelPayload(entry.key) } catch (_: Exception) { }
+                    outgoingPayloads.remove(entry.key)?.let { try { it.close() } catch (_: Exception) { } }
                 }
             }
             val interruptedIncoming = incomingPayloadEndpoints.entries
@@ -190,6 +191,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 }
             } else {
                 outgoingFiles.remove(payloadId)
+                outgoingPayloads.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
                 incomingMetadata.remove(payloadId)
                 incomingPayloads.remove(payloadId)?.close()
                 completedPayloads.remove(payloadId)?.close()
@@ -232,6 +234,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val pending = outgoingFiles[payloadId] ?: return
                 if (payloadId < 0L || pending.first != endpointId) return
                 if (outgoingFiles.remove(payloadId, pending)) {
+                    outgoingPayloads.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
                     listener.onFileStatus("File sent to the nearby phone: ${pending.second}")
                 }
                 return
@@ -577,6 +580,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     fun cancelFile(payloadId: Long) {
         try { client.cancelPayload(payloadId) } catch (_: Exception) { }
         outgoingFiles.remove(payloadId)
+        outgoingPayloads.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
     }
 
     private fun broadcast(content: String, excludeEndpoint: String?): Boolean {
@@ -614,12 +618,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         successfulIncomingPayloadIds.clear()
         outgoingFiles.keys.forEach { payloadId ->
             try { client.cancelPayload(payloadId) } catch (_: Exception) { }
+            outgoingPayloads.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
         }
         outgoingFiles.clear()
+        outgoingPayloads.values.forEach { try { it.close() } catch (_: Exception) { } }
+        outgoingPayloads.clear()
     }
     fun stop() {
         stopSearching()
         disconnect()
+        fileHashIo.shutdownNow()
         fileIo.shutdownNow()
     }
 
