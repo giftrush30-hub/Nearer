@@ -9,7 +9,6 @@ import android.os.Handler
 import android.os.Looper
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
-import java.io.InputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.ServerSocket
