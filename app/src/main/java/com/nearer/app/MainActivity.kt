@@ -1685,6 +1685,7 @@ class MainActivity : ComponentActivity() {
             nearbyQueueTotal = 0
             nearbyQueueCompleted = 0
             currentNearbyQueuedFile = null
+            nearbyQueuePeerStableId = null
             persistNearbyFileQueue()
             if (total > 0) chatNotice = "Transfer job finished: " + completed + " of " + total + " files sent."
             return
