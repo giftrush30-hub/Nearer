@@ -2950,8 +2950,18 @@ private fun NeaRerHome(
         }
     }
     val openPhoneFolderBrowser = {
-        if (phoneFolderTreeUri != null) showPhoneFolderBrowser = true
-        else phoneFolderPicker.launch(null)
+        val savedGrantIsValid = phoneFolderTreeUri != null &&
+            flashContext.contentResolver.persistedUriPermissions.any {
+                it.uri == phoneFolderTreeUri && it.isReadPermission
+            }
+        if (savedGrantIsValid) {
+            showPhoneFolderBrowser = true
+        } else {
+            phoneFolderTreeUri = null
+            flashContext.getSharedPreferences("nearer_folder_browser", Context.MODE_PRIVATE)
+                .edit().remove("tree_uri").apply()
+            phoneFolderPicker.launch(null)
+        }
     }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         uris.forEach(onSendFile)
