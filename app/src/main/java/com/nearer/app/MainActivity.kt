@@ -3999,9 +3999,9 @@ private fun NeaRerHome(
                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.55f))
                 ) {
                     Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
-                        Text("OFFLINE SIGNALS • EXPERIMENTAL", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
-                        Text("Send a short message without mobile data", color = White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                        Text("NeaRer Flash uses carefully timed ordinary calls as simple signals. It does not carry chat text, photos or files, and your mobile network may charge for calls.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        Text("NEARER FLASH • CALL-TO-CHAT", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
+                        Text("A quick call. A message in your chat.", color = White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Send a short Flash call pattern and NeaRer turns the recognised signal into a normal message bubble on the other phone. No SMS and no mobile data are used for the Flash signal. Calls use your carrier network, so any call charges depend on your plan.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         Surface(color = Color(0xFF0A203D), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("CHOOSE A SIGNAL", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -4032,7 +4032,7 @@ private fun NeaRerHome(
                                         (selectedFlashPreset.gapsMillis.joinToString(" → ") { "${it / 1000.0}s" }.ifBlank { "one call" }),
                                     color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
                                 )
-                                Text("Both phones must use the same preset meanings. The receiver recognises call-arrival timing; it cannot verify whether a call was later answered or missed.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                                Text("Choose the same signal on both phones. The receiver recognises the timing of incoming calls and displays the matching words as a chat message. It does not depend on SMS or internet data.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                             }
                         }
                         Text("SEND A FLASH SIGNAL", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
