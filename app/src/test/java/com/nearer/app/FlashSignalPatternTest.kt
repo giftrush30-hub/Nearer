@@ -39,7 +39,7 @@ class FlashSignalPatternTest {
         assertNull(FlashSignalPattern.decode(listOf(1_000L, 8_000L)))
         assertNull(FlashSignalPattern.decode(listOf(2_000L, 1_000L)))
         assertNull(FlashSignalPattern.decode(listOf(1_000L, 6_000L, 11_000L)))
-        assertNull(FlashSignalPattern.decode(listOf(1_000L, 6_000L, 18_000L), 0L))
+        assertNull(FlashSignalPattern.decode(listOf(1_000L, 6_000L, 17_999L), 0L))
         assertNull(FlashSignalPattern.decode(listOf(1_000L, 1_000L)))
     }
 
