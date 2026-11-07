@@ -3,9 +3,9 @@ package com.nearer.app
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class StreamCopyTest {
@@ -29,19 +29,21 @@ class StreamCopyTest {
     }
 
     @Test fun stoppedTransferIsReportedAsIncomplete() {
+        val source = ByteArray(2 * 1024 * 1024) { (it % 251).toByte() }
         val output = ByteArrayOutputStream()
         var keepGoing = true
 
         val result = StreamCopy.copy(
-            input = ByteArrayInputStream(byteArrayOf(1, 2, 3, 4, 5)),
+            input = ByteArrayInputStream(source),
             output = output,
-            expectedBytes = 5,
+            expectedBytes = source.size.toLong(),
             shouldContinue = { keepGoing },
             onProgress = { keepGoing = false }
         )
 
-        assertEquals(StreamCopyResult(5, false), result)
-        assertArrayEquals(byteArrayOf(1, 2, 3, 4, 5), output.toByteArray())
+        assertFalse(result.complete)
+        assertTrue(result.bytesCopied in 1 until source.size.toLong())
+        assertEquals(result.bytesCopied.toInt(), output.size())
     }
 
     @Test fun zeroByteFileCompletesWithoutWritingData() {
