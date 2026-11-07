@@ -26,6 +26,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             onMessage(id, senderName, senderStableId, body)
         }
         fun onDeliveryAck(id: String, messageId: String) {}
+        fun onMessageSendFailed(messageId: String) {}
         fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
@@ -336,7 +337,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             .put("ttl", 0).put("hops", 0).put("origin", localName).toString()
         return try {
             client.sendPayload(endpointId, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
-                .addOnFailureListener { listener.onStatus("Private message could not be delivered. Check the nearby connection.") }
+                .addOnFailureListener {
+                    listener.onMessageSendFailed(messageId)
+                    listener.onStatus("Private message could not be delivered. Check the nearby connection.")
+                }
             true
         } catch (_: Exception) { false }
     }
