@@ -1648,10 +1648,18 @@ class MainActivity : ComponentActivity() {
 
     private fun flushPendingChatFiles() {
         if (!chatReady || outgoingTransferId != null || pendingChatFileUris.isEmpty()) return
-        val next = pendingChatFileUris.removeAt(0)
-        persistPendingChatFiles()
-        try { sendFile(Uri.parse(next)) } catch (_: Exception) {
-            chatNotice = "A queued attachment could not be opened. Please select it again."
+        // Keep the item durably queued until sendFile has actually acquired a
+        // transfer slot. A missing URI or a connection race must never silently
+        // discard a prepared attachment.
+        val next = pendingChatFileUris.first()
+        try {
+            sendFile(Uri.parse(next))
+            if (outgoingTransferId != null) {
+                pendingChatFileUris.remove(next)
+                persistPendingChatFiles()
+            }
+        } catch (_: Exception) {
+            chatNotice = "This prepared attachment could not be opened. It remains in your queue; choose it again if Android revoked access."
         }
     }
 
