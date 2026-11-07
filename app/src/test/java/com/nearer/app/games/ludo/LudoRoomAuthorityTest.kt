@@ -43,7 +43,10 @@ class LudoRoomAuthorityTest {
         )
         assertNotNull(updated)
         assertEquals(1L, updated!!.sequence)
-        assertEquals("peer-host", updated.game.game.activePlayer.id)
+        // If the deterministic roll has no legal move, the rules correctly pass
+        // the turn to the guest. Otherwise the host remains active to spend the dice.
+        val expectedActivePeer = if (updated.game.turn != null) "peer-host" else "peer-guest"
+        assertEquals(expectedActivePeer, updated.game.game.activePlayer.id)
     }
 
     @Test fun actionFromGuestIsAllowedOnlyWhenGuestOwnsTurn() {
