@@ -1979,6 +1979,19 @@ private fun NeaRerHome(
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
     }
+    // Native Android sharing allows Bluetooth/Quick Share recipients without NeaRer.
+    val anyPhonePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try {
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = context.contentResolver.getType(uri) ?: "*/*"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(shareIntent, "Send file to another phone"))
+            } catch (_: Exception) { }
+        }
+    }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -2044,6 +2057,13 @@ private fun NeaRerHome(
                             else "First, find and connect to the other NeaRer phone. Then choose a file and send it.",
                             color = Muted, fontSize = 11.sp, lineHeight = 16.sp
                         )
+                        Button(
+                            onClick = { anyPhonePicker.launch(arrayOf("*/*")) },
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)
+                        ) { Text("Send to any phone • no NeaRer needed", fontWeight = FontWeight.Bold) }
+                        Text("Choose a file, then select Bluetooth or Quick Share. The receiving phone does not need NeaRer.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                     }
                 }
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
@@ -2371,17 +2391,39 @@ private fun NeaRerHome(
                         Text("Your nearby identity and direct connections stay on this phone. NeaRer’s core nearby chat and file sharing are designed to work without mobile data.", color = Muted, fontSize = 13.sp, lineHeight = 20.sp)
                         Button(
                             onClick = {
+                                try {
+                                    val shareFolder = java.io.File(context.cacheDir, "nearer-share").apply { mkdirs() }
+                                    val apkCopy = java.io.File(shareFolder, "NeaRer.apk")
+                                    java.io.File(context.applicationInfo.sourceDir).copyTo(apkCopy, overwrite = true)
+                                    val apkUri = FileProvider.getUriForFile(context, "${context.packageName}.files", apkCopy)
+                                    val apkIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "application/vnd.android.package-archive"
+                                        putExtra(Intent.EXTRA_STREAM, apkUri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(apkIntent, "Share NeaRer APK"))
+                                } catch (_: Exception) {
+                                    android.widget.Toast.makeText(context, "Could not prepare the NeaRer APK to share.", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                        ) { Text("Share NeaRer APK", fontWeight = FontWeight.Bold) }
+                        Text("Send the installed NeaRer app file using Bluetooth, Quick Share or another sharing app. The other phone can install it.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        Button(
+                            onClick = {
                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_SUBJECT, "Try NeaRer")
                                     putExtra(Intent.EXTRA_TEXT, "Let's connect with NeaRer — chat and share files nearby without mobile data. Get the project here: https://github.com/giftrush30-hub/Nearer")
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, "Share NeaRer"))
+                                context.startActivity(Intent.createChooser(shareIntent, "Share NeaRer link"))
                             },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
-                        ) { Text("Share NeaRer", fontWeight = FontWeight.Bold) }
+                        ) { Text("Share NeaRer link", fontWeight = FontWeight.Bold) }
                     }
                 }
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
