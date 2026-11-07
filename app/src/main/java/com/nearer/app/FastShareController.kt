@@ -9,7 +9,6 @@ import android.os.Handler
 import android.os.Looper
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
-import java.io.InputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.ServerSocket
@@ -294,7 +293,7 @@ private class FastShareHttpServer(
         }
         if (stream != null) {
             try {
-                skipFully(stream, start)
+                StreamRangeCopy.skipFully(stream, start)
             } catch (_: Exception) {
                 stream.close()
                 writeFileUnavailable(output)
@@ -380,16 +379,6 @@ private class FastShareHttpServer(
         output.write("HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
         output.write(body)
         output.flush()
-    }
-
-    private fun skipFully(stream: InputStream, count: Long) {
-        var remaining = count
-        while (remaining > 0) {
-            val skipped = stream.skip(remaining)
-            if (skipped > 0) remaining -= skipped
-            else if (stream.read() < 0) throw IllegalStateException("Cannot seek to requested file section")
-            else remaining--
-        }
     }
 
     private fun formatFileSize(bytes: Long): String {
