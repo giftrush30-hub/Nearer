@@ -217,7 +217,7 @@ internal object AndroidFileCatalog {
             FileCentreCategory.DOWNLOADS -> "DOWNLOAD"
             FileCentreCategory.OTHER -> "FILE"
         }
-    }}
+}
 
 @Composable
 internal fun FileCentreScreen(
