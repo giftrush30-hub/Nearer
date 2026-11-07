@@ -77,7 +77,7 @@ class FastShareController(private val context: Context) {
                     var lastProgressAt = 0L
                     var lastProgressBytes = 0L
                     var bytesPerSecond = 0.0
-                    val httpServer = FastShareHttpServer(context, selectedUri, name, mime, length) { sent, total, complete, interrupted ->
+                    val httpServer = FastShareHttpServer(context, selectedUri, name, mime, length) { sent, total, complete, interrupted, partialResponse ->
                         val now = android.os.SystemClock.elapsedRealtime()
                         if (transferStartedAt == 0L || sent < lastProgressBytes) {
                             transferStartedAt = now
@@ -96,6 +96,7 @@ class FastShareController(private val context: Context) {
                         Handler(Looper.getMainLooper()).post {
                             status = when {
                                 interrupted -> "Download interrupted at ${formatProgressSize(sent)}. Keep both phones connected and retry."
+                                complete && partialResponse -> "Download section sent · ${formatProgressSize(sent)}"
                                 complete -> "Transfer completed · average $averageSpeed/s"
                                 total >= 0L -> "Sending ${formatProgressSize(sent)} of ${formatProgressSize(total)}$speedLabel…"
                                 else -> "Sending ${formatProgressSize(sent)}$speedLabel…"
@@ -189,7 +190,7 @@ private class FastShareHttpServer(
     private val fileName: String,
     private val mimeType: String,
     private val fileLength: Long,
-    private val onTransferUpdate: (sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean) -> Unit
+    private val onTransferUpdate: (sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean, partialResponse: Boolean) -> Unit
 ) {
     private val executor = Executors.newCachedThreadPool()
     @Volatile private var running = true
@@ -309,7 +310,8 @@ private class FastShareHttpServer(
             }
         }
         // Start the throughput clock before sending the HTTP response or first byte.
-        if (!headOnly) onTransferUpdate(0L, count, false, false)
+        val partialTransfer = ByteRange.isPartialTransfer(resolvedRange, fileLength)
+        if (!headOnly) onTransferUpdate(0L, count, false, false, partialTransfer)
         val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
         val statusLine = if (partial) "206 Partial Content" else "200 OK"
         output.write("HTTP/1.1 $statusLine\r\nContent-Type: $mimeType\r\nContent-Length: $count\r\nAccept-Ranges: bytes\r\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\r\n".toByteArray())
@@ -330,14 +332,14 @@ private class FastShareHttpServer(
                     sent += read
                     if (sent == count || sent % (1024L * 1024L) < read) {
                         output.flush()
-                        onTransferUpdate(sent, count, false, false)
+                        onTransferUpdate(sent, count, false, false, partialTransfer)
                     }
                 }
                 output.flush()
                 val completed = sent == count && running
-                onTransferUpdate(sent, count, completed, !completed)
+                onTransferUpdate(sent, count, completed, !completed, partialTransfer)
             } catch (error: Exception) {
-                onTransferUpdate(sent, count, false, true)
+                onTransferUpdate(sent, count, false, true, partialTransfer)
                 throw error
             }
         }
@@ -359,7 +361,7 @@ private class FastShareHttpServer(
             return
         }
         // Start the throughput clock before the first chunk is read or written.
-        if (!headOnly) onTransferUpdate(0L, -1L, false, false)
+        if (!headOnly) onTransferUpdate(0L, -1L, false, false, false)
         val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
         output.write("HTTP/1.1 200 OK\r\nContent-Type: $mimeType\r\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".toByteArray())
         if (headOnly) return
@@ -380,7 +382,7 @@ private class FastShareHttpServer(
                     // Let BufferedOutputStream batch writes and flush at ~1 MB intervals.
                     if (sent % (1024L * 1024L) < read) {
                         output.flush()
-                        onTransferUpdate(sent, -1L, false, false)
+                        onTransferUpdate(sent, -1L, false, false, false)
                     }
                 }
                 val completed = running
@@ -388,16 +390,16 @@ private class FastShareHttpServer(
                     output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
                     output.flush()
                 }
-                onTransferUpdate(sent, -1L, completed, !completed)
+                onTransferUpdate(sent, -1L, completed, !completed, false)
             } catch (error: Exception) {
-                onTransferUpdate(sent, -1L, false, true)
+                onTransferUpdate(sent, -1L, false, true, false)
                 throw error
             }
         }
     }
 
     private fun writeFileUnavailable(output: BufferedOutputStream) {
-        onTransferUpdate(0L, fileLength, false, true)
+        onTransferUpdate(0L, fileLength, false, true, false)
         val message = "The selected file is no longer available. Choose it again in NeaRer."
         val body = message.toByteArray(Charsets.UTF_8)
         output.write("HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
