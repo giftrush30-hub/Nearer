@@ -72,7 +72,15 @@ class FastShareController(private val context: Context) {
                             } else -1L
                         } ?: -1L
                     }
-                    val httpServer = FastShareHttpServer(context, selectedUri, name, mime, length)
+                    val httpServer = FastShareHttpServer(context, selectedUri, name, mime, length) { sent, total, complete ->
+                        Handler(Looper.getMainLooper()).post {
+                            status = when {
+                                complete -> "Download completed successfully."
+                                total >= 0L -> "Sending ${formatProgressSize(sent)} of ${formatProgressSize(total)}…"
+                                else -> "Sending ${formatProgressSize(sent)}…"
+                            }
+                        }
+                    }
                     val address = httpServer.start()
                     server = httpServer
                     details = FastShareDetails(ssid, password, "http://$address:8765")
@@ -122,6 +130,18 @@ class FastShareController(private val context: Context) {
         if (updateStatus) status = "Fast Share stopped."
     }
 
+    private fun formatProgressSize(bytes: Long): String {
+        if (bytes < 1024L) return "$bytes B"
+        val units = arrayOf("KB", "MB", "GB", "TB")
+        var value = bytes.toDouble()
+        var unit = -1
+        do {
+            value /= 1024.0
+            unit++
+        } while (value >= 1024.0 && unit < units.lastIndex)
+        return String.format(java.util.Locale.US, "%.1f %s", value, units[unit])
+    }
+
     private fun queryDisplayName(uri: Uri): String {
         context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {
@@ -141,7 +161,8 @@ private class FastShareHttpServer(
     private val uri: Uri,
     private val fileName: String,
     private val mimeType: String,
-    private val fileLength: Long
+    private val fileLength: Long,
+    private val onTransferUpdate: (sentBytes: Long, totalBytes: Long, complete: Boolean) -> Unit
 ) {
     private val executor = Executors.newCachedThreadPool()
     @Volatile private var running = true
@@ -241,11 +262,24 @@ private class FastShareHttpServer(
             skipFully(stream, start)
             val buffer = ByteArray(64 * 1024)
             var remaining = count
-            while (remaining > 0 && running) {
-                val read = stream.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-                if (read < 0) break
-                output.write(buffer, 0, read)
-                remaining -= read
+            var sent = 0L
+            try {
+                while (remaining > 0 && running) {
+                    val read = stream.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                    if (read < 0) break
+                    output.write(buffer, 0, read)
+                    remaining -= read
+                    sent += read
+                    if (sent == count || sent % (1024L * 1024L) < read) {
+                        output.flush()
+                        onTransferUpdate(sent, count, false)
+                    }
+                }
+                output.flush()
+                onTransferUpdate(sent, count, sent == count)
+            } catch (error: Exception) {
+                onTransferUpdate(sent, count, false)
+                throw error
             }
         } ?: throw IllegalStateException("Cannot read the selected file")
     }
@@ -261,17 +295,27 @@ private class FastShareHttpServer(
         if (headOnly) return
         context.contentResolver.openInputStream(uri)?.use { stream ->
             val buffer = ByteArray(64 * 1024)
-            while (running) {
-                val read = stream.read(buffer)
-                if (read < 0) break
-                if (read == 0) continue
-                output.write(Integer.toHexString(read).toByteArray(Charsets.US_ASCII))
-                output.write("\r\n".toByteArray(Charsets.US_ASCII))
-                output.write(buffer, 0, read)
-                output.write("\r\n".toByteArray(Charsets.US_ASCII))
+            var sent = 0L
+            try {
+                while (running) {
+                    val read = stream.read(buffer)
+                    if (read < 0) break
+                    if (read == 0) continue
+                    output.write(Integer.toHexString(read).toByteArray(Charsets.US_ASCII))
+                    output.write("\r\n".toByteArray(Charsets.US_ASCII))
+                    output.write(buffer, 0, read)
+                    output.write("\r\n".toByteArray(Charsets.US_ASCII))
+                    output.flush()
+                    sent += read
+                    if (sent % (1024L * 1024L) < read) onTransferUpdate(sent, -1L, false)
+                }
+                output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
                 output.flush()
+                onTransferUpdate(sent, -1L, true)
+            } catch (error: Exception) {
+                onTransferUpdate(sent, -1L, false)
+                throw error
             }
-            output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
         } ?: throw IllegalStateException("Cannot read the selected file")
     }
 
