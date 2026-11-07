@@ -93,3 +93,16 @@ class OpenSendSessionManager(context: Context) : Closeable {
             ?: error("Android started the hotspot, but NeaRer could not find its local Wi-Fi address. Try again after toggling Wi-Fi.")
     }
 
+
+    @Synchronized
+    private fun stop() {
+        active.set(false)
+        try { server?.close() } catch (_: Exception) { }
+        server = null
+        try { hotspot?.close() } catch (_: Exception) { }
+        hotspot = null
+    }
+
+    override fun close() {
+        stop()
+    }
