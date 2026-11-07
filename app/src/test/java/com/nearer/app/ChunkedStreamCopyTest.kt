@@ -7,6 +7,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ChunkedStreamCopyTest {
+    @Test fun defaultBufferIsOptimizedForLargeLocalTransfers() {
+        assertEquals(256 * 1024, ChunkedStreamCopy.DEFAULT_BUFFER_SIZE)
+        val source = ByteArray(700 * 1024) { (it % 233).toByte() }
+        val output = ByteArrayOutputStream()
+        val result = ChunkedStreamCopy.copy(ByteArrayInputStream(source), output, { true })
+        assertTrue(result.complete)
+        assertEquals(source.size.toLong(), result.bytesCopied)
+        val wire = output.toByteArray()
+        assertTrue(wire.size > source.size)
+        assertTrue(wire.takeLast(5).toByteArray().contentEquals("0\r\n\r\n".toByteArray()))
+    }
+
     @Test fun writesValidChunksAndFinalTerminatorForCleanEof() {
         val output = ByteArrayOutputStream()
         val result = ChunkedStreamCopy.copy(
