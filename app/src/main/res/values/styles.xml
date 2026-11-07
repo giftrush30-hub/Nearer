@@ -9,5 +9,7 @@
         <item name="android:windowLightStatusBar">false</item>
         <!-- Preserve the branded launch moment; in-app screens use a richer neutral palette. -->
         <item name="android:windowSplashScreenBackground">#111827</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/nearer_splash_avd</item>
+        <item name="android:windowSplashScreenAnimationDuration">800</item>
     </style>
 </resources>
