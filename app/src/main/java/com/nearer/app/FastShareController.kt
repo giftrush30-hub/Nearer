@@ -351,7 +351,7 @@ private class FastShareHttpServer(
             null
         }
         if (!headOnly && stream == null) {
-            writeFileUnavailable(output)
+            writeFileUnavailable(output, item)
             return
         }
         // Start the throughput clock before the first chunk is read or written.
