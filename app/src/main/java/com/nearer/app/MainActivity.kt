@@ -4083,12 +4083,14 @@ private fun NeaRerHome(
                         }
                         Button(
                             onClick = {
-                                val digits = flashRecipientNumber.filter(Char::isDigit)
-                                if (digits.length < 7) {
+                                val dialNumber = flashRecipientNumber.trim().filterIndexed { index, ch ->
+                                    ch.isDigit() || (ch == '+' && index == 0)
+                                }
+                                if (dialNumber.count(Char::isDigit) < 7) {
                                     flashSenderNotice = "Enter a valid recipient number first."
                                 } else {
                                     try {
-                                        flashContext.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$digits")))
+                                        flashContext.startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", dialNumber, null)))
                                         flashSenderNotice = "Dialer opened. You decide whether to place and end this call; return here for the next step."
                                     } catch (_: Exception) {
                                         flashSenderNotice = "Could not open the phone dialer on this device."
