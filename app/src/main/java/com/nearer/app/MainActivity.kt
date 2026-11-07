@@ -4927,6 +4927,7 @@ private fun NeaRerHome(
                                 receiveMode && chatReady -> "Ready for an incoming file"
                                 receiveMode && scanning -> "Looking for a nearby sender"
                                 receiveMode -> "Ready to receive nearby files"
+                                chatReady -> "Connected to ${connectedDeviceName ?: "nearby phone"}"
                                 scanning -> "Searching around you"
                                 else -> "Your people are closer"
                             },
@@ -4947,6 +4948,7 @@ private fun NeaRerHome(
                                 }, modifier = Modifier.size(6.dp).alpha(if (isConnecting || scanning) pulse else 1f)) {}
                                 Text(when {
                                     isConnecting -> "CONNECTING"
+                                    chatReady -> "CONNECTED"
                                     scanning -> "LIVE SCAN"
                                     else -> "READY"
                                 },
