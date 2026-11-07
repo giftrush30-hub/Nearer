@@ -1014,6 +1014,21 @@ class MainActivity : ComponentActivity() {
                 )
                 val code = PeerSessionCrypto.authenticationCode(sessionKey, identityTranscript)
                 writer.println("PAIR|$code|$localStableId|${localEphemeral.publicKeyBase64}")
+                // Do not show an approval prompt or mark the host connected until the
+                // connecting phone has independently derived and confirmed the same SAS.
+                val pairingConfirmation = reader.readLine()
+                if (pairingConfirmation != "PAIR_MATCH|$code") {
+                    writer.println("REJECT")
+                    runOnUiThread {
+                        pairingCode = null
+                        incomingRequesterName = null
+                        approvalMessage = "Security code could not be confirmed"
+                        statusMessage = "The security code was not confirmed on both phones. Connection declined."
+                    }
+                    closePeerTransport()
+                    return@execute
+                }
+                approvalDecision.clear()
                 runOnUiThread {
                     pairingCode = code
                     incomingRequesterName = name
@@ -1087,8 +1102,10 @@ class MainActivity : ComponentActivity() {
                 val pairingLine = reader.readLine().orEmpty()
                 if (!pairingLine.startsWith("PAIR|")) throw IllegalStateException("The other phone did not provide a pairing code")
                 val pairingParts = pairingLine.split("|", limit = 4)
-                val remoteCode = pairingParts.getOrNull(1).orEmpty().take(6)
-                val remoteStableId = pairingParts.getOrNull(2).orEmpty().ifBlank { "wifi:${(connectedDeviceName ?: "Nearby NeaRer user").lowercase(java.util.Locale.ROOT)}" }
+                val remoteCode = pairingParts.getOrNull(1).orEmpty()
+                require(Regex("\\d{6}").matches(remoteCode)) { "The other phone provided an invalid security code." }
+                val remoteStableId = pairingParts.getOrNull(2).orEmpty()
+                require(remoteStableId.matches(Regex("[A-Za-z0-9:_-]{6,64}"))) { "The other phone provided an invalid device identity." }
                 val remotePublicKey = pairingParts.getOrNull(3).orEmpty()
                 require(remotePublicKey.isNotBlank()) { "The other phone did not provide an encryption key." }
                 val identityTranscript = listOf(localStableId, remoteStableId).sorted().joinToString("|")
@@ -1097,6 +1114,8 @@ class MainActivity : ComponentActivity() {
                 )
                 val code = PeerSessionCrypto.authenticationCode(sessionKey, identityTranscript)
                 require(remoteCode == code) { "Security code mismatch. Disconnect and decline this connection." }
+                // The host waits for this proof before presenting its approval prompt.
+                writer.println("PAIR_MATCH|$code")
                 runOnUiThread {
                     pairingCode = code
                     statusMessage = "Security code $code. Compare it on both phones; decline if the codes differ."
