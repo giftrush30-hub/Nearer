@@ -6,7 +6,7 @@ import org.junit.Test
 
 class FlashSignalPatternTest {
     @Test fun decodesAllPresetPatterns() {
-        assertEquals("PING", FlashSignalPattern.decode(listOf(1_000L, 6_000L)))
+        assertEquals("PING", FlashSignalPattern.decode(listOf(1_000L, 6_000L, 18_000L)))
         assertEquals("COME", FlashSignalPattern.decode(listOf(1_000L, 12_000L, 20_000L)))
         assertEquals("URGENT", FlashSignalPattern.decode(listOf(1_000L, 15_000L, 29_000L, 43_000L)))
         assertEquals("CALL_ME", FlashSignalPattern.decode(listOf(1_000L, 21_000L, 38_000L)))
@@ -26,13 +26,16 @@ class FlashSignalPatternTest {
         assertNull(FlashSignalPattern.decode(listOf(1_000L, 8_000L)))
         assertNull(FlashSignalPattern.decode(listOf(2_000L, 1_000L)))
         assertNull(FlashSignalPattern.decode(listOf(1_000L, 6_000L, 11_000L)))
+        assertNull(FlashSignalPattern.decode(listOf(1_000L, 6_000L, 18_000L), 0L))
         assertNull(FlashSignalPattern.decode(listOf(1_000L, 1_000L)))
     }
 
     @Test fun timingToleranceDoesNotCausePresetCollisions() {
-        assertEquals("PING", FlashSignalPattern.decode(listOf(1_000L, 5_100L), 1_000L))
-        assertNull(FlashSignalPattern.decode(listOf(1_000L, 6_000L), 900L))
+        assertEquals("PING", FlashSignalPattern.decode(listOf(1_000L, 6_100L, 18_900L), 1_000L))
+        assertNull(FlashSignalPattern.decode(listOf(1_000L, 6_000L), 1_000L))
         assertNull(FlashSignalPattern.decode(listOf(1_000L, 8_000L), 1_000L))
+        // A single pair of ordinary calls must never become the shortest preset.
+        assertNull(FlashSignalPattern.decode(listOf(1_000L, 6_000L), 1_000L))
         assertNull(FlashSignalPattern.decode(listOf(1_000L, 15_000L, 23_000L), 1_000L))
     }
 
