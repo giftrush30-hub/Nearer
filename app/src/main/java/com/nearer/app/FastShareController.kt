@@ -190,7 +190,7 @@ private class FastShareHttpServer(
             val method = parts[0].uppercase()
             val path = parts[1].substringBefore('?')
             if (method != "GET" && method != "HEAD") {
-                output.write("HTTP/1.1 405 Method Not Allowed\\r\\nAllow: GET, HEAD\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n".toByteArray())
+                output.write("HTTP/1.1 405 Method Not Allowed\r\nAllow: GET, HEAD\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
                 output.flush()
                 return
             }
@@ -206,7 +206,7 @@ private class FastShareHttpServer(
                 val sizeLabel = if (fileLength >= 0L) formatFileSize(fileLength) else "Size unavailable"
                 val page = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101a2b"><title>NeaRer Fast Share</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;background:radial-gradient(circle at 85% 5%,#29466a 0,transparent 36%),#101a2b;color:#f6f8fc;padding:24px 16px;margin:0;min-height:100vh;display:grid;place-items:center}.card{width:100%;max-width:480px;background:#1a2940;border:1px solid #344963;border-radius:26px;padding:26px;box-shadow:0 18px 50px #07101f88}.brand{color:#69e0c0;font-size:13px;font-weight:800;letter-spacing:2px}.mark{width:52px;height:52px;border-radius:16px;background:#ffd12d;color:#101a2b;display:grid;place-items:center;font-size:28px;font-weight:900;margin:18px 0}.eyebrow{color:#ffd12d;font-size:11px;font-weight:800;letter-spacing:1.5px}h1{font-size:25px;margin:8px 0 12px;overflow-wrap:anywhere}.meta{color:#a8b6c9;font-size:13px;line-height:1.6}.steps{margin:24px 0 8px;padding:16px;background:#101a2b;border-radius:16px;color:#cbd6e5;font-size:13px;line-height:1.7}.download{display:block;background:#69e0c0;color:#101a2b;text-decoration:none;font-weight:800;text-align:center;padding:17px;border-radius:14px;margin-top:20px}.foot{color:#a8b6c9;font-size:11px;text-align:center;margin:18px 0 0}</style></head><body><main class="card"><div class="brand">NEARER</div><div class="mark">N</div><div class="eyebrow">PRIVATE LOCAL TRANSFER</div><h1>$safeName</h1><p class="meta">$sizeLabel · Ready to receive</p><div class="steps"><strong>Almost there.</strong><br>1. Stay connected to the sender's NeaRer Wi-Fi.<br>2. Tap the button below to save your file.<br>3. Keep this page open until the download finishes.</div><a class="download" href="/download">Download file</a><p class="foot">Transferred over local Wi-Fi. Mobile data is not used.</p></main></body></html>"""
                 val bytes = page.toByteArray(Charsets.UTF_8)
-                output.write("HTTP/1.1 200 OK\\r\\nContent-Type: text/html; charset=utf-8\\r\\nContent-Length: ${bytes.size}\\r\\nConnection: close\\r\\n\\r\\n".toByteArray())
+                output.write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n".toByteArray())
                 if (!headOnly) output.write(bytes)
             } else if (path == "/download") {
                 streamFile(output, rangeHeader, headOnly)
