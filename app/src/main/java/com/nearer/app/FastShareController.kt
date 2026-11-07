@@ -310,7 +310,7 @@ private class FastShareHttpServer(
             }
         }
         // Start the throughput clock before sending the HTTP response or first byte.
-        val partialTransfer = partial && (start != 0L || count != fileLength)
+        val partialTransfer = ByteRange.isPartialTransfer(resolvedRange, fileLength)
         if (!headOnly) onTransferUpdate(0L, count, false, false, partialTransfer)
         val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
         val statusLine = if (partial) "206 Partial Content" else "200 OK"
