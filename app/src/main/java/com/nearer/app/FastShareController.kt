@@ -96,7 +96,7 @@ class FastShareController(private val context: Context) {
                         Handler(Looper.getMainLooper()).post {
                             status = when {
                                 interrupted -> "Download interrupted at ${formatProgressSize(sent)}. Keep both phones connected and retry."
-                                complete -> "Download completed · average $averageSpeed/s"
+                                complete -> "Transfer completed · average $averageSpeed/s"
                                 total >= 0L -> "Sending ${formatProgressSize(sent)} of ${formatProgressSize(total)}$speedLabel…"
                                 else -> "Sending ${formatProgressSize(sent)}$speedLabel…"
                             }
@@ -309,7 +309,7 @@ private class FastShareHttpServer(
             }
         }
         // Start the throughput clock before sending the HTTP response or first byte.
-        onTransferUpdate(0L, count, false, false)
+        if (!headOnly) onTransferUpdate(0L, count, false, false)
         val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
         val statusLine = if (partial) "206 Partial Content" else "200 OK"
         output.write("HTTP/1.1 $statusLine\r\nContent-Type: $mimeType\r\nContent-Length: $count\r\nAccept-Ranges: bytes\r\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\r\n".toByteArray())
@@ -359,7 +359,7 @@ private class FastShareHttpServer(
             return
         }
         // Start the throughput clock before the first chunk is read or written.
-        onTransferUpdate(0L, -1L, false, false)
+        if (!headOnly) onTransferUpdate(0L, -1L, false, false)
         val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
         output.write("HTTP/1.1 200 OK\r\nContent-Type: $mimeType\r\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".toByteArray())
         if (headOnly) return
