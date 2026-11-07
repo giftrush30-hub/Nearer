@@ -765,8 +765,10 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
                 ),
                 topLeft, tileSize, radius
             )
-            drawRoundRect(Color.White.copy(alpha = 0.16f), topLeft, tileSize, radius,
-                style = Stroke(cell * 0.025f))
+            drawRoundRect(Color(0xFF14243A).copy(alpha = 0.30f), topLeft, tileSize, radius,
+                style = Stroke(cell * 0.055f))
+            drawRoundRect(Color.White.copy(alpha = 0.28f), topLeft, tileSize, radius,
+                style = Stroke(cell * 0.018f))
         }
         drawRoundRect(Brush.linearGradient(listOf(Color(0xFF28466D), Color(0xFF0D1E35))), cornerRadius = CornerRadius(cell * 0.3f))
         drawRoundRect(Color(0xFF8FB8F2).copy(alpha = 0.16f), cornerRadius = CornerRadius(cell * 0.3f), style = Stroke(cell * 0.10f))
@@ -843,11 +845,22 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
         drawCircle(Color(0xFFFFE99A), cell * 0.13f, centerPoint)
         drawCircle(Color(0xFF102746), cell * 0.055f, centerPoint)
 
+        val tokenLocations = game.players.flatMapIndexed { pIndex, player ->
+            player.tokens.mapIndexed { tokenIndex, _ ->
+                Triple(pIndex, tokenIndex, positionForProgress(player.color, tokenIndex, animated[pIndex][tokenIndex].value))
+            }
+        }
         game.players.forEachIndexed { pIndex, player ->
             player.tokens.forEachIndexed { tokenIndex, target ->
                 val point = positionForProgress(player.color, tokenIndex, animated[pIndex][tokenIndex].value)
-                val x = (point.first + 0.5f) * cell
-                val y = (point.second + 0.5f) * cell
+                val stack = tokenLocations.filter { entry ->
+                    abs(entry.third.first - point.first) < 0.08f && abs(entry.third.second - point.second) < 0.08f
+                }
+                val stackIndex = stack.indexOfFirst { it.first == pIndex && it.second == tokenIndex }.coerceAtLeast(0)
+                val stackOffsets = listOf(-0.14f to -0.14f, 0.14f to -0.14f, -0.14f to 0.14f, 0.14f to 0.14f)
+                val offset = if (stack.size > 1) stackOffsets[stackIndex % stackOffsets.size] else 0f to 0f
+                val x = (point.first + 0.5f + offset.first) * cell
+                val y = (point.second + 0.5f + offset.second) * cell
                 val tokenColor = colors[player.color.ordinal]
                 if (player.id == game.activePlayer.id && tokenIndex in game.legalTokenIndexes) {
                     drawCircle(Gold.copy(alpha = 0.2f * pulse), cell * 0.49f, Offset(x, y))
