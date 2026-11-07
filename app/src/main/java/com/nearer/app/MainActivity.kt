@@ -748,6 +748,8 @@ class MainActivity : ComponentActivity() {
             .orEmpty().toMutableSet()
         var changed = false
         var importedIdsChanged = false
+        var flashMessagesNeedCommit = false
+        val flashMessageIdsToMarkPersisted = mutableSetOf<String>()
 
         try {
             val events = JSONArray(rawEvents)
@@ -775,6 +777,10 @@ class MainActivity : ComponentActivity() {
                 if (eventId in importedIds) continue
 
                 val signal = event.optString("signal").takeIf { it.isNotBlank() } ?: continue
+                // Even if the bubble is already in memory, an earlier disk write may
+                // have failed. Retry the full message snapshot before marking this
+                // event imported so a process restart cannot lose the Flash message.
+                flashMessagesNeedCommit = true
                 // Keep each trusted sender in a separate chat thread. The service stores
                 // only a short fingerprint tag here, never the sender's raw phone number.
                 val senderTag = event.optString("senderTag")
@@ -809,8 +815,9 @@ class MainActivity : ComponentActivity() {
                         )
                     )
                     receivedMessageIds.add(messageId)
-                    persistedMessageIds.add(messageId)
                     changed = true
+                }
+                flashMessageIdsToMarkPersisted.add(messageId)
                 }
                 if (importedIds.add(eventId)) importedIdsChanged = true
             }
@@ -818,20 +825,21 @@ class MainActivity : ComponentActivity() {
             // Leave malformed or unavailable event data untouched; normal chat remains usable.
         }
 
-        if (changed || importedIdsChanged) {
+        if (changed || flashMessagesNeedCommit || importedIdsChanged) {
             // Save the imported chat bubbles before recording their event IDs. If the
             // message write fails or the app is interrupted, the same Flash event can
             // be imported again on the next launch instead of silently disappearing.
-            val messageSnapshot = if (changed) {
+            val messageSnapshot = if (changed || flashMessagesNeedCommit) {
                 try { serializeChatMessages() } catch (_: Exception) { null }
             } else null
-            val canCommit = !changed || messageSnapshot != null
+            val canCommit = !(changed || flashMessagesNeedCommit) || messageSnapshot != null
             val importedIdSnapshot = importedIds.toList().takeLast(150).toSet()
             messagePersistence.execute {
                 val messagesSaved = canCommit && (
                     messageSnapshot == null ||
                         localPrefs.edit().putString("messages", messageSnapshot).commit()
                     )
+                if (messagesSaved) flashMessageIdsToMarkPersisted.forEach { persistedMessageIds.add(it) }
                 if (messagesSaved && importedIdsChanged) {
                     localPrefs.edit()
                         .putStringSet("flash_imported_event_ids", importedIdSnapshot)
