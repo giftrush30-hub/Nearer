@@ -1725,8 +1725,10 @@ class MainActivity : ComponentActivity() {
         messagePersistence.execute {
             val saved = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .edit().putString("messages", snapshot).commit()
-            pendingOutgoingMessageSaves.remove(message.id)
             runOnUiThread {
+                // Keep the pending marker until this main-thread callback runs so a
+                // reconnect callback cannot flush this message in the meantime.
+                pendingOutgoingMessageSaves.remove(message.id)
                 if (!saved) {
                     chatNotice = "NeaRer could not save this message. It has not been sent; please try again."
                     return@runOnUiThread
