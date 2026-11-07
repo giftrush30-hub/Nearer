@@ -1850,7 +1850,7 @@ class MainActivity : ComponentActivity() {
                 outgoing = message.outgoing,
                 delivery = message.delivery,
                 conversationId = message.conversationId,
-                connectedPeerId = connectedChatPeerId,
+                connectedPeerId = connectedChatPeerId.orEmpty(),
                 persistenceInProgress = pendingOutgoingMessageSaves.contains(message.id)
             )
         }

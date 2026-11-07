@@ -92,10 +92,9 @@ object LudoDoubleDiceEngine {
         if (moved.isFinished) return state.copy(game = moved, turn = null, extraTurnPending = false)
 
         val action = moved.lastAction
-        val earnedExtraTurn = state.extraTurnPending ||
-            dieValue == 6 ||
-            action.contains("captured", ignoreCase = true) ||
-            action.contains("brought a token home", ignoreCase = true)
+        // Royal Double Dice awards a bonus roll for double six only.
+        // Captures and ordinary sixes do not override this mode's explicit rule.
+        val earnedExtraTurn = state.extraTurnPending || turn.dice.isDoubleSix
 
         // LudoEngine.move advances the player after an ordinary single-die move.
         // In a two-dice turn we retain the same player until both dice are resolved.
