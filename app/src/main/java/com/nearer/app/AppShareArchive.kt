@@ -8,6 +8,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -89,6 +90,8 @@ class AppShareArchive(private val context: Context) {
         val destination = File(context.cacheDir, "appshare/incoming/${UUID.randomUUID()}").apply { mkdirs() }
         try {
             var manifestBytes: ByteArray? = null
+            var expandedBytes = 0L
+            val maxExpandedBytes = archive.length().coerceAtLeast(1L) * 8L + 32L * 1024L * 1024L
             val extracted = linkedMapOf<String, File>()
             ZipInputStream(BufferedInputStream(FileInputStream(archive))).use { zip ->
                 while (true) {
@@ -103,13 +106,19 @@ class AppShareArchive(private val context: Context) {
                     }
                     if (name == MANIFEST_ENTRY) {
                         require(manifestBytes == null) { "The app package contains duplicate manifests." }
-                        val bytes = zip.readBytes()
-                        require(bytes.size <= MAX_MANIFEST_BYTES) { "The app package manifest is too large." }
+                        val bytes = readCurrentEntryLimited(zip, MAX_MANIFEST_BYTES)
                         manifestBytes = bytes
                     } else {
                         require(!extracted.containsKey(name)) { "The app package contains duplicate APK files." }
                         val target = File(destination, name).apply { parentFile?.mkdirs() }
-                        FileOutputStream(target).use { output -> zip.copyTo(output, 64 * 1024) }
+                        val declaredSize = entry.size
+                        require(declaredSize < 0L || declaredSize <= maxExpandedBytes - expandedBytes) {
+                            "The app package expands beyond a safe size."
+                        }
+                        val copied = FileOutputStream(target).use { output ->
+                            copyCurrentEntryBounded(zip, output, maxExpandedBytes - expandedBytes)
+                        }
+                        expandedBytes += copied
                         extracted[name] = target
                     }
                     zip.closeEntry()
@@ -162,6 +171,31 @@ class AppShareArchive(private val context: Context) {
             destination.deleteRecursively()
             throw error
         }
+    }
+
+    private fun readCurrentEntryLimited(input: ZipInputStream, limit: Int): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            require(output.size() + count <= limit) { "The app package manifest is too large." }
+            output.write(buffer, 0, count)
+        }
+        return output.toByteArray()
+    }
+
+    private fun copyCurrentEntryBounded(input: ZipInputStream, output: FileOutputStream, remainingLimit: Long): Long {
+        val buffer = ByteArray(64 * 1024)
+        var copied = 0L
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            copied += count
+            require(copied <= remainingLimit) { "The app package expands beyond a safe size." }
+            output.write(buffer, 0, count)
+        }
+        return copied
     }
 
     private fun verifyPackageIdentity(expectedPackage: String, expectedVersion: Long, files: List<File>) {
