@@ -75,6 +75,7 @@ fun LudoGameScreen(
     roomStatus: String = "Connect to a nearby player to invite them.",
     incomingInviteName: String? = null,
     roomPeerName: String? = null,
+    roomReady: Boolean = false,
     roomMessages: List<String> = emptyList(),
     onInvitePeer: () -> Unit = {},
     onAcceptInvite: () -> Unit = {},
@@ -473,7 +474,7 @@ fun LudoGameScreen(
                         Text("NEARBY MULTIPLAYER", color = Gold, fontSize = 10.sp,
                             fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
                         Spacer(Modifier.weight(1f))
-                        Text(if (roomPeerName != null) "ROOM ACTIVE" else "OFFLINE READY",
+                        Text(if (roomReady) "ROOM ACTIVE" else if (roomPeerName != null) "INVITE PENDING" else "OFFLINE READY",
                             color = if (roomPeerName != null) Color(0xFF79E2B2) else Muted,
                             fontSize = 8.sp, fontWeight = FontWeight.ExtraBold)
                     }
@@ -497,6 +498,12 @@ fun LudoGameScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = Cobalt, contentColor = White)) {
                             Text(if (connectedPeerName != null) "INVITE $connectedPeerName" else "CONNECT A NEARBY PLAYER FIRST",
                                 fontWeight = FontWeight.Black, fontSize = 11.sp)
+                        }
+                    } else if (!roomReady) {
+                        Text("Waiting for $roomPeerName to accept the invitation.", color = White, fontSize = 11.sp)
+                        Button(onClick = onLeaveRoom, modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Raised, contentColor = White)) {
+                            Text("CANCEL INVITATION", fontWeight = FontWeight.Bold, fontSize = 10.sp)
                         }
                     } else {
                         Text("Playing with $roomPeerName", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)

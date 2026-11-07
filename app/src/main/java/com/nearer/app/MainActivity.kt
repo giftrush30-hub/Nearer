@@ -206,6 +206,7 @@ class MainActivity : ComponentActivity() {
     private var ludoRoomId by mutableStateOf<String?>(null)
     private var ludoRoomPeerName by mutableStateOf<String?>(null)
     private var ludoRoomPeerStableId: String = ""
+    private var ludoRoomReady by mutableStateOf(false)
     private var ludoRoomStatus by mutableStateOf("Connect to a nearby player to invite them.")
     private var incomingLudoInvite by mutableStateOf<LudoPendingInvite?>(null)
     private val ludoRoomMessages = mutableStateListOf<String>()
@@ -441,11 +442,12 @@ class MainActivity : ComponentActivity() {
             override fun onDisconnected(id: String, stableId: String, name: String) {
                 runOnUiThread {
                     val peerId = stableId.ifBlank { "nearby:$id" }
-                    if (ludoRoomPeerStableId.isNotBlank() && ludoRoomPeerStableId == stableId) {
+                    if ((ludoRoomPeerStableId.isNotBlank() && ludoRoomPeerStableId == stableId) || (ludoRoomPeerStableId.isBlank() && ludoRoomPeerName == name)) {
                         ludoRoomStatus = "Nearby player disconnected. Your match room has ended."
                         ludoRoomId = null
                         ludoRoomPeerName = null
                         ludoRoomPeerStableId = ""
+                        ludoRoomReady = false
                     }
                     val lastName = hybridPeers.remove(id) ?: name
                     recordRecentlySeen(peerId, lastName)
@@ -2517,6 +2519,7 @@ class MainActivity : ComponentActivity() {
             ludoRoomId = roomId
             ludoRoomPeerName = peer
             ludoRoomPeerStableId = ""
+            ludoRoomReady = false
             ludoRoomStatus = "Invitation sent to " + peer + ". Waiting for acceptance…"
             ludoRoomMessages.clear()
         } else {
@@ -2533,6 +2536,7 @@ class MainActivity : ComponentActivity() {
         ludoRoomId = invite.roomId
         ludoRoomPeerName = invite.senderName
         ludoRoomPeerStableId = invite.senderStableId
+        ludoRoomReady = true
         incomingLudoInvite = null
         ludoRoomStatus = "Connected to " + invite.senderName + " in a nearby Ludo room."
         ludoRoomMessages.clear()
@@ -2550,11 +2554,13 @@ class MainActivity : ComponentActivity() {
         ludoRoomId = null
         ludoRoomPeerName = null
         ludoRoomPeerStableId = ""
+        ludoRoomReady = false
         ludoRoomMessages.clear()
         ludoRoomStatus = "You left the Ludo room."
     }
 
     private fun sendLudoRoomChat(raw: String) {
+        if (!ludoRoomReady) return
         val room = ludoRoomId ?: return
         val peer = ludoRoomPeerName ?: return
         val body = raw.trim().take(300)
@@ -2583,6 +2589,7 @@ class MainActivity : ComponentActivity() {
                 if (packet.roomId == ludoRoomId && ludoRoomPeerName == sender &&
                     (ludoRoomPeerStableId.isBlank() || ludoRoomPeerStableId == senderStableId)) {
                     ludoRoomPeerStableId = senderStableId
+                    ludoRoomReady = true
                     ludoRoomStatus = sender + " joined your Ludo room. Room chat is ready."
                 }
             }
@@ -2599,6 +2606,7 @@ class MainActivity : ComponentActivity() {
                     ludoRoomId = null
                     ludoRoomPeerName = null
                     ludoRoomPeerStableId = ""
+                    ludoRoomReady = false
                     ludoRoomMessages.clear()
                     ludoRoomStatus = sender + " left the Ludo room."
                 }
@@ -3705,6 +3713,7 @@ private fun NeaRerHome(
             roomStatus = ludoRoomStatus,
             incomingInviteName = incomingLudoInvite?.senderName,
             roomPeerName = ludoRoomPeerName,
+            roomReady = ludoRoomReady,
             roomMessages = ludoRoomMessages.toList(),
             onInvitePeer = { inviteLudoPeer() },
             onAcceptInvite = { acceptLudoInvite() },
