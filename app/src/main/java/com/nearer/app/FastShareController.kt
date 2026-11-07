@@ -16,7 +16,10 @@ import java.net.Socket
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.Collections
-import java.util.concurrent.Executors
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -278,7 +281,15 @@ private class FastShareHttpServer(
     private val accessKey: String,
     private val onTransferUpdate: (fileName: String, sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean, partialResponse: Boolean) -> Unit
 ) {
-    private val executor = Executors.newCachedThreadPool()
+    // Bound client work so a busy or hostile local-network peer cannot
+    // create an unbounded number of server threads.
+    private val executor = ThreadPoolExecutor(
+        2,
+        4,
+        60L,
+        TimeUnit.SECONDS,
+        ArrayBlockingQueue(8)
+    )
     @Volatile private var running = true
     private val transferActive = AtomicBoolean(false)
     private var socket: ServerSocket? = null
@@ -289,7 +300,13 @@ private class FastShareHttpServer(
             while (running) {
                 try {
                     val client = socket?.accept() ?: break
-                    executor.execute { handle(client) }
+                    try {
+                        executor.execute { handle(client) }
+                    } catch (_: RejectedExecutionException) {
+                        // Close excess clients instead of retaining sockets when
+                        // the bounded worker queue is full.
+                        runCatching { client.close() }
+                    }
                 } catch (_: Exception) {
                     if (running) { /* allow the accept loop to retry */ }
                 }
