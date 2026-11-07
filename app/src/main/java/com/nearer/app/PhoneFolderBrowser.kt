@@ -53,7 +53,7 @@ fun PhoneFolderBrowser(treeUri: Uri, onSelectFiles: (List<Uri>) -> Unit, onClose
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Button(onClick = { if (stack.size > 1) { stack.removeAt(stack.lastIndex); folder = stack.last() } }, enabled = stack.size > 1, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD84D), contentColor = Color(0xFF0647C9))) { Text("‹ BACK") }
+                    Button(onClick = { if (stack.size > 1) { stack.removeAt(stack.lastIndex); folder = stack.last() } }, enabled = stack.size > 1, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD84D), contentColor = Color(0xFF1769FF))) { Text("‹ BACK") }
                     Spacer(Modifier.width(8.dp))
                     Text(rows.size.toString() + " items • " + selected.size + " selected", color = Color.White)
                 }
@@ -63,7 +63,7 @@ fun PhoneFolderBrowser(treeUri: Uri, onSelectFiles: (List<Uri>) -> Unit, onClose
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     items(rows.filter { it.name.contains(search, true) }, key = { it.uri.toString() }) { item ->
                         val directory = item.mime == DocumentsContract.Document.MIME_TYPE_DIR
-                        Surface(modifier = Modifier.fillMaxWidth().clickable { if (directory) { stack.add(item.uri); folder = item.uri; search = "" } else selected = if (item.uri in selected) selected - item.uri else selected + item.uri }, color = if (item.uri in selected) Color(0xFF087FCE) else Color(0xFF0647C9), shape = RoundedCornerShape(11.dp)) {
+                        Surface(modifier = Modifier.fillMaxWidth().clickable { if (directory) { stack.add(item.uri); folder = item.uri; search = "" } else selected = if (item.uri in selected) selected - item.uri else selected + item.uri }, color = if (item.uri in selected) Color(0xFF087FCE) else Color(0xFF1769FF), shape = RoundedCornerShape(11.dp)) {
                             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (!directory && (item.mime.startsWith("image/") || item.mime.startsWith("video/"))) {
                                     PhoneMediaThumbnail(uri = item.uri, mime = item.mime)
@@ -85,7 +85,7 @@ fun PhoneFolderBrowser(treeUri: Uri, onSelectFiles: (List<Uri>) -> Unit, onClose
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onClose) { Text("CLOSE", color = Color.White) }
-                Button(onClick = { onSelectFiles(selected.toList()); selected = emptySet(); onClose() }, enabled = selected.isNotEmpty(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD84D), contentColor = Color(0xFF0647C9))) { Text("PREPARE ${selected.size}", fontWeight = FontWeight.Black) }
+                Button(onClick = { onSelectFiles(selected.toList()); selected = emptySet(); onClose() }, enabled = selected.isNotEmpty(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD84D), contentColor = Color(0xFF1769FF))) { Text("PREPARE ${selected.size}", fontWeight = FontWeight.Black) }
             }
         }
     )
