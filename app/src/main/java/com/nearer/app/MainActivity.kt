@@ -175,6 +175,8 @@ class MainActivity : ComponentActivity() {
     private val writerLock = Any()
     private val receivedMessageIds = ConcurrentHashMap.newKeySet<String>()
     private val persistedMessageIds = ConcurrentHashMap.newKeySet<String>()
+    // A queued outgoing message must finish its disk write before any transport can send it.
+    private val pendingOutgoingMessageSaves = ConcurrentHashMap.newKeySet<String>()
     private val messagePersistence = Executors.newSingleThreadExecutor()
     private val io = Executors.newCachedThreadPool()
     private val approvalDecision = LinkedBlockingQueue<Boolean>()
@@ -1569,6 +1571,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun deliverQueuedChatMessage(message: ChatMessage): Boolean {
+        if (pendingOutgoingMessageSaves.contains(message.id)) return false
         if (!chatReady) return false
         val intendedPeer = message.conversationId.ifBlank { "legacy" }
         if (connectedChatPeerId != intendedPeer) {
@@ -1623,7 +1626,9 @@ class MainActivity : ComponentActivity() {
     private fun flushQueuedChatMessages() {
         if (!chatReady) return
         val queuedMessages = chatMessages.filter {
-            it.outgoing && it.delivery == "Queued" && it.conversationId.ifBlank { "legacy" } == connectedChatPeerId
+            it.outgoing && it.delivery == "Queued" &&
+                it.conversationId.ifBlank { "legacy" } == connectedChatPeerId &&
+                !pendingOutgoingMessageSaves.contains(it.id)
         }
         if (queuedMessages.isEmpty()) return
         queuedMessages.forEach { message ->
@@ -1711,27 +1716,50 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun persistOutgoingMessageThenDeliver(message: ChatMessage) {
+        val snapshot = try { serializeChatMessages() } catch (_: Exception) {
+            chatNotice = "NeaRer could not prepare your message for saving. It has not been sent."
+            return
+        }
+        pendingOutgoingMessageSaves.add(message.id)
+        messagePersistence.execute {
+            val saved = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .edit().putString("messages", snapshot).commit()
+            pendingOutgoingMessageSaves.remove(message.id)
+            runOnUiThread {
+                if (!saved) {
+                    chatNotice = "NeaRer could not save this message. It has not been sent; please try again."
+                    return@runOnUiThread
+                }
+                val index = chatMessages.indexOfFirst { it.id == message.id && it.outgoing }
+                if (index < 0) return@runOnUiThread
+                val current = chatMessages[index]
+                if (!chatReady) {
+                    chatNotice = "Saved on this phone • waiting for your next nearby connection. Not delivered yet."
+                    return@runOnUiThread
+                }
+                if (!deliverQueuedChatMessage(current)) {
+                    val currentIndex = chatMessages.indexOfFirst { it.id == message.id }
+                    if (currentIndex >= 0) chatMessages[currentIndex] = current.copy(delivery = "Queued")
+                    persistMessages()
+                    chatNotice = "Message saved here. It will retry when the nearby link is ready."
+                }
+            }
+        }
+    }
+
     private fun sendChatMessage(rawText: String) {
         val body = rawText.trim()
         if (body.isEmpty()) return
         val message = ChatMessage(
             UUID.randomUUID().toString(), body, outgoing = true,
-            delivery = if (chatReady) "Sending" else "Queued",
+            // Do not expose a sending state until the local copy is safely committed.
+            delivery = "Queued",
             conversationId = activeChatPeerId,
             conversationName = activeChatPeerName
         )
         chatMessages.add(message)
-        persistMessages()
-        if (!chatReady) {
-            chatNotice = "Saved on this phone • waiting for your next nearby connection. Not delivered yet."
-            return
-        }
-        if (!deliverQueuedChatMessage(message)) {
-            val index = chatMessages.indexOfFirst { it.id == message.id }
-            if (index >= 0) chatMessages[index] = message.copy(delivery = "Queued")
-            persistMessages()
-            chatNotice = "Message saved here. It will retry when the nearby link is ready."
-        } else chatNotice = "Sent over the offline nearby connection."
+        persistOutgoingMessageThenDeliver(message)
     }
 
 
