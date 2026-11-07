@@ -387,20 +387,63 @@ internal fun FileCentreScreen(
         if (rootsToKeep != savedRoots) {
             preferences.edit().putStringSet("folder_roots", rootsToKeep).apply()
         }
-        if (rootsToKeep.isNotEmpty()) {
+        val savedDocuments = preferences.getStringSet("picked_document_uris", emptySet()).orEmpty().toSet()
+        val persistedReads = context.contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission }
+            .map { it.uri.toString() }
+            .toSet()
+        val documentsToKeep = savedDocuments.intersect(persistedReads)
+        if (documentsToKeep != savedDocuments) {
+            preferences.edit().putStringSet("picked_document_uris", documentsToKeep).apply()
+        }
+        if (rootsToKeep.isNotEmpty() || documentsToKeep.isNotEmpty()) {
             loading = true
             val restored = withContext(Dispatchers.IO) {
-                rootsToKeep.flatMap { root ->
+                val folderItems = rootsToKeep.flatMap { root ->
                     runCatching { AndroidFileCatalog.scanFolderTree(context, Uri.parse(root)) }
                         .getOrDefault(emptyList())
-                }.distinctBy { it.id }
+                }
+                val documentItems = documentsToKeep.mapNotNull { rawUri ->
+                    runCatching {
+                        val uri = Uri.parse(rawUri)
+                        var name = uri.lastPathSegment?.substringAfterLast('/') ?: "Selected file"
+                        var size = 0L
+                        context.contentResolver.query(
+                            uri,
+                            arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE),
+                            null, null, null
+                        )?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                val nameColumn = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                val sizeColumn = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                                if (nameColumn >= 0) name = cursor.getString(nameColumn) ?: name
+                                if (sizeColumn >= 0 && !cursor.isNull(sizeColumn)) size = cursor.getLong(sizeColumn).coerceAtLeast(0L)
+                            }
+                        }
+                        val mime = context.contentResolver.getType(uri)
+                        val restoredCategory = when {
+                            mime?.startsWith("image/") == true -> FileCentreCategory.PICTURES
+                            mime?.startsWith("video/") == true -> FileCentreCategory.VIDEOS
+                            mime?.startsWith("audio/") == true -> FileCentreCategory.MUSIC
+                            mime == "application/vnd.android.package-archive" -> FileCentreCategory.APPS
+                            mime?.contains("pdf") == true || mime?.contains("word") == true ||
+                                mime?.contains("sheet") == true || mime?.startsWith("text/") == true -> FileCentreCategory.DOCUMENTS
+                            else -> FileCentreCategory.OTHER
+                        }
+                        FileCentreItem(
+                            id = uri.toString(), name = name, category = restoredCategory,
+                            uri = uri, sizeBytes = size, mimeType = mime
+                        )
+                    }.getOrNull()
+                }
+                (folderItems + documentItems).distinctBy { it.id }
             }
             restored.forEach { found ->
                 if (items.none { it.id == found.id }) items.add(found)
             }
             loading = false
             if (restored.isNotEmpty()) {
-                notice = "${restored.size} file(s) from your saved folders are available again."
+                notice = "${restored.size} file(s) from your saved folders and documents are available again."
             }
         }
     }
@@ -442,6 +485,15 @@ internal fun FileCentreScreen(
             val pickedItems = uris.map { uri ->
                 runCatching {
                     context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val persistableReadGranted = context.contentResolver.persistedUriPermissions.any {
+                    it.uri == uri && it.isReadPermission
+                }
+                if (persistableReadGranted) {
+                    val preferences = context.getSharedPreferences("nearer_file_centre", Context.MODE_PRIVATE)
+                    val savedUris = preferences.getStringSet("picked_document_uris", emptySet()).orEmpty().toMutableSet()
+                    savedUris.add(uri.toString())
+                    preferences.edit().putStringSet("picked_document_uris", savedUris).apply()
                 }
                 var displayName = uri.lastPathSegment?.substringAfterLast('/') ?: "Selected file"
                 var sizeBytes = 0L
