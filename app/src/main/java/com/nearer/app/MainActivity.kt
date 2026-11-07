@@ -1927,8 +1927,14 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     val wasReady = chatReady
                     closePeerTransport()
+                    if (incomingTransferName != null) {
+                        incomingTransferName = null
+                        incomingProgress = 0f
+                        incomingTransferredBytes = 0L
+                        incomingTotalBytes = 0L
+                    }
                     if (wasReady) {
-                        chatNotice = "The nearby connection ended. Reconnect to continue chatting."
+                        chatNotice = "The nearby connection ended. Any unfinished incoming file was discarded. Reconnect to continue chatting."
                         connectionMessage = "Connection ended"
                     }
                 }
