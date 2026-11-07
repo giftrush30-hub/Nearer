@@ -706,6 +706,24 @@ class MainActivity : ComponentActivity() {
             for (index in 0 until events.length()) {
                 val event = events.optJSONObject(index) ?: continue
                 val eventId = event.optString("id").takeIf { it.isNotBlank() } ?: continue
+
+                // A completed multi-call preset can supersede provisional single-call
+                // bubbles that were already imported while the sequence was in progress.
+                val replacedIds = event.optJSONArray("replaces")
+                if (replacedIds != null && replacedIds.length() > 0) {
+                    val replacedMessageIds = (0 until replacedIds.length())
+                        .mapNotNull { index -> replacedIds.optString(index).takeIf { it.isNotBlank() } }
+                        .map { "flash:$it" }
+                        .toSet()
+                    if (replacedMessageIds.isNotEmpty()) {
+                        val removed = chatMessages.removeAll { it.id in replacedMessageIds }
+                        if (removed) changed = true
+                        replacedMessageIds.forEach { messageId ->
+                            receivedMessageIds.remove(messageId)
+                            persistedMessageIds.remove(messageId)
+                        }
+                    }
+                }
                 if (eventId in importedIds) continue
 
                 val signal = event.optString("signal").takeIf { it.isNotBlank() } ?: continue
