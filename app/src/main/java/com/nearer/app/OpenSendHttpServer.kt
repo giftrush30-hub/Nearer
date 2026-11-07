@@ -232,7 +232,9 @@ class OpenSendHttpServer(
     private fun parseRange(header: String?, length: Long): LongRange? {
         if (header == null) return null
         if (length <= 0L || !header.startsWith("bytes=")) return null
-        val value = header.removePrefix("bytes=").substringBefore(',').trim()
+        val value = header.removePrefix("bytes=").trim()
+        // This lightweight server deliberately supports one byte range per request.
+        if (value.contains(',')) return null
         val pieces = value.split('-', limit = 2)
         if (pieces.size != 2) return null
         return try {
