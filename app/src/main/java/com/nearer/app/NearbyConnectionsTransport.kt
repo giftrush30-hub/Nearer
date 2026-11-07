@@ -235,8 +235,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     incomingPayloads[payloadId]?.let { completedPayloads[payloadId] = it }
                     processCompletedFile(payloadId)
                 } else {
-                    if (outgoingFiles.remove(payloadId, outgoing)) {
-                        try { outgoing.payload.close() } catch (_: Exception) { }
+                    outgoing?.let { file ->
+                        if (outgoingFiles.remove(payloadId, file)) {
+                            try { file.payload.close() } catch (_: Exception) { }
+                        }
                     }
                     listener.onFileProgress(id, payloadId, name, update.totalBytes, update.totalBytes, false)
                     listener.onFileStatus("File sent to the nearby phone: $name")
