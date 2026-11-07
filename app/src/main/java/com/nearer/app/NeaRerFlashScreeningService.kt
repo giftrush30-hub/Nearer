@@ -124,6 +124,7 @@ object FlashTrustedSenders {
         val current = prefs.getStringSet(ALLOWLIST_KEY, emptySet()).orEmpty().toMutableSet()
         current.add(hash)
         val names = prefs.getStringSet("trusted_sender_names", emptySet()).orEmpty().toMutableSet()
+        names.removeAll { it.startsWith("$hash|") }
         val safeName = displayName.trim().take(32)
         if (safeName.isNotBlank()) names.add("$hash|$safeName")
         return prefs.edit()
