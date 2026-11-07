@@ -30,6 +30,9 @@ object FlashSignalPattern {
 
     fun presets(): List<Signal> = patterns.toList()
 
+    fun callCount(signalName: String): Int? =
+        patterns.firstOrNull { it.name == signalName }?.gapsMillis?.size?.plus(1)
+
     fun decode(eventTimesMillis: List<Long>, toleranceMillis: Long = 1_000L): String? {
         if (toleranceMillis < 0L || eventTimesMillis.size < 2) return null
         val times = eventTimesMillis.takeLast(4)
