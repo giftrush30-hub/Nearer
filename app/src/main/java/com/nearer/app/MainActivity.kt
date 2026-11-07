@@ -130,7 +130,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.nearer.app.games.ludo.LudoGameScreen
 
-private val Midnight = Color(0xFF0647C9)
+private val Midnight = Color(0xFF1769FF)
 private val Panel = Color(0xFF0B54DC)
 private val AccentBlue = Color(0xFF63A7FF)
 private val Muted = Color(0xFFDCEBFF)
