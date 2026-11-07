@@ -8,6 +8,7 @@ import android.net.Uri
 import android.util.Size
 import android.os.Build
 import android.provider.MediaStore
+import android.provider.DocumentsContract
 import android.Manifest
 import android.graphics.drawable.Drawable
 import androidx.core.content.FileProvider
@@ -162,6 +163,65 @@ internal object AndroidFileCatalog {
             }
         }
         return result.sortedByDescending { it.modifiedSeconds }
+    }
+
+    /** Traverse only a folder tree explicitly approved by the user. */
+    fun scanFolderTree(context: Context, treeUri: Uri): List<FileCentreItem> {
+        val resolver = context.contentResolver
+        val results = ArrayList<FileCentreItem>()
+        val pending = ArrayDeque<Pair<String, Int>>()
+        val visited = HashSet<String>()
+        val rootId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull() ?: return emptyList()
+        pending.add(rootId to 0)
+        while (pending.isNotEmpty() && results.size < 5000) {
+            val (parentId, depth) = pending.removeFirst()
+            if (depth > 12 || !visited.add(parentId)) continue
+            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
+            try {
+                resolver.query(childrenUri, arrayOf(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                    DocumentsContract.Document.COLUMN_SIZE,
+                    DocumentsContract.Document.COLUMN_LAST_MODIFIED
+                ), null, null, null)?.use { cursor ->
+                    val idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                    val nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                    val mimeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                    val sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+                    val dateCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                    while (cursor.moveToNext() && results.size < 5000) {
+                        if (idCol < 0 || nameCol < 0 || mimeCol < 0) continue
+                        val documentId = cursor.getString(idCol) ?: continue
+                        val name = cursor.getString(nameCol) ?: "Unnamed file"
+                        val mime = cursor.getString(mimeCol)
+                        if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                            pending.add(documentId to depth + 1)
+                            continue
+                        }
+                        val uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+                        val category = when {
+                            mime?.startsWith("image/") == true -> FileCentreCategory.PICTURES
+                            mime?.startsWith("video/") == true -> FileCentreCategory.VIDEOS
+                            mime?.startsWith("audio/") == true -> FileCentreCategory.MUSIC
+                            mime == "application/vnd.android.package-archive" -> FileCentreCategory.APPS
+                            mime?.contains("pdf") == true || mime?.contains("word") == true ||
+                                mime?.contains("sheet") == true || mime?.startsWith("text/") == true -> FileCentreCategory.DOCUMENTS
+                            else -> FileCentreCategory.OTHER
+                        }
+                        results += FileCentreItem(
+                            id = uri.toString(), name = name, category = category, uri = uri,
+                            sizeBytes = if (sizeCol >= 0 && !cursor.isNull(sizeCol)) cursor.getLong(sizeCol).coerceAtLeast(0L) else 0L,
+                            modifiedSeconds = if (dateCol >= 0 && !cursor.isNull(dateCol)) (cursor.getLong(dateCol) / 1000L).coerceAtLeast(0L) else 0L,
+                            mimeType = mime
+                        )
+                    }
+                }
+            } catch (_: SecurityException) {
+            } catch (_: RuntimeException) {
+            }
+        }
+        return results
     }
 
     fun installedApps(context: Context): List<FileCentreItem> {
@@ -384,6 +444,30 @@ internal fun FileCentreScreen(
         }
     }
 
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri ->
+        if (treeUri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            loading = true
+            notice = "Reading the folder you approved…"
+            scope.launch {
+                val folderItems = withContext(Dispatchers.IO) {
+                    AndroidFileCatalog.scanFolderTree(context, treeUri)
+                }
+                folderItems.forEach { found ->
+                    if (items.none { it.id == found.id }) items.add(found)
+                    if (found.id !in selected) selected.add(found.id)
+                }
+                loading = false
+                notice = if (folderItems.isEmpty()) "No shareable files were found in that folder."
+                    else "${folderItems.size} file(s) from the selected folder added to your send basket."
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         loading = true
         val apps = withContext(Dispatchers.IO) { AndroidFileCatalog.installedApps(context) }
@@ -489,6 +573,10 @@ internal fun FileCentreScreen(
                         onClick = { documentPicker.launch(arrayOf("*/*")) },
                         colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
                     ) { Text("Choose files") }
+                    Button(
+                        onClick = { folderPicker.launch(null) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Gold)
+                    ) { Text("Browse a folder") }
                 }
             }
         }
