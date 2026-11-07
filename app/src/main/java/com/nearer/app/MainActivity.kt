@@ -707,13 +707,12 @@ class MainActivity : ComponentActivity() {
                 val messageId = "flash:$eventId"
                 if (chatMessages.none { it.id == messageId }) {
                     val senderTag = event.optString("senderTag").takeIf { it.isNotBlank() }
-                    val senderLabel = senderTag?.let { "Trusted sender • $it" } ?: "Trusted paired sender"
                     chatMessages.add(
                         ChatMessage(
                             id = messageId,
-                            body = "Received Flash signal: $signal\n$senderLabel",
+                            body = FlashSignalPattern.toChatMessage(signal),
                             outgoing = false,
-                            delivery = "Received",
+                            delivery = "Flash • Received",
                             timestamp = event.optLong("timestamp", System.currentTimeMillis())
                                 .takeIf { it > 0L } ?: System.currentTimeMillis(),
                             conversationId = "nearer-flash",
