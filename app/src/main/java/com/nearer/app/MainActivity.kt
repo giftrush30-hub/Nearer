@@ -5969,8 +5969,8 @@ private fun NeaRerHome(
                 Surface(
                     modifier = Modifier.fillMaxWidth().animateContentSize(),
                     shape = RoundedCornerShape(19.dp),
-                    color = Color(0xFF263449),
-                    border = BorderStroke(1.dp, Color(0xFF63A7FF))
+                    color = Color(0xFFF7F5EF),
+                    border = BorderStroke(1.dp, Color(0xFFD8DDE5))
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -5979,47 +5979,47 @@ private fun NeaRerHome(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF1A4778),
+                                color = Color(0xFFE5EDF7),
                                 modifier = Modifier.size(38.dp)
                             ) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                    Text(if (scanning) "⌕" else "◎", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                    Text(if (scanning) "⌕" else "◎", color = Color(0xFF285F9E), fontSize = 22.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
-                                    if (scanning) "Your radar is listening" else "No nearby phone has appeared yet",
-                                    color = White,
-                                    fontSize = 12.sp,
+                                    if (scanning) "Searching for nearby people" else "Ready when you are",
+                                    color = Color(0xFF202B3C),
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    if (scanning) "Keep this screen open while the other phone searches too."
-                                    else "Start discovery on both phones and bring them closer.",
-                                    color = Muted,
-                                    fontSize = 10.sp,
-                                    lineHeight = 14.sp
+                                    if (scanning) "NeaRer is actively looking. Keep this screen open on both phones."
+                                    else "Tap Find people nearby to start live discovery. No mobile data is needed.",
+                                    color = Color(0xFF596579),
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp
                                 )
                             }
-                            Surface(shape = CircleShape, color = if (scanning) Color(0xFF155B4B) else Color(0xFF263449)) {
+                            Surface(shape = CircleShape, color = if (scanning) Color(0xFFE0F3EC) else Color(0xFFE8EBF0)) {
                                 Text(
-                                    if (scanning) "LIVE" else "READY",
-                                    color = if (scanning) Color(0xFF8CE4C8) else Gold,
+                                    if (scanning) "LIVE" else "STANDBY",
+                                    color = if (scanning) Color(0xFF126B56) else Color(0xFF596579),
                                     fontSize = 8.sp,
                                     fontWeight = FontWeight.Black,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                                 )
                             }
                         }
-                        androidx.compose.material3.HorizontalDivider(color = Color(0xFF1769FF))
+                        androidx.compose.material3.HorizontalDivider(color = Color(0xFFE0E4EA))
                         listOf(
                             "Bluetooth and Wi-Fi should be switched on",
                             "Both phones need NeaRer for chat and app sharing",
                             "Keep NeaRer open and accept the connection on the other phone"
                         ).forEachIndexed { index, tip ->
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("0${index + 1}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
-                                Text(tip, color = Color(0xFFD1E0F4), fontSize = 10.sp, lineHeight = 14.sp)
+                                Text("0${index + 1}", color = Color(0xFF285F9E), fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                Text(tip, color = Color(0xFF596579), fontSize = 12.sp, lineHeight = 17.sp)
                             }
                         }
                         if (!scanning && connectedDeviceName == null) {
@@ -6027,7 +6027,7 @@ private fun NeaRerHome(
                                 onClick = onFindNearby,
                                 modifier = Modifier.fillMaxWidth().height(43.dp),
                                 shape = RoundedCornerShape(13.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF285F9E), contentColor = Color.White)
                             ) {
                                 Text("START NEARBY SEARCH", fontSize = 10.sp, fontWeight = FontWeight.Black)
                             }
