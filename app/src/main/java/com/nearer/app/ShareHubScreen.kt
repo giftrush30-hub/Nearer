@@ -41,6 +41,7 @@ fun NeaRerShareHub(
     appNotice: String,
     onLoadApps: () -> Unit,
     onShareApps: (List<String>) -> Unit,
+    onShareAppsToAnyPhone: (List<String>) -> Unit,
     openSendSession: OpenSendSession?,
     openSendNotice: String,
     onPickOpenSendFiles: () -> Unit,
@@ -168,9 +169,16 @@ fun NeaRerShareHub(
                         shape = RoundedCornerShape(13.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = ShareMint, contentColor = ShareMidnight)
                     ) { Text("Send selected apps", fontWeight = FontWeight.Bold) }
+                    Button(
+                        onClick = { onShareAppsToAnyPhone(selected.toList()) },
+                        enabled = selected.isNotEmpty(),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(13.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263F61), contentColor = ShareWhite)
+                    ) { Text("Share installable APKs with any Android phone", fontWeight = FontWeight.Bold) }
                 }
                 if (appNotice.isNotBlank()) Text(appNotice, color = ShareMuted, fontSize = 11.sp)
-                Text("NeaRer never copies an app's private data, passwords or logged-in accounts. Android will ask the receiver to approve installation.", color = ShareMuted, fontSize = 10.sp, lineHeight = 15.sp)
+                Text("Single-APK apps can be downloaded by phones without NeaRer. Split APK apps need NeaRer on the receiving phone for package-aware installation. Android always asks the receiver to approve installation.", color = ShareMuted, fontSize = 10.sp, lineHeight = 15.sp)
             }
         }
 
