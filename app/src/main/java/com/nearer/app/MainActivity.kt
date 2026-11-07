@@ -254,8 +254,13 @@ class MainActivity : ComponentActivity() {
                     hybridConnectedEndpoint = id
                     hybridConnectedStableId = stableId.ifBlank { null }
                     if (currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()) {
-                        chatNotice = "Connection restored. Resuming your saved file transfer…"
-                        startNextNearbyQueuedFile()
+                        val resumedLivePayload = nearbyTransport?.resumePendingFilesForPeer(stableId, id) == true
+                        chatNotice = if (resumedLivePayload) {
+                            "Connection restored. Resuming the interrupted file from its saved transfer offset…"
+                        } else {
+                            "Connection restored. Restarting the interrupted file safely…"
+                        }
+                        if (!resumedLivePayload) startNextNearbyQueuedFile()
                     }
                     pendingHybridEndpoint = null
                     incomingRequesterName = null
@@ -353,6 +358,7 @@ class MainActivity : ComponentActivity() {
                     chatNotice = message
                     if (message.startsWith("File sent to the nearby phone") ||
                         message.startsWith("Nearby file transfer failed") ||
+                        message.startsWith("Nearby file transfer paused") ||
                         message.startsWith("Could not start file transfer") ||
                         message.startsWith("Could not send file details") ||
                         message.startsWith("File could not be prepared")) {
