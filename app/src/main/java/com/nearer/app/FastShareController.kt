@@ -282,15 +282,16 @@ private class FastShareHttpServer(
             streamUnknownLength(output, headOnly)
             return
         }
-        val resolvedRange = ByteRange.resolve(rangeHeader, fileLength)
+        val response = FileHttpResponses.resolve(rangeHeader, fileLength)
+        val resolvedRange = response.range
         if (resolvedRange == null) {
-            output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$fileLength\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+            output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\nContent-Range: ${response.contentRange}\r\nContent-Length: ${response.contentLength}\r\nConnection: close\r\n\r\n".toByteArray())
             return
         }
         val start = resolvedRange.start
         val end = resolvedRange.endInclusive
         val partial = resolvedRange.partial
-        val count = end - start + 1
+        val count = response.contentLength
         val stream = if (headOnly) null else try {
             context.contentResolver.openInputStream(uri)
         } catch (_: Exception) {
@@ -313,9 +314,8 @@ private class FastShareHttpServer(
         val partialTransfer = ByteRange.isPartialTransfer(resolvedRange, fileLength)
         if (!headOnly) onTransferUpdate(0L, count, false, false, partialTransfer)
         val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        val statusLine = if (partial) "206 Partial Content" else "200 OK"
-        output.write("HTTP/1.1 $statusLine\r\nContent-Type: $mimeType\r\nContent-Length: $count\r\nAccept-Ranges: bytes\r\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\r\n".toByteArray())
-        if (partial) output.write("Content-Range: bytes $start-$end/$fileLength\r\n".toByteArray())
+        output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\nContent-Type: $mimeType\r\nContent-Length: $count\r\nAccept-Ranges: bytes\r\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\r\n".toByteArray())
+        response.contentRange?.let { output.write("Content-Range: $it\r\n".toByteArray()) }
         output.write("Connection: close\r\n\r\n".toByteArray())
         if (headOnly) return
         stream?.use { source ->
