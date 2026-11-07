@@ -5499,15 +5499,15 @@ private fun NeaRerHome(
             if (conversationRows.isNotEmpty()) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = Color(0xFF1769FF),
+                    color = Color(0xFFF7F5EF),
                     shape = RoundedCornerShape(19.dp),
-                    border = BorderStroke(1.dp, Color(0xFF63A7FF))
+                    border = BorderStroke(1.dp, Color(0xFFD8DDE5))
                 ) {
                     Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("YOUR CONVERSATIONS", color = White, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("YOUR CONVERSATIONS", color = Color(0xFF202B3C), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
                             Spacer(Modifier.weight(1f))
-                            Text("${conversationRows.size} ${if (conversationRows.size == 1) "person" else "people"}", color = Muted, fontSize = 9.sp)
+                            Text("${conversationRows.size} ${if (conversationRows.size == 1) "person" else "people"}", color = Color(0xFF667085), fontSize = 10.sp)
                         }
                         conversationRows.forEach { (peerId, peerName, latest) ->
                             val selected = selectedConversationId == peerId
@@ -5516,23 +5516,23 @@ private fun NeaRerHome(
                                     selectedConversationId = peerId
                                     onSelectConversation(peerId, peerName)
                                 },
-                                color = if (selected) Color(0xFF174A83) else Color(0xFF263449),
+                                color = if (selected) Color(0xFFE6EEF8) else Color.White,
                                 shape = RoundedCornerShape(13.dp),
-                                border = BorderStroke(1.dp, if (selected) Gold.copy(alpha = 0.75f) else Color(0xFF263449))
+                                border = BorderStroke(1.dp, if (selected) Gold.copy(alpha = 0.75f) else Color(0xFFE5E8ED))
                             ) {
                                 Row(Modifier.padding(horizontal = 10.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Surface(shape = CircleShape, color = if (selected) Color(0xFF285FA0) else Color(0xFF263449), modifier = Modifier.size(36.dp)) {
+                                    Surface(shape = CircleShape, color = if (selected) Color(0xFFD5E4F5) else Color(0xFFECEFF3), modifier = Modifier.size(36.dp)) {
                                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                            Text(peerName.firstOrNull()?.uppercase() ?: "N", color = if (selected) Gold else White, fontWeight = FontWeight.Black)
+                                            Text(peerName.firstOrNull()?.uppercase() ?: "N", color = Color(0xFF285F9E), fontWeight = FontWeight.Black)
                                         }
                                     }
                                     Column(Modifier.weight(1f).padding(start = 9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text(peerName, color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(latest?.body ?: "No messages yet", color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(peerName, color = Color(0xFF202B3C), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(latest?.body ?: "No messages yet", color = Color(0xFF667085), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                        Text(latest?.let { formatMessageTime(it.timestamp) } ?: "", color = Muted, fontSize = 8.sp)
-                                        Text(latest?.delivery ?: "CHAT", color = if (latest?.outgoing == true && latest.delivery == "Delivered") Color(0xFF8CE4C8) else Gold, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                        Text(latest?.let { formatMessageTime(it.timestamp) } ?: "", color = Color(0xFF667085), fontSize = 9.sp)
+                                        Text(latest?.delivery ?: "CHAT", color = if (latest?.outgoing == true && latest.delivery == "Delivered") Color(0xFF8CE4C8) else Color(0xFF8B6B25), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -5543,16 +5543,16 @@ private fun NeaRerHome(
 
             Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
                 sectionPositions["chats"] = it.positionInParent().y.toInt()
-            }, shape = RoundedCornerShape(23.dp), color = Panel,
-                border = BorderStroke(1.dp, if (chatReady) Color(0xFF3A9B7B) else Color(0xFF63A7FF)),
+            }, shape = RoundedCornerShape(23.dp), color = Color(0xFFF7F5EF),
+                border = BorderStroke(1.dp, if (chatReady) Color(0xFF16877A) else Color(0xFFD8DDE5)),
                 shadowElevation = 9.dp) {
                 Column(
                     modifier = Modifier.fillMaxWidth()
                         .background(Brush.linearGradient(
                             listOf(
-                                if (chatReady) Color(0xFF16453F) else Color(0xFF263449),
-                                Color(0xFF263449),
-                                Color(0xFF1769FF)
+                                if (chatReady) Color(0xFFEAF4EF) else Color(0xFFF7F5EF),
+                                Color(0xFFF7F5EF),
+                                Color(0xFFE8EDF3)
                             )
                         ))
                         .padding(16.dp),
@@ -5570,17 +5570,17 @@ private fun NeaRerHome(
                             }
                         }
                         Column(Modifier.weight(1f).padding(start = 11.dp)) {
-                            Text(connectedDeviceName ?: "PRIVATE CHAT", color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text(connectedDeviceName ?: "PRIVATE CHAT", color = Color(0xFF202B3C), fontSize = 15.sp, fontWeight = FontWeight.Bold)
                             Text(if (chatReady) "DIRECT • OFFLINE • PRIVATE" else "OFFLINE • CHAT IS READY",
-                                color = if (chatReady) Color(0xFF8CE4C8) else Muted,
+                                color = if (chatReady) Color(0xFF16877A) else Color(0xFF667085),
                                 fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 0.7.sp)
                         }
                         Surface(
-                            color = if (chatReady) Color(0xFF174B43) else Color(0xFF263449),
+                            color = if (chatReady) Color(0xFFE0F3EC) else Color(0xFFE8EBF0),
                             shape = RoundedCornerShape(50)
                         ) {
                             Text(if (chatReady) "ACTIVE" else "OFFLINE",
-                                color = if (chatReady) Color(0xFF8CE4C8) else Muted,
+                                color = if (chatReady) Color(0xFF16877A) else Color(0xFF667085),
                                 fontSize = 8.sp, fontWeight = FontWeight.Black,
                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp))
                         }
@@ -5588,27 +5588,27 @@ private fun NeaRerHome(
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                         Surface(
                             modifier = Modifier.weight(1f),
-                            color = Color(0xFF263449),
+                            color = Color.White,
                             shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, Color(0xFF315F96))
+                            border = BorderStroke(1.dp, Color(0xFFE0E4EA))
                         ) {
                             Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
                                 Text("DIRECT LINK", color = Muted, fontSize = 7.sp, fontWeight = FontWeight.Black)
                                 Text(
                                     if (!chatReady) "Waiting" else if (usingNearbyConnections) "Bluetooth + Wi-Fi" else "Wi-Fi Direct",
-                                    color = White, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1
+                                    color = Color(0xFF202B3C), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1
                                 )
                             }
                         }
                         Surface(
                             modifier = Modifier.weight(1f),
-                            color = if (meshRelayEnabled) Color(0xFF214B45) else Color(0xFF263449),
+                            color = if (meshRelayEnabled) Color(0xFF214B45) else Color.White,
                             shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, if (meshRelayEnabled) Color(0xFF398A70) else Color(0xFF1769FF))
+                            border = BorderStroke(1.dp, if (meshRelayEnabled) Color(0xFF398A70) else Color(0xFFE0E4EA))
                         ) {
                             Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
                                 Text("MESH RELAY", color = Muted, fontSize = 7.sp, fontWeight = FontWeight.Black)
-                                Text(if (meshRelayEnabled) "ON • Communities" else "OFF", color = White, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                Text(if (meshRelayEnabled) "ON • Communities" else "OFF", color = Color(0xFF202B3C), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                         }
                         Surface(
@@ -5629,7 +5629,7 @@ private fun NeaRerHome(
                     )
 
                         if (visibleMessages.isEmpty()) {
-                            Text("Your private conversation starts here. Write now; messages stay safely on this phone until a route is available.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                            Text("Your private conversation starts here. Write now; messages stay safely on this phone until a route is available.", color = Color(0xFF596579), fontSize = 12.sp, lineHeight = 18.sp)
                         } else {
                             LazyColumn(
                                 state = messageListState,
@@ -5642,16 +5642,16 @@ private fun NeaRerHome(
                                         horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
                                     ) {
                                         Surface(
-                                            color = if (message.outgoing) Color(0xFF347CEB) else Color(0xFF1769FF),
+                                            color = if (message.outgoing) Color(0xFF285F9E) else Color.White,
                                             shape = if (message.outgoing) RoundedCornerShape(17.dp, 17.dp, 5.dp, 17.dp)
                                                 else RoundedCornerShape(17.dp, 17.dp, 17.dp, 5.dp),
                                             modifier = Modifier.fillMaxWidth(0.86f).animateContentSize()
                                         ) {
                                             Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
-                                                Text(message.body, color = White, fontSize = 14.sp)
+                                                Text(message.body, color = if (message.outgoing) Color.White else Color(0xFF202B3C), fontSize = 14.sp)
                                                 Text(
                                                     "${if (message.outgoing) message.delivery else "Received"}  •  ${formatMessageTime(message.timestamp)}",
-                                                    color = if (message.outgoing) Color(0xFFBBD5FF) else Gold,
+                                                    color = if (message.outgoing) Color(0xFFDCE8F7) else Color(0xFF667085),
                                                     fontSize = 9.sp, fontWeight = FontWeight.Medium
                                                 )
                                             }
