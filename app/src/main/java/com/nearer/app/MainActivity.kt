@@ -4150,12 +4150,12 @@ private fun NeaRerHome(
                         }
                     }
                     Text(
-                        "Private chat uses the active direct link. Addressed mesh delivery and Flash call-signal decoding are being integrated separately; neither is shown as delivered until it is verified.",
+                        "Chat stays available offline. Messages are saved here first, then sent through an available direct route; private mesh and Flash delivery remain experimental until verified.",
                         color = Muted, fontSize = 9.sp, lineHeight = 13.sp
                     )
-                    if (chatReady) {
+
                         if (messages.isEmpty()) {
-                            Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                            Text("Your private conversation starts here. Write now; messages stay safely on this phone until a route is available.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         } else {
                             LazyColumn(
                                 state = messageListState,
@@ -4277,7 +4277,7 @@ private fun NeaRerHome(
                         }
                         Text("＋ Share photos, videos and files from the attachment button.", color = Muted, fontSize = 9.sp)
                         Text(if (usingNearbyConnections) "DIRECT NEARBY LINK  •  NO MOBILE DATA" else "WI-FI DIRECT LINK  •  NO MOBILE DATA", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.35.sp)
-                    } else {
+                     else {
                         if (messages.isNotEmpty()) {
                             LazyColumn(state = messageListState, modifier = Modifier.fillMaxWidth().heightIn(min = 90.dp, max = 260.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                                 itemsIndexed(messages, key = { _, message -> message.id }) { _, message ->
