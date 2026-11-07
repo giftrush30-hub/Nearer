@@ -605,7 +605,7 @@ class MainActivity : ComponentActivity() {
         }
         val splitApps = selected.filter { it.packageFiles.size != 1 }
         if (splitApps.isNotEmpty()) {
-            appShareNotice = "These app(s) use split APKs: \${splitApps.joinToString { it.label }}. Send them to a NeaRer phone for complete installation, or use a universal APK from the developer. A browser-only phone cannot install split APK sets by itself."
+            appShareNotice = "These app(s) use split APKs: ${splitApps.joinToString { it.label }}. Send them to a NeaRer phone for complete installation, or use a universal APK from the developer. A browser-only phone cannot install split APK sets by itself."
             return
         }
         stopOpenSend()
@@ -616,7 +616,7 @@ class MainActivity : ComponentActivity() {
                 val uris = selected.map { app ->
                     val source = app.packageFiles.first()
                     val safeLabel = app.label.replace(Regex("[^A-Za-z0-9._ -]"), "_").ifBlank { "Android-app" }
-                    val destination = File(folder, "\${UUID.randomUUID()}-$safeLabel.apk")
+                    val destination = File(folder, "${UUID.randomUUID()}-$safeLabel.apk")
                     source.inputStream().use { input -> destination.outputStream().use { output -> input.copyTo(output, 64 * 1024) } }
                     FileProvider.getUriForFile(this, "$packageName.files", destination)
                 }
@@ -626,7 +626,7 @@ class MainActivity : ComponentActivity() {
                 }
             } catch (error: Exception) {
                 runOnUiThread {
-                    appShareNotice = "Could not prepare app APKs: \${error.localizedMessage ?: "try again"}"
+                    appShareNotice = "Could not prepare app APKs: ${error.localizedMessage ?: "try again"}"
                 }
             }
         }
