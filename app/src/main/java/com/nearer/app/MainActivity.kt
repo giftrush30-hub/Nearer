@@ -119,6 +119,8 @@ class MainActivity : ComponentActivity() {
     private var pendingHybridEndpoint: String? = null
     private var hybridConnected = false
     private var hybridConnectedEndpoint: String? = null
+    private var hybridConnectedStableId: String? = null
+    private var nearbyQueuePeerStableId: String? = null
     private var meshRelayEnabled by mutableStateOf(false)
     private val discoveryHandler = Handler(Looper.getMainLooper())
     private var discoveryTimeout: Runnable? = null
@@ -250,6 +252,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     hybridConnected = true
                     hybridConnectedEndpoint = id
+                    hybridConnectedStableId = stableId.ifBlank { null }
                     if (currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()) {
                         chatNotice = "Connection restored. Resuming your saved file transfer…"
                         startNextNearbyQueuedFile()
@@ -269,6 +272,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     hybridConnected = false
                     hybridConnectedEndpoint = null
+                    hybridConnectedStableId = null
                     if (outgoingTransferId?.startsWith("nearby:") == true) {
                         outgoingTransferId = null
                         outgoingProgress = 0f
@@ -1631,6 +1635,7 @@ class MainActivity : ComponentActivity() {
             currentNearbyQueuedFile = null
             nearbyQueueTotal = 0
             nearbyQueueCompleted = 0
+            nearbyQueuePeerStableId = null
             persistNearbyFileQueue()
             chatNotice = if (discarded > 0) "Transfer cancelled. " + discarded + " queued files were not sent." else "Cancelling nearby file transfer…"
             return
@@ -1652,15 +1657,21 @@ class MainActivity : ComponentActivity() {
             chatNotice = "Finish or cancel the current transfer job first."
             return
         }
+        val peerStableId = hybridConnectedStableId
+        if (peerStableId.isNullOrBlank()) {
+            chatNotice = "This phone's nearby identity is unavailable. Reconnect and try again before sending files."
+            return
+        }
         selected.forEach { uri ->
             try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             catch (_: Exception) { /* Some providers grant temporary access only. */ }
             pendingNearbyFileQueue.addLast(uri)
         }
         currentNearbyQueuedFile = null
+        nearbyQueuePeerStableId = peerStableId
         nearbyQueueTotal = pendingNearbyFileQueue.size
-        persistNearbyFileQueue()
         nearbyQueueCompleted = 0
+        persistNearbyFileQueue()
         chatNotice = "Preparing " + nearbyQueueTotal + " files for one transfer job…"
         startNextNearbyQueuedFile()
     }
@@ -1682,6 +1693,11 @@ class MainActivity : ComponentActivity() {
         if (!hybridConnected || endpoint == null) {
             persistNearbyFileQueue()
             chatNotice = "Connection lost. Your transfer is saved. Reconnect to continue."
+            return
+        }
+        val expectedPeer = nearbyQueuePeerStableId
+        if (expectedPeer.isNullOrBlank() || hybridConnectedStableId != expectedPeer) {
+            chatNotice = "Your saved files are reserved for the phone you originally selected. Reconnect to that same phone to send them."
             return
         }
         persistNearbyFileQueue()
@@ -1714,6 +1730,7 @@ class MainActivity : ComponentActivity() {
                 .putString("nearby_file_queue", items.toString())
                 .putInt("nearby_file_queue_total", nearbyQueueTotal)
                 .putInt("nearby_file_queue_completed", nearbyQueueCompleted)
+                .putString("nearby_file_queue_peer", nearbyQueuePeerStableId)
                 .commit()
         } catch (_: Exception) {
             chatNotice = "NeaRer could not save the transfer queue. Keep this screen open until sending finishes."
@@ -1730,14 +1747,20 @@ class MainActivity : ComponentActivity() {
             }
             nearbyQueueTotal = prefs.getInt("nearby_file_queue_total", pendingNearbyFileQueue.size)
             nearbyQueueCompleted = prefs.getInt("nearby_file_queue_completed", 0)
+            nearbyQueuePeerStableId = prefs.getString("nearby_file_queue_peer", null)
             if (pendingNearbyFileQueue.isNotEmpty()) {
-                chatNotice = "A saved transfer is waiting. Reconnect to the same phone to continue."
+                chatNotice = if (nearbyQueuePeerStableId.isNullOrBlank()) {
+                    "An older saved transfer has no verified recipient. Cancel it and select the files again for safety."
+                } else {
+                    "A saved transfer is waiting. Reconnect to the same phone to continue."
+                }
             }
         } catch (_: Exception) {
             pendingNearbyFileQueue.clear()
             currentNearbyQueuedFile = null
             nearbyQueueTotal = 0
             nearbyQueueCompleted = 0
+            nearbyQueuePeerStableId = null
             chatNotice = "A saved transfer list could not be restored. Please select those files again."
         }
     }
