@@ -54,6 +54,16 @@ class ByteRangeTest {
         assertEquals(ResolvedByteRange(0, -1, false), ByteRange.resolve(null, 0))
     }
 
+    @Test fun unknownLengthCannotResolveByteRanges() {
+        assertNull(ByteRange.resolve("bytes=0-9", -1))
+        assertNull(ByteRange.resolve("bytes=-10", -1))
+    }
+
+    @Test fun emptyFileCannotSatisfyAnyExplicitByteRange() {
+        assertNull(ByteRange.resolve("bytes=0-", 0))
+        assertNull(ByteRange.resolve("bytes=-1", 0))
+    }
+
     @Test fun fullCoverageRangeIsNotReportedAsPartialTransfer() {
         val wholeFileRange = ByteRange.resolve("bytes=0-", 100)!!
         val oversizedSuffixRange = ByteRange.resolve("bytes=-500", 100)!!
