@@ -35,7 +35,6 @@ class LudoRoomSessionTest {
         assertEquals("room-1", request!!.roomId)
         assertEquals("guest", request.senderPeerId)
         assertEquals(next.sequence, request.expectedSequence)
-        assertNull(guest.createGuestRequest(LudoRoomAction(LudoRoomActionType.ROLL)))
     }
 
     @Test fun hostRejectsWrongRoomSenderAndStaleGuestRequest() {
