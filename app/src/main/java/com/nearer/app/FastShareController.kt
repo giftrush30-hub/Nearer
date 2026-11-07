@@ -37,9 +37,13 @@ class FastShareController(private val context: Context) {
     fun start(uri: Uri) = start(listOf(uri))
 
     fun start(uris: List<Uri>) {
-        val selectedUris = uris.distinct().take(FastShareDownloadCatalog.MAX_FILES)
+        val selectedUris = uris.distinct()
         if (selectedUris.isEmpty()) {
             status = "Choose at least one file to start Fast Share."
+            return
+        }
+        if (selectedUris.size > FastShareDownloadCatalog.MAX_FILES) {
+            status = "Choose up to ${FastShareDownloadCatalog.MAX_FILES} files per Fast Share session."
             return
         }
         stop(updateStatus = false)
