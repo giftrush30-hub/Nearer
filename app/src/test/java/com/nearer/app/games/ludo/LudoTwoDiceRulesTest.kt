@@ -18,12 +18,15 @@ class LudoTwoDiceRulesTest {
         assertEquals(listOf(0, 1, 2, 3), LudoTwoDiceRules.legalTokenIndexes(yard, selected))
     }
 
-    @Test fun twoDiceAreIndependentAndCannotBeCombined() {
+    @Test fun playerCanChooseSeparateDiceOrOptionalCombinedTotal() {
         val player = player(listOf(4, 20, -1, -1))
         val turn = LudoTwoDiceTurn(LudoDicePair(2, 5))
-        assertEquals(setOf(LudoDieSlot.FIRST, LudoDieSlot.SECOND), LudoTwoDiceRules.playableDice(player, turn))
+        assertEquals(setOf(LudoDieSlot.FIRST, LudoDieSlot.SECOND, LudoDieSlot.BOTH), LudoTwoDiceRules.playableDice(player, turn))
         val selected = LudoTwoDiceRules.selectDie(player, turn, LudoDieSlot.FIRST)!!
-        assertFalse(7 in LudoTwoDiceRules.legalTokenIndexes(player, selected))
+        assertEquals(listOf(0, 1), LudoTwoDiceRules.legalTokenIndexes(player, selected))
+        val combined = LudoTwoDiceRules.selectDie(player, turn, LudoDieSlot.BOTH)!!
+        assertEquals(7, combined.dice.value(LudoDieSlot.BOTH))
+        assertEquals(listOf(0, 1), LudoTwoDiceRules.legalTokenIndexes(player, combined))
     }
 
     @Test fun playerCanSpendBothDiceOnDifferentTokens() {
