@@ -51,9 +51,41 @@ class FastShareHttpSessionTest {
         assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
-    @Test fun oversizedHeaderWrites400InsteadOfBeingPartiallyAccepted() {
+    @Test fun oversizedHeaderLineWrites400() {
         val oversized = "X-Long: " + "a".repeat(9000) + "\r\n"
         val (exchange, response) = read("GET /download HTTP/1.1\r\n$oversized\r\n")
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun unterminatedRequestLineAtEofWrites400() {
+        val (exchange, response) = read("GET /download HTTP/1.1")
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun missingHeaderTerminatorAtEofWrites400() {
+        val (exchange, response) = read("GET /download HTTP/1.1\r\nHost: phone")
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun excessiveAggregateHeadersWrite400() {
+        val headers = (1..5).joinToString("") { "X-$it: " + "a".repeat(7000) + "\r\n" }
+        val (exchange, response) = read("GET /download HTTP/1.1\r\n$headers\r\n")
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun excessiveHeaderCountWrites400() {
+        val headers = (1..101).joinToString("") { "X-$it: ok\r\n" }
+        val (exchange, response) = read("GET /download HTTP/1.1\r\n$headers\r\n")
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun malformedHeaderWithoutColonWrites400() {
+        val (exchange, response) = read("GET /download HTTP/1.1\r\nNot-A-Header\r\n\r\n")
         assertNull(exchange)
         assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
