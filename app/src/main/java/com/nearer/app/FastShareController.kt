@@ -234,25 +234,10 @@ private class FastShareHttpServer(
             connection.soTimeout = 15000
             val input = BufferedInputStream(connection.getInputStream())
             val output = BufferedOutputStream(connection.getOutputStream())
-            val requestLine = readLine(input) ?: return
-            val request = FastShareHttpRequest.parse(requestLine)
-            if (request == null) {
-                output.write(FastShareHttpErrors.badRequest())
-                output.flush()
-                return
-            }
-            if (!request.supportsMethod) {
-                output.write(FastShareHttpErrors.methodNotAllowed())
-                output.flush()
-                return
-            }
+            val exchange = FastShareHttpSession.readRequest(input, output) ?: return
+            val request = exchange.request
             val headOnly = request.isHeadOnly
-            var rangeHeader: String? = null
-            while (true) {
-                val line = readLine(input) ?: break
-                if (line.isEmpty()) break
-                if (line.startsWith("Range:", true)) rangeHeader = line.substringAfter(':').trim()
-            }
+            val rangeHeader = exchange.rangeHeader
             when (request.route) {
                 FastShareHttpRequest.Route.RECEIVER_PAGE -> {
                     val safeName = escapeHtml(fileName)
@@ -403,17 +388,6 @@ private class FastShareHttpServer(
             else if (stream.read() < 0) throw IllegalStateException("Cannot seek to requested file section")
             else remaining--
         }
-    }
-
-    private fun readLine(input: BufferedInputStream): String? {
-        val bytes = java.io.ByteArrayOutputStream()
-        while (bytes.size() < 8192) {
-            val value = input.read()
-            if (value < 0) return if (bytes.size() == 0) null else bytes.toString("UTF-8")
-            if (value == 10) break
-            if (value != 13) bytes.write(value)
-        }
-        return bytes.toString("UTF-8")
     }
 
     private fun formatFileSize(bytes: Long): String {
