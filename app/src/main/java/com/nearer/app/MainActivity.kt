@@ -2142,7 +2142,6 @@ private fun NeaRerHome(
     onShareApps: (List<String>) -> Unit,
     openSendSession: OpenSendSession?,
     openSendNotice: String,
-    onPickOpenSendFiles: () -> Unit,
     onStartOpenSend: (List<Uri>) -> Unit,
     onStopOpenSend: () -> Unit,
     pendingApp: AppShareArchiveInfo?,
