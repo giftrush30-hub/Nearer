@@ -558,7 +558,7 @@ class MainActivity : ComponentActivity() {
                     sentFiles = sentFiles,
                     onSendMessage = ::sendChatMessage,
                     onSelectConversation = { peerId, peerName ->
-                        val connectedPeerId = activeChatPeerId
+                        val connectedPeerId = connectedChatPeerId
                         activeChatPeerId = peerId
                         activeChatPeerName = peerName
                         chatNotice = if (chatReady && peerId != connectedPeerId) "This is a different conversation. Reconnect to ${peerName} before sending; nothing will be sent to the currently connected person." else "Conversation opened: $peerName."
