@@ -153,6 +153,8 @@ class MainActivity : ComponentActivity() {
     private var outgoingProgress by mutableStateOf(0f)
     // Nearby multi-file jobs are sent one file at a time to protect slower phones.
     private val pendingNearbyFileQueue = java.util.ArrayDeque<Uri>()
+    // Keep the active item separate so a dropped connection or app restart can retry it.
+    private var currentNearbyQueuedFile: Uri? = null
     private var nearbyQueueTotal = 0
     private var nearbyQueueCompleted = 0
     private var incomingTransferName by mutableStateOf<String?>(null)
@@ -248,6 +250,10 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     hybridConnected = true
                     hybridConnectedEndpoint = id
+                    if (currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()) {
+                        chatNotice = "Connection restored. Resuming your saved file transfer…"
+                        startNextNearbyQueuedFile()
+                    }
                     pendingHybridEndpoint = null
                     incomingRequesterName = null
                     connectedDeviceName = name
@@ -344,14 +350,14 @@ class MainActivity : ComponentActivity() {
                         outgoingTransferId = null
                         outgoingProgress = 0f
                         if (message.startsWith("File sent to the nearby phone")) {
+                            currentNearbyQueuedFile = null
                             nearbyQueueCompleted += 1
+                            persistNearbyFileQueue()
                             if (nearbyQueueTotal > 0) startNextNearbyQueuedFile()
                         } else if (nearbyQueueTotal > 0) {
-                            val remaining = pendingNearbyFileQueue.size
-                            pendingNearbyFileQueue.clear()
-                            nearbyQueueTotal = 0
-                            nearbyQueueCompleted = 0
-                            chatNotice = message + " Remaining files were not sent (" + remaining + " still queued)."
+                            // Keep the active file and remaining queue for retry after reconnect.
+                            persistNearbyFileQueue()
+                            chatNotice = message + " Your transfer is saved; reconnect to retry it."
                         }
                     }
                     if (message.startsWith("Nearby file transfer failed")) {
@@ -363,6 +369,7 @@ class MainActivity : ComponentActivity() {
         })
         if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
         restoreLocalData()
+        restoreNearbyFileQueue()
         val queuedAfterRestart = nearbyTransport?.pendingMessageIds().orEmpty()
         if (queuedAfterRestart.isNotEmpty()) {
             chatMessages.indices.forEach { index ->
@@ -1616,8 +1623,10 @@ class MainActivity : ComponentActivity() {
             outgoingProgress = 0f
             val discarded = pendingNearbyFileQueue.size
             pendingNearbyFileQueue.clear()
+            currentNearbyQueuedFile = null
             nearbyQueueTotal = 0
             nearbyQueueCompleted = 0
+            persistNearbyFileQueue()
             chatNotice = if (discarded > 0) "Transfer cancelled. " + discarded + " queued files were not sent." else "Cancelling nearby file transfer…"
             return
         }
@@ -1643,7 +1652,9 @@ class MainActivity : ComponentActivity() {
             catch (_: Exception) { /* Some providers grant temporary access only. */ }
             pendingNearbyFileQueue.addLast(uri)
         }
+        currentNearbyQueuedFile = null
         nearbyQueueTotal = pendingNearbyFileQueue.size
+        persistNearbyFileQueue()
         nearbyQueueCompleted = 0
         chatNotice = "Preparing " + nearbyQueueTotal + " files for one transfer job…"
         startNextNearbyQueuedFile()
@@ -1651,23 +1662,24 @@ class MainActivity : ComponentActivity() {
 
     private fun startNextNearbyQueuedFile() {
         if (outgoingTransferId != null) return
-        val uri = pendingNearbyFileQueue.pollFirst()
+        val uri = currentNearbyQueuedFile ?: pendingNearbyFileQueue.pollFirst()?.also { currentNearbyQueuedFile = it }
         if (uri == null) {
             val total = nearbyQueueTotal
             val completed = nearbyQueueCompleted
             nearbyQueueTotal = 0
             nearbyQueueCompleted = 0
+            currentNearbyQueuedFile = null
+            persistNearbyFileQueue()
             if (total > 0) chatNotice = "Transfer job finished: " + completed + " of " + total + " files sent."
             return
         }
         val endpoint = hybridConnectedEndpoint
         if (!hybridConnected || endpoint == null) {
-            pendingNearbyFileQueue.clear()
-            nearbyQueueTotal = 0
-            nearbyQueueCompleted = 0
-            chatNotice = "Connection lost. Reconnect before starting another file."
+            persistNearbyFileQueue()
+            chatNotice = "Connection lost. Your transfer is saved. Reconnect to continue."
             return
         }
+        persistNearbyFileQueue()
         var fileName = "shared-file"
         try {
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -1683,10 +1695,45 @@ class MainActivity : ComponentActivity() {
             outgoingProgress = 0f
             chatNotice = "Sending file " + (nearbyQueueCompleted + 1) + " of " + nearbyQueueTotal + ": " + fileName + "…"
         } else {
+            persistNearbyFileQueue()
+            chatNotice = "Could not start " + fileName + ". Reconnect to retry, or cancel the saved transfer."
+        }
+    }
+
+    private fun persistNearbyFileQueue() {
+        try {
+            val items = JSONArray()
+            currentNearbyQueuedFile?.let { items.put(it.toString()) }
+            pendingNearbyFileQueue.forEach { items.put(it.toString()) }
+            getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+                .putString("nearby_file_queue", items.toString())
+                .putInt("nearby_file_queue_total", nearbyQueueTotal)
+                .putInt("nearby_file_queue_completed", nearbyQueueCompleted)
+                .commit()
+        } catch (_: Exception) {
+            chatNotice = "NeaRer could not save the transfer queue. Keep this screen open until sending finishes."
+        }
+    }
+
+    private fun restoreNearbyFileQueue() {
+        try {
+            val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            val items = JSONArray(prefs.getString("nearby_file_queue", "[]") ?: "[]")
+            for (i in 0 until items.length()) {
+                val raw = items.optString(i)
+                if (raw.isNotBlank()) pendingNearbyFileQueue.addLast(Uri.parse(raw))
+            }
+            nearbyQueueTotal = prefs.getInt("nearby_file_queue_total", pendingNearbyFileQueue.size)
+            nearbyQueueCompleted = prefs.getInt("nearby_file_queue_completed", 0)
+            if (pendingNearbyFileQueue.isNotEmpty()) {
+                chatNotice = "A saved transfer is waiting. Reconnect to the same phone to continue."
+            }
+        } catch (_: Exception) {
             pendingNearbyFileQueue.clear()
+            currentNearbyQueuedFile = null
             nearbyQueueTotal = 0
             nearbyQueueCompleted = 0
-            chatNotice = "Could not start " + fileName + ". The remaining files were not sent."
+            chatNotice = "A saved transfer list could not be restored. Please select those files again."
         }
     }
 
