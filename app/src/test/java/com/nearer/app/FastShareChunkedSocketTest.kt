@@ -20,7 +20,7 @@ class FastShareChunkedSocketTest {
             listener.soTimeout = 3000
             val executor = Executors.newSingleThreadExecutor()
             try {
-                val server = executor.submit {
+                val server = executor.submit<ChunkedCopyResult> {
                     listener.accept().use { peer ->
                         peer.soTimeout = 3000
                         val parsed = FastShareHttpSession.readRequest(peer.getInputStream(), peer.getOutputStream())
@@ -60,7 +60,7 @@ class FastShareChunkedSocketTest {
         }
     }
 
-    private fun decodeChunks(body: String): ByteArray {
+    private fun decodeChunks(body: String, allowMissingTerminator: Boolean = false): ByteArray {
         val output = ByteArrayOutputStream()
         var cursor = 0
         while (cursor < body.length) {
@@ -78,6 +78,7 @@ class FastShareChunkedSocketTest {
             require(body.substring(cursor, cursor + 2) == "\r\n") { "Missing chunk data terminator" }
             cursor += 2
         }
+        require(allowMissingTerminator) { "Missing final chunk terminator" }
         return output.toByteArray()
     }
 
@@ -99,6 +100,6 @@ class FastShareChunkedSocketTest {
         assertFalse(result.complete)
         assertEquals(5L, result.bytesCopied)
         assertFalse(body.endsWith("0\r\n\r\n"))
-        assertEquals("unkno", decodeChunks(body.takeWhile { true } + "0\r\n\r\n").toString(Charsets.UTF_8))
+        assertEquals("unkno", decodeChunks(body, allowMissingTerminator = true).toString(Charsets.UTF_8))
     }
 }
