@@ -3399,12 +3399,12 @@ private fun NeaRerHome(
                                         }
                                     }
                                 }
-                                if (receivedFiles.isNotEmpty()) {
+                                if (receivedFiles.isNotEmpty() || sentFiles.isNotEmpty()) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text("RECENTLY RECEIVED", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 0.7.sp)
                                         Spacer(Modifier.weight(1f))
                                         TextButton(onClick = { showReceivedHistory = true }) {
-                                            Text("VIEW ALL · ${receivedFiles.size}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                            Text("SHARED FILES · ${receivedFiles.size + sentFiles.size}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
                                         }
                                     }
                                 }
@@ -4024,12 +4024,12 @@ private fun NeaRerHome(
                                 Text("SEND $pendingChatFilesCount PREPARED ATTACHMENT(S)", fontSize = 10.sp, fontWeight = FontWeight.Black)
                             }
                         }
-                        if (receivedFiles.isNotEmpty()) {
+                        if (receivedFiles.isNotEmpty() || sentFiles.isNotEmpty()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("RECENT FILES", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
                                 Spacer(Modifier.weight(1f))
                                 TextButton(onClick = { showReceivedHistory = true }) {
-                                    Text("VIEW ALL", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                    Text("SHARED FILES", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
                                 }
                             }
                         }
