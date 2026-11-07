@@ -2661,7 +2661,16 @@ private fun NeaRerHome(
     flashLastSignal: String?,
     onRequestFlashScreeningRole: () -> Unit
 ) {
-    val localChatPrefs = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+    val flashContext = androidx.compose.ui.platform.LocalContext.current
+    var flashRecipientNumber by remember { mutableStateOf("") }
+    var flashPresetName by remember { mutableStateOf("PING") }
+    var flashCallStep by remember { mutableStateOf(0) }
+    var flashSenderNotice by remember { mutableStateOf("Choose a signal and enter the recipient's phone number.") }
+    val flashPresets = remember { FlashSignalPattern.presets() }
+    val selectedFlashPreset = flashPresets.firstOrNull { it.name == flashPresetName } ?: flashPresets.first()
+    val flashCallCount = selectedFlashPreset.gapsMillis.size + 1
+    val flashStepGap = selectedFlashPreset.gapsMillis.getOrNull(flashCallStep - 1)
+    val localChatPrefs = flashContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
     var draft by remember { mutableStateOf(localChatPrefs.getString("chat_draft", "") ?: "") }
     var selectedConversationId by remember { mutableStateOf(messages.lastOrNull()?.conversationId ?: "") }
     val conversationRows = messages.groupBy { it.conversationId.ifBlank { "legacy" } }
@@ -3943,12 +3952,91 @@ private fun NeaRerHome(
                         Text("Send a short message without mobile data", color = White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
                         Text("NeaRer Flash uses carefully timed ordinary calls as simple signals. It does not carry chat text, photos or files, and your mobile network may charge for calls.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         Surface(color = Color(0xFF0A203D), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text("SIGNAL PRESETS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                Text("PING • COME • URGENT • CALL ME", color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                Text("Each preset uses a different rhythm of missed calls. Both people must use NeaRer and agree on the same preset meanings.", color = Muted, fontSize = 11.sp)
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("CHOOSE A SIGNAL", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    flashPresets.forEach { preset ->
+                                        val selected = preset.name == flashPresetName
+                                        Surface(
+                                            modifier = Modifier.weight(1f).clickable {
+                                                flashPresetName = preset.name
+                                                flashCallStep = 0
+                                                flashSenderNotice = "Selected ${preset.name.replace('_', ' ')}."
+                                            },
+                                            color = if (selected) AccentBlue else Color(0xFF17375F),
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = BorderStroke(1.dp, if (selected) Gold else Color(0xFF31527A))
+                                        ) {
+                                            Text(
+                                                preset.name.replace('_', ' '),
+                                                modifier = Modifier.padding(vertical = 9.dp, horizontal = 3.dp),
+                                                color = White, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                }
+                                Text(
+                                    "${selectedFlashPreset.name.replace('_', ' ')} • $flashCallCount calls • gaps between call starts: " +
+                                        (selectedFlashPreset.gapsMillis.joinToString(" → ") { "${it / 1000.0}s" }.ifBlank { "one call" }),
+                                    color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+                                )
+                                Text("Both phones must use the same preset meanings. The receiver recognises call-arrival timing; it cannot verify whether a call was later answered or missed.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                             }
                         }
+                        Text("SEND A FLASH SIGNAL", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                        OutlinedTextField(
+                            value = flashRecipientNumber,
+                            onValueChange = { flashRecipientNumber = it.filter { ch -> ch.isDigit() || ch == '+' || ch == ' ' || ch == '-' }.take(20); flashCallStep = 0 },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Recipient phone number") },
+                            placeholder = { Text("e.g. 080… or +234…") },
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = White, unfocusedTextColor = White,
+                                focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF42618B),
+                                focusedLabelColor = AccentBlue, unfocusedLabelColor = Muted,
+                                cursorColor = Gold
+                            )
+                        )
+                        Text("Call step ${(flashCallStep + 1).coerceAtMost(flashCallCount)} of $flashCallCount", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        if (flashStepGap != null) {
+                            Text("After the previous call, aim for about ${flashStepGap} ms between call start times. Carrier delays can affect recognition.", color = Muted, fontSize = 10.sp)
+                        } else {
+                            Text("Start with the first call. Open the dialer, place the call yourself, then end it and return here.", color = Muted, fontSize = 10.sp)
+                        }
+                        Button(
+                            onClick = {
+                                val digits = flashRecipientNumber.filter(Char::isDigit)
+                                if (digits.length < 7) {
+                                    flashSenderNotice = "Enter a valid recipient number first."
+                                } else {
+                                    try {
+                                        flashContext.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$digits")))
+                                        flashSenderNotice = "Dialer opened. You decide whether to place and end this call; return here for the next step."
+                                    } catch (_: Exception) {
+                                        flashSenderNotice = "Could not open the phone dialer on this device."
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                        ) { Text("OPEN DIALER • CALL ${(flashCallStep + 1).coerceAtMost(flashCallCount)}", fontWeight = FontWeight.Black) }
+                        Button(
+                            onClick = {
+                                if (flashCallStep + 1 >= flashCallCount) {
+                                    flashCallStep = 0
+                                    flashSenderNotice = "Signal sequence completed. You can send it again."
+                                } else {
+                                    flashCallStep += 1
+                                    flashSenderNotice = "Next call step ready. Follow the displayed interval; network timing may vary."
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B416C), contentColor = White)
+                        ) { Text(if (flashCallStep + 1 >= flashCallCount) "FINISH SIGNAL SEQUENCE" else "I ENDED THIS CALL • NEXT STEP", fontWeight = FontWeight.Bold) }
+                        Text(flashSenderNotice, color = Gold, fontSize = 10.sp, lineHeight = 15.sp)
+                        Text("NeaRer does not place calls automatically and does not request permission to call. You must tap Call in the phone app and end each call yourself. Your carrier may charge for calls. The number is used only to open the dialer and is not saved by this screen.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                         Text(if (flashRoleReady) "Call screening access is enabled on this phone." else "To detect incoming Flash patterns, Android asks you to choose NeaRer as your call-screening app. You can decline; normal calling remains available.", color = if (flashRoleReady) Color(0xFF8EE6B2) else Muted, fontSize = 11.sp)
                         Button(
                             onClick = onRequestFlashScreeningRole,
