@@ -11,6 +11,9 @@ internal data class ResolvedByteRange(
 )
 
 internal object ByteRange {
+    fun isPartialTransfer(range: ResolvedByteRange, fileLength: Long): Boolean =
+        range.partial && (range.start != 0L || range.endInclusive != fileLength - 1L)
+
     fun resolve(header: String?, fileLength: Long): ResolvedByteRange? {
         if (fileLength < 0L) return null
         val full = ResolvedByteRange(0L, fileLength - 1L, false)
