@@ -3614,8 +3614,8 @@ private fun NeaRerHome(
     if (showInstalledApps) {
         AlertDialog(
             onDismissRequest = { showInstalledApps = false },
-            containerColor = Color(0xFF0B54DC),
-            title = { Text("SHARE AN APP", color = White, fontWeight = FontWeight.Black) },
+            containerColor = Color(0xFFF8F7F3),
+            title = { Text("Share an app", color = Color(0xFF202B3C), fontWeight = FontWeight.Black) },
             text = {
                 Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
@@ -3623,8 +3623,8 @@ private fun NeaRerHome(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text("Your installed apps", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            Text("Choose an app to package and send to the nearby phone.", color = Muted, fontSize = 9.sp)
+                            Text("Your installed apps", color = Color(0xFF202B3C), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Choose an app to package and send to the nearby phone.", color = Color(0xFF667085), fontSize = 11.sp)
                         }
                         TextButton(
                             onClick = {
@@ -3638,15 +3638,15 @@ private fun NeaRerHome(
                             },
                             enabled = !isLoadingApps
                         ) {
-                            Text(if (isLoadingApps) "SCANNING…" else "↻ REFRESH", color = if (isLoadingApps) Muted else Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                            Text(if (isLoadingApps) "SCANNING…" else "↻ REFRESH", color = if (isLoadingApps) Muted else Color(0xFF285F9E), fontSize = 10.sp, fontWeight = FontWeight.Black)
                         }
                     }
                     if (isLoadingApps) {
-                        Text("Scanning installed apps and preparing their icons…", color = Gold, fontSize = 11.sp)
+                        Text("Scanning installed apps and preparing their icons…", color = Color(0xFF285F9E), fontSize = 11.sp)
                         LinearProgressIndicator(
                             modifier = Modifier.fillMaxWidth(),
                             color = Gold,
-                            trackColor = Color(0xFF4D8FEA)
+                            trackColor = Color(0xFFE3E7ED)
                         )
                     }
                     var appSearch by remember { mutableStateOf("") }
@@ -3655,7 +3655,7 @@ private fun NeaRerHome(
                         onValueChange = { appSearch = it },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        label = { Text("Search apps", color = Muted) }
+                        label = { Text("Search apps", color = Color(0xFF667085)) }
                     )
                     var appFilter by remember { mutableStateOf("All") }
                     Row(
@@ -3666,14 +3666,14 @@ private fun NeaRerHome(
                             val selected = appFilter == filter
                             Surface(
                                 modifier = Modifier.weight(1f).clickable { appFilter = filter },
-                                color = if (selected) Color(0xFF1B5EB5) else Color(0xFF1769FF),
+                                color = if (selected) Color(0xFFE4EDF8) else Color(0xFFECEAE4),
                                 shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, if (selected) Gold.copy(alpha = 0.8f) else Color(0xFF63A7FF))
+                                border = BorderStroke(1.dp, if (selected) Gold.copy(alpha = 0.8f) else Color(0xFFD5D9E0))
                             ) {
                                 Text(
                                     filter,
                                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 9.dp),
-                                    color = if (selected) White else Muted,
+                                    color = Color(0xFF202B3C),
                                     fontSize = 10.sp,
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -3694,13 +3694,13 @@ private fun NeaRerHome(
                     Text(
                         if (isLoadingApps) "Scanning this phone's app library…" else
                             "${visibleApps.size} of ${installedApps.size} shareable apps shown • Read on this phone only",
-                        color = if (isLoadingApps) Gold else Muted,
+                        color = if (isLoadingApps) Color(0xFF285F9E) else Color(0xFF667085),
                         fontSize = 10.sp
                     )
                     if (isLoadingApps) {
-                        Text("Please wait while NeaRer reads the app library on this phone.", color = White, fontSize = 12.sp)
+                        Text("Please wait while NeaRer reads the app library on this phone.", color = Color(0xFF202B3C), fontSize = 12.sp)
                     } else if (installedApps.isEmpty()) {
-                        Text("No shareable apps were found. Check that this phone has apps installed.", color = White, fontSize = 13.sp)
+                        Text("No shareable apps were found. Check that this phone has apps installed.", color = Color(0xFF202B3C), fontSize = 13.sp)
                     } else if (visibleApps.isEmpty()) {
                         val emptyMessage = when {
                             appSearch.isNotBlank() && appFilter != "All" -> "No ${appFilter.lowercase()} apps match “${appSearch.trim()}”."
@@ -3708,7 +3708,7 @@ private fun NeaRerHome(
                             appFilter != "All" -> "No ${appFilter.lowercase()} apps were found on this phone."
                             else -> "No shareable apps were found on this phone."
                         }
-                        Text(emptyMessage, color = White, fontSize = 13.sp)
+                        Text(emptyMessage, color = Color(0xFF202B3C), fontSize = 13.sp)
                     }
                     if (!isLoadingApps) visibleApps.forEach { app ->
                         Surface(
@@ -3724,8 +3724,8 @@ private fun NeaRerHome(
                                     } else appShareNotice = "Could not prepare " + app.label + " for sharing."
                                 }
                             },
-                            color = Color(0xFF1769FF), shape = RoundedCornerShape(14.dp),
-                            border = BorderStroke(1.dp, Color(0xFF78B8FF).copy(alpha = 0.55f))
+                            color = Color.White, shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE1E5EB))
                         ) {
                             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Image(
@@ -3734,26 +3734,26 @@ private fun NeaRerHome(
                                     modifier = Modifier.size(46.dp).clip(RoundedCornerShape(11.dp))
                                 )
                                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                                    Text(app.label, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(if (app.apkPaths.size > 1) "Split app • " + app.apkPaths.size + " APK parts" else "App • APK ready", color = Muted, fontSize = 10.sp)
-                                    Text(app.packageName, color = Color(0xFF83A5CC), fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(app.label, color = Color(0xFF202B3C), fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(if (app.apkPaths.size > 1) "Split app • " + app.apkPaths.size + " APK parts" else "App • APK ready", color = Color(0xFF667085), fontSize = 10.sp)
+                                    Text(app.packageName, color = Color(0xFF7A8798), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
-                                Text("›", color = Gold, fontSize = 23.sp)
+                                Text("›", color = Color(0xFF285F9E), fontSize = 23.sp)
                             }
                         }
                     }
                     if (installedApps.any { it.apkPaths.size > 1 }) {
-                        Text("Some apps contain split APKs. NeaRer sends those together in a ZIP package; the receiver will need a compatible split-APK installer.", color = Color(0xFFE8C879), fontSize = 10.sp, lineHeight = 15.sp)
+                        Text("Some apps contain split APKs. NeaRer sends those together in a ZIP package; the receiver will need a compatible split-APK installer.", color = Color(0xFF8B6B25), fontSize = 11.sp, lineHeight = 15.sp)
                     }
                     Text(
                         "App availability depends on what Android allows NeaRer to access. Some protected system components may not appear.",
-                        color = Color(0xFF91A9C8),
+                        color = Color(0xFF667085),
                         fontSize = 9.sp,
                         lineHeight = 14.sp
                     )
                 }
             },
-            confirmButton = { TextButton(onClick = { showInstalledApps = false }) { Text("CLOSE", color = Gold) } }
+            confirmButton = { TextButton(onClick = { showInstalledApps = false }) { Text("Close", color = Color(0xFF285F9E)) } }
         )
     }
     if (showReceivedHistory) {
