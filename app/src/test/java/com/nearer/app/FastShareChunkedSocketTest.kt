@@ -12,7 +12,9 @@ import org.junit.Test
 
 /** Exercises unknown-length chunked file bodies across a real loopback TCP socket. */
 class FastShareChunkedSocketTest {
-    private fun exchange(continueAfterBytes: Long? = null): String {
+    private data class WireResult(val response: String, val complete: Boolean, val bytesCopied: Long)
+
+    private fun exchange(continueAfterBytes: Long? = null): WireResult {
         val payload = "unknown-size-stream-payload".toByteArray(Charsets.UTF_8)
         ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { listener ->
             listener.soTimeout = 3000
@@ -36,8 +38,6 @@ class FastShareChunkedSocketTest {
                             onBytesCopied = { copied = it },
                             bufferSize = 5
                         )
-                        assertEquals(continueAfterBytes == null, result.complete)
-                        assertEquals(if (continueAfterBytes == null) payload.size.toLong() else 5L, result.bytesCopied)
                         output.flush()
                         result
                     }
@@ -51,8 +51,8 @@ class FastShareChunkedSocketTest {
                     }
                     val response = ByteArrayOutputStream()
                     client.getInputStream().copyTo(response)
-                    server.get(3, TimeUnit.SECONDS)
-                    return response.toString("UTF-8")
+                    val result = server.get(3, TimeUnit.SECONDS)
+                    return WireResult(response.toString("UTF-8"), result.complete, result.bytesCopied)
                 }
             } finally {
                 executor.shutdownNow()
@@ -60,20 +60,45 @@ class FastShareChunkedSocketTest {
         }
     }
 
+    private fun decodeChunks(body: String): ByteArray {
+        val output = ByteArrayOutputStream()
+        var cursor = 0
+        while (cursor < body.length) {
+            val lineEnd = body.indexOf("\r\n", cursor)
+            require(lineEnd >= 0) { "Missing chunk-size line terminator" }
+            val size = body.substring(cursor, lineEnd).toInt(16)
+            cursor = lineEnd + 2
+            if (size == 0) {
+                require(body.substring(cursor) == "\r\n") { "Invalid final chunk terminator" }
+                return output.toByteArray()
+            }
+            require(cursor + size + 2 <= body.length) { "Truncated chunk data" }
+            output.write(body.substring(cursor, cursor + size).toByteArray(Charsets.ISO_8859_1))
+            cursor += size
+            require(body.substring(cursor, cursor + 2) == "\r\n") { "Missing chunk data terminator" }
+            cursor += 2
+        }
+        return output.toByteArray()
+    }
+
     @Test fun unknownLengthTcpResponseUsesValidChunksAndCleanTerminator() {
-        val wire = exchange()
+        val result = exchange()
+        val wire = result.response
+        assertTrue(result.complete)
+        assertEquals("unknown-size-stream-payload".length.toLong(), result.bytesCopied)
         assertTrue(wire.startsWith("HTTP/1.1 200 OK\r\n"))
         assertTrue(wire.contains("Transfer-Encoding: chunked\r\n"))
         val body = wire.substringAfter("\r\n\r\n")
         assertTrue(body.endsWith("0\r\n\r\n"))
-        assertTrue(body.contains("unknown-size-stream-payload"))
+        assertArrayEquals("unknown-size-stream-payload".toByteArray(Charsets.UTF_8), decodeChunks(body))
     }
 
     @Test fun interruptedUnknownLengthTcpResponseOmitsCompletionTerminator() {
-        val wire = exchange(continueAfterBytes = 5L)
-        val body = wire.substringAfter("\r\n\r\n")
-        assertTrue(body.isNotEmpty())
+        val result = exchange(continueAfterBytes = 5L)
+        val body = result.response.substringAfter("\r\n\r\n")
+        assertFalse(result.complete)
+        assertEquals(5L, result.bytesCopied)
         assertFalse(body.endsWith("0\r\n\r\n"))
-        assertTrue(body.contains("unkno"))
+        assertEquals("unkno", decodeChunks(body.takeWhile { true } + "0\r\n\r\n").toString(Charsets.UTF_8))
     }
 }
