@@ -3574,6 +3574,54 @@ private fun NeaRerHome(
                     }
 
 
+                    if (pendingChatFilesCount > 0) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().animateContentSize(),
+                            shape = RoundedCornerShape(18.dp),
+                            color = Color(0xFF1769FF),
+                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.8f)),
+                            shadowElevation = 8.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(11.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(13.dp),
+                                    color = Gold,
+                                    modifier = Modifier.size(43.dp)
+                                ) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                        Text("$pendingChatFilesCount", color = Color(0xFF0647C9), fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                    }
+                                }
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text("YOUR PREPARED FILES", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.8.sp)
+                                    Text(
+                                        if (chatReady) "Ready to send to ${connectedDeviceName ?: "your nearby contact"}"
+                                        else "Saved on this phone • connect whenever you're ready",
+                                        color = White, fontSize = 10.sp, lineHeight = 14.sp
+                                    )
+                                }
+                                Button(
+                                    onClick = onSendQueuedFiles,
+                                    enabled = chatReady && outgoingTransferId == null,
+                                    shape = RoundedCornerShape(13.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Gold,
+                                        contentColor = Color(0xFF0647C9),
+                                        disabledContainerColor = Color(0xFFB7CFFF),
+                                        disabledContentColor = Color(0xFF174A9B)
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 13.dp, vertical = 9.dp)
+                                ) {
+                                    Text(if (chatReady) "SEND" else "WAIT", fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                }
+                            }
+                        }
+                    }
+
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable {
                             receiveMode = false
