@@ -153,6 +153,7 @@ class MainActivity : ComponentActivity() {
     private val nearbyTransferHistory = mutableStateListOf<NearbyTransferRecord>()
     private var activeOutgoingFileName = "shared-file"
     private var activeOutgoingFileBytes = 0L
+    private val pendingDirectOutgoing = ConcurrentHashMap<String, DirectOutgoingTransfer>()
     private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
     private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
     private var outgoingTransferId by mutableStateOf<String?>(null)
@@ -1909,6 +1910,7 @@ class MainActivity : ComponentActivity() {
                     val id = transferId
                     val encodedName = Base64.getEncoder().encodeToString(fileName.toByteArray(Charsets.UTF_8))
                     if (!sendWireLine("FILE_START|$id|$encodedName|$fileSize")) throw IllegalStateException("Connection unavailable")
+                    pendingDirectOutgoing[id] = DirectOutgoingTransfer(fileName, fileSize)
                     runOnUiThread { chatNotice = "Sending $fileName…" }
                     val buffer = ByteArray(12 * 1024)
                     val digest = MessageDigest.getInstance("SHA-256")
@@ -1942,6 +1944,9 @@ class MainActivity : ComponentActivity() {
                     runOnUiThread { chatNotice = "Sending complete. Waiting for the other phone to confirm…" }
                 }
             } catch (e: Exception) {
+                pendingDirectOutgoing.remove(transferId)?.let { failed ->
+                    runOnUiThread { recordNearbyTransfer("Sent", failed.fileName, failed.bytes, "Interrupted") }
+                }
                 runOnUiThread {
                     outgoingTransferId = null
                     outgoingProgress = 0f
@@ -2093,6 +2098,12 @@ class MainActivity : ComponentActivity() {
                             val parts = line.split("|", limit = 3)
                             val ok = parts.getOrNull(2) == "OK"
                             val transferId = parts.getOrNull(1)
+                            val completed = transferId?.let { pendingDirectOutgoing.remove(it) }
+                            if (completed != null) {
+                                runOnUiThread {
+                                    recordNearbyTransfer("Sent", completed.fileName, completed.bytes, if (ok) "Complete" else "Not verified")
+                                }
+                            }
                             runOnUiThread {
                                 if (!ok && transferId != null && outgoingTransferId == transferId) {
                                     cancelledOutgoingTransfers.add(transferId)
@@ -2943,6 +2954,8 @@ internal data class ChatMessage(
 )
 
 private data class ReceivedFile(val displayName: String, val file: File)
+
+private data class DirectOutgoingTransfer(val fileName: String, val bytes: Long)
 
 private data class NearbyTransferRecord(
     val direction: String,
