@@ -346,9 +346,13 @@ private class FastShareHttpServer(
                     output.write("\\r\\n".toByteArray(Charsets.US_ASCII))
                     output.write(buffer, 0, read)
                     output.write("\\r\\n".toByteArray(Charsets.US_ASCII))
-                    output.flush()
                     sent += read
-                    if (sent % (1024L * 1024L) < read) onTransferUpdate(sent, -1L, false, false)
+                    // Avoid forcing a socket flush for every 64 KB chunk.
+                    // Let BufferedOutputStream batch writes and flush at ~1 MB intervals.
+                    if (sent % (1024L * 1024L) < read) {
+                        output.flush()
+                        onTransferUpdate(sent, -1L, false, false)
+                    }
                 }
                 val completed = running
                 if (completed) {
