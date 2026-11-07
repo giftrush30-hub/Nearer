@@ -14,13 +14,16 @@ internal data class ChunkedCopyResult(
  * the transfer is still allowed to continue.
  */
 internal object ChunkedStreamCopy {
+    // Keep unknown-length streams efficient without ever buffering the whole file.
+    const val DEFAULT_BUFFER_SIZE = 256 * 1024
+
     fun copy(
         input: InputStream,
         output: OutputStream,
         shouldContinue: () -> Boolean,
         onBytesCopied: (Long) -> Unit = {},
         onProgress: (Long) -> Unit = {},
-        bufferSize: Int = 64 * 1024
+        bufferSize: Int = DEFAULT_BUFFER_SIZE
     ): ChunkedCopyResult {
         require(bufferSize > 0) { "Buffer size must be positive" }
         val buffer = ByteArray(bufferSize)
