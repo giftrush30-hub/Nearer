@@ -58,7 +58,7 @@ fun PhoneFolderBrowser(treeUri: Uri, onSelectFiles: (List<Uri>) -> Unit, onClose
                         val directory = item.mime == DocumentsContract.Document.MIME_TYPE_DIR
                         Surface(modifier = Modifier.fillMaxWidth().clickable { if (directory) { stack.add(item.uri); folder = item.uri; search = "" } else selected = if (item.uri in selected) selected - item.uri else selected + item.uri }, color = if (item.uri in selected) Color(0xFF087FCE) else Color(0xFF0647C9), shape = RoundedCornerShape(11.dp)) {
                             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(if (directory) "📁" else "📄", fontSize = 20.sp)
+                                Text(if (directory) "📁" else documentGlyph(item.mime), fontSize = 20.sp)
                                 Column(Modifier.weight(1f).padding(start = 10.dp)) {
                                     Text(item.name, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
                                     Text(if (directory) "FOLDER • OPEN" else "TAP TO PREPARE • " + readableSize(item.size), color = Color(0xFFFFD84D), fontSize = 8.sp)
@@ -99,5 +99,17 @@ private fun queryPhoneFolder(context: Context, treeUri: Uri, folderUri: Uri): Pa
     }
     Pair(result.sortedWith(compareBy<PhoneDocumentEntry> { it.mime != DocumentsContract.Document.MIME_TYPE_DIR }.thenBy { it.name.lowercase() }), null)
 } catch (e: Exception) { Pair(emptyList(), e.message ?: "This folder could not be read.") }
+
+private fun documentGlyph(mime: String): String = when {
+    mime.startsWith("image/") -> "🖼️"
+    mime.startsWith("video/") -> "🎬"
+    mime.startsWith("audio/") -> "🎵"
+    mime.contains("pdf") -> "📕"
+    mime.contains("zip") || mime.contains("compressed") -> "🗜️"
+    mime.contains("spreadsheet") || mime.contains("excel") -> "📊"
+    mime.contains("presentation") || mime.contains("powerpoint") -> "📽️"
+    mime.contains("word") || mime.contains("document") -> "📝"
+    else -> "📄"
+}
 
 private fun readableSize(size: Long): String = when { size <= 0L -> "Size unavailable"; size < 1024L -> size.toString() + " B"; size < 1048576L -> (size / 1024L).toString() + " KB"; else -> String.format("%.1f MB", size / 1048576.0) }
