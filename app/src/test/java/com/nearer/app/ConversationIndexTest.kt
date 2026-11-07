@@ -6,7 +6,7 @@ import org.junit.Test
 
 class ConversationIndexTest {
     private fun message(id: String, peer: String, time: Long, body: String = id) =
-        ChatMessage(id, body, false, "Received", time, peer, peer)
+        ChatMessage(id, body, false, "Received", peer, peer, time)
 
     @Test fun groupsMessagesByStableConversationId() {
         val result = ConversationIndex.build(listOf(
@@ -26,8 +26,8 @@ class ConversationIndexTest {
 
     @Test fun legacyBlankConversationIdsStayInLegacyThread() {
         val result = ConversationIndex.build(listOf(
-            ChatMessage("x", "x", false, "Received", 1, "", "Old"),
-            ChatMessage("y", "y", false, "Received", 2, "legacy", "Old")
+            ChatMessage("x", "x", false, "Received", "", "Old", 1),
+            ChatMessage("y", "y", false, "Received", "legacy", "Old", 2)
         ))
         assertEquals(1, result.size)
     }
