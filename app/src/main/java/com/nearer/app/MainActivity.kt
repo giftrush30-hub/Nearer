@@ -1509,7 +1509,10 @@ class MainActivity : ComponentActivity() {
     private fun persistPendingChatFiles() {
         val array = JSONArray()
         pendingChatFileUris.forEach { array.put(it) }
-        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("pending_chat_files", array.toString()).apply()
+        // Prepared files must survive an immediate process death. Unlike visual
+        // preferences, this queue is user work, so wait for the durable write.
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            .edit().putString("pending_chat_files", array.toString()).commit()
     }
 
     // Capture message state on the UI thread, then serialize every write through one
