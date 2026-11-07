@@ -91,6 +91,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -1968,6 +1969,7 @@ private fun NeaRerHome(
     onStopSearch: () -> Unit,
     onConnect: (WifiP2pDevice) -> Unit
 ) {
+    val context = LocalContext.current
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Home") }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
@@ -2367,6 +2369,19 @@ private fun NeaRerHome(
                         Text("YOUR NEARER", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
                         Text("Everything closer, even without mobile data.", color = White, fontSize = 23.sp, lineHeight = 29.sp, fontWeight = FontWeight.ExtraBold)
                         Text("Your nearby identity and direct connections stay on this phone. NeaRer’s core nearby chat and file sharing are designed to work without mobile data.", color = Muted, fontSize = 13.sp, lineHeight = 20.sp)
+                        Button(
+                            onClick = {
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, "Try NeaRer")
+                                    putExtra(Intent.EXTRA_TEXT, "Let's connect with NeaRer — chat and share files nearby without mobile data. Get the project here: https://github.com/giftrush30-hub/Nearer")
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Share NeaRer"))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
+                        ) { Text("Share NeaRer", fontWeight = FontWeight.Bold) }
                     }
                 }
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
