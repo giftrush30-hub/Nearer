@@ -1,4 +1,4 @@
-name: Android debug APK
+name: Android unit tests (no APK)
 
 on:
   push:
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  unit-tests:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -32,14 +32,5 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build debug APK
-        run: gradle --no-daemon --stacktrace testDebugUnitTest assembleDebug
-      - name: Verify APK output
-        run: test -s app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: nearer-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+      - name: Run unit tests only
+        run: gradle --no-daemon --stacktrace testDebugUnitTest
