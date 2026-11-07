@@ -110,9 +110,8 @@ object FlashTrustedSenders {
         }
     }
 
-    fun fingerprint(context: Context, number: String): String? {
-        val normalized = normalize(number)
-        if (normalized.length < 7) return null
+    private fun fingerprintDigits(context: Context, digits: String): String? {
+        if (digits.length < 7) return null
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         var salt = prefs.getString(SALT_KEY, null)
         if (salt == null) {
@@ -122,17 +121,33 @@ object FlashTrustedSenders {
         }
         val digest = MessageDigest.getInstance("SHA-256")
         digest.update(Base64.decode(salt, Base64.NO_WRAP))
-        return digest.digest(normalized.toByteArray(Charsets.UTF_8))
+        return digest.digest(digits.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
+    }
+
+    fun fingerprint(context: Context, number: String): String? =
+        fingerprintDigits(context, normalize(number))
+
+    private fun matchingFingerprints(context: Context, number: String): Set<String> {
+        val digits = number.filter(Char::isDigit)
+        return listOfNotNull(
+            fingerprintDigits(context, normalize(number)),
+            // Also recognise hashes saved by earlier builds before Nigerian
+            // local numbers were canonicalised to their +234 form.
+            fingerprintDigits(context, digits)
+        ).toSet()
     }
 
     fun addTrusted(context: Context, number: String, displayName: String = ""): Boolean {
         val hash = fingerprint(context, number) ?: return false
+        val legacyHash = fingerprintDigits(context, number.filter(Char::isDigit))
+        val hashesToReplace = setOfNotNull(hash, legacyHash)
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val current = prefs.getStringSet(ALLOWLIST_KEY, emptySet()).orEmpty().toMutableSet()
+        current.removeAll(hashesToReplace)
         current.add(hash)
         val names = prefs.getStringSet("trusted_sender_names", emptySet()).orEmpty().toMutableSet()
-        names.removeAll { it.startsWith("$hash|") }
+        names.removeAll { entry -> hashesToReplace.any { entry.startsWith("$it|") } }
         val safeName = displayName.trim().take(32)
         if (safeName.isNotBlank()) names.add("$hash|$safeName")
         return prefs.edit()
@@ -142,20 +157,19 @@ object FlashTrustedSenders {
     }
 
     fun displayName(context: Context, number: String): String? {
-        val hash = fingerprint(context, number) ?: return null
+        val hashes = matchingFingerprints(context, number)
         val entries = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getStringSet("trusted_sender_names", emptySet()).orEmpty()
-        return entries.firstOrNull { it.startsWith("$hash|") }
+        return entries.firstOrNull { entry -> hashes.any { entry.startsWith("$it|") } }
             ?.substringAfter("|")
             ?.takeIf { it.isNotBlank() }
     }
 
     fun isTrusted(context: Context, number: String): Boolean {
-        val hash = fingerprint(context, number) ?: return false
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getStringSet(ALLOWLIST_KEY, emptySet())
-            .orEmpty()
-            .contains(hash)
+        val hashes = matchingFingerprints(context, number)
+        val allowed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getStringSet(ALLOWLIST_KEY, emptySet()).orEmpty()
+        return hashes.any { it in allowed }
     }
 
     fun trustedCount(context: Context): Int =
