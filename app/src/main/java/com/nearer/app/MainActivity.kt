@@ -3066,6 +3066,7 @@ private fun NeaRerHome(
                 }
             }
 
+            val isConnecting = status.contains("connecting", ignoreCase = true) && !chatReady
             Surface(
                 modifier = Modifier.fillMaxWidth().onGloballyPositioned {
                     sectionPositions["nearby"] = it.positionInParent().y.toInt()
@@ -3081,6 +3082,7 @@ private fun NeaRerHome(
                             Text("NEARBY RADAR", color = Gold, fontSize = 10.sp,
                                 fontWeight = FontWeight.Black, letterSpacing = 1.7.sp)
                             Text(when {
+                                isConnecting -> "Connecting to a nearby phone"
                                 receiveMode && incomingTransferName != null -> "Receiving a nearby file"
                                 receiveMode && chatReady -> "Ready for an incoming file"
                                 receiveMode && scanning -> "Looking for a nearby sender"
@@ -3090,14 +3092,24 @@ private fun NeaRerHome(
                             },
                                 color = White, fontSize = 22.sp, fontWeight = FontWeight.Black)
                         }
-                        Surface(color = if (scanning) Color(0xFF1D684F) else Color(0xFF1B3B61),
-                            shape = RoundedCornerShape(50)) {
+                        Surface(color = when {
+                            isConnecting -> Color(0xFF765A20)
+                            scanning -> Color(0xFF1D684F)
+                            else -> Color(0xFF1B3B61)
+                        }, shape = RoundedCornerShape(50)) {
                             Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Surface(shape = CircleShape, color = if (scanning) Color(0xFF7CE0B7) else Color(0xFF8FB9F4),
-                                    modifier = Modifier.size(6.dp)) {}
-                                Text(if (scanning) "LIVE SCAN" else "READY",
+                                Surface(shape = CircleShape, color = when {
+                                    isConnecting -> Gold
+                                    scanning -> Color(0xFF7CE0B7)
+                                    else -> Color(0xFF8FB9F4)
+                                }, modifier = Modifier.size(6.dp).alpha(if (isConnecting || scanning) pulse else 1f)) {}
+                                Text(when {
+                                    isConnecting -> "CONNECTING"
+                                    scanning -> "LIVE SCAN"
+                                    else -> "READY"
+                                },
                                     color = White, fontSize = 8.sp, fontWeight = FontWeight.Black)
                             }
                         }
@@ -3165,12 +3177,13 @@ private fun NeaRerHome(
                         Button(
                             onClick = onFindNearby,
                             modifier = Modifier.weight(1f).height(49.dp),
-                            enabled = !scanning && !chatReady,
+                            enabled = !scanning && !chatReady && !isConnecting,
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight, disabledContainerColor = Color(0xFF315174), disabledContentColor = Color(0xFFD8E5F5))
                         ) {
                             Text(
                                 when {
+                                    isConnecting -> "CONNECTING…"
                                     scanning && receiveMode -> "LISTENING FOR SENDER…"
                                     scanning -> "SEARCHING…"
                                     receiveMode && chatReady -> "READY TO RECEIVE"
