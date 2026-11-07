@@ -3082,7 +3082,7 @@ private fun NeaRerHome(
                             val selected = appFilter == filter
                             Surface(
                                 modifier = Modifier.weight(1f).clickable { appFilter = filter },
-                                color = if (selected) Color(0xFF1B5EB5) else Color(0xFF073DA8),
+                                color = if (selected) Color(0xFF1B5EB5) else Color(0xFF1769FF),
                                 shape = RoundedCornerShape(10.dp),
                                 border = BorderStroke(1.dp, if (selected) Gold.copy(alpha = 0.8f) else Color(0xFF63A7FF))
                             ) {
@@ -3266,7 +3266,7 @@ private fun NeaRerHome(
             androidx.compose.foundation.layout.Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Brush.verticalGradient(listOf(Color(0xFF0B54DC), Midnight, Color(0xFF0647C9))))
+                    .background(Brush.verticalGradient(listOf(Color(0xFF0B54DC), Midnight, Color(0xFF1769FF))))
                     .padding(horizontal = 25.dp, vertical = 30.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -3344,9 +3344,9 @@ private fun NeaRerHome(
                 .background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
-                            0.0f to Color(0xFF0848BA),
+                            0.0f to Color(0xFF1769FF),
                             0.38f to Midnight,
-                            1.0f to Color(0xFF063DA8)
+                            1.0f to Color(0xFF1769FF)
                         )
                     )
                 )
@@ -3406,7 +3406,7 @@ private fun NeaRerHome(
                 }
                 Surface(
                     shape = CircleShape,
-                    color = Color(0xFF123D7A),
+                    color = Color(0xFF347CEB),
                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.72f)),
                     modifier = Modifier.size(46.dp)
                 ) {
@@ -3450,7 +3450,7 @@ private fun NeaRerHome(
                 Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = Color(0xFF1257C9),
+                        color = Color(0xFF347CEB),
                         shape = RoundedCornerShape(26.dp),
                         border = BorderStroke(1.dp, Color(0xFF78B8FF)),
                         shadowElevation = 12.dp
@@ -3459,7 +3459,7 @@ private fun NeaRerHome(
                             Modifier.fillMaxWidth()
                                 .background(
                                     Brush.linearGradient(
-                                        listOf(Color(0xFF1769FF), Color(0xFF0848BA), Color(0xFF0B54DC))
+                                        listOf(Color(0xFF1769FF), Color(0xFF1769FF), Color(0xFF0B54DC))
                                     )
                                 )
                                 .padding(19.dp),
@@ -3527,7 +3527,7 @@ private fun NeaRerHome(
                             appShareNotice?.let { notice ->
                                 Surface(
                                     modifier = Modifier.fillMaxWidth().animateContentSize(),
-                                    color = Color(0xFF073DA8),
+                                    color = Color(0xFF1769FF),
                                     shape = RoundedCornerShape(11.dp),
                                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f))
                                 ) {
@@ -3604,7 +3604,7 @@ private fun NeaRerHome(
                             Surface(
                                 modifier = Modifier.fillMaxWidth().animateContentSize(),
                                 shape = RoundedCornerShape(12.dp),
-                                color = if (incomingTransferName != null) Color(0xFF123F3A) else Color(0xFF073DA8),
+                                color = if (incomingTransferName != null) Color(0xFF123F3A) else Color(0xFF1769FF),
                                 border = BorderStroke(
                                     1.dp,
                                     if (incomingTransferName != null) Color(0xFF54D6A5).copy(alpha = 0.55f)
@@ -3649,7 +3649,7 @@ private fun NeaRerHome(
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
                                     Surface(shape = RoundedCornerShape(13.dp), color = Gold, modifier = Modifier.size(43.dp)) {
                                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                            Text("$pendingChatFilesCount", color = Color(0xFF0647C9), fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                            Text("$pendingChatFilesCount", color = Color(0xFF1769FF), fontSize = 18.sp, fontWeight = FontWeight.Black)
                                         }
                                     }
                                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -3666,9 +3666,9 @@ private fun NeaRerHome(
                                         shape = RoundedCornerShape(13.dp),
                                         colors = ButtonDefaults.buttonColors(
                                             containerColor = Gold,
-                                            contentColor = Color(0xFF0647C9),
+                                            contentColor = Color(0xFF1769FF),
                                             disabledContainerColor = Color(0xFFB7CFFF),
-                                            disabledContentColor = Color(0xFF174A9B)
+                                            disabledContentColor = Color(0xFF347CEB)
                                         ),
                                         contentPadding = PaddingValues(horizontal = 13.dp, vertical = 9.dp)
                                     ) {
@@ -3765,10 +3765,10 @@ private fun NeaRerHome(
                                 rowItems.forEachIndexed { columnIndex, item ->
                                     val tileBlue = when ((rowIndex * 3) + columnIndex) {
                                         0 -> Color(0xFF1554B8)
-                                        1 -> Color(0xFF123F88)
-                                        2 -> Color(0xFF174A9B)
-                                        3 -> Color(0xFF123D7A)
-                                        4 -> Color(0xFF194783)
+                                        1 -> Color(0xFF347CEB)
+                                        2 -> Color(0xFF347CEB)
+                                        3 -> Color(0xFF347CEB)
+                                        4 -> Color(0xFF347CEB)
                                         else -> Color(0xFF0B54DC)
                                     }
                                     Surface(
@@ -3796,7 +3796,7 @@ private fun NeaRerHome(
                                             modifier = Modifier.fillMaxSize()
                                                 .background(
                                                     Brush.linearGradient(
-                                                        listOf(tileBlue.copy(alpha = 0.98f), Color(0xFF073DA8))
+                                                        listOf(tileBlue.copy(alpha = 0.98f), Color(0xFF1769FF))
                                                     )
                                                 )
                                                 .padding(12.dp),
@@ -3887,7 +3887,7 @@ private fun NeaRerHome(
                             Column(
                                 Modifier.background(
                                     Brush.linearGradient(
-                                        listOf(Color(0xFF0B54DC), Color(0xFF0B54DC), Color(0xFF073DA8))
+                                        listOf(Color(0xFF0B54DC), Color(0xFF0B54DC), Color(0xFF1769FF))
                                     )
                                 )
                             ) {
@@ -3937,14 +3937,14 @@ private fun NeaRerHome(
                                             LinearProgressIndicator(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 color = BrandBlue,
-                                                trackColor = Color(0xFF1557C8)
+                                                trackColor = Color(0xFF347CEB)
                                             )
                                         } else {
                                             LinearProgressIndicator(
                                                 progress = { smoothIncomingProgress },
                                                 modifier = Modifier.fillMaxWidth(),
                                                 color = BrandBlue,
-                                                trackColor = Color(0xFF1557C8)
+                                                trackColor = Color(0xFF347CEB)
                                             )
                                         }
                                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3981,14 +3981,14 @@ private fun NeaRerHome(
                                             LinearProgressIndicator(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 color = Gold,
-                                                trackColor = Color(0xFF1557C8)
+                                                trackColor = Color(0xFF347CEB)
                                             )
                                         } else {
                                             LinearProgressIndicator(
                                                 progress = { smoothOutgoingProgress },
                                                 modifier = Modifier.fillMaxWidth(),
                                                 color = Gold,
-                                                trackColor = Color(0xFF1557C8)
+                                                trackColor = Color(0xFF347CEB)
                                             )
                                         }
                                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4074,7 +4074,7 @@ private fun NeaRerHome(
                     } else {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            color = Color(0xFF073DA8),
+                            color = Color(0xFF1769FF),
                             shape = RoundedCornerShape(19.dp),
                             border = BorderStroke(1.dp, Color(0xFF63A7FF).copy(alpha = 0.75f))
                         ) {
@@ -4119,7 +4119,7 @@ private fun NeaRerHome(
                                 },
                                 color = Color(0xFF0B54DC),
                                 shape = RoundedCornerShape(19.dp),
-                                border = BorderStroke(1.dp, Color(0xFF28589A))
+                                border = BorderStroke(1.dp, Color(0xFF347CEB))
                             ) {
                                 Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                                     Text(item[0], color = Gold, fontSize = 25.sp, fontWeight = FontWeight.Bold)
@@ -4147,7 +4147,7 @@ private fun NeaRerHome(
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 5.dp)) {
                             if (messages.isEmpty()) {
                                 Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Surface(shape = CircleShape, color = Color(0xFF1B4E91), modifier = Modifier.size(43.dp)) {
+                                    Surface(shape = CircleShape, color = Color(0xFF347CEB), modifier = Modifier.size(43.dp)) {
                                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                                             Text("✉", color = White, fontSize = 20.sp)
                                         }
@@ -4161,7 +4161,7 @@ private fun NeaRerHome(
                             } else {
                                 messages.takeLast(3).reversed().forEachIndexed { index, message ->
                                     Row(Modifier.fillMaxWidth().padding(vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Surface(shape = CircleShape, color = if (message.outgoing) Color(0xFF1A58A7) else Color(0xFF31527D),
+                                        Surface(shape = CircleShape, color = if (message.outgoing) Color(0xFF347CEB) else Color(0xFF347CEB),
                                             modifier = Modifier.size(42.dp)) {
                                             androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                                                 Text(if (message.outgoing) "Y" else (connectedDeviceName ?: "N").take(1).uppercase(),
@@ -4175,7 +4175,7 @@ private fun NeaRerHome(
                                         }
                                         Text(message.delivery, color = if (message.outgoing) Color(0xFF8DBAFF) else Gold, fontSize = 9.sp)
                                     }
-                                    if (index < minOf(messages.size, 3) - 1) androidx.compose.material3.HorizontalDivider(color = Color(0xFF1557C8))
+                                    if (index < minOf(messages.size, 3) - 1) androidx.compose.material3.HorizontalDivider(color = Color(0xFF347CEB))
                                 }
                             }
                         }
@@ -4226,7 +4226,7 @@ private fun NeaRerHome(
                         Text("NEARER FLASH • CALL-TO-CHAT", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
                         Text("A quick call. A message in your chat.", color = White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
                         Text("Send a short Flash call pattern and NeaRer turns the recognised signal into a normal message bubble on the other phone. No SMS and no mobile data are used for the Flash signal. Calls use your carrier network, so any call charges depend on your plan.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
-                        Surface(color = Color(0xFF073DA8), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                        Surface(color = Color(0xFF1769FF), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("CHOOSE A SIGNAL", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -4260,7 +4260,7 @@ private fun NeaRerHome(
                             }
                         }
                         Surface(
-                            color = Color(0xFF073DA8),
+                            color = Color(0xFF1769FF),
                             shape = RoundedCornerShape(14.dp),
                             border = BorderStroke(1.dp, Color(0xFF347CEB)),
                             modifier = Modifier.fillMaxWidth()
@@ -4369,7 +4369,7 @@ private fun NeaRerHome(
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1257C9), contentColor = White)
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF347CEB), contentColor = White)
                         ) { Text(if (flashCallStep + 1 >= flashCallCount) "FINISH SIGNAL SEQUENCE" else "I ENDED THIS CALL • NEXT STEP", fontWeight = FontWeight.Bold) }
                         Text(flashSenderNotice, color = Gold, fontSize = 10.sp, lineHeight = 15.sp)
                         Text("NeaRer does not place calls automatically and does not request permission to call. You must tap Call in the phone app and end each call yourself. Your carrier may charge for calls. The number is used only to open the dialer and is not saved by this screen.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
@@ -4382,7 +4382,7 @@ private fun NeaRerHome(
 
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            color = Color(0xFF073DA8),
+                            color = Color(0xFF1769FF),
                             shape = RoundedCornerShape(13.dp),
                             border = BorderStroke(1.dp, if (flashContactsPermission) Color(0xFF34765C) else Color(0xFF347CEB))
                         ) {
@@ -4405,7 +4405,7 @@ private fun NeaRerHome(
                                     Button(
                                         onClick = { flashContactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
                                         modifier = Modifier.fillMaxWidth(),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1257C9), contentColor = White)
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF347CEB), contentColor = White)
                                     ) {
                                         Text("ALLOW FLASH FROM SAVED CONTACTS", fontWeight = FontWeight.Bold)
                                     }
@@ -4454,7 +4454,7 @@ private fun NeaRerHome(
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1257C9), contentColor = White)
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF347CEB), contentColor = White)
                         ) { Text("ADD TRUSTED SENDER", fontWeight = FontWeight.Bold) }
                         Text("Pair each sender before they send you a Flash. NeaRer stores a salted number fingerprint and your optional chat name, not the raw phone number. Nigerian numbers saved as 080… will also match incoming +234… format. For other countries, use the number format shown on incoming calls.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
 
@@ -4501,7 +4501,7 @@ private fun NeaRerHome(
             ) {
                 Column(
                     Modifier.fillMaxWidth()
-                        .background(Brush.linearGradient(listOf(Color(0xFF0B54DC), Color(0xFF0B54DC), Color(0xFF073DA8))))
+                        .background(Brush.linearGradient(listOf(Color(0xFF0B54DC), Color(0xFF0B54DC), Color(0xFF1769FF))))
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp)
                 ) {
@@ -4671,7 +4671,7 @@ private fun NeaRerHome(
                             ) { Text("STOP", fontWeight = FontWeight.Bold) }
                         }
                     }
-                    Surface(color = Color(0xFF073DA8), shape = RoundedCornerShape(12.dp)) {
+                    Surface(color = Color(0xFF1769FF), shape = RoundedCornerShape(12.dp)) {
                         Text(status, color = Muted, fontSize = 10.sp, lineHeight = 15.sp,
                             modifier = Modifier.fillMaxWidth().padding(11.dp))
                     }
@@ -4770,7 +4770,7 @@ private fun NeaRerHome(
                             onFindNearby()
                             navigationScope.launch { pageScrollState.animateScrollTo(0) }
                         },
-                        color = Color(0xFF123D7A), shape = RoundedCornerShape(15.dp),
+                        color = Color(0xFF347CEB), shape = RoundedCornerShape(15.dp),
                         border = BorderStroke(1.dp, Color(0xFF78B8FF))
                     ) {
                         Row(Modifier.padding(horizontal = 12.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -4784,7 +4784,7 @@ private fun NeaRerHome(
                     Surface(
                         modifier = Modifier.weight(1f).clickable { showChatAttachmentMenu = true },
                         color = Color(0xFF0B54DC), shape = RoundedCornerShape(15.dp),
-                        border = BorderStroke(1.dp, Color(0xFF28589A))
+                        border = BorderStroke(1.dp, Color(0xFF347CEB))
                     ) {
                         Row(Modifier.padding(horizontal = 12.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("↥", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -4799,7 +4799,7 @@ private fun NeaRerHome(
             if (conversationRows.isNotEmpty()) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = Color(0xFF073DA8),
+                    color = Color(0xFF1769FF),
                     shape = RoundedCornerShape(19.dp),
                     border = BorderStroke(1.dp, Color(0xFF63A7FF))
                 ) {
@@ -4852,7 +4852,7 @@ private fun NeaRerHome(
                             listOf(
                                 if (chatReady) Color(0xFF16453F) else Color(0xFF0B54DC),
                                 Color(0xFF0B54DC),
-                                Color(0xFF073DA8)
+                                Color(0xFF1769FF)
                             )
                         ))
                         .padding(16.dp),
@@ -4942,7 +4942,7 @@ private fun NeaRerHome(
                                         horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
                                     ) {
                                         Surface(
-                                            color = if (message.outgoing) Color(0xFF174A9B) else Color(0xFF0848BA),
+                                            color = if (message.outgoing) Color(0xFF347CEB) else Color(0xFF1769FF),
                                             shape = if (message.outgoing) RoundedCornerShape(17.dp, 17.dp, 5.dp, 17.dp)
                                                 else RoundedCornerShape(17.dp, 17.dp, 17.dp, 5.dp),
                                             modifier = Modifier.fillMaxWidth(0.86f).animateContentSize()
@@ -4985,7 +4985,7 @@ private fun NeaRerHome(
                                 onClick = { onOpenFile(fileItem) },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0848BA), contentColor = White)
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1769FF), contentColor = White)
                             ) { Text("Open ${fileItem.displayName}", maxLines = 1) }
                         }
                         Row(
@@ -5023,7 +5023,7 @@ private fun NeaRerHome(
                                     }
                                 },
                                 shape = CircleShape,
-                                color = if (draft.isNotBlank()) BrandBlue else Color(0xFF1557C8)
+                                color = if (draft.isNotBlank()) BrandBlue else Color(0xFF347CEB)
                             ) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                                     Text("➤", color = White, fontSize = 19.sp, fontWeight = FontWeight.Black)
@@ -5036,7 +5036,7 @@ private fun NeaRerHome(
                                 progress = { incomingProgress },
                                 modifier = Modifier.fillMaxWidth(),
                                 color = AccentBlue,
-                                trackColor = Color(0xFF0848BA)
+                                trackColor = Color(0xFF1769FF)
                             )
                         }
                         if (outgoingTransferId != null) {
@@ -5044,7 +5044,7 @@ private fun NeaRerHome(
                                 progress = { outgoingProgress },
                                 modifier = Modifier.fillMaxWidth(),
                                 color = AccentBlue,
-                                trackColor = Color(0xFF0848BA)
+                                trackColor = Color(0xFF1769FF)
                             )
                             Button(
                                 onClick = onCancelTransfer,
@@ -5127,7 +5127,7 @@ private fun NeaRerHome(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Color(0xFF073DA8)) {
+            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Color(0xFF1769FF)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("PEOPLE AROUND YOU", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text(if (hybridPeers.isEmpty()) "Your nearby circle" else "${hybridPeers.size} active nearby", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -5378,7 +5378,7 @@ private fun NeaRerHome(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth()
-                        .background(Brush.verticalGradient(listOf(Color(0xFF0B54DC), Color(0xFF073DA8))))
+                        .background(Brush.verticalGradient(listOf(Color(0xFF0B54DC), Color(0xFF1769FF))))
                         .padding(horizontal = 7.dp, vertical = 7.dp),
                     horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
