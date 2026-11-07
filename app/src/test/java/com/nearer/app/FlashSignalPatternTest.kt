@@ -25,3 +25,4 @@ class FlashSignalPatternTest {
         assertNull(FlashSignalPattern.decode(listOf(1_000L, 2_800L, 3_300L), 200L))
     }
 }
+
