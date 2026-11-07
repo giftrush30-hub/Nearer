@@ -277,8 +277,8 @@ private class FastShareHttpServer(
     }
 
     private fun streamFile(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, rangeHeader: String?, headOnly: Boolean) {
-        if (fileLength < 0L) {
-            streamUnknownLength(output, headOnly)
+        if (item.fileLength < 0L) {
+            streamUnknownLength(output, uri, item, headOnly)
             return
         }
         val response = FileHttpResponses.resolve(rangeHeader, item.fileLength)
