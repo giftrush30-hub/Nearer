@@ -2276,12 +2276,17 @@ class MainActivity : ComponentActivity() {
         if (item.file.name.endsWith(".nearer-app.zip", ignoreCase = true)) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
                 chatNotice = "Allow NeaRer to install apps from this source in Android settings, then tap this app package again."
-                startActivity(
-                    Intent(
-                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        Uri.parse("package:$packageName")
-                    )
+                val settingsIntent = Intent(
+                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName")
                 )
+                try {
+                    startActivity(settingsIntent)
+                } catch (_: android.content.ActivityNotFoundException) {
+                    chatNotice = "Android could not open the install-permission settings. Open Settings manually, find NeaRer under Install unknown apps, and allow it."
+                } catch (_: SecurityException) {
+                    chatNotice = "Android blocked the install-permission settings. Open Settings manually and allow NeaRer to install apps from this source."
+                }
                 return
             }
             try {
