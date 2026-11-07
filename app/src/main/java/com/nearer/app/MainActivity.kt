@@ -3154,6 +3154,14 @@ private fun NeaRerHome(
     val flashCallCount = selectedFlashPreset.gapsMillis.size + 1
     val flashStepGap = selectedFlashPreset.gapsMillis.getOrNull(flashCallStep - 1)
     val localChatPrefs = flashContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+    val welcomeEnergy = remember {
+        localChatPrefs.getString("welcome_answers_v1", "").orEmpty()
+            .split("|").firstOrNull { it.startsWith("0=") }?.substringAfter("=")
+    }
+    val welcomePurpose = remember {
+        localChatPrefs.getString("welcome_answers_v1", "").orEmpty()
+            .split("|").firstOrNull { it.startsWith("1=") }?.substringAfter("=")
+    }
     var draft by remember { mutableStateOf(localChatPrefs.getString("chat_draft", "") ?: "") }
     var selectedConversationId by remember { mutableStateOf(messages.lastOrNull()?.conversationId ?: "") }
     val conversationRows = messages.groupBy { it.conversationId.ifBlank { "legacy" } }
@@ -3594,6 +3602,21 @@ private fun NeaRerHome(
                             color = Color(0xFFBFD8FF), fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold
                         )
+                        Text(
+                            when (welcomeEnergy) {
+                                "Electric" -> "Big energy. Let's make things happen."
+                                "Positive" -> "Good vibes look good on you."
+                                "Creative" -> "Your next great idea starts here."
+                                "Chill" -> "Your space. Your pace."
+                                else -> when (welcomePurpose) {
+                                    "Sharing files" -> "Everything you want to share, closer."
+                                    "Chatting with people" -> "Your conversations are always welcome."
+                                    "Playing games" -> "Ready when your people are."
+                                    else -> "Your NeaRer space is ready."
+                                }
+                            },
+                            color = Color(0xFFFFDFA0), fontSize = 10.sp, fontWeight = FontWeight.Medium
+                        )
                     } else {
                         Text(
                             when (activeSection) {
@@ -3919,6 +3942,33 @@ private fun NeaRerHome(
                             }
                             val recentCount = recentlySeenPeers.size
                             if (recentCount > 0) Text("$recentCount previously seen on this phone · not currently confirmed nearby", color = Color(0xFF8799AD), fontSize = 9.sp)
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("YOUR NEARER SHORTCUTS", color = Color(0xFFFFDFA0), fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black, letterSpacing = 1.15.sp)
+                                Text("Jump straight into what you love.", color = Color(0xFFBFD8FF), fontSize = 11.sp)
+                            }
+                            Text("✦", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            HomeFeatureTile("Messages", "Talk nearby", "✉", Color(0xFF1769FF), Modifier.weight(1f)) {
+                                navigateToSection("chats")
+                            }
+                            HomeFeatureTile("Flash", "Quick signals", "ϟ", Color(0xFFE8B33E), Modifier.weight(1f)) {
+                                navigateToSection("flash")
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            HomeFeatureTile("Communities", "Your circles", "◎", Color(0xFF22A88C), Modifier.weight(1f)) {
+                                navigateToSection("community")
+                            }
+                            HomeFeatureTile("Game Zone", "Play together", "♟", Color(0xFF8A6BDA), Modifier.weight(1f)) {
+                                navigateToSection("games")
+                            }
                         }
                     }
 
@@ -6183,6 +6233,47 @@ private fun NeaRerWelcomeFlow(
             }
             Text("PRIVATE BY DESIGN  •  NO ACCOUNT REQUIRED", color = Color(0xFF8AA0B8), fontSize = 9.sp,
                 fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun HomeFeatureTile(
+    title: String,
+    subtitle: String,
+    symbol: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.height(104.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(21.dp),
+        color = Color(0xFFF8FBFF),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.35f)),
+        shadowElevation = 7.dp
+    ) {
+        Row(
+            Modifier.fillMaxSize().padding(horizontal = 13.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Surface(
+                modifier = Modifier.size(42.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = accent.copy(alpha = 0.13f),
+                border = BorderStroke(1.dp, accent.copy(alpha = 0.28f))
+            ) {
+                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                    Text(symbol, color = accent, fontSize = 23.sp, fontWeight = FontWeight.Black)
+                }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, color = Color(0xFF193653), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, color = Color(0xFF7187A0), fontSize = 9.sp, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
