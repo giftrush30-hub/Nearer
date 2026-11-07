@@ -142,6 +142,7 @@ class MainActivity : ComponentActivity() {
     private var receiverRegistered = false
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
+    private val chatTransportRouter = ChatTransportRouter()
     private val hybridPeers = mutableStateMapOf<String, String>()
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
