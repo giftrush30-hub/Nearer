@@ -28,7 +28,7 @@ class LudoDoubleDiceEngineTest {
 
     @Test fun combinedDiceMoveMovesOneTokenByTheTotal() {
         val rolled = LudoDoubleDiceEngine.roll(
-            LudoDoubleDiceState(game(listOf(4, 20, -1, -1))),
+            LudoDoubleDiceState(game(listOf(4, 55, -1, -1))),
             PairRandom(listOf(6, 2))
         )
         val combined = LudoDoubleDiceEngine.selectDie(rolled, LudoDieSlot.BOTH)
