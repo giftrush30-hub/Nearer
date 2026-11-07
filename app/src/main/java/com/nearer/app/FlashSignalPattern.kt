@@ -33,11 +33,15 @@ object FlashSignalPattern {
     fun decode(eventTimesMillis: List<Long>, toleranceMillis: Long = 1_000L): String? {
         if (toleranceMillis < 0L || eventTimesMillis.size < 2) return null
         val times = eventTimesMillis.takeLast(4)
-        val gaps = times.zipWithNext { first, second -> second - first }
-        if (gaps.any { it <= 0L }) return null
+        if (times.zipWithNext().any { (first, second) -> second <= first }) return null
 
+        // Match the most recent suffix for each code length. A harmless earlier
+        // call must not prevent a shorter valid preset from completing.
         return patterns.firstOrNull { signal ->
-            if (gaps.size != signal.gapsMillis.size) return@firstOrNull false
+            val requiredTimes = signal.gapsMillis.size + 1
+            if (times.size < requiredTimes) return@firstOrNull false
+            val suffix = times.takeLast(requiredTimes)
+            val gaps = suffix.zipWithNext { first, second -> second - first }
             gaps.zip(signal.gapsMillis).all { (actual, expected) ->
                 kotlin.math.abs(actual - expected) <= toleranceMillis
             }
