@@ -2297,7 +2297,10 @@ private fun NeaRerHome(
                         Text("Send a large video to a phone without NeaRer using a temporary local Wi-Fi connection. No mobile data.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                         Text(fastShare.status, color = if (fastShare.details != null) Mint else Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         if (fastShare.history.isNotEmpty()) {
-                            Text("RECENT FAST SHARE ACTIVITY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("RECENT FAST SHARE ACTIVITY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("Clear", color = Muted, fontSize = 11.sp, modifier = Modifier.clickable { fastShare.clearHistory() })
+                            }
                             fastShare.history.take(5).forEach { entry ->
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(modifier = Modifier.weight(1f)) {
