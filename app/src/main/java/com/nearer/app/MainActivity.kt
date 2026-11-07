@@ -269,6 +269,11 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     hybridConnected = false
                     hybridConnectedEndpoint = null
+                    if (outgoingTransferId?.startsWith("nearby:") == true) {
+                        outgoingTransferId = null
+                        outgoingProgress = 0f
+                        persistNearbyFileQueue()
+                    }
                     activeGame = activeGame?.let { it.copy(ready = false) }
                     incomingGameInvite = null
                     val lastName = hybridPeers.remove(id) ?: name
