@@ -60,6 +60,7 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                         .put("signal", signal)
                         .put("timestamp", receivedAt)
                         .put("senderTag", senderKey.takeLast(8))
+                        .put("senderName", FlashTrustedSenders.displayName(this, number))
                 )
                 while (queued.length() > MAX_PENDING_EVENTS) queued.remove(0)
                 prefs.edit()
@@ -117,12 +118,27 @@ object FlashTrustedSenders {
             .joinToString("") { "%02x".format(it) }
     }
 
-    fun addTrusted(context: Context, number: String): Boolean {
+    fun addTrusted(context: Context, number: String, displayName: String = ""): Boolean {
         val hash = fingerprint(context, number) ?: return false
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val current = prefs.getStringSet(ALLOWLIST_KEY, emptySet()).orEmpty().toMutableSet()
         current.add(hash)
-        return prefs.edit().putStringSet(ALLOWLIST_KEY, current).commit()
+        val names = prefs.getStringSet("trusted_sender_names", emptySet()).orEmpty().toMutableSet()
+        val safeName = displayName.trim().take(32)
+        if (safeName.isNotBlank()) names.add("$hash|$safeName")
+        return prefs.edit()
+            .putStringSet(ALLOWLIST_KEY, current)
+            .putStringSet("trusted_sender_names", names)
+            .commit()
+    }
+
+    fun displayName(context: Context, number: String): String? {
+        val hash = fingerprint(context, number) ?: return null
+        val entries = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getStringSet("trusted_sender_names", emptySet()).orEmpty()
+        return entries.firstOrNull { it.startsWith("$hash|") }
+            ?.substringAfter("|")
+            ?.takeIf { it.isNotBlank() }
     }
 
     fun isTrusted(context: Context, number: String): Boolean {
