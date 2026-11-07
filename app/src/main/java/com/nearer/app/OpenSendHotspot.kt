@@ -2,6 +2,7 @@ package com.nearer.app
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import java.io.Closeable
@@ -31,17 +32,28 @@ class OpenSendHotspot(context: Context) : Closeable {
         wifiManager.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
             override fun onStarted(value: WifiManager.LocalOnlyHotspotReservation) {
                 reservation = value
-                @Suppress("DEPRECATION")
-                val config = value.wifiConfiguration
-                if (config == null || config.SSID.isNullOrBlank()) {
+                val credentials = try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        val config = value.softApConfiguration
+                        OpenSendHotspotCredentials(
+                            ssid = config.ssid?.takeIf { it.isNotBlank() }
+                                ?: error("Android did not provide a hotspot name."),
+                            password = config.passphrase?.takeIf { it.isNotBlank() }
+                        )
+                    } else {
+                        @Suppress("DEPRECATION")
+                        val config = value.wifiConfiguration
+                        OpenSendHotspotCredentials(
+                            ssid = config?.SSID?.trim('"')?.takeIf { it.isNotBlank() }
+                                ?: error("Android did not provide a hotspot name."),
+                            password = config?.preSharedKey?.takeIf { it.isNotBlank() }?.trim('"')
+                        )
+                    }
+                } catch (error: Exception) {
                     close()
-                    onUnavailable("Android started a hotspot but did not provide connection details.")
+                    onUnavailable(error.localizedMessage ?: "Android started a hotspot but did not provide connection details.")
                     return
                 }
-                val credentials = OpenSendHotspotCredentials(
-                    ssid = config.SSID.trim('"'),
-                    password = config.preSharedKey?.takeIf { it.isNotBlank() }?.trim('"')
-                )
                 onReady(credentials)
             }
 
