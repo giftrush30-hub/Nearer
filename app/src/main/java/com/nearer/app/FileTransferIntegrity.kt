@@ -53,6 +53,22 @@ internal object FileTransferIntegrity {
         }
     }
 
+    fun sha256(input: java.io.InputStream, expectedSize: Long): String {
+        require(expectedSize >= 0L) { "Invalid expected file size" }
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(64 * 1024)
+        var readTotal = 0L
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            readTotal += count
+            if (readTotal > expectedSize) throw java.io.IOException("File changed while its checksum was being calculated")
+            digest.update(buffer, 0, count)
+        }
+        if (readTotal != expectedSize) throw java.io.IOException("File size changed while its checksum was being calculated")
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
     fun sha256(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 }
