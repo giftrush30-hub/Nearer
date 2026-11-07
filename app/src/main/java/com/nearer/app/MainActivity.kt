@@ -6670,3 +6670,22 @@ private fun HomeFeatureTile(
         }
     }
 }
+
+
+private fun ticTacToeWinner(board: String): String? {
+    val lines = listOf(intArrayOf(0,1,2), intArrayOf(3,4,5), intArrayOf(6,7,8), intArrayOf(0,3,6), intArrayOf(1,4,7), intArrayOf(2,5,8), intArrayOf(0,4,8), intArrayOf(2,4,6))
+    return lines.firstNotNullOfOrNull { line ->
+        val mark = board.getOrNull(line[0]) ?: '.'
+        if (mark != '.' && line.all { board.getOrNull(it) == mark }) mark.toString() else null
+    }
+}
+
+private fun seenAgo(timestamp: Long): String {
+    val seconds = ((System.currentTimeMillis() - timestamp) / 1000L).coerceAtLeast(0L)
+    return when {
+        seconds < 60 -> "just now"
+        seconds < 3600 -> "${seconds / 60}m ago"
+        seconds < 86400 -> "${seconds / 3600}h ago"
+        else -> "${seconds / 86400}d ago"
+    }
+}
