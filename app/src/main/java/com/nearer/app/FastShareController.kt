@@ -360,31 +360,18 @@ private class FastShareHttpServer(
         output.write("HTTP/1.1 200 OK\r\nContent-Type: $mimeType\r\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".toByteArray())
         if (headOnly) return
         stream?.use { source ->
-            val buffer = ByteArray(64 * 1024)
             var sent = 0L
             try {
-                while (running) {
-                    val read = source.read(buffer)
-                    if (read < 0) break
-                    if (read == 0) continue
-                    output.write(Integer.toHexString(read).toByteArray(Charsets.US_ASCII))
-                    output.write("\r\n".toByteArray(Charsets.US_ASCII))
-                    output.write(buffer, 0, read)
-                    output.write("\r\n".toByteArray(Charsets.US_ASCII))
-                    sent += read
-                    // Avoid forcing a socket flush for every 64 KB chunk.
-                    // Let BufferedOutputStream batch writes and flush at ~1 MB intervals.
-                    if (sent % (1024L * 1024L) < read) {
-                        output.flush()
-                        onTransferUpdate(sent, -1L, false, false, false)
-                    }
+                val result = ChunkedStreamCopy.copy(
+                    input = source,
+                    output = output,
+                    shouldContinue = { running },
+                    onBytesCopied = { copied -> sent = copied }
+                ) { copied ->
+                    onTransferUpdate(copied, -1L, false, false, false)
                 }
-                val completed = running
-                if (completed) {
-                    output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
-                    output.flush()
-                }
-                onTransferUpdate(sent, -1L, completed, !completed, false)
+                sent = result.bytesCopied
+                onTransferUpdate(sent, -1L, result.complete, !result.complete, false)
             } catch (error: Exception) {
                 onTransferUpdate(sent, -1L, false, true, false)
                 throw error
