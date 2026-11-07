@@ -236,10 +236,40 @@ internal fun FileCentreScreen(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) {
-            uris.forEach { uri ->
-                runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            val pickedCategory = category
+            val pickedItems = uris.map { uri ->
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                var displayName = uri.lastPathSegment?.substringAfterLast('/') ?: "Selected file"
+                var sizeBytes = 0L
+                runCatching {
+                    context.contentResolver.query(uri, arrayOf(
+                        android.provider.OpenableColumns.DISPLAY_NAME,
+                        android.provider.OpenableColumns.SIZE
+                    ), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                            val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                            if (nameIndex >= 0) displayName = cursor.getString(nameIndex) ?: displayName
+                            if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) sizeBytes = cursor.getLong(sizeIndex).coerceAtLeast(0L)
+                        }
+                    }
+                }
+                FileCentreItem(
+                    id = uri.toString(),
+                    name = displayName,
+                    category = pickedCategory,
+                    uri = uri,
+                    sizeBytes = sizeBytes,
+                    mimeType = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+                )
             }
-            onSendFiles(uris)
+            pickedItems.forEach { picked ->
+                if (items.none { it.id == picked.id }) items.add(picked)
+                if (picked.id !in selected) selected.add(picked.id)
+            }
+            notice = "${pickedItems.size} file(s) added to your selection basket."
         }
     }
 
