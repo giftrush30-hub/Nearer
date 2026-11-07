@@ -17,6 +17,14 @@ class FlashSignalPatternTest {
         assertEquals("COME", FlashSignalPattern.decode(listOf(1_000L, 4_000L, 15_000L, 23_000L)))
     }
 
+    @Test fun reportsCallCountForEachPreset() {
+        assertEquals(3, FlashSignalPattern.callCount("PING"))
+        assertEquals(3, FlashSignalPattern.callCount("COME"))
+        assertEquals(4, FlashSignalPattern.callCount("URGENT"))
+        assertEquals(3, FlashSignalPattern.callCount("CALL_ME"))
+        assertEquals(null, FlashSignalPattern.callCount("UNKNOWN"))
+    }
+
     @Test fun mapsDecodedPresetsToHumanReadableChatMessages() {
         assertEquals("Flash call received", FlashSignalPattern.toChatMessage("FLASH_CALL"))
         assertEquals("Ping", FlashSignalPattern.toChatMessage("PING"))
