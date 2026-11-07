@@ -2371,6 +2371,7 @@ class MainActivity : ComponentActivity() {
             val endpoint = hybridConnectedEndpoint
             if (payloadId != null && endpoint != null) nearbyTransport?.cancelFile(payloadId)
             outgoingTransferId = null
+            activeQueuedFileUri = null
             outgoingProgress = 0f
             outgoingTransferredBytes = 0L
             outgoingTotalBytes = 0L
