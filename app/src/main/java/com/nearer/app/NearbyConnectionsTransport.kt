@@ -55,7 +55,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         return value.take(23) to ""
     }
 
-    private data class FileMeta(val endpointId: String, val name: String, val size: Long)
+    private data class FileMeta(val endpointId: String, val name: String, val size: Long, val sha256: String)
     private val incomingMetadata = ConcurrentHashMap<Long, FileMeta>()
     private val incomingPayloads = ConcurrentHashMap<Long, Payload>()
     private val incomingPayloadEndpoints = ConcurrentHashMap<Long, String>()
@@ -181,11 +181,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val payloadId = envelope.optLong("payloadId", -1L)
                 val name = safeFileName(envelope.optString("name", "shared-file"))
                 val size = envelope.optLong("size", -1L)
-                if (payloadId < 0L || size < 0L) {
+                val sha256 = envelope.optString("sha256", "")
+                if (payloadId < 0L || size < 0L ||
+                    (sha256.isNotEmpty() && !sha256.matches(Regex("[a-fA-F0-9]{64}")))) {
                     listener.onFileStatus("A nearby phone sent invalid file information. The transfer was ignored.")
                     return
                 }
-                incomingMetadata[payloadId] = FileMeta(endpointId, name, size)
+                incomingMetadata[payloadId] = FileMeta(endpointId, name, size, sha256)
                 listener.onFileProgress(endpointId, payloadId, name, 0L, size, true)
                 processCompletedFile(payloadId)
                 return
@@ -259,24 +261,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             var destination: File? = null
             try {
                 val folder = File(appContext.filesDir, "received").apply { mkdirs() }
-                val target = File(folder, "${System.currentTimeMillis()}-${meta.name}")
-                destination = target
                 val uri: Uri = payload.asFile()?.asUri() ?: throw IllegalStateException("Nearby file content is unavailable")
-                appContext.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(target).use { output ->
-                        val buffer = ByteArray(32 * 1024)
-                        var copied = 0L
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            copied += count
-                            if (copied > meta.size) throw IllegalStateException("Received file exceeded its declared size")
-                            output.write(buffer, 0, count)
-                        }
-                        output.flush()
-                        if (copied != meta.size) throw IllegalStateException("Received file size did not match")
-                    }
+                val target = appContext.contentResolver.openInputStream(uri)?.use { input ->
+                    FileTransferIntegrity.copyAndVerify(input, folder, meta.name, meta.size, meta.sha256)
                 } ?: throw IllegalStateException("Could not open the received file")
+                destination = target
                 appContext.contentResolver.delete(uri, null, null)
                 listener.onFileReceived(meta.endpointId, meta.name, target)
             } catch (error: Exception) {
