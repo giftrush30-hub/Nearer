@@ -3785,9 +3785,25 @@ private fun NeaRerHome(
                                 }
                                 Button(
                                     onClick = { onHybridConnect(id) },
+                                    enabled = !chatReady && !isConnecting,
                                     shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
-                                ) { Text("CONNECT", fontSize = 9.sp, fontWeight = FontWeight.Black) }
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Gold,
+                                        contentColor = Midnight,
+                                        disabledContainerColor = Color(0xFF315174),
+                                        disabledContentColor = Color(0xFFD8E5F5)
+                                    )
+                                ) {
+                                    Text(
+                                        when {
+                                            chatReady -> "CONNECTED"
+                                            isConnecting -> "CONNECTING…"
+                                            else -> "CONNECT"
+                                        },
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                }
                             }
                         }
                     }
