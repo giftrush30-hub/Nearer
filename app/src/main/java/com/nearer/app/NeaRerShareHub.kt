@@ -59,7 +59,6 @@ fun NeaRerShareHub(
     onShareAppsToAnyPhone: (List<String>) -> Unit,
     openSendSession: OpenSendSession?,
     openSendNotice: String,
-    onStartOpenSend: (List<android.net.Uri>) -> Unit,
     onPickOpenSendFiles: () -> Unit,
     onStopOpenSend: () -> Unit,
     pendingApp: AppShareArchiveInfo?,
