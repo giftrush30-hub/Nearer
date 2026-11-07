@@ -615,6 +615,12 @@ class MainActivity : ComponentActivity() {
                     onVoiceNoteAction = ::toggleVoiceNoteRecording,
                     onSendQueuedMessages = ::flushQueuedChatMessages,
                     pendingChatFilesCount = pendingChatFileUris.size,
+                    pendingChatFiles = pendingChatFileUris.toList(),
+                    onRemoveQueuedFile = { queuedUri ->
+                        pendingChatFileUris.remove(queuedUri)
+                        persistPendingChatFiles()
+                        chatNotice = "Removed from prepared files."
+                    },
                     onSendQueuedFiles = ::flushPendingChatFiles,
                     groups = communityGroups.toList(),
                     groupMessages = communityMessages.toList(),
@@ -2782,6 +2788,8 @@ private fun NeaRerHome(
     onVoiceNoteAction: () -> Unit,
     onSendQueuedMessages: () -> Unit,
     pendingChatFilesCount: Int,
+    pendingChatFiles: List<String>,
+    onRemoveQueuedFile: (String) -> Unit,
     onSendQueuedFiles: () -> Unit,
     groups: List<CommunityGroup>,
     groupMessages: List<CommunityChatMessage>,
@@ -3626,41 +3634,56 @@ private fun NeaRerHome(
                             border = BorderStroke(1.dp, Gold.copy(alpha = 0.8f)),
                             shadowElevation = 8.dp
                         ) {
-                            Row(
+                            Column(
                                 modifier = Modifier.fillMaxWidth().padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(11.dp)
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Surface(
-                                    shape = RoundedCornerShape(13.dp),
-                                    color = Gold,
-                                    modifier = Modifier.size(43.dp)
-                                ) {
-                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                        Text("$pendingChatFilesCount", color = Color(0xFF0647C9), fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                                    Surface(shape = RoundedCornerShape(13.dp), color = Gold, modifier = Modifier.size(43.dp)) {
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                            Text("$pendingChatFilesCount", color = Color(0xFF0647C9), fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                        }
+                                    }
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text("YOUR PREPARED FILES", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.8.sp)
+                                        Text(
+                                            if (chatReady) "Ready to send to ${connectedDeviceName ?: "your nearby contact"}"
+                                            else "Saved on this phone • connect whenever you're ready",
+                                            color = White, fontSize = 10.sp, lineHeight = 14.sp
+                                        )
+                                    }
+                                    Button(
+                                        onClick = onSendQueuedFiles,
+                                        enabled = chatReady && outgoingTransferId == null,
+                                        shape = RoundedCornerShape(13.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Gold,
+                                            contentColor = Color(0xFF0647C9),
+                                            disabledContainerColor = Color(0xFFB7CFFF),
+                                            disabledContentColor = Color(0xFF174A9B)
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 13.dp, vertical = 9.dp)
+                                    ) {
+                                        Text(if (chatReady) "SEND" else "WAIT", fontSize = 9.sp, fontWeight = FontWeight.Black)
                                     }
                                 }
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    Text("YOUR PREPARED FILES", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.8.sp)
-                                    Text(
-                                        if (chatReady) "Ready to send to ${connectedDeviceName ?: "your nearby contact"}"
-                                        else "Saved on this phone • connect whenever you're ready",
-                                        color = White, fontSize = 10.sp, lineHeight = 14.sp
-                                    )
+                                pendingChatFiles.take(5).forEach { queuedUri ->
+                                    val queuedLabel = Uri.decode(Uri.parse(queuedUri).lastPathSegment.orEmpty())
+                                        .substringAfterLast(':').substringAfterLast('/').ifBlank { "Selected file" }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().background(Color(0xFF0B54DC), RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text("▣", color = Gold, fontSize = 13.sp)
+                                        Text(queuedLabel, color = White, fontSize = 10.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                                        TextButton(onClick = { onRemoveQueuedFile(queuedUri) }, contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) {
+                                            Text("REMOVE", color = Color(0xFFFFD0D0), fontSize = 8.sp, fontWeight = FontWeight.Black)
+                                        }
+                                    }
                                 }
-                                Button(
-                                    onClick = onSendQueuedFiles,
-                                    enabled = chatReady && outgoingTransferId == null,
-                                    shape = RoundedCornerShape(13.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Gold,
-                                        contentColor = Color(0xFF0647C9),
-                                        disabledContainerColor = Color(0xFFB7CFFF),
-                                        disabledContentColor = Color(0xFF174A9B)
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 13.dp, vertical = 9.dp)
-                                ) {
-                                    Text(if (chatReady) "SEND" else "WAIT", fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                if (pendingChatFiles.size > 5) {
+                                    Text("+ ${pendingChatFiles.size - 5} more prepared files", color = Muted, fontSize = 9.sp)
                                 }
                             }
                         }
