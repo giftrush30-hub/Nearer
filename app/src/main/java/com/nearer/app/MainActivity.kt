@@ -3236,8 +3236,13 @@ private fun NeaRerHome(
                 }
             }
 
+            val connectionStage = when {
+                chatReady -> 2
+                pairingCode != null || incomingRequesterName != null || connectingAddress != null -> 1
+                else -> 0
+            }
             Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(18.dp), color = if (chatReady) Color(0xFF173C3A) else Panel) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("CONNECTION STATUS", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Spacer(modifier = Modifier.weight(1f))
@@ -3245,6 +3250,19 @@ private fun NeaRerHome(
                             Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Text("✓", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Black)
                                 Text("CONNECTED", color = AccentBlue, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        listOf("DISCOVER", "VERIFY", "READY").forEachIndexed { index, label ->
+                            val reached = index <= connectionStage
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().height(4.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (reached) (if (chatReady) Color(0xFF54D6A5) else Gold) else Color(0xFF34506F)
+                                ) {}
+                                Text(label, color = if (reached) White else Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
