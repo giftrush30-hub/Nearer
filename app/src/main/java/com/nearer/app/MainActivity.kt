@@ -390,6 +390,10 @@ class MainActivity : ComponentActivity() {
                     approvalMessage = "Connection approved"
                     chatNotice = "Connected to $name. Offline chat is ready."
                     statusMessage = "Connected to $name using Bluetooth / nearby Wi-Fi."
+                    // Retry only messages addressed to this exact peer. Their IDs stay
+                    // unchanged, so a recipient that already saved one can ACK the retry
+                    // without showing a duplicate bubble.
+                    flushQueuedChatMessages()
                 }
             }
             override fun onDisconnected(id: String, stableId: String, name: String) {
@@ -407,6 +411,9 @@ class MainActivity : ComponentActivity() {
                     pendingHybridEndpoint = null
                     val legacyLinkAlive = peerSocket?.isConnected == true && peerSocket?.isClosed == false
                     chatReady = legacyLinkAlive
+                    if (!legacyLinkAlive) {
+                        queueUnconfirmedMessagesForPeer(stableId.ifBlank { "nearby:$id" })
+                    }
                     if (legacyLinkAlive) {
                         connectionMessage = "Wi-Fi Direct chat link still active"
                         chatNotice = "Nearby Bluetooth/Wi-Fi link ended. Your chat is continuing over Wi-Fi Direct."
@@ -1447,7 +1454,12 @@ class MainActivity : ComponentActivity() {
                         conversationId = item.optString("conversationId", "legacy"),
                         conversationName = item.optString("conversationName", "Previous chat")
                     )
-                    chatMessages.add(message)
+                    // A process may die after Nearby accepted a packet but before
+                    // its ACK arrived. Treat that uncertain state as retryable on reconnect.
+                    val restoredMessage = if (message.outgoing &&
+                        message.delivery in setOf("Sending", "Awaiting delivery", "Sent")
+                    ) message.copy(delivery = "Queued") else message
+                    chatMessages.add(restoredMessage)
                     if (!message.outgoing) {
                         receivedMessageIds.add(message.id)
                         persistedMessageIds.add(message.id)
@@ -1572,7 +1584,9 @@ class MainActivity : ComponentActivity() {
         )
         if (route != null) {
             val index = chatMessages.indexOfFirst { it.id == message.id }
-            if (index >= 0) chatMessages[index] = message.copy(delivery = "Sent")
+            // sendPayload acceptance is not recipient delivery. Keep this message
+            // pending until the receiving app saves it and returns chat_ack.
+            if (index >= 0) chatMessages[index] = message.copy(delivery = "Awaiting delivery")
             persistMessages()
             chatNotice = when (route) {
                 ChatTransportRoute.NEARBY_CONNECTIONS -> "Message sent through Nearby Connections (Bluetooth / nearby Wi-Fi)."
@@ -1581,6 +1595,22 @@ class MainActivity : ComponentActivity() {
             return true
         }
         return false
+    }
+
+    private fun queueUnconfirmedMessagesForPeer(peerId: String) {
+        if (peerId.isBlank()) return
+        var changed = false
+        chatMessages.indices.forEach { index ->
+            val message = chatMessages[index]
+            if (message.outgoing &&
+                message.conversationId.ifBlank { "legacy" } == peerId &&
+                message.delivery in setOf("Sending", "Awaiting delivery", "Sent")
+            ) {
+                chatMessages[index] = message.copy(delivery = "Queued")
+                changed = true
+            }
+        }
+        if (changed) persistMessages()
     }
 
     private fun flushQueuedChatMessages() {
