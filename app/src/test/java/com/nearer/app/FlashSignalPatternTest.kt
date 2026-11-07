@@ -46,7 +46,7 @@ class FlashSignalPatternTest {
     }
 
     @Test fun acceptsTimingVariationWithinOneSecond() {
-        assertEquals("PING", FlashSignalPattern.decode(listOf(1_000L, 5_850L)))
+        assertEquals("PING", FlashSignalPattern.decode(listOf(1_000L, 5_850L, 17_850L)))
         assertEquals("COME", FlashSignalPattern.decode(listOf(1_000L, 11_900L, 19_100L)))
         assertEquals("URGENT", FlashSignalPattern.decode(listOf(1_000L, 14_900L, 28_100L, 43_000L)))
         assertEquals("CALL_ME", FlashSignalPattern.decode(listOf(1_000L, 20_900L, 37_100L)))
