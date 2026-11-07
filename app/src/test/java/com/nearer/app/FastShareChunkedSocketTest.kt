@@ -36,6 +36,8 @@ class FastShareChunkedSocketTest {
                             onBytesCopied = { copied = it },
                             bufferSize = 5
                         )
+                        assertEquals(continueAfterBytes == null, result.complete)
+                        assertEquals(if (continueAfterBytes == null) payload.size.toLong() else 5L, result.bytesCopied)
                         output.flush()
                         result
                     }
@@ -49,10 +51,8 @@ class FastShareChunkedSocketTest {
                     }
                     val response = ByteArrayOutputStream()
                     client.getInputStream().copyTo(response)
-                    val result = server.get(3, TimeUnit.SECONDS)
-                    val wire = response.toString("UTF-8")
-                    assertEquals(if (continueAfterBytes == null) payload.size.toLong() else 5L, result.bytesCopied.takeIf { continueAfterBytes == null } ?: result.bytesCopied)
-                    return wire
+                    server.get(3, TimeUnit.SECONDS)
+                    return response.toString("UTF-8")
                 }
             } finally {
                 executor.shutdownNow()
@@ -62,18 +62,18 @@ class FastShareChunkedSocketTest {
 
     @Test fun unknownLengthTcpResponseUsesValidChunksAndCleanTerminator() {
         val wire = exchange()
-        assertTrue(wire.startsWith("HTTP/1.1 200 OK\\r\\n"))
-        assertTrue(wire.contains("Transfer-Encoding: chunked\\r\\n"))
-        val body = wire.substringAfter("\\r\\n\\r\\n")
-        assertTrue(body.endsWith("0\\r\\n\\r\\n"))
+        assertTrue(wire.startsWith("HTTP/1.1 200 OK\r\n"))
+        assertTrue(wire.contains("Transfer-Encoding: chunked\r\n"))
+        val body = wire.substringAfter("\r\n\r\n")
+        assertTrue(body.endsWith("0\r\n\r\n"))
         assertTrue(body.contains("unknown-size-stream-payload"))
     }
 
     @Test fun interruptedUnknownLengthTcpResponseOmitsCompletionTerminator() {
         val wire = exchange(continueAfterBytes = 5L)
-        val body = wire.substringAfter("\\r\\n\\r\\n")
+        val body = wire.substringAfter("\r\n\r\n")
         assertTrue(body.isNotEmpty())
-        assertFalse(body.endsWith("0\\r\\n\\r\\n"))
-        assertTrue(body.contains("unknown-size-stream-payload".take(5)))
+        assertFalse(body.endsWith("0\r\n\r\n"))
+        assertTrue(body.contains("unkno"))
     }
 }
