@@ -310,13 +310,16 @@ private class FastShareHttpServer(
                     output.write("\r\n".toByteArray(Charsets.US_ASCII))
                     output.flush()
                     sent += read
-                    if (sent % (1024L * 1024L) < read) onTransferUpdate(sent, -1L, false)
+                    if (sent % (1024L * 1024L) < read) onTransferUpdate(sent, -1L, false, false)
                 }
-                output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
-                output.flush()
-                onTransferUpdate(sent, -1L, true)
+                val completed = running
+                if (completed) {
+                    output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
+                    output.flush()
+                }
+                onTransferUpdate(sent, -1L, completed, !completed)
             } catch (error: Exception) {
-                onTransferUpdate(sent, -1L, false)
+                onTransferUpdate(sent, -1L, false, true)
                 throw error
             }
         } ?: throw IllegalStateException("Cannot read the selected file")
