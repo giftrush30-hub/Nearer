@@ -120,6 +120,7 @@ fun NeaRerShareHub(
                 }
                 if (openSendNotice.isNotBlank()) Text(openSendNotice, color = ShareMuted, fontSize = 11.sp)
                 Text("The receiver's camera may offer to join the Wi-Fi network, but QR behavior differs by phone. The network name, password and browser address are always shown as a manual fallback.", color = ShareMuted, fontSize = 10.sp, lineHeight = 15.sp)
+                Text("OpenSend is a local HTTP session, not end-to-end encrypted. Share only with people you trust, and keep NeaRer running until the receiver finishes. Android may stop the session if the app or process is closed.", color = ShareMuted, fontSize = 10.sp, lineHeight = 15.sp)
             }
         }
 
