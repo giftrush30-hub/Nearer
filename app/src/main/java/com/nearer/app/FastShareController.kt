@@ -274,7 +274,7 @@ private class FastShareHttpServer(
                     sent += read
                     if (sent == count || sent % (1024L * 1024L) < read) {
                         output.flush()
-                        onTransferUpdate(sent, count, false)
+                        onTransferUpdate(sent, count, false, false)
                     }
                 }
                 output.flush()
