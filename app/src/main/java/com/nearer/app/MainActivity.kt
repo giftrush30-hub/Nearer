@@ -404,6 +404,16 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            override fun onMessageSendFailed(messageId: String) {
+                runOnUiThread {
+                    val index = chatMessages.indexOfFirst { it.id == messageId && it.outgoing }
+                    if (index >= 0 && chatMessages[index].delivery != "Delivered") {
+                        chatMessages[index] = chatMessages[index].copy(delivery = "Queued")
+                        persistMessages()
+                        chatNotice = "Connection interrupted. Your message is safely queued on this phone."
+                    }
+                }
+            }
             override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {
                 runOnUiThread {
                     val fraction = if (total > 0L) (transferred.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
