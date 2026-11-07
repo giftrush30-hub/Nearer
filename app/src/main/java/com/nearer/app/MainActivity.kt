@@ -565,6 +565,7 @@ class MainActivity : ComponentActivity() {
                         incomingRateSampleBytes = 0L
                     }
                     if (message.startsWith("File sent to the nearby phone")) {
+                        stopNearbyTransferKeepAlive()
                         activeQueuedFileUri?.let { completedUri ->
                             pendingChatFileUris.remove(completedUri)
                             if (!persistPendingChatFiles()) {
@@ -587,6 +588,7 @@ class MainActivity : ComponentActivity() {
                         message.startsWith("File could not be prepared") ||
                         message.startsWith("Connection lost before the other phone confirmed saving") ||
                         message.startsWith("file transfers lost their connection before recipient confirmation")) {
+                        stopNearbyTransferKeepAlive()
                         // A disconnected recipient cannot ACK this transfer. Clear the
                         // spinner but keep the prepared item; reconnecting will retry it.
                         outgoingTransferId = null
@@ -1450,6 +1452,7 @@ class MainActivity : ComponentActivity() {
             incomingTransferName = null
             incomingProgress = 0f
             outgoingTransferId = null
+            stopNearbyTransferKeepAlive()
             activeQueuedFileUri = null
             outgoingProgress = 0f
             outgoingTransferredBytes = 0L
@@ -2467,6 +2470,20 @@ class MainActivity : ComponentActivity() {
         chatNotice = notice
     }
 
+    private fun startNearbyTransferKeepAlive() {
+        try {
+            ContextCompat.startForegroundService(this, Intent(this, NearbyTransferForegroundService::class.java))
+        } catch (_: Exception) {
+            // The durable prepared-file queue remains the recovery path if Android
+            // refuses a foreground-service start on this device or OS version.
+            chatNotice = "Transfer is running, but Android did not allow background protection. Keep NeaRer open until it finishes."
+        }
+    }
+
+    private fun stopNearbyTransferKeepAlive() {
+        try { stopService(Intent(this, NearbyTransferForegroundService::class.java)) } catch (_: Exception) { }
+    }
+
     private fun sendFile(uri: Uri) {
         try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
         if (!chatReady) {
@@ -2499,6 +2516,7 @@ class MainActivity : ComponentActivity() {
             val payloadId = nearbyTransport?.sendFile(endpoint, uri, fileName)
             if (payloadId != null) {
                 outgoingTransferId = "nearby:$payloadId"
+                startNearbyTransferKeepAlive()
                 outgoingProgress = 0f
                 outgoingTransferredBytes = 0L
                 outgoingTotalBytes = 0L
@@ -2517,6 +2535,7 @@ class MainActivity : ComponentActivity() {
         pendingSentFileName = null
         pendingSentFileSize = 0L
         outgoingTransferId = transferId
+        startNearbyTransferKeepAlive()
         outgoingProgress = 0f
             outgoingTransferredBytes = 0L
             outgoingTotalBytes = 0L

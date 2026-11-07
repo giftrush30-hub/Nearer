@@ -8,6 +8,8 @@
     </queries>
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-feature android:name="android.hardware.wifi.direct" android:required="false" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -44,6 +46,10 @@
         <receiver
             android:name=".PackageInstallStatusReceiver"
             android:exported="false" />
+        <service
+            android:name=".NearbyTransferForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
         <service
             android:name=".NeaRerFlashScreeningService"
             android:permission="android.permission.BIND_SCREENING_SERVICE"
