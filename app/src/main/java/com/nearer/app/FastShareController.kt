@@ -322,28 +322,37 @@ private class FastShareHttpServer(
      * Resume/range requests are not available when the length is unknown.
      */
     private fun streamUnknownLength(output: BufferedOutputStream, headOnly: Boolean) {
+        val stream = if (headOnly) null else try {
+            context.contentResolver.openInputStream(uri)
+        } catch (_: Exception) {
+            null
+        }
+        if (!headOnly && stream == null) {
+            writeFileUnavailable(output)
+            return
+        }
         val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        output.write("HTTP/1.1 200 OK\r\nContent-Type: $mimeType\r\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".toByteArray())
+        output.write("HTTP/1.1 200 OK\\r\\nContent-Type: $mimeType\\r\\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\\r\\nTransfer-Encoding: chunked\\r\\nConnection: close\\r\\n\\r\\n".toByteArray())
         if (headOnly) return
-        context.contentResolver.openInputStream(uri)?.use { stream ->
+        stream?.use { source ->
             val buffer = ByteArray(64 * 1024)
             var sent = 0L
             try {
                 while (running) {
-                    val read = stream.read(buffer)
+                    val read = source.read(buffer)
                     if (read < 0) break
                     if (read == 0) continue
                     output.write(Integer.toHexString(read).toByteArray(Charsets.US_ASCII))
-                    output.write("\r\n".toByteArray(Charsets.US_ASCII))
+                    output.write("\\r\\n".toByteArray(Charsets.US_ASCII))
                     output.write(buffer, 0, read)
-                    output.write("\r\n".toByteArray(Charsets.US_ASCII))
+                    output.write("\\r\\n".toByteArray(Charsets.US_ASCII))
                     output.flush()
                     sent += read
                     if (sent % (1024L * 1024L) < read) onTransferUpdate(sent, -1L, false, false)
                 }
                 val completed = running
                 if (completed) {
-                    output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
+                    output.write("0\\r\\n\\r\\n".toByteArray(Charsets.US_ASCII))
                     output.flush()
                 }
                 onTransferUpdate(sent, -1L, completed, !completed)
@@ -351,7 +360,7 @@ private class FastShareHttpServer(
                 onTransferUpdate(sent, -1L, false, true)
                 throw error
             }
-        } ?: throw IllegalStateException("Cannot read the selected file")
+        }
     }
 
     private fun writeFileUnavailable(output: BufferedOutputStream) {
