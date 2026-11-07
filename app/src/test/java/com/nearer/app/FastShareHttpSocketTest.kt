@@ -2,6 +2,7 @@ package com.nearer.app
 
 import org.junit.Assert.*
 import org.junit.Test
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -36,7 +37,13 @@ class FastShareHttpSocketTest {
                             if (!parsed.request.isHeadOnly && response.range != null) {
                                 val start = response.range.start.toInt()
                                 val endExclusive = (response.range.endInclusive + 1).toInt()
-                                if (endExclusive > start) output.write(payload, start, endExclusive - start)
+                                if (endExclusive > start) {
+                                    StreamCopy.copy(
+                                        input = ByteArrayInputStream(payload, start, endExclusive - start),
+                                        output = output,
+                                        expectedBytes = (endExclusive - start).toLong()
+                                    )
+                                }
                             }
                             output.flush()
                         }
