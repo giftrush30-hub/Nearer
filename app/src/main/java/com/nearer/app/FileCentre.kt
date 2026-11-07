@@ -10,6 +10,7 @@ import android.os.Build
 import android.provider.MediaStore
 import android.Manifest
 import android.graphics.drawable.Drawable
+import androidx.core.content.FileProvider
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -58,6 +59,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 internal enum class FileCentreCategory(val label: String) {
     PICTURES("Pictures"), VIDEOS("Videos"), MUSIC("Music"), APPS("Apps"),
@@ -185,6 +188,45 @@ internal object AndroidFileCatalog {
 
     fun appIcon(context: Context, packageName: String): Drawable? =
         runCatching { context.packageManager.getApplicationIcon(packageName) }.getOrNull()
+
+    
+    fun exportAppBundle(context: Context, item: FileCentreItem): FileCentreItem {
+        val packageName = requireNotNull(item.packageName) { "This item is not an installed app." }
+        val appInfo = context.packageManager.getApplicationInfo(packageName, 0)
+        val baseApk = java.io.File(appInfo.sourceDir)
+        require(baseApk.isFile) { "The app's base APK is unavailable." }
+        val splitApks = appInfo.splitSourceDirs.orEmpty().map { java.io.File(it) }.filter { it.isFile }
+        val outputDir = java.io.File(context.cacheDir, "nearer-share").apply { mkdirs() }
+        val safePackage = packageName.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val output = java.io.File(outputDir, "$safePackage-app-bundle.zip")
+        ZipOutputStream(output.outputStream().buffered()).use { zip ->
+            fun addApk(file: java.io.File, entryName: String) {
+                zip.putNextEntry(ZipEntry(entryName))
+                file.inputStream().buffered().use { input -> input.copyTo(zip, 64 * 1024) }
+                zip.closeEntry()
+            }
+            addApk(baseApk, "base.apk")
+            splitApks.forEachIndexed { index, file ->
+                val safeName = file.name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                addApk(file, "splits/${index + 1}-$safeName")
+            }
+            zip.putNextEntry(ZipEntry("INSTALLATION.txt"))
+            zip.write(("NeaRer app bundle for $packageName\n" +
+                "Contains base.apk and ${splitApks.size} split APK file(s).\n" +
+                "Install with a compatible split-APK installer. Do not install only base.apk when split APKs are present.\n" +
+                "Private app data, accounts and settings are not included.\n").toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+        }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", output)
+        return item.copy(
+            id = uri.toString(),
+            name = item.name + " • App bundle",
+            uri = uri,
+            sizeBytes = output.length(),
+            modifiedSeconds = System.currentTimeMillis() / 1000L,
+            mimeType = "application/zip"
+        )
+    }
 
     fun formatSize(bytes: Long): String {
         if (bytes <= 0L) return "Size unavailable"
@@ -389,7 +431,7 @@ internal fun FileCentreScreen(
             }
         }
         if (category == FileCentreCategory.APPS) {
-            Text("Installed apps are listed using Android's launcher-app visibility. APK extraction and split-app packaging are the next stage.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+            Text("Tap an app to package its base APK and any split APK parts into one shareable bundle. Private app data and accounts are not included.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
         }
         Text(notice, color = Muted, fontSize = 10.sp)
         if (visible.isEmpty() && !loading && (category == FileCentreCategory.APPS || hasAccess)) {
@@ -409,8 +451,23 @@ internal fun FileCentreScreen(
                         selected = item.id in selected,
                         context = context,
                         onClick = {
-                            if (item.category == FileCentreCategory.APPS) {
-                                notice = "App installer sharing is being built next. Split APK apps need all components packaged together."
+                            if (item.category == FileCentreCategory.APPS && item.packageName != null) {
+                                if (item.id in selected) selected.remove(item.id)
+                                else {
+                                    notice = "Packaging ${item.name}, including any split APK parts…"
+                                    scope.launch {
+                                        runCatching { withContext(Dispatchers.IO) { AndroidFileCatalog.exportAppBundle(context, item) } }
+                                            .onSuccess { bundle ->
+                                                items.removeAll { it.id == bundle.id }
+                                                items.add(bundle)
+                                                if (bundle.id !in selected) selected.add(bundle.id)
+                                                notice = "${item.name} bundle is ready and added to your selection."
+                                            }
+                                            .onFailure { error ->
+                                                notice = "Could not package ${item.name}: ${error.message ?: "storage or package access error"}"
+                                            }
+                                    }
+                                }
                             } else if (item.uri != null) {
                                 if (item.id in selected) selected.remove(item.id) else selected.add(item.id)
                             }
@@ -429,8 +486,23 @@ internal fun FileCentreScreen(
                         selected = item.id in selected,
                         context = context,
                         onClick = {
-                            if (item.category == FileCentreCategory.APPS) {
-                                notice = "App installer sharing is being built next. Split APK apps need all components packaged together."
+                            if (item.category == FileCentreCategory.APPS && item.packageName != null) {
+                                if (item.id in selected) selected.remove(item.id)
+                                else {
+                                    notice = "Packaging ${item.name}, including any split APK parts…"
+                                    scope.launch {
+                                        runCatching { withContext(Dispatchers.IO) { AndroidFileCatalog.exportAppBundle(context, item) } }
+                                            .onSuccess { bundle ->
+                                                items.removeAll { it.id == bundle.id }
+                                                items.add(bundle)
+                                                if (bundle.id !in selected) selected.add(bundle.id)
+                                                notice = "${item.name} bundle is ready and added to your selection."
+                                            }
+                                            .onFailure { error ->
+                                                notice = "Could not package ${item.name}: ${error.message ?: "storage or package access error"}"
+                                            }
+                                    }
+                                }
                             } else if (item.uri != null) {
                                 if (item.id in selected) selected.remove(item.id) else selected.add(item.id)
                             }
