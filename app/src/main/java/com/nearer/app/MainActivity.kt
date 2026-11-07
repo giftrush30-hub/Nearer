@@ -157,6 +157,7 @@ class MainActivity : ComponentActivity() {
     private var connectedChatPeerName: String? = null
     private var activeChatPeerName: String = "Nearby person"
     private var meshRelayEnabled by mutableStateOf(false)
+    private var anonymousDiscovery by mutableStateOf(false)
     private val discoveryHandler = Handler(Looper.getMainLooper())
     private var discoveryTimeout: Runnable? = null
     private var discoveryGeneration = 0
@@ -627,12 +628,15 @@ class MainActivity : ComponentActivity() {
         restoreReceivedFiles()
         restoreSentFiles()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
+        anonymousDiscovery = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            .getBoolean("anonymous_discovery_enabled", false)
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
             .getStringSet("blocked_nearby_peer_ids", emptySet())
             ?.mapNotNull(BlockedPeerPolicy::normalize)
             ?.forEach { blockedPeerIds.add(it) }
         restoreCommunityData()
         nearbyTransport?.setDisplayName(displayName)
+        nearbyTransport?.setAnonymousDiscovery(anonymousDiscovery)
         restoreRecentlySeen()
         meshRelayEnabled = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getBoolean("mesh_relay_enabled", false)
         nearbyTransport?.setRelayEnabled(meshRelayEnabled)
@@ -745,6 +749,8 @@ class MainActivity : ComponentActivity() {
                     recentlySeenPeers = recentlySeenPeers.toMap(),
                     displayName = displayName,
                     onSaveDisplayName = ::saveDisplayName,
+                    anonymousDiscovery = anonymousDiscovery,
+                    onAnonymousDiscoveryChange = ::updateAnonymousDiscovery,
                     meshRelayEnabled = meshRelayEnabled,
                     onMeshRelayChange = ::updateMeshRelayEnabled,
                     onHybridConnect = { id ->
@@ -1003,6 +1009,21 @@ class MainActivity : ComponentActivity() {
                 })
             } catch (_: SecurityException) { statusMessage = "Search stopped. Check nearby-device permission before searching again." }
         } else statusMessage = "Search stopped."
+    }
+
+    private fun updateAnonymousDiscovery(enabled: Boolean) {
+        val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        if (!prefs.edit().putBoolean("anonymous_discovery_enabled", enabled).commit()) {
+            statusMessage = "Your privacy setting could not be saved. Please try again."
+            return
+        }
+        anonymousDiscovery = enabled
+        nearbyTransport?.setAnonymousDiscovery(enabled)
+        statusMessage = if (enabled) {
+            "Anonymous-name discovery is on. Nearby people see “Nearby NeaRer user” instead of your chosen name. Your persistent device ID is still visible."
+        } else {
+            "Your chosen nearby name is visible again."
+        }
     }
 
     private fun updateMeshRelayEnabled(enabled: Boolean) {
@@ -3039,6 +3060,8 @@ private fun NeaRerHome(
     recentlySeenPeers: Map<String, NearbyPerson>,
     displayName: String,
     onSaveDisplayName: (String) -> Boolean,
+    anonymousDiscovery: Boolean,
+    onAnonymousDiscoveryChange: (Boolean) -> Unit,
     meshRelayEnabled: Boolean,
     onMeshRelayChange: (Boolean) -> Unit,
     onHybridConnect: (String) -> Unit,
@@ -4722,6 +4745,22 @@ private fun NeaRerHome(
                         colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
                     ) { Text("SAVE MY NAME", fontWeight = FontWeight.Black, letterSpacing = 0.4.sp) }
                     Text(nameSaveFeedback ?: "Your chosen name is shown to people discovering nearby phones.", color = Color(0xFFB8CBE3), fontSize = 10.sp, lineHeight = 15.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().background(Color(0xFF123D70), RoundedCornerShape(12.dp)).padding(horizontal = 11.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("HIDE MY NAME IN DISCOVERY", color = White, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                            Text(
+                                "Shows “Nearby NeaRer user” instead. Your persistent device ID remains visible, so this is not full anonymity.",
+                                color = Color(0xFFB8CBE3), fontSize = 9.sp, lineHeight = 13.sp
+                            )
+                        }
+                        androidx.compose.material3.Switch(
+                            checked = anonymousDiscovery,
+                            onCheckedChange = onAnonymousDiscoveryChange
+                        )
+                    }
                     if (blockedPeerIds.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             Text("BLOCKED NEARBY DEVICES", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)

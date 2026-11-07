@@ -46,7 +46,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             }
         }
     val localMemberId: String get() = localStableId
-    private fun encodedName(): String = "${localName.take(23)}|$localStableId"
+    private fun encodedName(): String = "${(if (anonymousDiscovery) "Nearby NeaRer user" else localName).take(23)}|$localStableId"
     private fun decodeName(value: String): Pair<String, String> {
         val split = value.lastIndexOf('|')
         val idLength = value.length - split - 1
@@ -74,6 +74,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     @Volatile private var started = false
     @Volatile private var startGeneration = 0
     @Volatile private var localName = "NeaRer User"
+    @Volatile private var anonymousDiscovery = false
 
     private val discovery = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(id: String, info: DiscoveredEndpointInfo) {
@@ -91,7 +92,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         override fun onConnectionInitiated(id: String, info: ConnectionInfo) {
             val (name, stableId) = decodeName(info.endpointName)
             synchronized(names) { names[id] = name; stableIds[id] = stableId }
-            listener.onRequest(id, name, info.authenticationToken, stableId)
+            listener.onRequest(id, name, info.authenticationDigits, stableId)
         }
         override fun onConnectionResult(id: String, result: ConnectionResolution) {
             if (result.status.isSuccess) {
@@ -380,6 +381,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val clean = name.trim().replace("|", " ").take(23).ifBlank { "NeaRer User" }
         if (clean == localName) return
         localName = clean
+        if (started) { client.stopAdvertising(); startAdvertising(startGeneration) }
+    }
+
+    fun setAnonymousDiscovery(enabled: Boolean) {
+        if (anonymousDiscovery == enabled) return
+        anonymousDiscovery = enabled
         if (started) { client.stopAdvertising(); startAdvertising(startGeneration) }
     }
 
