@@ -4,6 +4,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -28,7 +30,7 @@ import android.media.ToneGenerator
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -472,20 +474,48 @@ private fun DiceFace(value: Int, rolling: Boolean, modifier: Modifier = Modifier
     // Run the dice rotation only while a roll is in progress; an idle game
     // should not keep an infinite animation ticking in the background.
     val rotation = remember { Animatable(0f) }
+    val lift = remember { Animatable(0f) }
     LaunchedEffect(rolling) {
         if (rolling) {
             rotation.snapTo(0f)
-            rotation.animateTo(
-                targetValue = 720f,
-                animationSpec = tween(560, easing = LinearEasing)
-            )
+            lift.snapTo(0f)
+            kotlinx.coroutines.coroutineScope {
+                launch {
+                    rotation.animateTo(
+                        targetValue = 1080f,
+                        animationSpec = tween(760, easing = LinearEasing)
+                    )
+                }
+                launch {
+                    repeat(3) { bounce ->
+                        lift.animateTo(
+                            targetValue = (if (bounce == 0) 1f else 0.48f / bounce),
+                            animationSpec = tween(if (bounce == 0) 170 else 115, easing = FastOutSlowInEasing)
+                        )
+                        lift.animateTo(
+                            targetValue = 0f,
+                            animationSpec = spring(
+                                dampingRatio = 0.42f,
+                                stiffness = if (bounce == 0) Spring.StiffnessMedium else Spring.StiffnessHigh
+                            )
+                        )
+                    }
+                }
+            }
         } else {
             rotation.snapTo(0f)
+            lift.snapTo(0f)
         }
     }
     Canvas(
         modifier = modifier
-            .rotate(rotation.value)
+            .graphicsLayer {
+                rotationZ = rotation.value
+                translationY = -lift.value * 15.dp.toPx()
+                val scale = 1f + lift.value * 0.10f
+                scaleX = scale
+                scaleY = scale
+            }
             .shadow(12.dp, RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp))
             .semantics { contentDescription = if (rolling) "Dice rolling" else "Dice showing $value" }
