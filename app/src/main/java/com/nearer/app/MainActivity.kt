@@ -20,6 +20,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import android.os.Build
+import android.app.role.RoleManager
 import android.os.Bundle
 import android.os.Looper
 import android.media.MediaRecorder
@@ -212,6 +213,8 @@ class MainActivity : ComponentActivity() {
     private var voiceNoteRecorder: MediaRecorder? = null
     private var activeVoiceNoteFile: File? = null
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
+    private var flashRoleReady by mutableStateOf(false)
+    private var flashLastSignal by mutableStateOf<String?>(null)
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
 
     private fun updateTransferRate(incoming: Boolean, bytes: Long) {
@@ -313,6 +316,31 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roles = getSystemService(RoleManager::class.java)
+            flashRoleReady = roles?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
+        } else {
+            flashRoleReady = false
+        }
+        flashLastSignal = getSharedPreferences(NeaRerFlashScreeningService.PREFS, MODE_PRIVATE)
+            .getString(NeaRerFlashScreeningService.LAST_SIGNAL, null)
+    }
+
+    private fun requestFlashScreeningRole() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            statusMessage = "NeaRer Flash call signalling requires Android 10 or newer."
+            return
+        }
+        val roles = getSystemService(RoleManager::class.java) ?: return
+        if (roles.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) {
+            flashRoleReady = true
+            return
+        }
+        startActivityForResult(roles.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING), 7041)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -3109,6 +3137,7 @@ private fun NeaRerHome(
                                 "chats" -> "Messages"
                                 "community" -> "Communities"
                                 "games" -> "Game Zone"
+                                "flash" -> "NeaRer Flash"
                                 else -> "NeaRer"
                             },
                             color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold
@@ -3119,6 +3148,7 @@ private fun NeaRerHome(
                                 "chats" -> "Your private conversations"
                                 "community" -> "Your local circles"
                                 "games" -> "Play together, stay closer"
+                                "flash" -> "Short signals through ordinary phone calls"
                                 else -> "No Data? We Are NeaRer."
                             },
                             color = Muted, fontSize = 11.sp
@@ -3894,6 +3924,41 @@ private fun NeaRerHome(
                 }
             }
             
+
+            AnimatedVisibility(visible = activeSection == "flash", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    color = Color(0xFF102B50),
+                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.55f))
+                ) {
+                    Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                        Text("OFFLINE SIGNALS • EXPERIMENTAL", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
+                        Text("Send a short message without mobile data", color = White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("NeaRer Flash uses carefully timed ordinary calls as simple signals. It does not carry chat text, photos or files, and your mobile network may charge for calls.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        Surface(color = Color(0xFF0A203D), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("SIGNAL PRESETS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("PING • COME • URGENT • CALL ME", color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("Each preset uses a different rhythm of missed calls. Both people must use NeaRer and agree on the same preset meanings.", color = Muted, fontSize = 11.sp)
+                            }
+                        }
+                        Text(if (flashRoleReady) "Call screening access is enabled on this phone." else "To detect incoming Flash patterns, Android asks you to choose NeaRer as your call-screening app. You can decline; normal calling remains available.", color = if (flashRoleReady) Color(0xFF8EE6B2) else Muted, fontSize = 11.sp)
+                        Button(
+                            onClick = { requestFlashScreeningRole() },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)
+                        ) { Text(if (flashRoleReady) "CALL SCREENING ENABLED" else "ENABLE FLASH ON THIS PHONE", fontWeight = FontWeight.Black) }
+                        if (flashLastSignal != null) {
+                            Text("LAST SIGNAL RECEIVED", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text(flashLastSignal!!.replace('_', ' '), color = White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                        } else {
+                            Text("No Flash signal received on this phone yet.", color = Muted, fontSize = 11.sp)
+                        }
+                        Text("Important: Android may not pass calls from saved contacts to a screening service unless NeaRer is also granted Contacts access. We are not requesting that permission in this prototype. Call-network timing and charges vary, so this feature remains experimental until tested on real networks.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                    }
+                }
+            }
 
             AnimatedVisibility(visible = activeSection == "games", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF15315A), border = BorderStroke(1.dp, Color(0xFF42618B))) {
@@ -4809,7 +4874,8 @@ private fun NeaRerHome(
                         Triple("◎", "Nearby", "nearby"),
                         Triple("✉", "Chats", "chats"),
                         Triple("♧", "Groups", "community"),
-                        Triple("♜", "Games", "games")
+                        Triple("♜", "Games", "games"),
+                        Triple("⌁", "Flash", "flash")
                     ).forEach { item ->
                         val selected = activeSection == item.third
                         Surface(
