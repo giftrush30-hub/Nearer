@@ -57,7 +57,21 @@ class FastShareController(private val context: Context) {
                 try {
                     val name = queryDisplayName(selectedUri)
                     val mime = context.contentResolver.getType(selectedUri) ?: "application/octet-stream"
-                    val length = context.contentResolver.openFileDescriptor(selectedUri, "r")?.use { it.statSize } ?: -1L
+                    val descriptorLength = context.contentResolver.openFileDescriptor(selectedUri, "r")?.use { it.statSize } ?: -1L
+                    val length = if (descriptorLength >= 0L) descriptorLength else {
+                        context.contentResolver.query(
+                            selectedUri,
+                            arrayOf(android.provider.OpenableColumns.SIZE),
+                            null,
+                            null,
+                            null
+                        )?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex) else -1L
+                            } else -1L
+                        } ?: -1L
+                    }
                     val httpServer = FastShareHttpServer(context, selectedUri, name, mime, length)
                     val address = httpServer.start()
                     server = httpServer
@@ -206,9 +220,27 @@ private class FastShareHttpServer(
         if (!rangeHeader.isNullOrBlank() && rangeHeader.startsWith("bytes=")) {
             val range = rangeHeader.removePrefix("bytes=").substringBefore(',')
             val bounds = range.split("-", limit = 2)
-            start = bounds.getOrNull(0)?.toLongOrNull() ?: 0L
-            end = bounds.getOrNull(1)?.toLongOrNull() ?: end
-            if (start < 0 || start >= fileLength || end < start) {
+            val first = bounds.getOrNull(0)?.toLongOrNull()
+            val last = bounds.getOrNull(1)?.toLongOrNull()
+            when {
+                bounds.size != 2 || (first == null && last == null) -> {
+                    output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$fileLength\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                    return
+                }
+                first == null -> {
+                    val suffixLength = last ?: 0L
+                    if (suffixLength <= 0L || fileLength <= 0L) {
+                        output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$fileLength\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                        return
+                    }
+                    start = (fileLength - suffixLength).coerceAtLeast(0L)
+                }
+                else -> {
+                    start = first
+                    end = last ?: end
+                }
+            }
+            if (start < 0L || start >= fileLength || end < start) {
                 output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$fileLength\r\nContent-Length: 0\r\n\r\n".toByteArray())
                 return
             }
