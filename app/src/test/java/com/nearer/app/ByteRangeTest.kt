@@ -75,4 +75,22 @@ class ByteRangeTest {
         val section = ByteRange.resolve("bytes=25-49", 100)!!
         assertTrue(ByteRange.isPartialTransfer(section, 100))
     }
+
+    @Test fun singleByteRangesAtBothFileBoundariesAreResolved() {
+        assertEquals(ResolvedByteRange(0, 0, true), ByteRange.resolve("bytes=0-0", 100))
+        assertEquals(ResolvedByteRange(99, 99, true), ByteRange.resolve("bytes=99-99", 100))
+    }
+
+    @Test fun suffixOfOneByteSelectsOnlyTheFinalByte() {
+        assertEquals(ResolvedByteRange(99, 99, true), ByteRange.resolve("bytes=-1", 100))
+    }
+
+    @Test fun oversizedEndIsClampedWithoutOverflow() {
+        assertEquals(ResolvedByteRange(90, 99, true), ByteRange.resolve("bytes=90-9223372036854775807", 100))
+    }
+
+    @Test fun whitespaceAroundRangeBoundsIsAccepted() {
+        assertEquals(ResolvedByteRange(10, 20, true), ByteRange.resolve("bytes= 10 - 20 ", 100))
+    }
+
 }

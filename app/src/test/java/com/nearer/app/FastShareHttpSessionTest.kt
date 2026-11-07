@@ -126,4 +126,29 @@ class FastShareHttpSessionTest {
         assertNotNull(exchange)
         assertTrue(response.isEmpty())
     }
+
+    @Test fun rangeHeaderOuterWhitespaceIsTrimmedBeforeResolution() {
+        val (exchange, response) = read(
+            "GET /download HTTP/1.1\r\nRange:   bytes=10-19  \r\n\r\n"
+        )
+        assertNotNull(exchange)
+        assertEquals("bytes=10-19", exchange!!.rangeHeader)
+        assertTrue(response.isEmpty())
+    }
+
+    @Test fun ordinaryHeadersMayAppearBeforeOrAfterRangeHeader() {
+        val (exchange, response) = read(
+            "GET /download HTTP/1.1\r\nX-Device: phone\r\nRange: bytes=2-4\r\nAccept: */*\r\n\r\n"
+        )
+        assertNotNull(exchange)
+        assertEquals("bytes=2-4", exchange!!.rangeHeader)
+        assertTrue(response.isEmpty())
+    }
+
+    @Test fun emptyNonRangeHeaderValueIsAccepted() {
+        val (exchange, response) = read("GET /download HTTP/1.1\r\nX-Optional:\r\n\r\n")
+        assertNotNull(exchange)
+        assertTrue(response.isEmpty())
+    }
+
 }

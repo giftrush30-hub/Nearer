@@ -48,4 +48,26 @@ class FileHttpResponsesTest {
     fun unknownLengthMustUseChunkedResponsePath() {
         FileHttpResponses.resolve(null, -1)
     }
+
+    @Test fun suffixRangeProducesExactPartialRepresentation() {
+        val response = FileHttpResponses.resolve("bytes=-10", 100)
+        assertEquals(206, response.statusCode)
+        assertEquals(10L, response.contentLength)
+        assertEquals("bytes 90-99/100", response.contentRange)
+    }
+
+    @Test fun oversizedRangeEndIsClampedToLastFileByte() {
+        val response = FileHttpResponses.resolve("bytes=95-9999", 100)
+        assertEquals(206, response.statusCode)
+        assertEquals(5L, response.contentLength)
+        assertEquals("bytes 95-99/100", response.contentRange)
+    }
+
+    @Test fun rangeStartingAtEndOfFileReturns416() {
+        val response = FileHttpResponses.resolve("bytes=100-100", 100)
+        assertEquals(416, response.statusCode)
+        assertEquals(0L, response.contentLength)
+        assertEquals("bytes */100", response.contentRange)
+    }
+
 }

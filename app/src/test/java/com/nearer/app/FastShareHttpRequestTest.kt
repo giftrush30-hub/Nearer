@@ -74,4 +74,24 @@ class FastShareHttpRequestTest {
         }
     }
 
+
+    @Test fun indexedDownloadQueryDoesNotChangeSelectedFileIndex() {
+        val request = FastShareHttpRequest.parse("GET /download/12?name=holiday.mp4 HTTP/1.1")!!
+        assertEquals(FastShareHttpRequest.Route.DOWNLOAD, request.route)
+        assertEquals(12, request.downloadIndex)
+        assertEquals("/download/12", request.path)
+    }
+
+    @Test fun encodedAndNestedDownloadPathsDoNotMatchDownloadRoute() {
+        listOf("/download%2F1", "/download/1/../2", "/download//1").forEach { path ->
+            val request = FastShareHttpRequest.parse("GET $path HTTP/1.1")!!
+            assertEquals(FastShareHttpRequest.Route.NOT_FOUND, request.route)
+        }
+    }
+
+    @Test fun requestTargetContainingControlCharactersIsRejected() {
+        assertNull(FastShareHttpRequest.parse("GET /download\u0001bad HTTP/1.1"))
+        assertNull(FastShareHttpRequest.parse("GET /download\u007f HTTP/1.1"))
+    }
+
 }
