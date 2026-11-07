@@ -589,6 +589,12 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        try { voiceNoteRecorder?.stop() } catch (_: Exception) { }
+        try { voiceNoteRecorder?.release() } catch (_: Exception) { }
+        voiceNoteRecorder = null
+        activeVoiceNoteFile?.delete()
+        activeVoiceNoteFile = null
+        isRecordingVoiceNote = false
         finishDiscovery()
         nearbyTransport?.stop()
         closePeerTransport()
