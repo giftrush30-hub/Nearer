@@ -2408,13 +2408,13 @@ private fun NeaRerHome(
                         fastShare.details?.let { share ->
                             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Midnight) {
                                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                                    Text("CONNECT THE OTHER PHONE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    Text("1. On the other phone, join this Wi-Fi network:", color = Muted, fontSize = 12.sp)
+                                    Text("CONNECT A PHONE OR COMPUTER", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text("1. On the receiving phone or computer, join this Wi-Fi network:", color = Muted, fontSize = 12.sp)
                                     Text(share.ssid, color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                                     Text("Password: ${share.password}", color = White, fontSize = 14.sp)
-                                    Text("2. Open its browser and visit:", color = Muted, fontSize = 12.sp)
+                                    Text("2. Open a web browser on that device and visit:", color = Muted, fontSize = 12.sp)
                                     Text(share.url, color = Mint, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                    Text("3. Tap Download. Keep this screen open until it finishes.", color = Muted, fontSize = 12.sp)
+                                    Text("3. Choose the files to download. Keep NeaRer open and stay connected until they finish.", color = Muted, fontSize = 12.sp)
                                     Button(onClick = {
                                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                         clipboard.setPrimaryClip(ClipData.newPlainText("NeaRer Fast Share link", share.url))
