@@ -57,4 +57,21 @@ class FastShareHttpRequestTest {
     @Test fun methodMatchingIsCaseInsensitive() {
         assertEquals("GET", FastShareHttpRequest.parse("get /download HTTP/1.1")!!.method)
     }
+    @Test fun indexedDownloadRoutesExposeZeroBasedIndex() {
+        val first = FastShareHttpRequest.parse("GET /download/0 HTTP/1.1")!!
+        val third = FastShareHttpRequest.parse("HEAD /download/2?name=clip HTTP/1.1")!!
+        assertEquals(FastShareHttpRequest.Route.DOWNLOAD, first.route)
+        assertEquals(0, first.downloadIndex)
+        assertEquals(FastShareHttpRequest.Route.DOWNLOAD, third.route)
+        assertEquals(2, third.downloadIndex)
+        assertTrue(third.isHeadOnly)
+    }
+
+    @Test fun malformedIndexedDownloadPathsAreNotDownloadRoutes() {
+        listOf("/download/-1", "/download/nope", "/download/1/extra", "/download/12345").forEach { path ->
+            val request = FastShareHttpRequest.parse("GET $path HTTP/1.1")!!
+            assertEquals(FastShareHttpRequest.Route.NOT_FOUND, request.route)
+        }
+    }
+
 }
