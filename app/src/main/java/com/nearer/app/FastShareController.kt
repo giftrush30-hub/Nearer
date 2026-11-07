@@ -305,7 +305,7 @@ private class FastShareHttpServer(
                 StreamRangeCopy.skipFully(stream, start)
             } catch (_: Exception) {
                 stream.close()
-                writeFileUnavailable(output)
+                writeFileUnavailable(output, item)
                 return
             }
         }
