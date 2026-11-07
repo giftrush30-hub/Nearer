@@ -33,13 +33,20 @@ internal object ChunkedStreamCopy {
         while (shouldContinue()) {
             val read = input.read(buffer)
             if (read < 0) break
-            if (read == 0) continue
+            // Be defensive with ContentProvider streams that return zero rather
+            // than blocking or producing EOF for a non-empty read request.
+            val count = if (read == 0) {
+                val single = input.read()
+                if (single < 0) break
+                buffer[0] = single.toByte()
+                1
+            } else read
 
-            output.write(Integer.toHexString(read).toByteArray(Charsets.US_ASCII))
+            output.write(Integer.toHexString(count).toByteArray(Charsets.US_ASCII))
             output.write("\r\n".toByteArray(Charsets.US_ASCII))
-            output.write(buffer, 0, read)
+            output.write(buffer, 0, count)
             output.write("\r\n".toByteArray(Charsets.US_ASCII))
-            sent += read
+            sent += count
             onBytesCopied(sent)
 
             if (sent - lastReported >= 1024L * 1024L) {

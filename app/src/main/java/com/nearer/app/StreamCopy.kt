@@ -33,11 +33,18 @@ internal object StreamCopy {
             val requested = minOf(buffer.size.toLong(), expectedBytes - copied).toInt()
             val read = input.read(buffer, 0, requested)
             if (read < 0) break
-            if (read == 0) continue
-            output.write(buffer, 0, read)
-            copied += read
+            // Some ContentProvider streams incorrectly return zero for a non-empty
+            // read request. Fall back to a one-byte read so the transfer cannot spin.
+            val count = if (read == 0) {
+                val single = input.read()
+                if (single < 0) break
+                buffer[0] = single.toByte()
+                1
+            } else read
+            output.write(buffer, 0, count)
+            copied += count
             onBytesCopied(copied)
-            if (copied == expectedBytes || copied % (1024L * 1024L) < read) {
+            if (copied == expectedBytes || copied % (1024L * 1024L) < count) {
                 output.flush()
                 onProgress(copied)
             }

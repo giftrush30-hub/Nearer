@@ -2,6 +2,7 @@ package com.nearer.app
 
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,6 +27,27 @@ class StreamCopyTest {
 
         assertEquals(StreamCopyResult(5, true), result)
         assertArrayEquals(source, output.toByteArray())
+    }
+
+    @Test fun zeroLengthBulkReadFallsBackToSingleByteRead() {
+        val source = ByteArrayInputStream(byteArrayOf(7, 8, 9))
+        val input = object : InputStream() {
+            private var returnZero = true
+            override fun read(): Int = source.read()
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (returnZero) {
+                    returnZero = false
+                    return 0
+                }
+                return source.read(buffer, offset, length)
+            }
+        }
+        val output = ByteArrayOutputStream()
+
+        val result = StreamCopy.copy(input, output, 3, bufferSize = 2)
+
+        assertEquals(StreamCopyResult(3, true), result)
+        assertArrayEquals(byteArrayOf(7, 8, 9), output.toByteArray())
     }
 
     @Test fun earlyEndOfSourceIsReportedAsIncomplete() {

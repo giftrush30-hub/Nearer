@@ -19,6 +19,28 @@ class ChunkedStreamCopyTest {
         assertTrue(wire.takeLast(5).toByteArray().contentEquals("0\r\n\r\n".toByteArray()))
     }
 
+    @Test fun zeroLengthBulkReadFallsBackToSingleByteRead() {
+        val source = ByteArrayInputStream("abc".toByteArray())
+        val input = object : InputStream() {
+            private var returnZero = true
+            override fun read(): Int = source.read()
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (returnZero) {
+                    returnZero = false
+                    return 0
+                }
+                return source.read(buffer, offset, length)
+            }
+        }
+        val output = ByteArrayOutputStream()
+
+        val result = ChunkedStreamCopy.copy(input, output, { true }, bufferSize = 2)
+
+        assertTrue(result.complete)
+        assertEquals(3L, result.bytesCopied)
+        assertEquals("1\r\na\r\n2\r\nbc\r\n0\r\n\r\n", output.toString("UTF-8"))
+    }
+
     @Test fun writesValidChunksAndFinalTerminatorForCleanEof() {
         val output = ByteArrayOutputStream()
         val result = ChunkedStreamCopy.copy(
