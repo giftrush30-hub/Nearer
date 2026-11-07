@@ -355,7 +355,7 @@ internal fun FileCentreScreen(
                 }
             }
         }
-        if (category == FileCentreCategory.DOCUMENTS || category == FileCentreCategory.OTHER) {
+        if (category == FileCentreCategory.DOCUMENTS || category == FileCentreCategory.DOWNLOADS || category == FileCentreCategory.OTHER) {
             Surface(color = Panel, shape = RoundedCornerShape(16.dp)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(when (category) { FileCentreCategory.DOCUMENTS -> "Browse documents"; FileCentreCategory.DOWNLOADS -> "Browse downloads"; else -> "Browse other files" }, color = White, fontWeight = FontWeight.Bold)
