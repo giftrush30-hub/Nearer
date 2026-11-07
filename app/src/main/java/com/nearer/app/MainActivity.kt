@@ -1170,7 +1170,7 @@ class MainActivity : ComponentActivity() {
             !endpoint.isNullOrBlank() && nearbyTransport?.sendToEndpoint(endpoint, message.body) == true
         } else {
             val encoded = Base64.getEncoder().encodeToString(message.body.toByteArray(Charsets.UTF_8))
-            sendWireLine("MSG|\${message.id}|$encoded")
+            sendWireLine("MSG|${message.id}|$encoded")
         }
         if (sent) {
             val index = chatMessages.indexOfFirst { it.id == message.id }
@@ -3931,7 +3931,7 @@ private fun NeaRerHome(
                                         Surface(color = if (message.outgoing) Color(0xFF174A9B) else Color(0xFF19375D), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(0.86f)) {
                                             Column(Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
                                                 Text(message.body, color = White, fontSize = 14.sp)
-                                                Text("\${message.delivery} • \${formatMessageTime(message.timestamp)}", color = Gold, fontSize = 9.sp)
+                                                Text("${message.delivery} • ${formatMessageTime(message.timestamp)}", color = Gold, fontSize = 9.sp)
                                             }
                                         }
                                     }
