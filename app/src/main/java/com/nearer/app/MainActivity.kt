@@ -1972,6 +1972,7 @@ private fun NeaRerHome(
     val context = LocalContext.current
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Home") }
+    var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
@@ -2054,10 +2055,10 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD12D), contentColor = Midnight)
-                        ) { Text(if (chatReady) "Send files" else "Connect to send files", fontWeight = FontWeight.Bold) }
+                        ) { Text(if (chatReady) "Choose files to send" else "Send to a NeaRer phone", fontWeight = FontWeight.Bold) }
                         Text(
-                            if (chatReady) "Connected to a nearby phone. You can chat or send files."
-                            else "First, find and connect to the other NeaRer phone. Then choose a file and send it.",
+                            if (chatReady) "Connected. Choose photos, videos or documents to send."
+                            else "Find and connect to the other NeaRer phone first. You only need to do that once per connection.",
                             color = Muted, fontSize = 11.sp, lineHeight = 16.sp
                         )
                         Button(
@@ -2347,44 +2348,35 @@ private fun NeaRerHome(
                 }
             }
 
-            if (devices.isEmpty()) {
-                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
-                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("No devices listed yet", color = White, fontWeight = FontWeight.SemiBold)
-                        Text("Scan with another Android phone nearby. For NeaRer chat, both phones will need the app installed.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Panel) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Button(onClick = { showWifiDirectFallback = !showWifiDirectFallback }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)) {
+                        Text(if (showWifiDirectFallback) "Hide other connection options" else "Other connection options • Wi-Fi Direct (" + devices.size + ")")
                     }
-                }
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    devices.forEach { device ->
-                        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Panel) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Surface(shape = CircleShape, color = Color(0xFF244B4A), modifier = Modifier.size(38.dp)) {
-                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                        Text("N", color = Mint, fontWeight = FontWeight.Bold)
+                    Text("Use this only if the NeaRer nearby-name connection does not appear. Both phones need Wi-Fi Direct support.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                    AnimatedVisibility(visible = showWifiDirectFallback) {
+                        if (devices.isEmpty()) {
+                            Text("No Wi-Fi Direct phones found yet. Tap Find people / Receive to scan again.", color = Muted, fontSize = 12.sp)
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                devices.forEach { device ->
+                                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = Midnight) {
+                                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(device.deviceName.ifBlank { "Nearby Android device" }, color = White, fontWeight = FontWeight.SemiBold)
+                                                Text(deviceStatus(device.status), color = Muted, fontSize = 11.sp)
+                                            }
+                                            Button(onClick = { onConnect(device) }, enabled = connectingAddress == null && connectedDeviceName == null && device.status != WifiP2pDevice.UNAVAILABLE, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
+                                                Text(if (connectingAddress == device.deviceAddress) "Requesting…" else "Connect", fontWeight = FontWeight.Bold)
+                                            }
+                                        }
                                     }
-                                }
-                                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                                    Text(device.deviceName.ifBlank { "Nearby Android device" }, color = White, fontWeight = FontWeight.SemiBold)
-                                    Text(deviceStatus(device.status), color = Muted, fontSize = 11.sp)
-                                }
-                                Button(
-                                    onClick = { onConnect(device) },
-                                    enabled = connectingAddress == null && connectedDeviceName == null && device.status != WifiP2pDevice.UNAVAILABLE,
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
-                                ) {
-                                    Text(if (connectingAddress == device.deviceAddress) "Requesting…" else "Connect", fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
                     }
                 }
             }
-
             }
 
             if (selectedTab == "More") {
