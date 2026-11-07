@@ -236,7 +236,7 @@ private class FastShareHttpServer(
                 if (headOnly) {
                     streamFile(output, rangeHeader, true)
                 } else if (!transferActive.compareAndSet(false, true)) {
-                    output.write("HTTP/1.1 429 Too Many Requests\r\nRetry-After: 2\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 43\r\nConnection: close\r\n\r\nAnother download is already in progress.\n".toByteArray())
+                    output.write("HTTP/1.1 429 Too Many Requests\r\nRetry-After: 2\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 41\r\nConnection: close\r\n\r\nAnother download is already in progress.\n".toByteArray())
                 } else {
                     try {
                         streamFile(output, rangeHeader, false)
