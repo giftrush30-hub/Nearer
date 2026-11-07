@@ -216,7 +216,7 @@ private class FastShareHttpServer(
         }
         val resolvedRange = ByteRange.resolve(rangeHeader, fileLength)
         if (resolvedRange == null) {
-            output.write("HTTP/1.1 416 Range Not Satisfiable\\r\\nContent-Range: bytes */$fileLength\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n".toByteArray())
+            output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$fileLength\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
             return
         }
         val start = resolvedRange.start
