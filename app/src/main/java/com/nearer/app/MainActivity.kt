@@ -3241,7 +3241,7 @@ private fun NeaRerHome(
                         border = BorderStroke(1.dp, Color(0xFF4A91FF))
                     ) {
                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                            Image(painter = painterResource(R.drawable.ic_nearer_foreground), contentDescription = "NeaRer connected network N", modifier = Modifier.size(70.dp))
+                            Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer connected network N", modifier = Modifier.size(70.dp))
                         }
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -3324,7 +3324,7 @@ private fun NeaRerHome(
                     if (activeSection == "home") {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Image(
-                                painter = painterResource(R.drawable.ic_nearer_foreground),
+                                painter = painterResource(R.drawable.ic_nearer),
                                 contentDescription = "NeaRer connected network symbol",
                                 modifier = Modifier.size(34.dp).padding(end = 5.dp)
                             )
@@ -3451,7 +3451,7 @@ private fun NeaRerHome(
                                     modifier = Modifier.size(42.dp)
                                 ) {
                                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                        Image(painter = painterResource(R.drawable.ic_nearer_foreground), contentDescription = "NeaRer network N", modifier = Modifier.size(32.dp))
+                                        Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer network N", modifier = Modifier.size(32.dp))
                                     }
                                 }
                                 Column(Modifier.weight(1f).padding(start = 10.dp)) {
@@ -5074,7 +5074,7 @@ private fun NeaRerHome(
                                 modifier = Modifier.size(72.dp)
                             ) {}
                             Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(54.dp)) {
-                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Image(painter = painterResource(R.drawable.ic_nearer_foreground), contentDescription = "NeaRer network N", modifier = Modifier.size(44.dp)) }
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer network N", modifier = Modifier.size(44.dp)) }
                             }
                         }
                         Text("Looking for NeaRer people…", color = White, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.CenterHorizontally))
@@ -5261,7 +5261,7 @@ private fun NeaRerHome(
                             ) {
                                 Surface(shape = CircleShape, color = Color(0xFF244B4A), modifier = Modifier.size(38.dp)) {
                                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                        Image(painter = painterResource(R.drawable.ic_nearer_foreground), contentDescription = "NeaRer network N", modifier = Modifier.size(28.dp))
+                                        Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer network N", modifier = Modifier.size(28.dp))
                                     }
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
