@@ -95,13 +95,13 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 
 // NeaRer Royal palette: restrained midnight, warm graphite, royal blue and champagne gold.
-private val Midnight = Color(0xFF10151D)
-private val Panel = Color(0xFF1D2632)
-private val Mint = Color(0xFFE7BC55) // legacy accent alias, now aligned to the gold brand
-private val Muted = Color(0xFFADB7C4)
-private val White = Color(0xFFF7F5EF)
-private val BrandBlue = Color(0xFF285FC5)
-private val Gold = Color(0xFFF2C66D)
+private val Midnight = Color(0xFF101A2B)
+private val Panel = Color(0xFF1A2940)
+private val Mint = Color(0xFF69E0C0)
+private val Muted = Color(0xFFA8B6C9)
+private val White = Color(0xFFF6F8FC)
+private val BrandBlue = Color(0xFF2563EB)
+private val Gold = Color(0xFFFFD12D)
 
 class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
@@ -2018,10 +2018,10 @@ private fun NeaRerHome(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Color(0xFF202B38)) {
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(shape = RoundedCornerShape(12.dp), color = BrandBlue, modifier = Modifier.size(42.dp)) {
+                        Surface(shape = RoundedCornerShape(12.dp), color = Panel, modifier = Modifier.size(42.dp)) {
                             androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                             androidx.compose.foundation.Image(
                                 painter = androidx.compose.ui.res.painterResource(R.drawable.ic_nearer),
@@ -2040,7 +2040,7 @@ private fun NeaRerHome(
                     Text("Connect without mobile data. Share directly. Build a local community with people around you.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("PRIVATE CHAT" to "Ready after connection", "FILE SHARING" to "Ready after connection").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF303B48), modifier = Modifier.weight(1f)) {
+                            Surface(shape = RoundedCornerShape(13.dp), color = Panel, modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                     Text(item.second, color = Muted, fontSize = 10.sp)
@@ -2050,7 +2050,7 @@ private fun NeaRerHome(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("BLUETOOTH CHAT" to "Direct nearby link", "MESH RELAY" to "Paused for privacy upgrade").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
+                            Surface(shape = RoundedCornerShape(13.dp), color = Panel, modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                     Text(item.second, color = Muted, fontSize = 10.sp)
@@ -2060,7 +2060,7 @@ private fun NeaRerHome(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("LOCAL GROUPS" to "Open Groups tab", "PLAY TOGETHER" to "Ludo in Groups").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
+                            Surface(shape = RoundedCornerShape(13.dp), color = Panel, modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                     Text(item.second, color = Muted, fontSize = 10.sp)
@@ -2071,7 +2071,7 @@ private fun NeaRerHome(
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF252F3B)) {
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("✦", color = Gold, fontSize = 25.sp)
@@ -2103,7 +2103,7 @@ private fun NeaRerHome(
                         }
                         if (scanning) {
                             Button(onClick = onStopSearch, modifier = Modifier.height(52.dp), shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35445B), contentColor = White)) { Text("Stop") }
+                                colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)) { Text("Stop") }
                         }
                     }
                     Text(status, color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
@@ -2165,7 +2165,7 @@ private fun NeaRerHome(
                                         horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
                                     ) {
                                         Surface(
-                                            color = if (message.outgoing) Color(0xFF24564F) else Color(0xFF26364D),
+                                            color = if (message.outgoing) Color(0xFF24564F) else Panel,
                                             shape = RoundedCornerShape(14.dp)
                                         ) {
                                             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
@@ -2183,7 +2183,7 @@ private fun NeaRerHome(
                                 onClick = { onOpenFile(fileItem) },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26364D), contentColor = White)
+                                colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)
                             ) { Text("Open ${fileItem.displayName}", maxLines = 1) }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2208,7 +2208,7 @@ private fun NeaRerHome(
                                 progress = { incomingProgress },
                                 modifier = Modifier.fillMaxWidth(),
                                 color = Mint,
-                                trackColor = Color(0xFF26364D)
+                                trackColor = Panel
                             )
                         }
                         if (outgoingTransferId != null) {
@@ -2216,7 +2216,7 @@ private fun NeaRerHome(
                                 progress = { outgoingProgress },
                                 modifier = Modifier.fillMaxWidth(),
                                 color = Mint,
-                                trackColor = Color(0xFF26364D)
+                                trackColor = Panel
                             )
                             Button(
                                 onClick = onCancelTransfer,
@@ -2229,7 +2229,7 @@ private fun NeaRerHome(
                             onClick = { filePicker.launch(arrayOf("*/*")) },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26364D), contentColor = White)
+                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)
                         ) { Text("Share a photo or file") }
                         Text(if (usingNearbyConnections) "Nearby Connections • no fixed file-size cap" else "Wi-Fi Direct • no fixed file-size cap", color = Muted, fontSize = 10.sp)
                     } else {
@@ -2280,17 +2280,17 @@ private fun NeaRerHome(
                 Text("${devices.size} found", color = Mint, fontSize = 11.sp)
             }
 
-            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Color(0xFF1A222D)) {
+            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("PEOPLE AROUND YOU", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text(if (hybridPeers.isEmpty()) "Your nearby circle" else "${hybridPeers.size} active nearby", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     if (scanning && hybridPeers.isEmpty()) {
                         androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(142.dp), contentAlignment = Alignment.Center) {
-                            Surface(shape = CircleShape, color = Color(0xFF303B48), modifier = Modifier.size(118.dp).alpha(pulse)) {}
-                            Surface(shape = CircleShape, color = Color(0xFF3A4A5D), modifier = Modifier.size(82.dp).rotate(orbitRotation)) {
+                            Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(118.dp).alpha(pulse)) {}
+                            Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(82.dp).rotate(orbitRotation)) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.TopCenter) { Surface(shape = CircleShape, color = Mint, modifier = Modifier.size(12.dp)) {} }
                             }
-                            Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(54.dp)) {
+                            Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(54.dp)) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("N", color = White, fontSize = 24.sp, fontWeight = FontWeight.Black) }
                             }
                         }
@@ -2301,7 +2301,7 @@ private fun NeaRerHome(
                             hybridPeers.entries.take(5).forEachIndexed { index, entry ->
                                 val drift by searchMotion.animateFloat(0f, if (index % 2 == 0) 5f else -5f, infiniteRepeatable(tween(1300 + index * 170), RepeatMode.Reverse), label = "bubble-$index")
                                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                                    Surface(shape = CircleShape, color = Color(0xFF3A4A5D), modifier = Modifier.size(54.dp).rotate(drift)) {
+                                    Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(54.dp).rotate(drift)) {
                                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(entry.value.take(1).uppercase(), color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
                                     }
                                     Text(entry.value, color = White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
@@ -2311,7 +2311,7 @@ private fun NeaRerHome(
                         }
                     } else {
                         androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(78.dp), contentAlignment = Alignment.Center) {
-                            Surface(shape = CircleShape, color = Color(0xFF1C3554), modifier = Modifier.size(68.dp)) {
+                            Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(68.dp)) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("•••", color = Mint, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
                             }
                         }
@@ -2322,7 +2322,7 @@ private fun NeaRerHome(
                             Text("RECENTLY SEEN ON THIS PHONE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                             recentlySeenPeers.values.sortedByDescending { it.lastSeenAt }.take(5).forEach { person ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Surface(shape = CircleShape, color = Color(0xFF344256), modifier = Modifier.size(32.dp)) {
+                                    Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(32.dp)) {
                                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(person.name.take(1).uppercase(), color = Muted, fontWeight = FontWeight.Bold) }
                                     }
                                     Column(Modifier.weight(1f).padding(start = 9.dp)) {
@@ -2341,9 +2341,9 @@ private fun NeaRerHome(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("CONNECT WITH A NEARBY PERSON", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     hybridPeers.forEach { (id, name) ->
-                        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Color(0xFF273341)) {
+                        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Panel) {
                             Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(38.dp)) {
+                                Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(38.dp)) {
                                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(name.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold) }
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
