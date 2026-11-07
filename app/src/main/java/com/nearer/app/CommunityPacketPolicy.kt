@@ -1,14 +1,30 @@
 package com.nearer.app
 
-import org.json.JSONArray
-import org.json.JSONObject
+internal data class CommunityPacketDescriptor(
+    val rawLength: Int,
+    val type: String,
+    val senderId: String,
+    val authenticatedSenderId: String,
+    val code: String = "",
+    val senderName: String = "",
+    val ownerId: String = "",
+    val name: String = "",
+    val messageId: String = "",
+    val body: String = "",
+    val memberCount: Int = 0,
+    val pendingMemberCount: Int = 0,
+    val moderatorCount: Int = 0,
+    val memberId: String = "",
+    val matchId: String = "",
+    val symbol: String = "",
+    val moveIndex: Int = -1
+)
 
 /**
- * Bounds and authenticates the outer shape of community packets before they
- * reach state-changing handlers. Membership/role authorization remains in
- * CommunityAccessPolicy and the handler.
+ * Pure packet bounds and sender checks. Membership/role authorization remains
+ * in CommunityAccessPolicy and the state-changing packet handler.
  */
-object CommunityPacketPolicy {
+internal object CommunityPacketPolicy {
     private val stableIdPattern = Regex("([A-F0-9]{6}|[A-F0-9]{32})")
     private val groupTypes = setOf(
         "group_created", "group_join_request", "group_join_approved", "group_leave",
@@ -18,46 +34,34 @@ object CommunityPacketPolicy {
         "broadcast", "game_invite", "game_accept", "game_move", "game_chat", "game_end"
     )
 
-    fun isValid(raw: String, authenticatedSenderId: String): Boolean {
-        if (raw.isBlank() || raw.length > 8_192 || !stableIdPattern.matches(authenticatedSenderId)) return false
-        val packet = try { JSONObject(raw) } catch (_: Exception) { return false }
-        val type = packet.optString("type")
-        if (type !in supportedTypes) return false
+    fun isValidStableId(value: String): Boolean = stableIdPattern.matches(value)
 
-        val senderId = packet.optString("senderId").ifBlank { authenticatedSenderId }
-        if (senderId != authenticatedSenderId) return false
+    fun isValid(packet: CommunityPacketDescriptor): Boolean {
+        if (packet.rawLength !in 1..8_192 ||
+            !isValidStableId(packet.authenticatedSenderId) ||
+            packet.senderId != packet.authenticatedSenderId ||
+            packet.type !in supportedTypes ||
+            packet.senderName.length > 32
+        ) return false
 
-        val senderName = packet.optString("sender")
-        if (senderName.length > 32) return false
-        if (type in groupTypes && !packet.optString("code").matches(Regex("[0-9]{6}"))) return false
+        if (packet.type in groupTypes && !packet.code.matches(Regex("[0-9]{6}"))) return false
 
-        return when (type) {
-            "group_created" -> packet.optString("ownerId") == authenticatedSenderId &&
-                packet.optString("name").length <= 32
-            "group_message" -> packet.optString("id").isNotBlank() &&
-                packet.optString("id").length <= 80 &&
-                packet.optString("body").isNotBlank() &&
-                packet.optString("body").length <= 1_500
-            "group_members" -> {
-                val members = packet.optJSONArray("members") ?: JSONArray()
-                val pending = packet.optJSONArray("pendingMembers") ?: JSONArray()
-                val moderators = packet.optJSONArray("moderators") ?: JSONArray()
-                members.length() <= 100 && pending.length() <= 100 && moderators.length() <= 100
-            }
-            "group_join_request", "group_leave" -> senderName.isNotBlank()
-            "group_join_approved" -> packet.optString("ownerId").isNotBlank()
-            "ownership_transfer" -> packet.optString("ownerId").matches(stableIdPattern)
-            "group_member_removed" -> packet.optString("memberId").matches(stableIdPattern)
-            "broadcast" -> packet.optString("body").isNotBlank() && packet.optString("body").length <= 500
-            "game_invite", "game_accept", "game_end" -> packet.optString("matchId").isNotBlank() &&
-                packet.optString("matchId").length <= 80
-            "game_move" -> packet.optString("matchId").isNotBlank() &&
-                packet.optString("matchId").length <= 80 &&
-                packet.optString("symbol") in setOf("X", "O") &&
-                packet.optInt("index", -1) in 0..8
-            "game_chat" -> packet.optString("matchId").isNotBlank() &&
-                packet.optString("matchId").length <= 80 &&
-                packet.optString("body").length <= 300
+        return when (packet.type) {
+            "group_created" -> packet.ownerId == packet.authenticatedSenderId && packet.name.length <= 32
+            "group_message" -> packet.messageId.isNotBlank() && packet.messageId.length <= 80 &&
+                packet.body.isNotBlank() && packet.body.length <= 1_500
+            "group_members" -> packet.memberCount in 0..100 &&
+                packet.pendingMemberCount in 0..100 && packet.moderatorCount in 0..100
+            "group_join_request", "group_leave" -> packet.senderName.isNotBlank()
+            "group_join_approved" -> isValidStableId(packet.ownerId)
+            "ownership_transfer" -> isValidStableId(packet.ownerId)
+            "group_member_removed" -> isValidStableId(packet.memberId)
+            "broadcast" -> packet.body.isNotBlank() && packet.body.length <= 500
+            "game_invite", "game_accept", "game_end" -> packet.matchId.isNotBlank() && packet.matchId.length <= 80
+            "game_move" -> packet.matchId.isNotBlank() && packet.matchId.length <= 80 &&
+                packet.symbol in setOf("X", "O") && packet.moveIndex in 0..8
+            "game_chat" -> packet.matchId.isNotBlank() && packet.matchId.length <= 80 &&
+                packet.body.length <= 300
             else -> false
         }
     }

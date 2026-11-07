@@ -161,6 +161,8 @@ class MainActivity : ComponentActivity() {
     private val discoveryHandler = Handler(Looper.getMainLooper())
     private var discoveryTimeout: Runnable? = null
     private var discoveryGeneration = 0
+    private var nearbySearchTimeout: Runnable? = null
+    private var nearbySearchGeneration = 0
     private var connectingAddress by mutableStateOf<String?>(null)
     private var connectedDeviceName by mutableStateOf<String?>(null)
     private var connectionMessage by mutableStateOf("Not connected")
@@ -967,7 +969,7 @@ class MainActivity : ComponentActivity() {
         // Discovery is user-initiated. Stop advertising/scanning when the app
         // leaves the foreground to avoid wasting battery; keep an established
         // peer session alive for an active user-visible transfer.
-        if (scanning || hybridSearching) stopDiscovery()
+        if (NearbyDiscoveryBudgetPolicy.shouldStopWhenActivityStops(scanning || hybridSearching)) stopDiscovery()
         super.onStop()
     }
 
@@ -1005,6 +1007,9 @@ class MainActivity : ComponentActivity() {
 
     private fun stopDiscovery() {
         finishDiscovery()
+        nearbySearchGeneration += 1
+        nearbySearchTimeout?.let(discoveryHandler::removeCallbacks)
+        nearbySearchTimeout = null
         hybridSearching = false
         nearbyTransport?.stopSearching()
         val manager = wifiManager
@@ -1116,8 +1121,20 @@ class MainActivity : ComponentActivity() {
             statusMessage = "Turn Bluetooth ON on both phones. Wi-Fi ON also helps with faster connections; hotspot and mobile data are not required."
             return
         }
+        nearbySearchTimeout?.let(discoveryHandler::removeCallbacks)
+        val searchGeneration = ++nearbySearchGeneration
         nearbyTransport?.start()
         hybridSearching = true
+        val nearbyTimeout = Runnable {
+            if (searchGeneration == nearbySearchGeneration && hybridSearching) {
+                nearbyTransport?.stopSearching()
+                hybridSearching = false
+                nearbySearchTimeout = null
+                statusMessage = "Nearby search paused after 60 seconds to save battery. Tap Find people nearby to search again; connected chats and transfers stay active."
+            }
+        }
+        nearbySearchTimeout = nearbyTimeout
+        discoveryHandler.postDelayed(nearbyTimeout, NearbyDiscoveryBudgetPolicy.FOREGROUND_SEARCH_TIMEOUT_MS)
         if (!isWifiEnabled()) {
             finishDiscovery()
             statusMessage = "Bluetooth discovery is active. Turn Wi-Fi ON on both phones for faster connections and file sharing. Hotspot and mobile data are not required."
@@ -1153,7 +1170,7 @@ class MainActivity : ComponentActivity() {
                             override fun onSuccess() = Unit
                             override fun onFailure(reason: Int) = Unit
                         })
-                        statusMessage = if (nearbyDevices.isEmpty()) "No Wi-Fi Direct phones found in 20 seconds. Bluetooth discovery can continue; check Wi-Fi on both phones and Location for Wi-Fi Direct." else "${nearbyDevices.size} nearby phone(s) found. Choose one to connect. Bluetooth discovery can continue in the background."
+                        statusMessage = if (nearbyDevices.isEmpty()) "No Wi-Fi Direct phones found in 20 seconds. Bluetooth discovery can continue; check Wi-Fi on both phones and Location for Wi-Fi Direct." else "${nearbyDevices.size} nearby phone(s) found. Choose one to connect. Bluetooth discovery can continue while NeaRer stays open."
                     }
                 } catch (_: SecurityException) {
                     finishDiscovery()
@@ -2176,15 +2193,19 @@ class MainActivity : ComponentActivity() {
         val body = raw.trim().take(1500)
         if (body.isBlank()) return
         val id = UUID.randomUUID().toString()
+        val message = CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis())
+        communityMessages.add(message)
+        while (communityMessages.size > 300) communityMessages.removeAt(0)
+        persistCommunityData()
+
         val packet = JSONObject().put("type", "group_message").put("code", code)
             .put("sender", displayName).put("senderId", localId).put("body", body).put("id", id)
-        if (nearbyTransport?.sendToStableIds("NR_COMMUNITY:$packet", group.memberIds.keys - localId) == true) {
-            communityMessages.add(CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis()))
-            persistCommunityData()
-        } else if (group.members.size == 1) {
-            communityMessages.add(CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis()))
-            persistCommunityData()
-        } else communityNotice = "No connected member of this group is available right now."
+        val submitted = nearbyTransport?.sendToStableIds("NR_COMMUNITY:$packet", group.memberIds.keys - localId) == true
+        communityNotice = when {
+            submitted -> "Message saved here and submitted to connected group devices. Offline members have not received it."
+            group.members.size == 1 -> "Message saved in this community on this phone."
+            else -> "Message saved on this phone. No group members are connected, so it has not been sent."
+        }
     }
 
     private fun sendCommunityBroadcast(raw: String) {
@@ -2195,7 +2216,7 @@ class MainActivity : ComponentActivity() {
     }
     private fun handleCommunityPacket(sender: String, senderStableId: String, raw: String) {
         try {
-            if (!CommunityPacketPolicy.isValid(raw, senderStableId)) {
+            if (raw.length > 8_192 || !CommunityPacketPolicy.isValidStableId(senderStableId)) {
                 communityNotice = "A community packet was invalid and ignored."
                 return
             }
@@ -2203,6 +2224,32 @@ class MainActivity : ComponentActivity() {
             val type = packet.optString("type")
             val code = packet.optString("code")
             val senderId = packet.optString("senderId").ifBlank { senderStableId }
+            val memberArray = packet.optJSONArray("members")
+            val pendingArray = packet.optJSONArray("pendingMembers")
+            val moderatorsArray = packet.optJSONArray("moderators")
+            val descriptor = CommunityPacketDescriptor(
+                rawLength = raw.length,
+                type = type,
+                senderId = senderId,
+                authenticatedSenderId = senderStableId,
+                code = code,
+                senderName = packet.optString("sender"),
+                ownerId = packet.optString("ownerId"),
+                name = packet.optString("name"),
+                messageId = packet.optString("id"),
+                body = packet.optString("body"),
+                memberCount = memberArray?.length() ?: 0,
+                pendingMemberCount = pendingArray?.length() ?: 0,
+                moderatorCount = moderatorsArray?.length() ?: 0,
+                memberId = packet.optString("memberId"),
+                matchId = packet.optString("matchId"),
+                symbol = packet.optString("symbol"),
+                moveIndex = packet.optInt("index", -1)
+            )
+            if (!CommunityPacketPolicy.isValid(descriptor)) {
+                communityNotice = "A community packet was invalid and ignored."
+                return
+            }
             when (type) {
                 "group_created" -> {
                     val ownerId = packet.optString("ownerId").ifBlank { senderId }
