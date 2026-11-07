@@ -1,7 +1,6 @@
 package com.nearer.app
 
 import android.content.Context
-import android.net.wifi.WifiManager
 import java.io.Closeable
 import java.io.File
 import java.net.Inet4Address
@@ -49,9 +48,10 @@ class OpenSendSessionManager(context: Context) : Closeable {
                             localHotspot.close()
                             return@start
                         }
-                        val http = OpenSendHttpServer(files)
+                        val hotspotAddress = findHotspotAddress()
+                        val http = OpenSendHttpServer(files, bindAddress = hotspotAddress)
                         val serverInfo = http.start()
-                        val host = selectHotspotAddress(serverInfo.localAddresses)
+                        val host = hotspotAddress.hostAddress
                         server = http
                         onReady(
                             OpenSendSession(
@@ -80,11 +80,8 @@ class OpenSendSessionManager(context: Context) : Closeable {
         }
     }
 
-    private fun selectHotspotAddress(addresses: List<String>): String {
-        val candidates = addresses.mapNotNull { raw ->
-            try { InetAddress.getByName(raw) as? Inet4Address } catch (_: Exception) { null }
-        }.filter { it.isSiteLocalAddress && !it.isLoopbackAddress }
-        val hotspotInterfaceAddresses = try {
+    private fun findHotspotAddress(): java.net.InetAddress {
+        val addresses = try {
             NetworkInterface.getNetworkInterfaces().asSequence().toList()
                 .filter { it.isUp && !it.isLoopback && (it.name.startsWith("wlan", true) || it.name.startsWith("ap", true)) }
                 .flatMap { it.inetAddresses.asSequence().toList() }
@@ -92,20 +89,7 @@ class OpenSendSessionManager(context: Context) : Closeable {
                 .filter { it.isSiteLocalAddress && !it.isLoopbackAddress }
                 .toList()
         } catch (_: Exception) { emptyList() }
-        return (hotspotInterfaceAddresses + candidates).distinct().firstOrNull()?.hostAddress
+        return addresses.firstOrNull()
             ?: error("Android started the hotspot, but NeaRer could not find its local Wi-Fi address. Try again after toggling Wi-Fi.")
     }
 
-    @Synchronized
-    fun stop() {
-        active.set(false)
-        try { server?.close() } catch (_: Exception) { }
-        server = null
-        try { hotspot?.close() } catch (_: Exception) { }
-        hotspot = null
-    }
-
-    override fun close() = stop()
-
-    fun isActive(): Boolean = active.get()
-}
