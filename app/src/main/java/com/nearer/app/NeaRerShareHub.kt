@@ -60,6 +60,7 @@ fun NeaRerShareHub(
     openSendSession: OpenSendSession?,
     openSendNotice: String,
     onStartOpenSend: (List<android.net.Uri>) -> Unit,
+    onPickOpenSendFiles: () -> Unit,
     onStopOpenSend: () -> Unit,
     pendingApp: AppShareArchiveInfo?,
     onInstallPendingApp: () -> Unit
@@ -87,12 +88,11 @@ fun NeaRerShareHub(
                 }
                 Text("Choose files, then NeaRer creates a temporary local Wi-Fi network and a private download page. The receiver joins the Wi-Fi and opens the link in a browser.", color = ShareMuted, fontSize = 12.sp, lineHeight = 18.sp)
                 Button(
-                    onClick = { onStartOpenSend(emptyList()) },
-                    enabled = false,
+                    onClick = onPickOpenSendFiles,
+                    enabled = openSendSession == null,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = ShareBlue)
-                ) { Text("Choose files from the file picker") }
-                Text("Use the file picker button in the main sharing controls to select files for OpenSend.", color = ShareMuted, fontSize = 10.sp)
+                ) { Text("Choose files to share") }
                 if (openSendSession != null) {
                     Spacer(Modifier.height(4.dp))
                     Text("YOUR SHARE IS LIVE", color = ShareGold, fontWeight = FontWeight.ExtraBold, fontSize = 10.sp)
