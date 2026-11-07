@@ -2192,6 +2192,7 @@ private fun NeaRerHome(
     appNotice: String,
     onLoadApps: () -> Unit,
     onShareApps: (List<String>) -> Unit,
+    onShareAppsToAnyPhone: (List<String>) -> Unit,
     openSendSession: OpenSendSession?,
     openSendNotice: String,
     onStartOpenSend: (List<Uri>) -> Unit,
@@ -2477,6 +2478,7 @@ private fun NeaRerHome(
             NeaRerShareHub(
                 apps = apps, appsLoading = appsLoading, appNotice = appNotice,
                 onLoadApps = onLoadApps, onShareApps = onShareApps,
+                onShareAppsToAnyPhone = onShareAppsToAnyPhone,
                 openSendSession = openSendSession, openSendNotice = openSendNotice,
                 onPickOpenSendFiles = { openSendPicker.launch(arrayOf("*/*")) },
                 onStopOpenSend = onStopOpenSend, pendingApp = pendingApp,
