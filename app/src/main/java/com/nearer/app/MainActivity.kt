@@ -789,13 +789,19 @@ class MainActivity : ComponentActivity() {
                     else -> "Flash • $senderTag"
                 }
                 val messageId = "flash:$eventId"
+                val numberVerification = event.optString("numberVerification", "NOT_VERIFIED")
+                val deliveryLabel = if (numberVerification == "NETWORK_VERIFIED") {
+                    "Flash • Received • Network verified"
+                } else {
+                    "Flash • Received • Caller ID unverified"
+                }
                 if (chatMessages.none { it.id == messageId }) {
                     chatMessages.add(
                         ChatMessage(
                             id = messageId,
                             body = FlashSignalPattern.toChatMessage(signal),
                             outgoing = false,
-                            delivery = "Flash • Received",
+                            delivery = deliveryLabel,
                             timestamp = event.optLong("timestamp", System.currentTimeMillis())
                                 .takeIf { it > 0L } ?: System.currentTimeMillis(),
                             conversationId = flashConversationId,
