@@ -12,8 +12,14 @@ class StreamRangeCopyTest {
     @Test fun resumedRangeStartsAtExactRequestedByteAfterInterruptedPrefix() {
         val original = "NeaRer-transfer-resume-check".toByteArray(Charsets.UTF_8)
         val firstAttempt = ByteArrayOutputStream()
+        val limitedSource = object : InputStream() {
+            private val delegate = ByteArrayInputStream(original)
+            override fun read(): Int = delegate.read()
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                delegate.read(buffer, offset, minOf(length, 7 - firstAttempt.size()).coerceAtLeast(0))
+        }
         val interrupted = StreamCopy.copy(
-            ByteArrayInputStream(original),
+            limitedSource,
             firstAttempt,
             expectedBytes = original.size.toLong(),
             shouldContinue = { firstAttempt.size() < 7 }
