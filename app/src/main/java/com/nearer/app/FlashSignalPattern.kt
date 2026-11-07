@@ -20,7 +20,7 @@ object FlashSignalPattern {
      * These are short preset messages, not arbitrary user-authored text.
      */
     fun toChatMessage(signalName: String): String = when (signalName) {
-        "PING" -> "Ping"
+        "FLASH_CALL" -> "Flash call received"\n        "PING" -> "Ping"
         "COME" -> "Please come"
         "URGENT" -> "Urgent — please check this"
         "CALL_ME" -> "Please call me"
