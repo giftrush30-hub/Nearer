@@ -210,7 +210,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             // Only explicitly tagged community packets may be relayed.
             // Private one-to-one chat must stay on its approved direct endpoint;
             // never forward its plaintext body through an intermediate phone.
-            if (relayEnabled && body.startsWith("NR_COMMUNITY:") && ttl > 0 && hops < 4) {
+            if (MeshRelayPolicy.shouldRelay(relayEnabled, body, ttl, hops)) {
                 val forwarded = JSONObject().put("kind", kind).put("id", messageId).put("body", body)
                     .put("ttl", ttl - 1).put("hops", hops + 1)
                     .put("origin", envelope.optString("origin", "nearby"))
