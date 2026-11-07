@@ -8,7 +8,6 @@ import android.net.Uri
 import android.util.Size
 import android.os.Build
 import android.provider.MediaStore
-import android.provider.OpenableColumns
 import android.Manifest
 import android.graphics.drawable.Drawable
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,7 +17,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -51,14 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.ImageBitmapConfig
-import androidx.compose.ui.graphics.ImageShader
-import androidx.compose.ui.graphics.ShaderBrush
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -67,8 +57,6 @@ import androidx.compose.foundation.Image
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.DateFormat
-import java.util.Date
 import java.util.Locale
 
 internal enum class FileCentreCategory(val label: String) {
@@ -204,7 +192,8 @@ internal object AndroidFileCatalog {
 @Composable
 internal fun FileCentreScreen(
     connected: Boolean,
-    onSendFiles: (List<Uri>) -> Unit
+    onSendFiles: (List<Uri>) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -270,7 +259,7 @@ internal fun FileCentreScreen(
     val selectedUris = selectedItems.mapNotNull { it.uri }
 
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
