@@ -3,6 +3,8 @@ package com.nearer.app
 import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.ComponentName
+import android.content.ServiceConnection
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
@@ -19,6 +21,7 @@ import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import android.os.Looper
 import android.os.Handler
 import java.io.BufferedReader
@@ -147,7 +150,33 @@ class MainActivity : ComponentActivity() {
     private var pendingAppShare by mutableStateOf<AppShareArchiveInfo?>(null)
     private var openSendSession by mutableStateOf<OpenSendSession?>(null)
     private var openSendNotice by mutableStateOf("Choose files to create a temporary no-internet download network.")
-    private var openSendManager: OpenSendSessionManager? = null
+    private var openSendService: OpenSendForegroundService.LocalBinder? = null
+    private var openSendBound = false
+    private var pendingOpenSendFiles: List<OpenSendFile>? = null
+    private val openSendListener = object : OpenSendForegroundService.Listener {
+        override fun onOpenSendStateChanged(session: OpenSendSession?, message: String?) {
+            runOnUiThread {
+                openSendSession = session
+                if (!message.isNullOrBlank()) openSendNotice = message
+            }
+        }
+    }
+    private val openSendConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as? OpenSendForegroundService.LocalBinder ?: return
+            openSendService = binder
+            binder.addListener(openSendListener)
+            pendingOpenSendFiles?.let { files ->
+                pendingOpenSendFiles = null
+                binder.startSession(files)
+            }
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            openSendService = null
+            openSendBound = false
+        }
+    }
     private var pendingOpenSendUris: List<Uri> = emptyList()
     private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
     private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
@@ -473,6 +502,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (!openSendBound) {
+            try {
+                openSendBound = bindService(
+                    Intent(this, OpenSendForegroundService::class.java),
+                    openSendConnection,
+                    Context.BIND_AUTO_CREATE
+                )
+            } catch (_: Exception) { }
+        }
         val filter = IntentFilter().apply {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
@@ -493,7 +531,12 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         finishDiscovery()
         nearbyTransport?.stop()
-        stopOpenSend()
+        if (openSendBound) {
+            try { openSendService?.removeListener(openSendListener) } catch (_: Exception) { }
+            try { unbindService(openSendConnection) } catch (_: Exception) { }
+            openSendBound = false
+            openSendService = null
+        }
         closePeerTransport()
         io.shutdownNow()
         super.onDestroy()
@@ -564,23 +607,7 @@ class MainActivity : ComponentActivity() {
                     OpenSendFile(displayName = displayName, file = target, mimeType = mime)
                 }
                 runOnUiThread {
-                    try {
-                        OpenSendForegroundService.start(this)
-                    } catch (error: Exception) {
-                        openSendNotice = "Android could not keep OpenSend active in the background: ${error.localizedMessage ?: "foreground service unavailable"}"
-                        return@runOnUiThread
-                    }
-                    val manager = OpenSendSessionManager(this)
-                    openSendManager = manager
-                    manager.start(files, onReady = { session ->
-                        openSendSession = session
-                        openSendNotice = "OpenSend is ready. Share the Wi-Fi details and download link with the receiver."
-                    }, onFailure = { message ->
-                        openSendSession = null
-                        openSendManager = null
-                        OpenSendForegroundService.stop(this)
-                        openSendNotice = message
-                    })
+                    launchOpenSendService(files)
                 }
             } catch (error: Exception) {
                 runOnUiThread { openSendNotice = "Could not prepare files: ${error.localizedMessage ?: "try again"}" }
@@ -591,15 +618,32 @@ class MainActivity : ComponentActivity() {
     private fun startOpenSendWithFiles(files: List<OpenSendFile>) {
         if (files.isEmpty()) return
         runOnUiThread {
-            val manager = OpenSendSessionManager(this)
-            openSendManager = manager
-            manager.start(files, onReady = { session ->
-                openSendSession = session
-                openSendNotice = "OpenSend is ready. Share the Wi-Fi details and download link with the receiver."
-            }, onFailure = { message ->
-                openSendSession = null
-                openSendNotice = message
-            })
+            stopOpenSend()
+            launchOpenSendService(files)
+        }
+    }
+
+    private fun launchOpenSendService(files: List<OpenSendFile>) {
+        if (files.isEmpty()) return
+        pendingOpenSendFiles = files
+        openSendNotice = "Starting your temporary local Wi-Fi sharing network…"
+        try {
+            OpenSendForegroundService.start(this)
+            if (openSendBound && openSendService != null) {
+                pendingOpenSendFiles = null
+                openSendService?.startSession(files)
+            } else if (!openSendBound) {
+                openSendBound = bindService(
+                    Intent(this, OpenSendForegroundService::class.java),
+                    openSendConnection,
+                    Context.BIND_AUTO_CREATE
+                )
+                if (!openSendBound) throw IllegalStateException("Android could not connect to the sharing service.")
+            }
+        } catch (error: Exception) {
+            pendingOpenSendFiles = null
+            openSendNotice = "Android could not start OpenSend: ${error.localizedMessage ?: "foreground service unavailable"}"
+            OpenSendForegroundService.stop(this)
         }
     }
 
@@ -640,10 +684,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopOpenSend() {
-        try { openSendManager?.close() } catch (_: Exception) { }
-        openSendManager = null
+        pendingOpenSendFiles = null
+        try {
+            openSendService?.stopSession() ?: OpenSendForegroundService.stop(this)
+        } catch (_: Exception) {
+            OpenSendForegroundService.stop(this)
+        }
         openSendSession = null
-        OpenSendForegroundService.stop(this)
         File(cacheDir, "opensend").deleteRecursively()
         openSendNotice = "Sharing stopped. The temporary download address is no longer available."
     }
