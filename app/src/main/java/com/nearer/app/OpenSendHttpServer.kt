@@ -274,9 +274,9 @@ class OpenSendHttpServer(
         MessageDigest.isEqual(a.toByteArray(StandardCharsets.UTF_8), b.toByteArray(StandardCharsets.UTF_8))
 
     private fun localIpv4Addresses(): List<String> = try {
-        NetworkInterface.getNetworkInterfaces().toList()
+        NetworkInterface.getNetworkInterfaces().asSequence().toList()
             .filter { it.isUp && !it.isLoopback }
-            .flatMap { it.inetAddresses.toList() }
+            .flatMap { it.inetAddresses.asSequence().toList() }
             .filter { it is java.net.Inet4Address && !it.isLoopbackAddress }
             .map { it.hostAddress.orEmpty() }
             .distinct()
