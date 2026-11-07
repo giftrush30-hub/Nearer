@@ -398,22 +398,25 @@ class MainActivity : ComponentActivity() {
             }
             override fun onDisconnected(id: String, stableId: String, name: String) {
                 runOnUiThread {
+                    val peerId = stableId.ifBlank { "nearby:$id" }
+                    val lastName = hybridPeers.remove(id) ?: name
+                    recordRecentlySeen(peerId, lastName)
+                    // A second nearby endpoint can disconnect while the selected chat
+                    // remains connected. Queue only that peer's unconfirmed messages.
+                    if (hybridConnectedEndpoint != id) {
+                        queueUnconfirmedMessagesForPeer(peerId)
+                        return@runOnUiThread
+                    }
                     hybridConnected = false
                     hybridConnectedEndpoint = null
                     if (connectedChatPeerId == stableId || connectedChatPeerId == "nearby:$id") {
                         connectedChatPeerId = null
                         connectedChatPeerName = null
                     }
-                    val lastName = hybridPeers.remove(id) ?: name
-                    recordRecentlySeen(stableId.ifBlank { id }, lastName)
-                    // Keep the last peer identity after disconnect so queued messages
-                    // remain attached to that conversation and can be retried later.
                     pendingHybridEndpoint = null
                     val legacyLinkAlive = peerSocket?.isConnected == true && peerSocket?.isClosed == false
                     chatReady = legacyLinkAlive
-                    if (!legacyLinkAlive) {
-                        queueUnconfirmedMessagesForPeer(stableId.ifBlank { "nearby:$id" })
-                    }
+                    if (!legacyLinkAlive) queueUnconfirmedMessagesForPeer(peerId)
                     if (legacyLinkAlive) {
                         connectionMessage = "Wi-Fi Direct chat link still active"
                         chatNotice = "Nearby Bluetooth/Wi-Fi link ended. Your chat is continuing over Wi-Fi Direct."
@@ -458,9 +461,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            override fun onDeliveryAck(id: String, messageId: String) {
+            override fun onDeliveryAck(id: String, messageId: String, senderStableId: String) {
                 runOnUiThread {
-                    val index = chatMessages.indexOfFirst { it.id == messageId && it.outgoing }
+                    val expectedPeerId = senderStableId.ifBlank { "nearby:$id" }
+                    val index = chatMessages.indexOfFirst {
+                        it.id == messageId && it.outgoing &&
+                            it.conversationId.ifBlank { "legacy" } == expectedPeerId
+                    }
                     if (index >= 0 && chatMessages[index].delivery != "Delivered") {
                         chatMessages[index] = chatMessages[index].copy(delivery = "Delivered")
                         persistMessages()
