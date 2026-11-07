@@ -43,4 +43,16 @@ class FileTransferIntegrityTest {
             assertTrue(directory.listFiles().orEmpty().isEmpty())
         } finally { directory.deleteRecursively() }
     }
+    @Test fun streamingChecksumMatchesByteArrayChecksumAndChecksDeclaredLength() {
+        val bytes = "large-file-checksum-path".toByteArray()
+        val streamed = FileTransferIntegrity.sha256(ByteArrayInputStream(bytes), bytes.size.toLong())
+        assertEquals(FileTransferIntegrity.sha256(bytes), streamed)
+        try {
+            FileTransferIntegrity.sha256(ByteArrayInputStream(bytes), bytes.size.toLong() + 1L)
+            fail("Expected changed-size rejection")
+        } catch (expected: java.io.IOException) {
+            assertTrue(expected.message!!.contains("size changed"))
+        }
+    }
+
 }
