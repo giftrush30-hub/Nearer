@@ -151,6 +151,7 @@ class MainActivity : ComponentActivity() {
     private var hybridConnected = false
     private var hybridConnectedEndpoint: String? = null
     private var activeChatPeerId: String = "legacy"
+    private var connectedChatPeerId: String? = null
     private var activeChatPeerName: String = "Nearby person"
     private var meshRelayEnabled by mutableStateOf(false)
     private val discoveryHandler = Handler(Looper.getMainLooper())
@@ -348,6 +349,7 @@ class MainActivity : ComponentActivity() {
                     hybridConnected = true
                     hybridConnectedEndpoint = id
                     activeChatPeerId = stableId.ifBlank { "nearby:$id" }
+                    connectedChatPeerId = activeChatPeerId
                     activeChatPeerName = name
                     pendingHybridEndpoint = null
                     incomingRequesterName = null
@@ -363,6 +365,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     hybridConnected = false
                     hybridConnectedEndpoint = null
+                    if (connectedChatPeerId == stableId || connectedChatPeerId == "nearby:$id") connectedChatPeerId = null
                     val lastName = hybridPeers.remove(id) ?: name
                     recordRecentlySeen(stableId.ifBlank { id }, lastName)
                     // Keep the last peer identity after disconnect so queued messages
@@ -1320,7 +1323,7 @@ class MainActivity : ComponentActivity() {
     private fun deliverQueuedChatMessage(message: ChatMessage): Boolean {
         if (!chatReady) return false
         val intendedPeer = message.conversationId.ifBlank { "legacy" }
-        if (intendedPeer != activeChatPeerId) {
+        if (connectedChatPeerId != intendedPeer) {
             chatNotice = "This message belongs to ${message.conversationName}. Reconnect to that person before sending."
             return false
         }
@@ -1354,7 +1357,7 @@ class MainActivity : ComponentActivity() {
     private fun flushQueuedChatMessages() {
         if (!chatReady) return
         val queuedMessages = chatMessages.filter {
-            it.outgoing && it.delivery == "Queued" && it.conversationId.ifBlank { "legacy" } == activeChatPeerId
+            it.outgoing && it.delivery == "Queued" && it.conversationId.ifBlank { "legacy" } == connectedChatPeerId
         }
         if (queuedMessages.isEmpty()) return
         queuedMessages.forEach { message ->
@@ -2517,6 +2520,9 @@ private fun NeaRerHome(
     LaunchedEffect(messages.size, selectedConversationId) {
         if (selectedConversationId.isBlank() && conversationRows.isNotEmpty()) {
             selectedConversationId = conversationRows.first().first
+        }
+        conversationRows.firstOrNull { it.first == selectedConversationId }?.let { row ->
+            onSelectConversation(row.first, row.second)
         }
     }
     var showChatAttachmentMenu by remember { mutableStateOf(false) }
