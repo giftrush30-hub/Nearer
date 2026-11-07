@@ -1992,7 +1992,11 @@ private fun NeaRerHome(
                 }
                 Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(46.dp)) {
                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                        Text("N", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Black)
+                        androidx.compose.foundation.Image(
+                            painter = androidx.compose.ui.res.painterResource(R.drawable.ic_nearer),
+                            contentDescription = "NeaRer logo",
+                            modifier = Modifier.size(38.dp)
+                        )
                     }
                 }
             }
@@ -2013,7 +2017,13 @@ private fun NeaRerHome(
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = RoundedCornerShape(12.dp), color = BrandBlue, modifier = Modifier.size(42.dp)) {
-                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("N", color = White, fontSize = 23.sp, fontWeight = FontWeight.Black) }
+                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                            androidx.compose.foundation.Image(
+                                painter = androidx.compose.ui.res.painterResource(R.drawable.ic_nearer),
+                                contentDescription = "NeaRer logo",
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
                         }
                         Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
                             Text("YOUR OFFLINE WORLD", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
