@@ -421,7 +421,7 @@ class MainActivity : ComponentActivity() {
                     onShareApps = ::shareInstalledApps,
                     openSendSession = openSendSession,
                     openSendNotice = openSendNotice,
-                    onPickOpenSendFiles = { /* picker is launched inside the share hub */ },\n                    onStartOpenSend = ::startOpenSendFromPicker,
+                    onPickOpenSendFiles = { openSendPicker.launch(arrayOf("*/*")) },\n                    onStartOpenSend = ::startOpenSendFromPicker,
                     onStopOpenSend = ::stopOpenSend,
                     pendingApp = pendingAppShare,
                     onInstallPendingApp = ::installPendingApp,
@@ -471,12 +471,27 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         finishDiscovery()
         nearbyTransport?.stop()
+        stopOpenSend()
         closePeerTransport()
         io.shutdownNow()
         super.onDestroy()
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {\n        super.onRequestPermissionsResult(requestCode, permissions, grantResults)\n        if (requestCode == REQUEST_OPEN_SEND_PERMISSION) {\n            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {\n                val queued = pendingOpenSendUris\n                pendingOpenSendUris = emptyList()\n                startOpenSendWithUris(queued)\n            } else {\n                pendingOpenSendUris = emptyList()\n                openSendNotice = "Nearby Wi-Fi permission was not granted. OpenSend cannot create its temporary local network without it."\n            }\n        }\n    }\n\n    override fun onPause() {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_OPEN_SEND_PERMISSION) {
+            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                val queued = pendingOpenSendUris
+                pendingOpenSendUris = emptyList()
+                startOpenSendWithUris(queued)
+            } else {
+                pendingOpenSendUris = emptyList()
+                openSendNotice = "Nearby Wi-Fi permission was not granted. OpenSend cannot create its temporary local network without it."
+            }
+        }
+    }
+
+    override fun onPause() {
         if (receiverRegistered) {
             unregisterReceiver(receiver)
             receiverRegistered = false
@@ -484,13 +499,144 @@ class MainActivity : ComponentActivity() {
         super.onPause()
     }
 
-NaN
-        val permission = if (Build.VERSION.SDK_INT >= 33) {
-            Manifest.permission.NEARBY_WIFI_DEVICES
-        } else {
-            Manifest.permission.ACCESS_FINE_LOCATION
-        }
+ 
+    private fun hasDiscoveryPermission(): Boolean {
+        val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.NEARBY_WIFI_DEVICES
+        else Manifest.permission.ACCESS_FINE_LOCATION
         return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun startOpenSendFromPicker(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.NEARBY_WIFI_DEVICES
+        else Manifest.permission.ACCESS_FINE_LOCATION
+        if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+            pendingOpenSendUris = uris
+            ActivityCompat.requestPermissions(this, arrayOf(permission), REQUEST_OPEN_SEND_PERMISSION)
+            return
+        }
+        startOpenSendWithUris(uris)
+    }
+
+    private fun startOpenSendWithUris(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        stopOpenSend()
+        openSendNotice = "Preparing your files and starting a private local Wi-Fi network…"
+        io.execute {
+            try {
+                val folder = File(cacheDir, "opensend/\${UUID.randomUUID()}").apply { mkdirs() }
+                val files = uris.mapIndexed { index, uri ->
+                    val displayName = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    }?.substringAfterLast('/')?.take(120)?.ifBlank { null } ?: "shared-file-\${index + 1}"
+                    val safeName = displayName.replace(Regex("[^A-Za-z0-9._ -]"), "_").ifBlank { "shared-file-\${index + 1}" }
+                    val target = File(folder, "\${index + 1}-$safeName")
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(target).use { output -> input.copyTo(output, 64 * 1024) }
+                    } ?: throw IllegalStateException("Could not read $displayName.")
+                    val mime = contentResolver.getType(uri) ?: "application/octet-stream"
+                    OpenSendFile(displayName = displayName, file = target, mimeType = mime)
+                }
+                runOnUiThread {
+                    val manager = OpenSendSessionManager(this)
+                    openSendManager = manager
+                    manager.start(files, onReady = { session ->
+                        openSendSession = session
+                        openSendNotice = "OpenSend is ready. Share the Wi-Fi details and download link with the receiver."
+                    }, onFailure = { message ->
+                        openSendSession = null
+                        openSendNotice = message
+                    })
+                }
+            } catch (error: Exception) {
+                runOnUiThread { openSendNotice = "Could not prepare files: \${error.localizedMessage ?: "try again"}" }
+            }
+        }
+    }
+
+    private fun stopOpenSend() {
+        try { openSendManager?.close() } catch (_: Exception) { }
+        openSendManager = null
+        openSendSession = null
+        File(cacheDir, "opensend").deleteRecursively()
+        openSendNotice = "Sharing stopped. The temporary download address is no longer available."
+    }
+
+    private fun loadShareableApps() {
+        if (appShareLoading) return
+        appShareLoading = true
+        appShareNotice = "Reading installed apps. NeaRer does not read app data or accounts."
+        io.execute {
+            try {
+                val apps = AppShareCatalog(this).listApps()
+                runOnUiThread {
+                    shareableApps.clear()
+                    shareableApps.addAll(apps)
+                    appShareLoading = false
+                    appShareNotice = "\${apps.size} installed apps are available to review. Choose only apps you have permission to share."
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    appShareLoading = false
+                    appShareNotice = "Could not read installed apps: \${error.localizedMessage ?: "permission or system error"}"
+                }
+            }
+        }
+    }
+
+    private fun shareInstalledApps(packageNames: List<String>) {
+        val endpoint = hybridConnectedEndpoint
+        if (endpoint.isNullOrBlank()) {
+            appShareNotice = "Connect to a nearby NeaRer phone first. AppShare uses the encrypted nearby connection."
+            return
+        }
+        if (packageNames.isEmpty()) return
+        appShareNotice = "Preparing selected app packages…"
+        io.execute {
+            try {
+                val catalog = AppShareCatalog(this)
+                val selected = shareableApps.filter { it.packageName in packageNames }
+                if (selected.size != packageNames.distinct().size) throw IllegalStateException("Refresh the app list and select again.")
+                selected.forEach { app ->
+                    val prepared = catalog.preparePackage(app)
+                    val archive = AppShareArchive(this).create(prepared)
+                    val uri = FileProvider.getUriForFile(this, "\$packageName.files", archive)
+                    val sent = nearbyTransport?.sendFile(endpoint, uri, "\${app.label}.nearerapp")
+                    if (sent == null) throw IllegalStateException("Could not start sending \${app.label}.")
+                }
+                runOnUiThread {
+                    appShareNotice = "App package transfer started for \${selected.size} app(s). The receiver must review and approve installation."
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    appShareNotice = "AppShare could not prepare the transfer: \${error.localizedMessage ?: "try again"}"
+                }
+            }
+        }
+    }
+
+    private fun installPendingApp() {
+        val app = pendingAppShare ?: return
+        if (!AppShareInstaller.canRequestInstall(this)) {
+            appShareNotice = "Android needs you to allow NeaRer to request app installation. Enable Allow from this source, return here and tap Review and install again."
+            try {
+                startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+            } catch (_: Exception) { }
+            return
+        }
+        io.execute {
+            try {
+                AppShareInstaller.stageAndCommit(this, app)
+                runOnUiThread {
+                    appShareNotice = "Android is opening its installation confirmation. Review the app name and approve only if you trust its source."
+                    pendingAppShare = null
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    appShareNotice = "Could not prepare Android installation: \${error.localizedMessage ?: "try again"}"
+                }
+            }
+        }
     }
 
     private fun isWifiEnabled(): Boolean {
@@ -1921,7 +2067,8 @@ NaN
     }
 
     companion object {
-        private const val REQUEST_DISCOVERY_PERMISSION = 410\n        private const val REQUEST_OPEN_SEND_PERMISSION = 411
+        private const val REQUEST_DISCOVERY_PERMISSION = 410
+        private const val REQUEST_OPEN_SEND_PERMISSION = 411\n        private const val REQUEST_OPEN_SEND_PERMISSION = 411
     }
 }
 
@@ -1961,7 +2108,19 @@ private fun NeaRerHome(
     onGameChat: (String) -> Unit,
     onGameRematch: () -> Unit,
     onEndGame: () -> Unit,
-    onSendFile: (Uri) -> Unit,\n    apps: List<ShareableApp>,\n    appsLoading: Boolean,\n    appNotice: String,\n    onLoadApps: () -> Unit,\n    onShareApps: (List<String>) -> Unit,\n    openSendSession: OpenSendSession?,\n    openSendNotice: String,\n    onPickOpenSendFiles: () -> Unit,\n    onStartOpenSend: (List<Uri>) -> Unit,\n    onStopOpenSend: () -> Unit,\n    pendingApp: AppShareArchiveInfo?,\n    onInstallPendingApp: () -> Unit,
+    onSendFile: (Uri) -> Unit,
+    apps: List<ShareableApp>,
+    appsLoading: Boolean,
+    appNotice: String,
+    onLoadApps: () -> Unit,
+    onShareApps: (List<String>) -> Unit,
+    openSendSession: OpenSendSession?,
+    openSendNotice: String,
+    onPickOpenSendFiles: () -> Unit,
+    onStartOpenSend: (List<Uri>) -> Unit,
+    onStopOpenSend: () -> Unit,
+    pendingApp: AppShareArchiveInfo?,
+    onInstallPendingApp: () -> Unit,
     onCancelTransfer: () -> Unit,
     outgoingTransferId: String?,
     outgoingProgress: Float,
@@ -1989,6 +2148,9 @@ private fun NeaRerHome(
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
+    }
+    val openSendPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) onStartOpenSend(uris)
     }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(
@@ -2235,7 +2397,16 @@ private fun NeaRerHome(
                 }
             }
 
-            NeaRerShareHub(\n                apps = apps, appsLoading = appsLoading, appNotice = appNotice,\n                onLoadApps = onLoadApps, onShareApps = onShareApps,\n                openSendSession = openSendSession, openSendNotice = openSendNotice,\n                onPickOpenSendFiles = { openSendPicker.launch(arrayOf("*/*")) },\n                onStopOpenSend = onStopOpenSend, pendingApp = pendingApp,\n                onInstallPendingApp = onInstallPendingApp\n            )\n\n            CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
+            NeaRerShareHub(
+                apps = apps, appsLoading = appsLoading, appNotice = appNotice,
+                onLoadApps = onLoadApps, onShareApps = onShareApps,
+                openSendSession = openSendSession, openSendNotice = openSendNotice,
+                onPickOpenSendFiles = { openSendPicker.launch(arrayOf("*/*")) },
+                onStopOpenSend = onStopOpenSend, pendingApp = pendingApp,
+                onInstallPendingApp = onInstallPendingApp
+            )
+
+            CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
                 activeGame, gameChatMessages, (usingNearbyConnections || chatReady), onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
                 onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame)
