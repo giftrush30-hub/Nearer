@@ -549,6 +549,12 @@ class MainActivity : ComponentActivity() {
                     receivedFiles = receivedFiles,
                     sentFiles = sentFiles,
                     onSendMessage = ::sendChatMessage,
+                    onSelectConversation = { peerId, peerName ->
+                        val connectedPeerId = activeChatPeerId
+                        activeChatPeerId = peerId
+                        activeChatPeerName = peerName
+                        chatNotice = if (chatReady && peerId != connectedPeerId) "This is a different conversation. Reconnect to ${peerName} before sending; nothing will be sent to the currently connected person." else "Conversation opened: $peerName."
+                    },
                     isRecordingVoiceNote = isRecordingVoiceNote,
                     onVoiceNoteAction = ::toggleVoiceNoteRecording,
                     onSendQueuedMessages = ::flushQueuedChatMessages,
@@ -1313,6 +1319,11 @@ class MainActivity : ComponentActivity() {
 
     private fun deliverQueuedChatMessage(message: ChatMessage): Boolean {
         if (!chatReady) return false
+        val intendedPeer = message.conversationId.ifBlank { "legacy" }
+        if (intendedPeer != activeChatPeerId) {
+            chatNotice = "This message belongs to ${message.conversationName}. Reconnect to that person before sending."
+            return false
+        }
         val endpoint = hybridConnectedEndpoint
         val wifiDirectReady = peerSocket?.isConnected == true && peerSocket?.isClosed == false && peerWriter != null
         val route = chatTransportRouter.send(
@@ -1342,7 +1353,9 @@ class MainActivity : ComponentActivity() {
 
     private fun flushQueuedChatMessages() {
         if (!chatReady) return
-        val queuedMessages = chatMessages.filter { it.outgoing && it.delivery == "Queued" }
+        val queuedMessages = chatMessages.filter {
+            it.outgoing && it.delivery == "Queued" && it.conversationId.ifBlank { "legacy" } == activeChatPeerId
+        }
         if (queuedMessages.isEmpty()) return
         queuedMessages.forEach { message ->
             if (!deliverQueuedChatMessage(message)) {
@@ -2426,6 +2439,7 @@ private fun NeaRerHome(
     receivedFiles: List<ReceivedFile>,
     sentFiles: List<SentFile>,
     onSendMessage: (String) -> Unit,
+    onSelectConversation: (String, String) -> Unit,
     isRecordingVoiceNote: Boolean,
     onVoiceNoteAction: () -> Unit,
     onSendQueuedMessages: () -> Unit,
@@ -2490,6 +2504,21 @@ private fun NeaRerHome(
 ) {
     val localChatPrefs = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
     var draft by remember { mutableStateOf(localChatPrefs.getString("chat_draft", "") ?: "") }
+    var selectedConversationId by remember { mutableStateOf(messages.lastOrNull()?.conversationId ?: "") }
+    val conversationRows = messages.groupBy { it.conversationId.ifBlank { "legacy" } }
+        .map { (peerId, thread) ->
+            val latest = thread.maxByOrNull { it.timestamp }
+            Triple(peerId, latest?.conversationName?.ifBlank { "Nearby contact" } ?: "Nearby contact", latest)
+        }
+        .sortedByDescending { it.third?.timestamp ?: 0L }
+    val visibleMessages = if (selectedConversationId.isBlank()) messages else messages.filter {
+        (it.conversationId.ifBlank { "legacy" }) == selectedConversationId
+    }
+    LaunchedEffect(messages.size, selectedConversationId) {
+        if (selectedConversationId.isBlank() && conversationRows.isNotEmpty()) {
+            selectedConversationId = conversationRows.first().first
+        }
+    }
     var showChatAttachmentMenu by remember { mutableStateOf(false) }
     val isConnecting = status.contains("connecting", ignoreCase = true) && !chatReady
     val messageListState = rememberLazyListState()
@@ -4065,6 +4094,51 @@ private fun NeaRerHome(
                     }
                 }
 
+            if (conversationRows.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFF0D2545),
+                    shape = RoundedCornerShape(19.dp),
+                    border = BorderStroke(1.dp, Color(0xFF31547E))
+                ) {
+                    Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("YOUR CONVERSATIONS", color = White, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                            Spacer(Modifier.weight(1f))
+                            Text("${conversationRows.size} ${if (conversationRows.size == 1) "person" else "people"}", color = Muted, fontSize = 9.sp)
+                        }
+                        conversationRows.forEach { (peerId, peerName, latest) ->
+                            val selected = selectedConversationId == peerId
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    selectedConversationId = peerId
+                                    onSelectConversation(peerId, peerName)
+                                },
+                                color = if (selected) Color(0xFF174A83) else Color(0xFF10294A),
+                                shape = RoundedCornerShape(13.dp),
+                                border = BorderStroke(1.dp, if (selected) Gold.copy(alpha = 0.75f) else Color(0xFF28496F))
+                            ) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(shape = CircleShape, color = if (selected) Color(0xFF285FA0) else Color(0xFF24466D), modifier = Modifier.size(36.dp)) {
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                            Text(peerName.firstOrNull()?.uppercase() ?: "N", color = if (selected) Gold else White, fontWeight = FontWeight.Black)
+                                        }
+                                    }
+                                    Column(Modifier.weight(1f).padding(start = 9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(peerName, color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(latest?.body ?: "No messages yet", color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text(latest?.let { formatMessageTime(it.timestamp) } ?: "", color = Muted, fontSize = 8.sp)
+                                        Text(latest?.delivery ?: "CHAT", color = if (latest?.outgoing == true && latest.delivery == "Delivered") Color(0xFF8CE4C8) else Gold, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
                 sectionPositions["chats"] = it.positionInParent().y.toInt()
             }, shape = RoundedCornerShape(23.dp), color = Panel,
@@ -4152,7 +4226,7 @@ private fun NeaRerHome(
                         color = Muted, fontSize = 9.sp, lineHeight = 13.sp
                     )
 
-                        if (messages.isEmpty()) {
+                        if (visibleMessages.isEmpty()) {
                             Text("Your private conversation starts here. Write now; messages stay safely on this phone until a route is available.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         } else {
                             LazyColumn(
@@ -4160,7 +4234,7 @@ private fun NeaRerHome(
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 360.dp),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
-                                itemsIndexed(messages, key = { _, message -> message.id }) { _, message ->
+                                itemsIndexed(visibleMessages, key = { _, message -> message.id }) { _, message ->
                                     Column(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
@@ -4185,7 +4259,7 @@ private fun NeaRerHome(
                             }
                         }
                         Text(chatNotice, color = Muted, fontSize = 10.sp)
-                        if (messages.any { it.outgoing && it.delivery == "Queued" }) {
+                        if (visibleMessages.any { it.outgoing && it.delivery == "Queued" }) {
                             Button(onClick = onSendQueuedMessages, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(13.dp), colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)) {
                                 Text("SEND SAVED MESSAGES TO ${connectedDeviceName ?: "CONNECTED PHONE"}", fontSize = 10.sp, fontWeight = FontWeight.Black)
                             }
@@ -4278,7 +4352,7 @@ private fun NeaRerHome(
                      else {
                         if (messages.isNotEmpty()) {
                             LazyColumn(state = messageListState, modifier = Modifier.fillMaxWidth().heightIn(min = 90.dp, max = 260.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                                itemsIndexed(messages, key = { _, message -> message.id }) { _, message ->
+                                itemsIndexed(visibleMessages, key = { _, message -> message.id }) { _, message ->
                                     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start) {
                                         Surface(color = if (message.outgoing) Color(0xFF174A9B) else Color(0xFF19375D), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(0.86f)) {
                                             Column(Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
