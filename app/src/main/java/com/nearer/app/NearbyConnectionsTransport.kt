@@ -62,6 +62,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val completedPayloads = ConcurrentHashMap<Long, Payload>()
     private val successfulIncomingPayloadIds = ConcurrentHashMap.newKeySet<Long>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
+    private val outgoingPayloads = ConcurrentHashMap<Long, Payload>()
+    private val fileHashIo = Executors.newSingleThreadExecutor()
     private val fileIo = Executors.newSingleThreadExecutor()
     private val seenMessageIds = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var relayEnabled = false
@@ -512,39 +514,62 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     } else -1L
                 } ?: -1L
             }
-            if (reportedSize < 0L) throw IllegalStateException("NeaRer could not determine this file's size. Choose another file.")
+            if (reportedSize < 0L) throw IllegalStateException("NeaRer could not determine file size. Choose another file.")
             val size = reportedSize
             val payload = Payload.fromFile(openedDescriptor)
             filePayload = payload
-            descriptor = null // The Payload now owns the descriptor.
+            descriptor = null
             val name = safeFileName(displayName)
             payload.setFileName(name)
             payload.setSensitive(true)
             val id = payload.id
-            outgoingFiles[id] = endpointId to name
-            val metadata = JSONObject().put("kind", "file_meta").put("payloadId", id)
-                .put("name", name).put("size", size)
-            client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
-                .addOnSuccessListener {
-                    client.sendPayload(endpointId, payload)
-                        .addOnFailureListener { error ->
-                            outgoingFiles.remove(id)
-                            try { payload.close() } catch (_: Exception) { }
-                            listener.onFileStatus("Could not start file transfer: ${error.localizedMessage ?: "connection error"}")
-                        }
-                }
-                .addOnFailureListener { error ->
-                    outgoingFiles.remove(id)
-                    try { client.cancelPayload(id) } catch (_: Exception) { }
-                    try { payload.close() } catch (_: Exception) { }
-                    listener.onFileStatus("Could not send file details: ${error.localizedMessage ?: "connection error"}")
-                }
+            val pending = endpointId to name
+            outgoingFiles[id] = pending
+            outgoingPayloads[id] = payload
             listener.onFileProgress(endpointId, id, name, 0L, size, false)
+            listener.onFileStatus("Checking file integrity before sending: " + name)
+            fileHashIo.execute {
+                try {
+                    val digest = appContext.contentResolver.openInputStream(uri)?.use { input -> FileTransferIntegrity.sha256(input, size) }
+                        ?: throw IllegalStateException("The selected file could not be read for integrity checking")
+                    if (outgoingFiles[id] != pending || !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) {
+                        outgoingFiles.remove(id, pending)
+                        outgoingPayloads.remove(id)?.let { try { it.close() } catch (_: Exception) { } }
+                        return@execute
+                    }
+                    val metadata = JSONObject().put("kind", "file_meta").put("payloadId", id)
+                        .put("name", name).put("size", size).put("sha256", digest)
+                    client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
+                        .addOnSuccessListener {
+                            if (outgoingFiles[id] != pending || !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) {
+                                outgoingFiles.remove(id, pending)
+                                outgoingPayloads.remove(id)?.let { try { it.close() } catch (_: Exception) { } }
+                                try { client.cancelPayload(id) } catch (_: Exception) { }
+                                return@addOnSuccessListener
+                            }
+                            client.sendPayload(endpointId, payload).addOnFailureListener { error ->
+                                outgoingFiles.remove(id, pending)
+                                outgoingPayloads.remove(id)?.let { try { it.close() } catch (_: Exception) { } }
+                                listener.onFileStatus("Could not start file transfer: " + (error.localizedMessage ?: "connection error"))
+                            }
+                        }
+                        .addOnFailureListener { error ->
+                            outgoingFiles.remove(id, pending)
+                            outgoingPayloads.remove(id)?.let { try { it.close() } catch (_: Exception) { } }
+                            try { client.cancelPayload(id) } catch (_: Exception) { }
+                            listener.onFileStatus("Could not send file details: " + (error.localizedMessage ?: "connection error"))
+                        }
+                } catch (error: Exception) {
+                    outgoingFiles.remove(id, pending)
+                    outgoingPayloads.remove(id)?.let { try { it.close() } catch (_: Exception) { } }
+                    listener.onFileStatus("File integrity check failed; nothing was sent: " + (error.localizedMessage ?: "file read error"))
+                }
+            }
             return id
         } catch (error: Exception) {
             try { filePayload?.close() } catch (_: Exception) { }
             try { descriptor?.close() } catch (_: Exception) { }
-            listener.onFileStatus("File could not be prepared: ${error.localizedMessage ?: "choose another file"}")
+            listener.onFileStatus("File could not be prepared: " + (error.localizedMessage ?: "choose another file"))
             return null
         }
     }
