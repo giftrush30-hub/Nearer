@@ -1519,13 +1519,9 @@ class MainActivity : ComponentActivity() {
         return try {
             packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
                 .asSequence()
-                .filter { appInfo ->
-                    appInfo.packageName != packageName &&
-                        (
-                            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 ||
-                            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-                        )
-                }
+                // Include user-installed and preinstalled system apps whenever Android exposes
+                // a readable APK path. The receiver still decides whether Android allows installation.
+                .filter { appInfo -> appInfo.packageName != packageName }
                 .mapNotNull { appInfo ->
                     try {
                         val base = appInfo.sourceDir?.takeIf { File(it).isFile } ?: return@mapNotNull null
