@@ -963,6 +963,14 @@ class MainActivity : ComponentActivity() {
         super.onPause()
     }
 
+    override fun onStop() {
+        // Discovery is user-initiated. Stop advertising/scanning when the app
+        // leaves the foreground to avoid wasting battery; keep an established
+        // peer session alive for an active user-visible transfer.
+        if (scanning || hybridSearching) stopDiscovery()
+        super.onStop()
+    }
+
     private fun hasDiscoveryPermission(): Boolean {
         val permission = if (Build.VERSION.SDK_INT >= 33) {
             Manifest.permission.NEARBY_WIFI_DEVICES
@@ -1306,7 +1314,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     pairingCode = code
                     incomingRequesterName = name
-                    approvalMessage = "Compare the six-digit security code on both phones. Accept only if they match."
+                    approvalMessage = "Compare the verification code on both phones. Accept only if they match."
                     statusMessage = "$name wants to connect on NeaRer."
                 }
                 val accepted = approvalDecision.poll(60, java.util.concurrent.TimeUnit.SECONDS) ?: false
@@ -2187,12 +2195,14 @@ class MainActivity : ComponentActivity() {
     }
     private fun handleCommunityPacket(sender: String, senderStableId: String, raw: String) {
         try {
+            if (!CommunityPacketPolicy.isValid(raw, senderStableId)) {
+                communityNotice = "A community packet was invalid and ignored."
+                return
+            }
             val packet = JSONObject(raw)
             val type = packet.optString("type")
             val code = packet.optString("code")
             val senderId = packet.optString("senderId").ifBlank { senderStableId }
-            if (senderId.isBlank() || senderId != senderStableId ||
-                !senderStableId.matches(Regex("([A-F0-9]{6}|[A-F0-9]{32})"))) return
             when (type) {
                 "group_created" -> {
                     val ownerId = packet.optString("ownerId").ifBlank { senderId }
@@ -4931,7 +4941,7 @@ private fun NeaRerHome(
                                     fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                                 Text("$incomingRequesterName wants to connect.", color = White,
                                     fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                Text("Compare the six-digit code on both phones before accepting.",
+                                Text("Compare the verification code on both phones before accepting.",
                                     color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(onClick = onAccept, modifier = Modifier.weight(1f),
@@ -5332,7 +5342,7 @@ private fun NeaRerHome(
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("NEARER CONNECTION REQUEST", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Text("$incomingRequesterName wants to connect with you.", color = White, fontWeight = FontWeight.SemiBold)
-                        Text("Compare the six-digit code on both phones. Accept only if it matches and you recognise this person.", color = Muted, fontSize = 12.sp)
+                        Text("Compare the verification code on both phones. Accept only if it matches and you recognise this person.", color = Muted, fontSize = 12.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Button(onClick = onAccept, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)) { Text("Accept") }
                             Button(onClick = onReject, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF713D4A), contentColor = White)) { Text("Reject") }
