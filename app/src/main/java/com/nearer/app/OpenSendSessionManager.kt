@@ -80,19 +80,32 @@ class OpenSendSessionManager(context: Context) : Closeable {
         }
     }
 
-    private fun findHotspotAddress(): java.net.InetAddress {
-        val addresses = try {
+    private fun findHotspotAddress(): InetAddress {
+        val candidates = try {
             NetworkInterface.getNetworkInterfaces().asSequence().toList()
-                .filter { it.isUp && !it.isLoopback && (it.name.startsWith("wlan", true) || it.name.startsWith("ap", true)) }
-                .flatMap { it.inetAddresses.asSequence().toList() }
-                .filterIsInstance<Inet4Address>()
-                .filter { it.isSiteLocalAddress && !it.isLoopbackAddress }
+                .filter { it.isUp && !it.isLoopback }
+                .filter { it.name.startsWith("ap", true) || it.name.startsWith("softap", true) || it.name.startsWith("wlan", true) }
+                .flatMap { networkInterface ->
+                    val interfacePriority = when {
+                        networkInterface.name.startsWith("ap", true) || networkInterface.name.startsWith("softap", true) -> 0
+                        else -> 1
+                    }
+                    networkInterface.inetAddresses.asSequence().toList()
+                        .filterIsInstance<Inet4Address>()
+                        .filter { it.isSiteLocalAddress && !it.isLoopbackAddress }
+                        .map { address -> interfacePriority to address }
+                }
+                .sortedWith(compareBy<Pair<Int, Inet4Address>>(
+                    { it.first },
+                    { if (it.second.hostAddress?.endsWith(".1") == true) 0 else 1 }
+                ))
+                .map { it.second }
                 .toList()
         } catch (_: Exception) { emptyList() }
-        return addresses.firstOrNull()
+
+        return candidates.firstOrNull()
             ?: error("Android started the hotspot, but NeaRer could not find its local Wi-Fi address. Try again after toggling Wi-Fi.")
     }
-
 
     @Synchronized
     private fun stop() {
