@@ -332,7 +332,7 @@ private class FastShareHttpServer(
             return
         }
         val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        output.write("HTTP/1.1 200 OK\\r\\nContent-Type: $mimeType\\r\\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\\r\\nTransfer-Encoding: chunked\\r\\nConnection: close\\r\\n\\r\\n".toByteArray())
+        output.write("HTTP/1.1 200 OK\r\nContent-Type: $mimeType\r\nContent-Disposition: attachment; filename*=UTF-8''$encodedName\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".toByteArray())
         if (headOnly) return
         stream?.use { source ->
             val buffer = ByteArray(64 * 1024)
@@ -343,9 +343,9 @@ private class FastShareHttpServer(
                     if (read < 0) break
                     if (read == 0) continue
                     output.write(Integer.toHexString(read).toByteArray(Charsets.US_ASCII))
-                    output.write("\\r\\n".toByteArray(Charsets.US_ASCII))
+                    output.write("\r\n".toByteArray(Charsets.US_ASCII))
                     output.write(buffer, 0, read)
-                    output.write("\\r\\n".toByteArray(Charsets.US_ASCII))
+                    output.write("\r\n".toByteArray(Charsets.US_ASCII))
                     sent += read
                     // Avoid forcing a socket flush for every 64 KB chunk.
                     // Let BufferedOutputStream batch writes and flush at ~1 MB intervals.
@@ -356,7 +356,7 @@ private class FastShareHttpServer(
                 }
                 val completed = running
                 if (completed) {
-                    output.write("0\\r\\n\\r\\n".toByteArray(Charsets.US_ASCII))
+                    output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
                     output.flush()
                 }
                 onTransferUpdate(sent, -1L, completed, !completed)
