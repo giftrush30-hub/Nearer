@@ -420,8 +420,10 @@ internal fun FileCentreScreen(
                                 if (!connected) notice = "Connect to a nearby NeaRer phone before sending."
                                 else if (selectedUris.isNotEmpty()) {
                                     onSendFiles(selectedUris)
-                                    selected.clear()
-                                    notice = "Your selected files were added to the nearby send queue."
+                                    // Keep the basket intact until the user clears it.
+                                    // The sender callback reports failures through the chat/transfer status,
+                                    // so clearing here could silently discard a selection that was not queued.
+                                    notice = "Send request handed to NeaRer. Check the transfer status before clearing your basket."
                                 }
                             },
                             enabled = selectedUris.isNotEmpty(),
