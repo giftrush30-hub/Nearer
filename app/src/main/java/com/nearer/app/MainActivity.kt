@@ -80,6 +80,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -1081,7 +1084,8 @@ class MainActivity : ComponentActivity() {
                         id = item.getString("id"),
                         body = item.getString("body"),
                         outgoing = item.getBoolean("outgoing"),
-                        delivery = item.optString("delivery", "Sent")
+                        delivery = item.optString("delivery", "Sent"),
+                        timestamp = item.optLong("timestamp", 0L).takeIf { it > 0L } ?: System.currentTimeMillis()
                     )
                     chatMessages.add(message)
                     if (!message.outgoing) receivedMessageIds.add(message.id)
@@ -1106,7 +1110,8 @@ class MainActivity : ComponentActivity() {
                     .put("id", message.id)
                     .put("body", message.body)
                     .put("outgoing", message.outgoing)
-                    .put("delivery", message.delivery))
+                    .put("delivery", message.delivery)
+                    .put("timestamp", message.timestamp))
             }
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .edit().putString("messages", array.toString()).apply()
@@ -2149,9 +2154,9 @@ private fun NeaRerHome(
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     var draft by remember { mutableStateOf("") }
-    val messageScrollState = rememberScrollState()
-    androidx.compose.runtime.LaunchedEffect(messages.size) {
-        messageScrollState.animateScrollTo(messageScrollState.maxValue)
+    val messageListState = rememberLazyListState()
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) messageListState.animateScrollToItem(messages.lastIndex)
     }
     var showLudo by remember { mutableStateOf(false) }
     var activeSection by remember { mutableStateOf("home") }
@@ -3696,11 +3701,12 @@ private fun NeaRerHome(
                         if (messages.isEmpty()) {
                             Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         } else {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 360.dp).verticalScroll(messageScrollState),
+                            LazyColumn(
+                                state = messageListState,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 360.dp),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
-                                messages.forEach { message ->
+                                itemsIndexed(messages, key = { _, message -> message.id }) { _, message ->
                                     Column(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
@@ -3713,9 +3719,11 @@ private fun NeaRerHome(
                                         ) {
                                             Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
                                                 Text(message.body, color = White, fontSize = 14.sp)
-                                                Text(if (message.outgoing) message.delivery else "Received",
+                                                Text(
+                                                    "${if (message.outgoing) message.delivery else "Received"}  •  ${formatMessageTime(message.timestamp)}",
                                                     color = if (message.outgoing) Color(0xFFBBD5FF) else Gold,
-                                                    fontSize = 9.sp, fontWeight = FontWeight.Medium)
+                                                    fontSize = 9.sp, fontWeight = FontWeight.Medium
+                                                )
                                             }
                                         }
                                     }
@@ -4414,8 +4422,13 @@ private data class ChatMessage(
     val id: String,
     val body: String,
     val outgoing: Boolean,
-    val delivery: String
+    val delivery: String,
+    val timestamp: Long = System.currentTimeMillis()
 )
+
+private fun formatMessageTime(timestamp: Long): String =
+    java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
+        .format(java.util.Date(timestamp))
 
 private fun transferProgressDetail(transferred: Long, total: Long, speed: Long): String {
     if (total <= 0L) return if (speed > 0L) "${formatTransferSize(speed)}/s" else "Transferring data…"
