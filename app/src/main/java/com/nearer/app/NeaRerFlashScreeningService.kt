@@ -1,6 +1,7 @@
 package com.nearer.app
 
 import android.content.Context
+import android.content.Intent
 import android.telecom.Call
 import android.telecom.CallScreeningService
 import android.util.Base64
@@ -36,6 +37,28 @@ class NeaRerFlashScreeningService : CallScreeningService() {
             val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
             val key = EVENTS_PREFIX + senderKey
             val now = android.os.SystemClock.elapsedRealtime()
+
+            // Every incoming call from a paired sender is surfaced as a chat event.
+            // Android screening runs before the call is answered, so this is labelled
+            // "Flash call" rather than claiming that the call was definitely missed.
+            val receivedAt = System.currentTimeMillis()
+            val callEventId = "call-$receivedAt-$now"
+            val callQueue = try {
+                JSONArray(prefs.getString(PENDING_EVENTS, "[]") ?: "[]")
+            } catch (_: Exception) {
+                JSONArray()
+            }
+            callQueue.put(
+                JSONObject()
+                    .put("id", callEventId)
+                    .put("signal", "FLASH_CALL")
+                    .put("timestamp", receivedAt)
+                    .put("senderTag", senderKey.takeLast(8))
+                    .put("senderName", FlashTrustedSenders.displayName(this, number))
+            )
+            while (callQueue.length() > MAX_PENDING_EVENTS) callQueue.remove(0)
+            prefs.edit().putString(PENDING_EVENTS, callQueue.toString()).apply()
+            sendBroadcast(Intent(ACTION_FLASH_MESSAGE_RECEIVED).setPackage(packageName))
             val previous = prefs.getString(key, "")
                 .orEmpty()
                 .split(',')
