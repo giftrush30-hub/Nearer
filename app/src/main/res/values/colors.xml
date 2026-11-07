@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="nearer_icon_background">#061A9C</color>
+    <color name="nearer_icon_background">#0647C9</color>
+    <color name="nearer_brand_blue">#0647C9</color>
+    <color name="nearer_surface_blue">#0B54DC</color>
+    <color name="nearer_electric_blue">#1769FF</color>
+    <color name="nearer_royal_gold">#FFD84D</color>
+    <color name="nearer_electric_cyan">#35DFFF</color>
+    <color name="nearer_text_white">#FFFFFF</color>
 </resources>
