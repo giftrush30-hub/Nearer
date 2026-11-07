@@ -202,7 +202,6 @@ internal object AndroidFileCatalog {
         val output = java.io.File.createTempFile("$safePackage-", "-app-bundle.zip", outputDir)
         ZipOutputStream(output.outputStream().buffered()).use { zip ->
             // APK entries are already compressed; avoid wasting CPU recompressing them.
-            zip.setLevel(0)
             // APK files are already compressed; avoid spending CPU recompressing them.
             zip.setLevel(0)
             fun addApk(file: java.io.File, entryName: String) {
@@ -409,6 +408,21 @@ internal fun FileCentreScreen(
             listOf("Recent", "Name", "Largest").forEach { mode ->
                 FilterChip(selected = sortMode == mode, onClick = { sortMode = mode }, label = { Text(mode, fontSize = 10.sp) })
             }
+        }
+        val selectableVisibleIds = visible.filter { it.uri != null }.map { it.id }
+        val allVisibleSelected = selectableVisibleIds.isNotEmpty() && selectableVisibleIds.all { it in selected }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("${selectableVisibleIds.size} files in view", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
+            Button(
+                onClick = {
+                    if (allVisibleSelected) selected.removeAll(selectableVisibleIds.toSet())
+                    else selectableVisibleIds.filter { it !in selected }.forEach { selected.add(it) }
+                    notice = if (allVisibleSelected) "Visible files removed from your basket." else "${selectableVisibleIds.size} visible file(s) selected."
+                },
+                enabled = selectableVisibleIds.isNotEmpty(),
+                colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Gold),
+                shape = RoundedCornerShape(11.dp)
+            ) { Text(if (allVisibleSelected) "Deselect visible" else "Select visible", fontSize = 10.sp) }
         }
         if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Mint)
         if (!hasAccess && category in listOf(FileCentreCategory.PICTURES, FileCentreCategory.VIDEOS, FileCentreCategory.MUSIC)) {
