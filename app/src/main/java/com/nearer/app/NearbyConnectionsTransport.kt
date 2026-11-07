@@ -588,7 +588,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 } catch (error: Exception) {
                     outgoingFiles.remove(id, pending)
                     outgoingPayloads.remove(id)?.let { try { it.close() } catch (_: Exception) { } }
-                    listener.onFileStatus("File integrity check failed; nothing was sent: " + (error.localizedMessage ?: "file read error"))
+                    listener.onFileStatus("File could not be prepared: integrity check failed, nothing was sent. " + (error.localizedMessage ?: "file read error"))
                 }
             }
             return id
