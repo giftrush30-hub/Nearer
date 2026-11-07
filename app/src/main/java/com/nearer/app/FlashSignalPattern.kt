@@ -21,11 +21,22 @@ internal object FlashSignalPattern {
         if (eventTimesMillis.size < 2 || toleranceMillis < 0L) return null
         val ordered = eventTimesMillis.zipWithNext().map { (a, b) -> b - a }
         if (ordered.any { it <= 0L }) return null
-        return presets.firstOrNull { preset ->
-            preset.gapsMillis.size == ordered.size &&
-                preset.gapsMillis.zip(ordered).all { (expected, actual) ->
-                    kotlin.math.abs(expected - actual) <= toleranceMillis
+        // Several presets can fall inside a broad tolerance window. Choose the
+        // closest complete pattern so a precise CALL_ME signal is not mistaken
+        // for a less precise COME signal.
+        return presets
+            .asSequence()
+            .filter { it.gapsMillis.size == ordered.size }
+            .map { preset ->
+                preset to preset.gapsMillis.zip(ordered).sumOf { (expected, actual) ->
+                    kotlin.math.abs(expected - actual)
                 }
-        }?.code
+            }
+            .filter { (_, totalError) ->
+                totalError <= toleranceMillis * ordered.size
+            }
+            .minByOrNull { (_, totalError) -> totalError }
+            ?.first
+            ?.code
     }
 }
