@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -37,6 +38,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -230,6 +232,24 @@ internal object AndroidFileCatalog {
             modifiedSeconds = System.currentTimeMillis() / 1000L,
             mimeType = "application/zip"
         )
+    }
+
+    fun openPreview(context: Context, item: FileCentreItem): Boolean {
+        val uri = item.uri ?: return false
+        val mime = item.mimeType?.takeIf { it.isNotBlank() } ?: when (item.category) {
+            FileCentreCategory.PICTURES -> "image/*"
+            FileCentreCategory.VIDEOS -> "video/*"
+            FileCentreCategory.MUSIC -> "audio/*"
+            else -> "*/*"
+        }
+        return runCatching {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, "Open ${item.name}"))
+            true
+        }.getOrDefault(false)
     }
 
     fun formatSize(bytes: Long): String {
@@ -612,7 +632,15 @@ private fun FileCentreTile(
             Text(item.name, color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
             Text(if (item.packageName != null) "Installed app" else AndroidFileCatalog.formatSize(item.sizeBytes) + " • " + AndroidFileCatalog.formatType(item), color = Muted, fontSize = 9.sp)
             if (item.modifiedSeconds > 0L) Text(AndroidFileCatalog.formatModified(item.modifiedSeconds), color = Muted, fontSize = 8.sp)
-            if (selected) Text("✓ Selected", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (selected) Text("✓ Selected", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                else Spacer(Modifier.weight(1f))
+                if (item.uri != null) {
+                    TextButton(onClick = { AndroidFileCatalog.openPreview(context, item) }) {
+                        Text("Preview", color = Mint, fontSize = 10.sp)
+                    }
+                }
+            }
         }
     }
 }
@@ -645,6 +673,11 @@ private fun FileCentreRow(
             Column(Modifier.weight(1f).padding(start = 11.dp)) {
                 Text(item.name, color = White, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, maxLines = 1)
                 Text(if (item.packageName != null) item.packageName else AndroidFileCatalog.formatSize(item.sizeBytes) + " • " + AndroidFileCatalog.formatType(item) + " • " + AndroidFileCatalog.formatModified(item.modifiedSeconds), color = Muted, fontSize = 9.sp, maxLines = 1)
+            }
+            if (item.uri != null) {
+                TextButton(onClick = { AndroidFileCatalog.openPreview(context, item) }) {
+                    Text("Preview", color = Mint, fontSize = 10.sp)
+                }
             }
             Text(if (selected) "✓" else "＋", color = if (selected) Gold else Muted, fontWeight = FontWeight.Bold)
         }
