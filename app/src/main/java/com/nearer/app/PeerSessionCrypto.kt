@@ -18,11 +18,11 @@ import javax.crypto.spec.SecretKeySpec
 import java.util.Base64
 
 /**
- * Cryptographic building blocks for the future authenticated Wi-Fi Direct session.
+ * Cryptographic building blocks for NeaRer's authenticated Wi-Fi Direct session.
  *
- * This helper is intentionally not wired into the socket protocol yet. The protocol
- * must first exchange ephemeral public keys and confirm a short authentication string
- * on BOTH phones before any encrypted frame is accepted.
+ * The socket protocol exchanges ephemeral public keys, derives a session key with
+ * ECDH/HKDF, and requires both phones to calculate the same short authentication
+ * string before the host can approve the connection and accept encrypted frames.
  */
 internal object PeerSessionCrypto {
     private const val CURVE = "secp256r1"
