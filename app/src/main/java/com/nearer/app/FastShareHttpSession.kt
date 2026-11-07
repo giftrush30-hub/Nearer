@@ -57,7 +57,7 @@ internal object FastShareHttpSession {
             val name = header.value.substring(0, separator)
             if (name.any { !isTokenCharacter(it) }) return rejectBadRequest(output)
             val headerValue = header.value.substring(separator + 1)
-            if (headerValue.any { (it.code < 0x20 && it != '\\t') || it.code == 0x7f }) {
+            if (headerValue.any { (it.code < 0x20 && it != '\t') || it.code == 0x7f }) {
                 return rejectBadRequest(output)
             }
             if (name.equals("Range", ignoreCase = true)) {
