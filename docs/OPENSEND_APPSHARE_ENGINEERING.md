@@ -7,7 +7,7 @@ This branch contains the first integrated Android implementation of the no-app r
 - `AppShareCatalog`: lists visible installed applications, excludes unmodified system apps by default, detects base and split APK paths, and copies all readable APK components into app-private cache for transfer.
 - `OpenSendHotspot`: requests a temporary Android `LocalOnlyHotspot` and returns the SSID/password supplied by Android. The reservation must remain open while sharing.
 - `OpenSendHttpServer`: hosts a NeaRer-branded browser download page on a local TCP port, requires a random per-session token, supports bounded concurrent clients, and implements HTTP byte ranges for resumable downloads.
-- `OpenSendSessionManager` and `OpenSendForegroundService`: coordinate the sender-side hotspot/server lifecycle and show an ongoing notification. The service is currently a liveness companion; the Activity still owns the actual transfer resources, so process death ends the share.
+- `OpenSendSessionManager` and `OpenSendForegroundService`: the foreground service owns the hotspot reservation and HTTP server through a local Binder API. The Activity is only a UI client; Activity recreation and switching apps do not close the session. The service closes the reservation and server when explicitly stopped or when Android destroys the service/process. This is not a crash-proof or reboot-persistent transfer.
 - Manifest declares `QUERY_ALL_PACKAGES` for the complete installed-app catalogue. This permission is restricted by Google Play policy; distribution eligibility must be reviewed before Play Store release.
 
 ## Intended user experience
@@ -85,7 +85,7 @@ For an Android receiver without NeaRer, provide APK download in OpenSend and let
 - [ ] Wi-Fi QR and URL QR each tested separately
 - [ ] Manual URL fallback
 - [ ] Small file, multi-GB file, and zero-byte file
-- [ ] Range request returns correct 206 response and byte content
+- [x] Range request returns correct 206 response and byte content (unit test)
 - [ ] Invalid token returns 403
 - [ ] Unknown file ID returns 404
 - [ ] Two or more receivers downloading concurrently
