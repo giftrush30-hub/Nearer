@@ -577,6 +577,8 @@ class MainActivity : ComponentActivity() {
                         openSendNotice = "OpenSend is ready. Share the Wi-Fi details and download link with the receiver."
                     }, onFailure = { message ->
                         openSendSession = null
+                        openSendManager = null
+                        OpenSendForegroundService.stop(this)
                         openSendNotice = message
                     })
                 }
