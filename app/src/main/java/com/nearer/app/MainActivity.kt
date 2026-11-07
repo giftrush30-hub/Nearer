@@ -2666,6 +2666,8 @@ private fun NeaRerHome(
     var flashPresetName by remember { mutableStateOf("PING") }
     var flashCallStep by remember { mutableStateOf(0) }
     var flashSenderNotice by remember { mutableStateOf("Choose a signal and enter the recipient's phone number.") }
+    var flashTrustedNumber by remember { mutableStateOf("") }
+    var flashTrustedCount by remember { mutableIntStateOf(FlashTrustedSenders.trustedCount(flashContext)) }
     val flashPresets = remember { FlashSignalPattern.presets() }
     val selectedFlashPreset = flashPresets.firstOrNull { it.name == flashPresetName } ?: flashPresets.first()
     val flashCallCount = selectedFlashPreset.gapsMillis.size + 1
@@ -4043,6 +4045,37 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)
                         ) { Text(if (flashRoleReady) "CALL SCREENING ENABLED" else "ENABLE FLASH ON THIS PHONE", fontWeight = FontWeight.Black) }
+
+                        Text("TRUSTED SENDERS • $flashTrustedCount PAIRED", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                        OutlinedTextField(
+                            value = flashTrustedNumber,
+                            onValueChange = { flashTrustedNumber = it.filter { ch -> ch.isDigit() || ch == '+' || ch == ' ' || ch == '-' }.take(20) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Pair sender's phone number") },
+                            placeholder = { Text("Number as it appears on this phone") },
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = White, unfocusedTextColor = White,
+                                focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF42618B),
+                                focusedLabelColor = AccentBlue, unfocusedLabelColor = Muted,
+                                cursorColor = Gold
+                            )
+                        )
+                        Button(
+                            onClick = {
+                                if (FlashTrustedSenders.addTrusted(flashContext, flashTrustedNumber)) {
+                                    flashTrustedCount = FlashTrustedSenders.trustedCount(flashContext)
+                                    flashTrustedNumber = ""
+                                    flashSenderNotice = "Sender paired on this phone. Only calls matching this saved fingerprint can form Flash signals."
+                                } else {
+                                    flashSenderNotice = "Enter a valid phone number with at least 7 digits."
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B416C), contentColor = White)
+                        ) { Text("ADD TRUSTED SENDER", fontWeight = FontWeight.Bold) }
+                        Text("Pair each sender here before they send you a Flash. Only a salted number fingerprint is stored locally, not the raw number. Use the same number format shown on incoming calls (include +234 if that is how it appears). Calls from saved contacts may not reach this service unless you separately grant Contacts permission; NeaRer does not request it here.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+
                         if (flashLastSignal != null) {
                             Text("LAST SIGNAL RECEIVED", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             Text(flashLastSignal!!.replace('_', ' '), color = White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
