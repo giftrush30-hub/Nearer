@@ -21,7 +21,7 @@ object FlashSignalPattern {
      */
     fun toChatMessage(signalName: String): String = when (signalName) {
         "FLASH_CALL" -> "Flash call received"
-        "PING" -> "Ping" -> "Ping"
+        "PING" -> "Ping"
         "COME" -> "Please come"
         "URGENT" -> "Urgent — please check this"
         "CALL_ME" -> "Please call me"
