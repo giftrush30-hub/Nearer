@@ -178,6 +178,10 @@ class MainActivity : ComponentActivity() {
     private var activeGame by mutableStateOf<TicTacToeMatch?>(null)
     private val gameChatMessages = mutableStateListOf<String>()
     private val receivedFiles = mutableStateListOf<ReceivedFile>()
+    private val sentFiles = mutableStateListOf<SentFile>()
+    private var pendingSentFileName: String? = null
+    private var pendingSentFileUri: String? = null
+    private var pendingSentFileSize: Long = 0L
     private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
     private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
     private var outgoingTransferId by mutableStateOf<String?>(null)
@@ -409,6 +413,17 @@ class MainActivity : ComponentActivity() {
             override fun onFileStatus(message: String) {
                 runOnUiThread {
                     chatNotice = message
+                    if (message.startsWith("File sent to the nearby phone")) {
+                        val savedUri = pendingSentFileUri
+                        val savedName = pendingSentFileName
+                        if (!savedUri.isNullOrBlank() && !savedName.isNullOrBlank()) {
+                            sentFiles.add(0, SentFile(savedName, savedUri, pendingSentFileSize, System.currentTimeMillis()))
+                            persistSentFiles()
+                        }
+                        pendingSentFileUri = null
+                        pendingSentFileName = null
+                        pendingSentFileSize = 0L
+                    }
                     if (message.startsWith("File sent to the nearby phone") ||
                         message.startsWith("Nearby file transfer failed") ||
                         message.startsWith("Nearby file transfer cancelled") ||
@@ -446,6 +461,7 @@ class MainActivity : ComponentActivity() {
         if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
         restoreLocalData()
         restoreReceivedFiles()
+        restoreSentFiles()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
         restoreCommunityData()
         nearbyTransport?.setDisplayName(displayName)
@@ -477,6 +493,7 @@ class MainActivity : ComponentActivity() {
                     messages = chatMessages,
                     chatNotice = chatNotice,
                     receivedFiles = receivedFiles,
+                    sentFiles = sentFiles,
                     onSendMessage = ::sendChatMessage,
                     isRecordingVoiceNote = isRecordingVoiceNote,
                     onVoiceNoteAction = ::toggleVoiceNoteRecording,
@@ -527,6 +544,7 @@ class MainActivity : ComponentActivity() {
                     outgoingTotalBytes = outgoingTotalBytes,
                     outgoingSpeedBytesPerSecond = outgoingSpeedBytesPerSecond,
                     onOpenFile = ::openReceivedFile,
+                    onOpenSentFile = ::openSentFile,
                     onDisconnect = ::disconnectFromPeer,
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
@@ -1083,6 +1101,35 @@ class MainActivity : ComponentActivity() {
             chatReady = false
         }
         if (Looper.myLooper() == Looper.getMainLooper()) resetUi() else runOnUiThread { resetUi() }
+    }
+
+    private fun restoreSentFiles() {
+        val raw = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("sent_file_history", null) ?: return
+        try {
+            val array = JSONArray(raw)
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                val uri = item.optString("uri")
+                if (uri.isNotBlank()) sentFiles.add(SentFile(item.optString("name", "Shared file"), uri, item.optLong("size"), item.optLong("time")))
+            }
+        } catch (_: Exception) { sentFiles.clear() }
+    }
+
+    private fun persistSentFiles() {
+        val array = JSONArray()
+        sentFiles.take(100).forEach { item -> array.put(JSONObject().put("name", item.name).put("uri", item.uri).put("size", item.sizeBytes).put("time", item.timestamp)) }
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("sent_file_history", array.toString()).apply()
+    }
+
+    private fun openSentFile(item: SentFile) {
+        try {
+            val uri = Uri.parse(item.uri)
+            contentResolver.openFileDescriptor(uri, "r")?.close() ?: throw IllegalStateException("Original file is unavailable")
+            val mime = contentResolver.getType(uri) ?: "*/*"
+            startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        } catch (_: Exception) {
+            chatNotice = "The original sent file is no longer available. It may have been moved or deleted."
+        }
     }
 
     private fun restoreReceivedFiles() {
@@ -1874,6 +1921,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun sendFile(uri: Uri) {
+        try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
         if (!chatReady) {
             queueChatFile(uri, "Attachment saved on this phone • it will wait here until you connect to someone nearby.")
             return
@@ -1897,6 +1945,10 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             } catch (_: Exception) { }
+            val fileSize = try { contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: 0L } catch (_: Exception) { 0L }
+            pendingSentFileName = fileName
+            pendingSentFileUri = uri.toString()
+            pendingSentFileSize = fileSize
             val payloadId = nearbyTransport?.sendFile(endpoint, uri, fileName)
             if (payloadId != null) {
                 outgoingTransferId = "nearby:$payloadId"
@@ -1912,6 +1964,9 @@ class MainActivity : ComponentActivity() {
         }
         if (!chatReady) return
         val transferId = UUID.randomUUID().toString()
+        pendingSentFileUri = uri.toString()
+        pendingSentFileName = null
+        pendingSentFileSize = 0L
         outgoingTransferId = transferId
         outgoingProgress = 0f
             outgoingTransferredBytes = 0L
@@ -1932,6 +1987,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 runOnUiThread {
+                    pendingSentFileName = fileName
+                    pendingSentFileSize = fileSize.coerceAtLeast(0L)
                     outgoingTransferredBytes = 0L
                     outgoingTotalBytes = fileSize.coerceAtLeast(0L)
                 }
@@ -2243,6 +2300,7 @@ private fun NeaRerHome(
     messages: List<ChatMessage>,
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
+    sentFiles: List<SentFile>,
     onSendMessage: (String) -> Unit,
     isRecordingVoiceNote: Boolean,
     onVoiceNoteAction: () -> Unit,
@@ -2288,6 +2346,7 @@ private fun NeaRerHome(
     outgoingTotalBytes: Long,
     outgoingSpeedBytesPerSecond: Long,
     onOpenFile: (ReceivedFile) -> Unit,
+    onOpenSentFile: (SentFile) -> Unit,
     onDisconnect: () -> Unit,
     onAccept: () -> Unit,
     onReject: () -> Unit,
@@ -2342,6 +2401,7 @@ private fun NeaRerHome(
     var receiveMode by remember { mutableStateOf(false) }
     var showInstalledApps by remember { mutableStateOf(false) }
     var showReceivedHistory by remember { mutableStateOf(false) }
+    var sharedFilesFilter by remember { mutableStateOf("All") }
     var pendingAppPicker by remember { mutableStateOf(false) }
     var installedApps by remember { mutableStateOf<List<ShareableApp>>(emptyList()) }
     var isLoadingApps by remember { mutableStateOf(false) }
@@ -2555,8 +2615,8 @@ private fun NeaRerHome(
             containerColor = Color(0xFF102B50),
             title = {
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text("RECEIVED FILES", color = White, fontWeight = FontWeight.Black)
-                    Text("${receivedFiles.size} saved on this phone", color = Muted, fontSize = 10.sp)
+                    Text("SHARED FILES", color = White, fontWeight = FontWeight.Black)
+                    Text("${receivedFiles.size} received • ${sentFiles.size} sent", color = Muted, fontSize = 10.sp)
                 }
             },
             text = {
@@ -2564,10 +2624,17 @@ private fun NeaRerHome(
                     Modifier.fillMaxWidth().heightIn(max = 430.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (receivedFiles.isEmpty()) {
-                        Text("Files you receive will appear here. Your recent received files stay listed when you reopen NeaRer.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
-                    } else {
-                        receivedFiles.forEach { item ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("All", "Received", "Sent").forEach { filter ->
+                            TextButton(onClick = { sharedFilesFilter = filter }) { Text(filter.uppercase(), color = if (sharedFilesFilter == filter) Gold else Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                        }
+                    }
+                    val showReceived = sharedFilesFilter != "Sent"
+                    val showSent = sharedFilesFilter != "Received"
+                    if ((!showReceived || receivedFiles.isEmpty()) && (!showSent || sentFiles.isEmpty())) {
+                        Text("Successfully received and sent files appear here. Sent files can be reopened while their original location remains available.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    }
+                    if (showReceived) receivedFiles.forEach { item ->
                             val exists = item.file.exists()
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
@@ -2589,6 +2656,18 @@ private fun NeaRerHome(
                                         Text(if (exists) "OPEN" else "MISSING", color = if (exists) Gold else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
+                            }
+                        }
+                    }
+                    if (showSent) sentFiles.forEach { item ->
+                        Surface(Modifier.fillMaxWidth(), color = Color(0xFF173F78), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Gold.copy(alpha = 0.25f))) {
+                            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                                Text("↑", color = Gold, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(item.name, color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${formatTransferSize(item.sizeBytes)} • Sent ${formatMessageTime(item.timestamp)}", color = Muted, fontSize = 9.sp)
+                                }
+                                TextButton(onClick = { onOpenSentFile(item) }) { Text("OPEN", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
                             }
                         }
                     }
@@ -4683,6 +4762,7 @@ private fun formatTransferSize(bytes: Long): String {
 }
 
 private data class ReceivedFile(val displayName: String, val file: File)
+private data class SentFile(val name: String, val uri: String, val sizeBytes: Long, val timestamp: Long)
 private data class ShareableApp(val label: String, val packageName: String, val apkPaths: List<String>, val icon: androidx.compose.ui.graphics.ImageBitmap)
 
 private data class IncomingTransfer(
