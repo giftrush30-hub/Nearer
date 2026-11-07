@@ -2007,85 +2007,61 @@ private fun NeaRerHome(
             }
 
             if (selectedTab == "Home") {
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Text("YOUR NEARER NAME", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                    Text("What should people around you call you?", color = White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(24) }, modifier = Modifier.weight(1f), singleLine = true, placeholder = { Text("e.g. Hope, Jay Flex, Mimi", color = Muted) }, shape = RoundedCornerShape(14.dp))
-                        Button(onClick = { onSaveDisplayName(nameDraft) }, enabled = nameDraft.trim().isNotBlank(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Save") }
-                    }
-                    Text("This is your public nearby name, not your phone model.", color = Muted, fontSize = 10.sp)
-                }
-            }
-
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(shape = RoundedCornerShape(12.dp), color = Panel, modifier = Modifier.size(42.dp)) {
-                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
+                    Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("YOUR OFFLINE CONNECTION", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                Text("Stay close. Share freely.", color = White, fontSize = 25.sp, lineHeight = 31.sp, fontWeight = FontWeight.ExtraBold)
+                            }
                             androidx.compose.foundation.Image(
                                 painter = androidx.compose.ui.res.painterResource(R.drawable.ic_nearer),
                                 contentDescription = "NeaRer logo",
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(48.dp)
                             )
                         }
-                        }
-                        Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
-                            Text("YOUR OFFLINE WORLD", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
-                            Text("People, sharing and play — closer.", color = Muted, fontSize = 11.sp)
-                        }
-                        Text("NEARER", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                    }
-                    Text("Closer connections.\nNo mobile data.", color = White, fontSize = 27.sp, lineHeight = 32.sp, fontWeight = FontWeight.ExtraBold)
-                    Text("Connect without mobile data. Share directly. Build a local community with people around you.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("PRIVATE CHAT" to "Ready after connection", "FILE SHARING" to "Ready after connection").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Panel, modifier = Modifier.weight(1f).clickable { selectedTab = "Chats" }) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text(item.first, color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                    Text(item.second, color = Muted, fontSize = 10.sp)
-                                }
-                            }
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("BLUETOOTH CHAT" to "Direct nearby link", "MESH RELAY" to "Paused for privacy upgrade").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Panel, modifier = Modifier.weight(1f).clickable { if (item.first == "BLUETOOTH CHAT") selectedTab = "Nearby" }) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                    Text(item.second, color = Muted, fontSize = 10.sp)
-                                }
-                            }
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("LOCAL GROUPS" to "Open Groups tab", "PLAY TOGETHER" to "Ludo in Groups").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Panel, modifier = Modifier.weight(1f).clickable { selectedTab = "Groups" }) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                    Text(item.second, color = Muted, fontSize = 10.sp)
-                                }
-                            }
-                        }
+                        Text("Find people around you, chat and share files — without mobile data.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+                        Button(
+                            onClick = { selectedTab = "Nearby"; onFindNearby() },
+                            modifier = Modifier.fillMaxWidth().height(54.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
+                        ) { Text(if (scanning) "Finding people…" else "Find people nearby", fontWeight = FontWeight.Bold) }
+                        Button(
+                            onClick = {
+                                if (chatReady) filePicker.launch(arrayOf("*/*"))
+                                else { selectedTab = "Nearby"; onFindNearby() }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD12D), contentColor = Midnight)
+                        ) { Text(if (chatReady) "Send files" else "Connect to send files", fontWeight = FontWeight.Bold) }
+                        Text(
+                            if (chatReady) "Connected to a nearby phone. You can chat or send files."
+                            else "First, find and connect to the other NeaRer phone. Then choose a file and send it.",
+                            color = Muted, fontSize = 11.sp, lineHeight = 16.sp
+                        )
                     }
                 }
-            }
-
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("✦", color = Gold, fontSize = 25.sp)
-                        Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
-                            Text("NEARER MESSAGES", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                            Text("Private nearby messaging.", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Text("DIRECT", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("YOUR NEARBY NAME", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        OutlinedTextField(
+                            value = nameDraft,
+                            onValueChange = { nameDraft = it.take(24) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text("Choose a name people will see", color = Muted) },
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                        Button(
+                            onClick = { onSaveDisplayName(nameDraft) },
+                            enabled = nameDraft.trim().isNotBlank(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)
+                        ) { Text("Save my nearby name") }
                     }
-                    Text("Send a normal message directly to a connected NeaRer phone without mobile data. Delivery is confirmed after the recipient app saves it. Multi-hop and long-distance delivery are not active yet.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                 }
-            }
-
             }
 
             if (selectedTab == "Nearby") {
