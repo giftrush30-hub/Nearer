@@ -3528,79 +3528,24 @@ private fun NeaRerHome(
             confirmButton = { TextButton(onClick = { showReceivedHistory = false }) { Text("DONE", color = Gold) } }
         )
     }
-    if (!hasChosenName) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = Midnight
-        ) {
-            androidx.compose.foundation.layout.Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Brush.verticalGradient(listOf(Color(0xFF0B54DC), Midnight, Color(0xFF1769FF))))
-                    .padding(horizontal = 25.dp, vertical = 30.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    Surface(
-                        modifier = Modifier.size(86.dp),
-                        shape = RoundedCornerShape(28.dp),
-                        color = Color(0xFF1769FF),
-                        border = BorderStroke(1.dp, Color(0xFF4A91FF))
-                    ) {
-                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                            Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer connected network N", modifier = Modifier.size(70.dp))
-                        }
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Nea", color = White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp)
-                            Text("R", color = Gold, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp)
-                            Text("er", color = White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp)
-                        }
-                        Text("YOUR WORLD. YOUR PEOPLE. CLOSER.", color = Color(0xFF7DB5FF), fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.8.sp)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(9.dp)
-                    ) {
-                        Text("First, what should we call you?", color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 31.sp)
-                        Text("Choose the name people nearby will see when they find you on NeaRer.", color = Muted, fontSize = 13.sp, lineHeight = 20.sp)
-                    }
-                    OutlinedTextField(
-                        value = nameDraft,
-                        onValueChange = { nameDraft = it.take(24); nameSaveFeedback = null },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        placeholder = { Text("Your NeaRer name", color = Muted) },
-                        shape = RoundedCornerShape(18.dp),
-                        textStyle = androidx.compose.ui.text.TextStyle(color = White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                    )
-                    Button(
-                        onClick = {
-                            if (onSaveDisplayName(nameDraft.trim())) {
-                                hasChosenName = true
-                                activeSection = "home"
-                            } else {
-                                nameSaveFeedback = "Please choose a name before continuing."
-                            }
-                        },
-                        enabled = nameDraft.trim().isNotBlank(),
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        shape = RoundedCornerShape(17.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
-                    ) {
-                        Text("LET'S GO  →", fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                    }
-                    nameSaveFeedback?.let { Text(it, color = Color(0xFFFFA7A7), fontSize = 11.sp) }
-                    Text("No account. No sign-up. Your name is saved on this phone.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
-                }
+    var hasCompletedWelcome by remember {
+        mutableStateOf(localChatPrefs.getBoolean("welcome_completed_v1", false))
+    }
+    if (!hasChosenName || !hasCompletedWelcome) {
+        NeaRerWelcomeFlow(
+            initialName = displayName.takeIf { it != "NeaRer User" }.orEmpty(),
+            onSaveName = onSaveDisplayName,
+            onComplete = { finalName, answers ->
+                onSaveDisplayName(finalName)
+                localChatPrefs.edit()
+                    .putBoolean("welcome_completed_v1", true)
+                    .putString("welcome_answers_v1", answers.entries.joinToString("|") { "${it.key}=${it.value}" })
+                    .apply()
+                hasChosenName = true
+                hasCompletedWelcome = true
+                activeSection = "home"
             }
-        }
+        )
         return
     }
     if (showLudo) {
@@ -5978,4 +5923,193 @@ private fun deviceStatus(status: Int): String = when (status) {
     WifiP2pDevice.FAILED -> "Connection failed"
     WifiP2pDevice.UNAVAILABLE -> "Temporarily unavailable"
     else -> "Nearby Wi-Fi Direct device"
+}
+
+
+@androidx.compose.runtime.Composable
+private fun NeaRerWelcomeFlow(
+    initialName: String,
+    onSaveName: (String) -> Boolean,
+    onComplete: (String, Map<Int, String>) -> Unit
+) {
+    var name by remember { mutableStateOf(initialName) }
+    var step by remember { mutableStateOf(0) }
+    var revealFinished by remember { mutableStateOf(false) }
+    val answers = remember { androidx.compose.runtime.mutableStateMapOf<Int, String>() }
+    val multi = remember { androidx.compose.runtime.mutableStateListOf<String>() }
+    val questions = remember {
+        listOf(
+            "What kind of energy do you bring?",
+            "What brings you to NeaRer?",
+            "What do you enjoy most?",
+            "What matters most when you connect?",
+            "Your perfect free day looks like…",
+            "How should NeaRer welcome you?"
+        )
+    }
+    val options = remember {
+        listOf(
+            listOf("Electric", "Positive", "Creative", "Chill", "A little of everything"),
+            listOf("Sharing files", "Chatting with people", "Discovering communities", "Playing games", "Everything"),
+            listOf("Music & movies", "Games & entertainment", "Technology & gadgets", "Learning new things", "Creating things", "Sports & adventures"),
+            listOf("Speed", "Privacy", "Beautiful design", "Works without internet", "Everything working smoothly"),
+            listOf("Explore somewhere new", "Relax and recharge", "Spend time with friends", "Learn or create", "Games and movies", "Something unpredictable"),
+            listOf("Hey, good to see you!", "Ready for something exciting?", "Your space is ready.", "Let's connect!")
+        )
+    }
+    val captions = listOf(
+        "No labels needed. Pick the vibe that feels most like you.",
+        "We'll put the things you care about closer to the front.",
+        "Choose as many as you like. This is your space.",
+        "Tell us what makes a connection feel right.",
+        "Just for fun. There are no wrong answers.",
+        "A little personality makes every visit warmer."
+    )
+    val transition = rememberInfiniteTransition(label = "welcome-orbit")
+    val orbit by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(9000, easing = FastOutSlowInEasing)), label = "welcome-orbit-angle")
+    val glow by transition.animateFloat(0.35f, 0.85f, infiniteRepeatable(tween(1600), RepeatMode.Reverse), label = "welcome-glow")
+    val currentIndex = step - 1
+    val isMulti = currentIndex == 2
+    val selected = if (isMulti) multi.isNotEmpty() else answers.containsKey(currentIndex)
+    val progress = (step.coerceIn(0, 6) / 6f)
+    androidx.compose.foundation.layout.Box(
+        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFFF8FBFF), Color(0xFFEAF3FF), Color(0xFFFFFFFF))))
+    ) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer", modifier = Modifier.size(38.dp))
+                Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Nea", color = Color(0xFF1769FF), fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("R", color = Color(0xFFE5A900), fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("er", color = Color(0xFF1769FF), fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                    Text("NEARER YOU. NEARER EVERYTHING.", color = Color(0xFF66809F), fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                }
+                if (step in 1..6) Text("SKIP", color = Color(0xFF1769FF), fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { step = 7 })
+            }
+            if (step <= 6) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    repeat(6) { index ->
+                        androidx.compose.foundation.layout.Box(
+                            Modifier.weight(1f).height(5.dp).clip(CircleShape)
+                                .background(if (index < step) Color(0xFF1769FF) else Color(0xFFD9E6F7))
+                        )
+                    }
+                }
+            }
+            if (step == 0) {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(210.dp), contentAlignment = Alignment.Center) {
+                    repeat(3) { index ->
+                        Surface(
+                            modifier = Modifier.size((116 + index * 42).dp).rotate(orbit * (if (index % 2 == 0) 1f else -1f)).alpha(glow),
+                            shape = CircleShape, color = Color.Transparent,
+                            border = BorderStroke(1.dp, if (index == 1) Color(0xFF8CB9FF) else Color(0xFFBED7FF))
+                        ) {}
+                    }
+                    Surface(shape = RoundedCornerShape(30.dp), color = Color(0xFF1769FF), shadowElevation = 16.dp,
+                        modifier = Modifier.size(100.dp)) {
+                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                            Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer connection symbol", modifier = Modifier.size(82.dp))
+                        }
+                    }
+                }
+                Text("A little about you.\nA lot closer to everything.", color = Color(0xFF142C4B), fontSize = 28.sp, lineHeight = 34.sp,
+                    fontWeight = FontWeight.ExtraBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text("Let's make your NeaRer space feel like yours from the very first hello.", color = Color(0xFF647B98), fontSize = 14.sp,
+                    lineHeight = 21.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("WHAT SHOULD WE CALL YOU?", color = Color(0xFF55718F), fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.2.sp)
+                    OutlinedTextField(value = name, onValueChange = { name = it.take(24) }, modifier = Modifier.fillMaxWidth(),
+                        singleLine = true, placeholder = { Text("Your name") }, shape = RoundedCornerShape(18.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF183452), fontSize = 17.sp, fontWeight = FontWeight.SemiBold))
+                    Text("This is the name nearby people can see. You can change it later.", color = Color(0xFF7890AA), fontSize = 11.sp)
+                }
+                Button(onClick = { if (name.trim().isNotBlank() && onSaveName(name.trim())) step = 1 },
+                    enabled = name.trim().isNotBlank(), modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1769FF), contentColor = Color.White)) {
+                    Text("LET'S MAKE IT YOURS  →", fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+                }
+            } else if (step in 1..6) {
+                Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), color = Color.White,
+                    border = BorderStroke(1.dp, Color(0xFFDCE9F8)), shadowElevation = 8.dp) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text("GET TO KNOW YOU  •  0\${step}/06".replace("0\${step}", step.toString().padStart(2, '0')),
+                            color = Color(0xFF1769FF), fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                        Text(questions[currentIndex], color = Color(0xFF142C4B), fontSize = 25.sp, lineHeight = 31.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(captions[currentIndex], color = Color(0xFF7288A1), fontSize = 12.sp, lineHeight = 18.sp)
+                        options[currentIndex].forEachIndexed { index, option ->
+                            val active = if (isMulti) option in multi else answers[currentIndex] == option
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    if (isMulti) { if (active) multi.remove(option) else multi.add(option) }
+                                    else answers[currentIndex] = option
+                                },
+                                shape = RoundedCornerShape(17.dp),
+                                color = if (active) Color(0xFFEAF2FF) else Color(0xFFF7FAFE),
+                                border = BorderStroke(if (active) 2.dp else 1.dp, if (active) Color(0xFF1769FF) else Color(0xFFE2EBF5))
+                            ) {
+                                Row(Modifier.padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(shape = RoundedCornerShape(12.dp), color = if (active) Color(0xFF1769FF) else Color(0xFFE6EEF8),
+                                        modifier = Modifier.size(38.dp)) {
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                            Text(listOf("✦", "◎", "⌁", "◈", "☼", "♡")[index % 6],
+                                                color = if (active) Color.White else Color(0xFF5B7CA2), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    Text(option, color = Color(0xFF193653), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.weight(1f).padding(start = 12.dp))
+                                    if (active) Text("✓", color = Color(0xFF1769FF), fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                }
+                            }
+                        }
+                        if (isMulti) Text("Select all that feel like you.", color = Color(0xFF7890AA), fontSize = 10.sp)
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    androidx.compose.material3.OutlinedButton(onClick = { step = (step - 1).coerceAtLeast(0) },
+                        modifier = Modifier.weight(1f).height(54.dp), shape = RoundedCornerShape(17.dp)) {
+                        Text("←  BACK", color = Color(0xFF1769FF), fontWeight = FontWeight.Bold)
+                    }
+                    Button(onClick = {
+                        if (isMulti) answers[currentIndex] = multi.joinToString(", ")
+                        step++
+                    }, enabled = selected, modifier = Modifier.weight(1.25f).height(54.dp), shape = RoundedCornerShape(17.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1769FF), contentColor = Color.White)) {
+                        Text(if (step == 6) "FINISH  ✦" else "CONTINUE  →", fontWeight = FontWeight.Black)
+                    }
+                }
+            } else {
+                LaunchedEffect(Unit) {
+                    kotlinx.coroutines.delay(2300)
+                    revealFinished = true
+                    onComplete(name.trim().ifBlank { initialName.ifBlank { "NeaRer User" } }, answers.toMap())
+                }
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    repeat(4) { index ->
+                        Surface(Modifier.size((92 + index * 48).dp).rotate(orbit * (if (index % 2 == 0) 1f else -1f)).alpha(glow),
+                            shape = CircleShape, color = Color.Transparent,
+                            border = BorderStroke(1.dp, if (index % 2 == 0) Color(0xFF83B5FF) else Color(0xFFFFD66B))) {}
+                    }
+                    Surface(Modifier.size(110.dp), shape = RoundedCornerShape(32.dp), color = Color(0xFF1769FF), shadowElevation = 18.dp) {
+                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                            Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer", modifier = Modifier.size(92.dp))
+                        }
+                    }
+                }
+                Text("Here's something\njust for you.", color = Color(0xFF142C4B), fontSize = 31.sp, lineHeight = 36.sp,
+                    fontWeight = FontWeight.ExtraBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text("Bringing your NeaRer space together, \${name.trim().ifBlank { "friend" }}…", color = Color(0xFF647B98),
+                    fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                LinearProgressIndicator(Modifier.fillMaxWidth(), color = Color(0xFF1769FF), trackColor = Color(0xFFDCE9F8))
+            }
+            Text("PRIVATE BY DESIGN  •  NO ACCOUNT REQUIRED", color = Color(0xFF8AA0B8), fontSize = 9.sp,
+                fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
 }
