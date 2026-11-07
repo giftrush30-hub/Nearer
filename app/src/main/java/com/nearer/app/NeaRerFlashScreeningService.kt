@@ -75,7 +75,9 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                     .apply()
             } else {
                 // The calls in a recognised pattern are one message, not several
-                // generic call bubbles plus a decoded preset bubble.
+                // generic call bubbles plus a decoded preset bubble. Tell the chat
+                // importer which provisional call bubbles must be replaced too.
+                val replacedEventIds = JSONArray()
                 for (index in queue.length() - 1 downTo 0) {
                     val queuedEvent = queue.optJSONObject(index) ?: continue
                     val queuedAt = queuedEvent.optLong("timestamp", 0L)
@@ -84,6 +86,7 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                         queuedAt > 0L && receivedAt >= queuedAt &&
                         receivedAt - queuedAt <= MAX_SEQUENCE_AGE_MS
                     ) {
+                        queuedEvent.optString("id").takeIf { it.isNotBlank() }?.let(replacedEventIds::put)
                         queue.remove(index)
                     }
                 }
@@ -94,6 +97,7 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                         .put("timestamp", receivedAt)
                         .put("senderTag", senderTag)
                         .put("senderName", senderName)
+                        .put("replaces", replacedEventIds)
                 )
                 while (queue.length() > MAX_PENDING_EVENTS) queue.remove(0)
                 prefs.edit()
