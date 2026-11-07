@@ -297,7 +297,7 @@ private class FastShareHttpServer(
             null
         }
         if (!headOnly && stream == null) {
-            writeFileUnavailable(output)
+            writeFileUnavailable(output, item)
             return
         }
         if (stream != null) {
@@ -357,7 +357,7 @@ private class FastShareHttpServer(
         // Start the throughput clock before the first chunk is read or written.
         if (!headOnly) onTransferUpdate(0L, -1L, false, false, false)
         output.write("HTTP/1.1 200 OK\r\n".toByteArray())
-        output.write(FileHttpHeaders.fileHeaders(mimeType, fileName).toByteArray())
+        output.write(FileHttpHeaders.fileHeaders(item.mimeType, item.fileName).toByteArray())
         output.write("Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n".toByteArray())
         if (headOnly) return
         stream?.use { source ->
@@ -381,7 +381,7 @@ private class FastShareHttpServer(
         }
     }
 
-    private fun writeFileUnavailable(output: BufferedOutputStream) {
+    private fun writeFileUnavailable(output: BufferedOutputStream, item: FastShareDownloadItem) {
         onTransferUpdate(0L, item.fileLength, false, true, false)
         val message = "The selected file is no longer available. Choose it again in NeaRer."
         val body = message.toByteArray(Charsets.UTF_8)
