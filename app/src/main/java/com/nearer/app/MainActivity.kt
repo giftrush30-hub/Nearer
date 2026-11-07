@@ -112,6 +112,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -3370,7 +3375,7 @@ private fun NeaRerHome(
                                     filter,
                                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 9.dp),
                                     color = if (selected) White else Muted,
-                                    fontSize = 9.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                     maxLines = 1
@@ -5771,7 +5776,11 @@ private fun NeaRerHome(
                     ).forEach { item ->
                         val selected = activeSection == item.third
                         Surface(
-                            modifier = Modifier.weight(1f).heightIn(min = 56.dp).animateContentSize().clickable {
+                            modifier = Modifier.weight(1f).heightIn(min = 60.dp).animateContentSize().semantics(mergeDescendants = true) {
+                                    contentDescription = item.second + " tab"
+                                    this.selected = selected
+                                    role = Role.Tab
+                                }.clickable {
                                 navigateToSection(item.third)
                                 navigationScope.launch { pageScrollState.animateScrollTo(0) }
                             },
