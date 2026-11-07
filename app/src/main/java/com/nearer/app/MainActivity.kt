@@ -349,20 +349,25 @@ class MainActivity : ComponentActivity() {
                     val previousBytes = if (incoming) incomingLastSampleBytes else outgoingLastSampleBytes
                     val previousAt = if (incoming) incomingLastSampleAt else outgoingLastSampleAt
                     var rate = if (incoming) incomingRateBytesPerSecond else outgoingRateBytesPerSecond
+                    val sampleDue = previousAt == 0L || transferred < previousBytes || now - previousAt >= 500L
                     if (previousAt == 0L || transferred < previousBytes) {
                         rate = 0L
-                    } else if (now - previousAt >= 500L) {
+                    } else if (sampleDue) {
                         rate = ((transferred - previousBytes) * 1000L / (now - previousAt).coerceAtLeast(1L)).coerceAtLeast(0L)
                     }
                     if (incoming) {
-                        incomingLastSampleBytes = transferred
-                        incomingLastSampleAt = now
+                        if (sampleDue) {
+                            incomingLastSampleBytes = transferred
+                            incomingLastSampleAt = now
+                        }
                         incomingRateBytesPerSecond = rate
                         incomingTransferName = name
                         incomingProgress = fraction
                     } else {
-                        outgoingLastSampleBytes = transferred
-                        outgoingLastSampleAt = now
+                        if (sampleDue) {
+                            outgoingLastSampleBytes = transferred
+                            outgoingLastSampleAt = now
+                        }
                         outgoingRateBytesPerSecond = rate
                         outgoingTransferId = "nearby:$payloadId"
                         outgoingProgress = fraction
