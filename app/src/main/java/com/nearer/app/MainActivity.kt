@@ -1753,17 +1753,36 @@ class MainActivity : ComponentActivity() {
             chatNotice = "This phone's nearby identity is unavailable. Reconnect and try again before sending files."
             return
         }
+        val readable = mutableListOf<Uri>()
+        var unavailableCount = 0
         selected.forEach { uri ->
-            try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            catch (_: Exception) { /* Some providers grant temporary access only. */ }
-            pendingNearbyFileQueue.addLast(uri)
+            try {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (_: Exception) {
+                // Some providers grant temporary access only; the current session may still read them.
+            }
+            val canRead = try {
+                contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false
+            } catch (_: Exception) {
+                false
+            }
+            if (canRead) readable.add(uri) else unavailableCount += 1
         }
+        if (readable.isEmpty()) {
+            chatNotice = "NeaRer could not access the selected file(s). Choose them again from a location that allows sharing."
+            return
+        }
+        readable.forEach { pendingNearbyFileQueue.addLast(it) }
         currentNearbyQueuedFile = null
         nearbyQueuePeerStableId = peerStableId
         nearbyQueueTotal = pendingNearbyFileQueue.size
         nearbyQueueCompleted = 0
         persistNearbyFileQueue()
-        chatNotice = "Preparing " + nearbyQueueTotal + " files for one transfer job…"
+        chatNotice = if (unavailableCount > 0) {
+            "Preparing " + nearbyQueueTotal + " readable files. " + unavailableCount + " unavailable file(s) were skipped."
+        } else {
+            "Preparing " + nearbyQueueTotal + " files for one transfer job…"
+        }
         startNextNearbyQueuedFile()
     }
 
