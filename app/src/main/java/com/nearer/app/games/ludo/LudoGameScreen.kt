@@ -175,12 +175,12 @@ fun LudoGameScreen(
                 turn.selected == null -> {
                     val slot = LudoTwoDiceRules.playableDice(game.activePlayer, turn).firstOrNull()
                     if (slot != null) {
-                        delay(1550)
+                        delay(1800)
                         doubleGame = LudoDoubleDiceEngine.selectDie(doubleGame, slot)
                     }
                 }
                 else -> {
-                    delay(1450)
+                    delay(2100)
                     LudoAiEngine.chooseComputerMove(game, aiDifficulty)?.let { moveToken(it) }
                 }
             }
@@ -391,7 +391,7 @@ fun LudoGameScreen(
                                 })
                         }
                     }
-                    if (!roomReady && doubleGame.turn?.selected == null &&
+                    if ((!roomReady || roomCanAct) && !game.activePlayer.isComputer && doubleGame.turn?.selected == null &&
                         LudoDieSlot.FIRST in (doubleGame.turn?.remaining ?: emptySet()) &&
                         LudoDieSlot.SECOND in (doubleGame.turn?.remaining ?: emptySet()) &&
                         LudoTwoDiceRules.legalTokenIndexes(game.activePlayer, doubleGame.turn!!.copy(selected = LudoDieSlot.BOTH)).isNotEmpty()) {
@@ -400,8 +400,9 @@ fun LudoGameScreen(
                             color = Color(0xFF263E5B),
                             shape = RoundedCornerShape(13.dp),
                             border = BorderStroke(1.dp, Gold.copy(alpha = 0.9f)),
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                doubleGame = LudoDoubleDiceEngine.selectDie(doubleGame, LudoDieSlot.BOTH)
+                            modifier = Modifier.fillMaxWidth().clickable(enabled = !roomReady || roomCanAct) {
+                                if (roomReady) onRoomAction(LudoRoomAction(LudoRoomActionType.SELECT_DIE, dieSlot = LudoDieSlot.BOTH))
+                                else doubleGame = LudoDoubleDiceEngine.selectDie(doubleGame, LudoDieSlot.BOTH)
                             }
                         ) {
                             Row(Modifier.padding(horizontal = 13.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
