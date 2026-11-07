@@ -61,6 +61,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -84,6 +85,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -1965,6 +1967,7 @@ private fun NeaRerHome(
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     var draft by remember { mutableStateOf("") }
+    var selectedTab by remember { mutableStateOf("Home") }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
@@ -1973,10 +1976,11 @@ private fun NeaRerHome(
         if (uri != null) onSendFile(uri)
     }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
-        Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 26.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 22.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2001,6 +2005,8 @@ private fun NeaRerHome(
                 }
             }
 
+            if (selectedTab == "Home") {
+            if (selectedTab == "Chats") {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Text("YOUR NEARER NAME", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -2054,7 +2060,7 @@ private fun NeaRerHome(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("LOCAL GROUPS" to "Coming soon", "PLAY TOGETHER" to "Coming soon").forEach { item ->
+                        listOf("LOCAL GROUPS" to "Open Groups tab", "PLAY TOGETHER" to "Ludo in Groups").forEach { item ->
                             Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -2080,6 +2086,9 @@ private fun NeaRerHome(
                 }
             }
 
+            }
+
+            if (selectedTab == "Nearby") {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), color = Panel) {
                 Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("NEARBY CONNECTION", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -2131,6 +2140,8 @@ private fun NeaRerHome(
                         ) { Text("Disconnect") }
                     }
                 }
+            }
+
             }
 
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
@@ -2227,11 +2238,17 @@ private fun NeaRerHome(
                 }
             }
 
+            }
+
+            if (selectedTab == "Groups") {
             CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
                 activeGame, gameChatMessages, (usingNearbyConnections || chatReady), onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
                 onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame)
 
+            }
+
+            if (selectedTab == "Nearby") {
             if (incomingRequesterName != null) {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2378,8 +2395,43 @@ private fun NeaRerHome(
                 }
             }
 
+            }
+
+            if (selectedTab == "More") {
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
+                    Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("YOUR NEARER", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+                        Text("Everything closer, even without mobile data.", color = White, fontSize = 23.sp, lineHeight = 29.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Your nearby identity and direct connections stay on this phone. NeaRer’s core nearby chat and file sharing are designed to work without mobile data.", color = Muted, fontSize = 13.sp, lineHeight = 20.sp)
+                    }
+                }
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("CONNECTION & PRIVACY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("Direct nearby chat is available after both phones approve a connection. Multi-hop relay remains paused while secure recipient routing is developed.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    }
+                }
+            }
             Spacer(modifier = Modifier.weight(1f, fill = false))
-            Text("NEARER  •  DIRECT DEVICE DISCOVERY", color = Muted, fontSize = 10.sp, letterSpacing = 1.sp)
+            Text("NEARER  •  ${selectedTab.uppercase()}", color = Muted, fontSize = 10.sp, letterSpacing = 1.sp)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf("Home" to "⌂", "Nearby" to "⌖", "Chats" to "▤", "Groups" to "◎", "More" to "•••").forEach { item ->
+                    val selected = selectedTab == item.first
+                    Column(
+                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { selectedTab = item.first }.padding(vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(item.second, color = if (selected) Gold else Muted, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text(item.first, color = if (selected) Gold else Muted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                    }
+                }
+            }
         }
     }
 }
