@@ -14,7 +14,8 @@ class LudoRoomSessionTest {
         assertNotNull(updated)
         assertEquals(1L, updated!!.sequence)
         assertEquals(updated, host.snapshot)
-        assertEquals("host", host.snapshot.game.game.players[host.snapshot.game.game.activePlayerIndex].id)
+        val expectedActive = if (updated.game.turn != null) "host" else "guest"
+        assertEquals(expectedActive, host.snapshot.game.game.activePlayer.id)
     }
 
     @Test fun guestRequestCarriesCurrentSequenceAndIdentity() {
