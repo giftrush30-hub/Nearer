@@ -2936,10 +2936,6 @@ private fun NeaRerHome(
             .getString("tree_uri", null)?.let(Uri::parse))
     }
     var showPhoneFolderBrowser by remember { mutableStateOf(false) }
-    val openPhoneFolderBrowser = {
-        if (phoneFolderTreeUri != null) showPhoneFolderBrowser = true
-        else phoneFolderPicker.launch(null)
-    }
     val phoneFolderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             try {
@@ -2952,6 +2948,10 @@ private fun NeaRerHome(
                 appShareNotice = "NeaRer could not keep access to that folder. Please choose it again."
             }
         }
+    }
+    val openPhoneFolderBrowser = {
+        if (phoneFolderTreeUri != null) showPhoneFolderBrowser = true
+        else phoneFolderPicker.launch(null)
     }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         uris.forEach(onSendFile)
