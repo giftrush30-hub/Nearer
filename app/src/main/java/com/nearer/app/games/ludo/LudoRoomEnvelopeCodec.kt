@@ -95,6 +95,6 @@ object LudoRoomActionCodec {
     private fun valid(action: LudoRoomAction): Boolean = when (action.type) {
         LudoRoomActionType.ROLL -> action.dieSlot == null && action.tokenIndex == null
         LudoRoomActionType.SELECT_DIE -> action.dieSlot != null && action.tokenIndex == null
-        LudoRoomActionType.MOVE -> action.dieSlot == null && action.tokenIndex in 0..3
+        LudoRoomActionType.MOVE -> action.dieSlot == null && action.tokenIndex != null && action.tokenIndex in 0..3
     }
 }
