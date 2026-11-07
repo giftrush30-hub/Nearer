@@ -120,7 +120,7 @@ class FastShareController(private val context: Context) {
                             if (complete || interrupted) {
                                 val result = when {
                                     interrupted -> "Interrupted"
-                                    partialResponse -> "Partial"
+                                    partialResponse -> "Range sent"
                                     else -> "Completed"
                                 }
                                 recordHistory(fileName, sent, result)
@@ -180,6 +180,12 @@ class FastShareController(private val context: Context) {
         reservation = null
         callback = null
         if (updateStatus) status = "Fast Share stopped."
+    }
+
+    fun clearHistory() {
+        history = emptyList()
+        context.getSharedPreferences("nearer_fast_share_history", Context.MODE_PRIVATE)
+            .edit().remove("entries").apply()
     }
 
     private fun recordHistory(fileName: String, bytes: Long, result: String) {
