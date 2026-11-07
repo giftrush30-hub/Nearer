@@ -61,6 +61,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -2040,7 +2041,7 @@ private fun NeaRerHome(
                     Text("Connect without mobile data. Share directly. Build a local community with people around you.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("PRIVATE CHAT" to "Ready after connection", "FILE SHARING" to "Ready after connection").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Panel, modifier = Modifier.weight(1f)) {
+                            Surface(shape = RoundedCornerShape(13.dp), color = Panel, modifier = Modifier.weight(1f).clickable { selectedTab = "Chats" }) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                     Text(item.second, color = Muted, fontSize = 10.sp)
@@ -2050,7 +2051,7 @@ private fun NeaRerHome(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("BLUETOOTH CHAT" to "Direct nearby link", "MESH RELAY" to "Paused for privacy upgrade").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Panel, modifier = Modifier.weight(1f)) {
+                            Surface(shape = RoundedCornerShape(13.dp), color = Panel, modifier = Modifier.weight(1f).clickable { if (item.first == "BLUETOOTH CHAT") selectedTab = "Nearby" }) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                     Text(item.second, color = Muted, fontSize = 10.sp)
@@ -2060,7 +2061,7 @@ private fun NeaRerHome(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("LOCAL GROUPS" to "Open Groups tab", "PLAY TOGETHER" to "Ludo in Groups").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Panel, modifier = Modifier.weight(1f)) {
+                            Surface(shape = RoundedCornerShape(13.dp), color = Panel, modifier = Modifier.weight(1f).clickable { selectedTab = "Groups" }) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                     Text(item.second, color = Muted, fontSize = 10.sp)
@@ -2415,20 +2416,37 @@ private fun NeaRerHome(
             Spacer(modifier = Modifier.weight(1f, fill = false))
             Text("NEARER  •  ${selectedTab.uppercase()}", color = Muted, fontSize = 10.sp, letterSpacing = 1.sp)
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Panel,
+                shadowElevation = 10.dp
             ) {
-                listOf("Home" to "⌂", "Nearby" to "⌖", "Chats" to "▤", "Groups" to "◎", "More" to "•••").forEach { item ->
-                    val selected = selectedTab == item.first
-                    Column(
-                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { selectedTab = item.first }.padding(vertical = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        Text(item.second, color = if (selected) Gold else Muted, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Text(item.first, color = if (selected) Gold else Muted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    listOf("Home" to "⌂", "Nearby" to "⌖", "Chats" to "▤", "Groups" to "◎", "More" to "•••").forEach { item ->
+                        val selected = selectedTab == item.first
+                        Surface(
+                            modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
+                            shape = RoundedCornerShape(13.dp),
+                            color = if (selected) Mint.copy(alpha = 0.13f) else Panel
+                        ) {
+                            Column(
+                                modifier = Modifier.clickable { selectedTab = item.first }.padding(vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Text(item.second, color = if (selected) Mint else Muted, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Text(item.first, color = if (selected) Mint else Muted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                Surface(
+                                    modifier = Modifier.width(16.dp).height(2.dp),
+                                    shape = RoundedCornerShape(2.dp),
+                                    color = if (selected) Gold else Panel
+                                ) {}
+                            }
+                        }
                     }
                 }
             }
