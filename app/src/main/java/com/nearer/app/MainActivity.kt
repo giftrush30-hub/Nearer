@@ -850,9 +850,12 @@ class MainActivity : ComponentActivity() {
         }
         val manager = wifiManager ?: run { finishDiscovery(); statusMessage = "This phone does not provide Wi-Fi Direct."; return }
         val activeChannel = channel ?: run { finishDiscovery(); statusMessage = "Bluetooth discovery is active, but Wi-Fi Direct is unavailable."; return }
-        if (!isLocationEnabled()) {
+        // Android 13+ has NEARBY_WIFI_DEVICES for Wi-Fi Direct operations.
+        // Requiring the device-wide Location toggle there would block valid nearby
+        // discovery even when the user has granted the correct Nearby devices permission.
+        if (DiscoveryReadinessPolicy.requiresLocationServices(Build.VERSION.SDK_INT) && !isLocationEnabled()) {
             finishDiscovery()
-            statusMessage = "Bluetooth discovery is active. Turn Location ON if you also want Wi-Fi Direct discovery on this Android version."
+            statusMessage = "Bluetooth discovery is active. On Android 12 and older, turn Location ON as well for Wi-Fi Direct discovery."
             return
         }
         finishDiscovery()
