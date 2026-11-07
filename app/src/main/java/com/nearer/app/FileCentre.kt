@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.util.Size
 import android.os.Build
 import android.provider.MediaStore
 import android.provider.OpenableColumns
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -43,6 +45,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -237,8 +240,8 @@ internal fun FileCentreScreen(
         if (uris.isNotEmpty()) {
             uris.forEach { uri ->
                 runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                onSendFiles(listOf(uri))
             }
+            onSendFiles(uris)
         }
     }
 
@@ -290,7 +293,7 @@ internal fun FileCentreScreen(
             placeholder = { Text("Search this category…", color = Muted) },
             shape = RoundedCornerShape(14.dp)
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        Row(modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             FileCentreCategory.entries.forEach { entry ->
                 FilterChip(
                     selected = category == entry,
@@ -433,7 +436,16 @@ private fun FileCentreTile(
                     Text("APP", color = Gold, fontWeight = FontWeight.Bold)
                 }
             } else {
-                Text(
+                val thumbnail by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, item.uri) {
+                    value = withContext(Dispatchers.IO) {
+                        if (Build.VERSION.SDK_INT >= 29 && item.uri != null) runCatching {
+                            context.contentResolver.loadThumbnail(item.uri, Size(240, 240), null).asImageBitmap()
+                        }.getOrNull() else null
+                    }
+                }
+                if (thumbnail != null) {
+                    Image(thumbnail!!, contentDescription = item.name, modifier = Modifier.fillMaxWidth().height(86.dp))
+                } else Text(
                     when (item.category) {
                         FileCentreCategory.PICTURES -> "PHOTO"
                         FileCentreCategory.VIDEOS -> "VIDEO"
