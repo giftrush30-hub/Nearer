@@ -143,13 +143,14 @@ import com.nearer.app.games.ludo.LudoRoomActionCodec
 import com.nearer.app.games.ludo.LudoRoomEnvelopeCodec
 import com.nearer.app.games.ludo.LudoDoubleDiceState
 
-private val Midnight = Color(0xFF1769FF)
-private val Panel = Color(0xFF0B54DC)
-private val AccentBlue = Color(0xFF63A7FF)
-private val Muted = Color(0xFFDCEBFF)
+// NeaRer Royal Neutral palette: blue is the signature accent, not the page background.
+private val Midnight = Color(0xFF111827)       // graphite / ink canvas
+private val Panel = Color(0xFFF8F7F3)           // warm ivory content surfaces
+private val AccentBlue = Color(0xFF3478C8)      // restrained brand blue
+private val Muted = Color(0xFF667085)           // readable secondary text
 private val White = Color(0xFFFFFFFF)
-private val BrandBlue = Color(0xFF1769FF)
-private val Gold = Color(0xFFFFD84D)
+private val BrandBlue = Color(0xFF285F9E)
+private val Gold = Color(0xFFD9AE4B)
 
 class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
@@ -377,8 +378,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = android.graphics.Color.rgb(23, 105, 255)
-        window.navigationBarColor = android.graphics.Color.rgb(23, 105, 255)
+        window.statusBarColor = android.graphics.Color.rgb(17, 24, 39)
+        window.navigationBarColor = android.graphics.Color.rgb(17, 24, 39)
         window.decorView.systemUiVisibility = 0
         wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
         channel = wifiManager?.initialize(this, mainLooper, null)
@@ -681,10 +682,14 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme(
                 background = Midnight,
                 surface = Panel,
+                surfaceVariant = Color(0xFFECEAE4),
                 primary = AccentBlue,
-                onPrimary = Midnight,
-                onBackground = White,
-                onSurface = White
+                secondary = Color(0xFF16877A),
+                tertiary = Color(0xFFC17A52),
+                onPrimary = White,
+                onBackground = Color(0xFFF7F8FA),
+                onSurface = Color(0xFF202B3C),
+                onSurfaceVariant = Color(0xFF667085)
             )) {
                 NeaRerHome(
                     playerName = displayName,
