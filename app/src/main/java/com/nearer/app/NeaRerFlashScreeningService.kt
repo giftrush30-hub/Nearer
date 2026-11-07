@@ -34,11 +34,11 @@ class NeaRerFlashScreeningService : CallScreeningService() {
             val number = handle.schemeSpecificPart.orEmpty()
             if (!FlashTrustedSenders.isTrusted(this, number)) return
 
-            // Android 11+ exposes network caller-number verification. A failed
-            // verification can indicate caller-ID spoofing, so never decode it
-            // as a trusted Flash signal. "Not verified" remains usable for
-            // carriers that do not provide this network check, but is labelled.
-            val numberVerification = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            // Android 10 (API 29) and later expose network caller-number
+            // verification. A failed verification can indicate caller-ID spoofing,
+            // so never decode it as a trusted Flash signal. "Not verified" remains
+            // usable for carriers that do not provide this network check, but is labelled.
+            val numberVerification = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 callDetails.callerNumberVerificationStatus
             } else {
                 Connection.VERIFICATION_STATUS_NOT_VERIFIED

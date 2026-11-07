@@ -567,10 +567,18 @@ class MainActivity : ComponentActivity() {
                     if (message.startsWith("File sent to the nearby phone")) {
                         activeQueuedFileUri?.let { completedUri ->
                             pendingChatFileUris.remove(completedUri)
-                            persistPendingChatFiles()
+                            if (!persistPendingChatFiles()) {
+                                // The receiver has saved the file, but keep its queue
+                                // record if local cleanup cannot be made durable. Do not
+                                // silently lose the user's transfer history.
+                                pendingChatFileUris.add(0, completedUri)
+                                chatNotice = "File delivered, but NeaRer could not update the local queue. Remove the delivered item from prepared files to avoid resending it."
+                            }
                         }
                         activeQueuedFileUri = null
-                        flushPendingChatFiles()
+                        if (chatNotice != "File delivered, but NeaRer could not update the local queue. Remove the delivered item from prepared files to avoid resending it.") {
+                            flushPendingChatFiles()
+                        }
                     }
                     if (message.startsWith("Nearby file transfer failed") ||
                         message.startsWith("Nearby file transfer cancelled") ||
@@ -642,9 +650,16 @@ class MainActivity : ComponentActivity() {
                     pendingChatFilesCount = pendingChatFileUris.size,
                     pendingChatFiles = pendingChatFileUris.toList(),
                     onRemoveQueuedFile = { queuedUri ->
-                        pendingChatFileUris.remove(queuedUri)
-                        persistPendingChatFiles()
-                        chatNotice = "Removed from prepared files."
+                        val index = pendingChatFileUris.indexOf(queuedUri)
+                        if (index >= 0) {
+                            pendingChatFileUris.removeAt(index)
+                            if (persistPendingChatFiles()) {
+                                chatNotice = "Removed from prepared files."
+                            } else {
+                                pendingChatFileUris.add(index.coerceAtMost(pendingChatFileUris.size), queuedUri)
+                                chatNotice = "NeaRer could not update the prepared queue. The file is still listed."
+                            }
+                        }
                     },
                     onSendQueuedFiles = ::flushPendingChatFiles,
                     groups = communityGroups.toList(),
@@ -1554,12 +1569,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun persistPendingChatFiles() {
+    private fun persistPendingChatFiles(): Boolean {
         val array = JSONArray()
         pendingChatFileUris.forEach { array.put(it) }
-        // Prepared files must survive an immediate process death. Unlike visual
-        // preferences, this queue is user work, so wait for the durable write.
-        getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        // Prepared files are user work: report failure rather than silently
+        // presenting an attachment as safely queued when disk persistence failed.
+        return getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
             .edit().putString("pending_chat_files", array.toString()).commit()
     }
 
@@ -2441,8 +2456,14 @@ class MainActivity : ComponentActivity() {
 
     private fun queueChatFile(uri: Uri, notice: String) {
         try { contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
-        if (uri.toString() !in pendingChatFileUris) pendingChatFileUris.add(uri.toString())
-        persistPendingChatFiles()
+        val value = uri.toString()
+        val alreadyQueued = value in pendingChatFileUris
+        if (!alreadyQueued) pendingChatFileUris.add(value)
+        if (!persistPendingChatFiles()) {
+            if (!alreadyQueued) pendingChatFileUris.remove(value)
+            chatNotice = "NeaRer could not save this attachment to your prepared queue. Check phone storage and try again."
+            return
+        }
         chatNotice = notice
     }
 
