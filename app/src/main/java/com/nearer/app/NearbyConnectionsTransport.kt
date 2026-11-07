@@ -122,7 +122,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     outgoingPayloads.remove(entry.key)?.let { try { it.close() } catch (_: Exception) { } }
                 }
             }
-            earlySuccessfulPayloadEndpoints.entries.removeIf { it.value == id }
+            earlySuccessfulPayloadEndpoints.entries.toList().forEach { entry ->
+                if (entry.value == id) earlySuccessfulPayloadEndpoints.remove(entry.key, id)
+            }
             val interruptedIncoming = incomingPayloadEndpoints.entries
                 .filter { it.value == id }
                 .map { it.key }
