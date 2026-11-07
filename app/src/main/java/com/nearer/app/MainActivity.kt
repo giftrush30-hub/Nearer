@@ -1974,6 +1974,28 @@ private fun NeaRerHome(
     var selectedTab by remember { mutableStateOf("Home") }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
+    val fastShare = remember(context) { FastShareController(context) }
+    var pendingFastShareUri by remember { mutableStateOf<Uri?>(null) }
+    val fastSharePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        val allowed = grants.values.all { it }
+        val pending = pendingFastShareUri
+        pendingFastShareUri = null
+        if (allowed && pending != null) fastShare.start(pending)
+        else if (!allowed) android.widget.Toast.makeText(context, "Nearby Wi-Fi permission is needed for Fast Share.", android.widget.Toast.LENGTH_LONG).show()
+    }
+    val fastSharePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.NEARBY_WIFI_DEVICES else Manifest.permission.ACCESS_FINE_LOCATION
+            if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) fastShare.start(uri)
+            else {
+                pendingFastShareUri = uri
+                fastSharePermissionLauncher.launch(arrayOf(permission))
+            }
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(fastShare) {
+        onDispose { fastShare.stop() }
+    }
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
@@ -2061,6 +2083,40 @@ private fun NeaRerHome(
                             else "Find and connect to the other NeaRer phone first. You only need to do that once per connection.",
                             color = Muted, fontSize = 11.sp, lineHeight = 16.sp
                         )
+                        Button(
+                            onClick = { fastSharePicker.launch(arrayOf("*/*")) },
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
+                        ) { Text("Fast Share • large files", fontWeight = FontWeight.Bold) }
+                        Text("Send a large video to a phone without NeaRer using a temporary local Wi-Fi connection. No mobile data.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                        Text(fastShare.status, color = if (fastShare.details != null) Mint else Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        fastShare.details?.let { share ->
+                            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Midnight) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    Text("CONNECT THE OTHER PHONE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text("1. On the other phone, join this Wi-Fi network:", color = Muted, fontSize = 12.sp)
+                                    Text(share.ssid, color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                    Text("Password: ${share.password}", color = White, fontSize = 14.sp)
+                                    Text("2. Open its browser and visit:", color = Muted, fontSize = 12.sp)
+                                    Text(share.url, color = Mint, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                    Text("3. Tap Download. Keep this screen open until it finishes.", color = Muted, fontSize = 12.sp)
+                                    Button(onClick = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("NeaRer Fast Share link", share.url))
+                                        android.widget.Toast.makeText(context, "Download link copied.", android.widget.Toast.LENGTH_SHORT).show()
+                                    }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)) {
+                                        Text("Copy download link")
+                                    }
+                                    Button(onClick = { fastShare.stop() }, modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) {
+                                        Text("Stop Fast Share")
+                                    }
+                                }
+                            }
+                        }
                         Button(
                             onClick = { anyPhonePicker.launch(arrayOf("*/*")) },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
