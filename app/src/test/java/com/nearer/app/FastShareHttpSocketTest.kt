@@ -110,11 +110,11 @@ class FastShareHttpSocketTest {
 
     @Test fun headRequestWithRangeReturnsPartialMetadataWithoutBody() {
         val response = exchange(
-            "HEAD /download HTTP/1.1\\r\\nRange: bytes=4-7\\r\\n\\r\\n"
+            "HEAD /download HTTP/1.1\r\nRange: bytes=4-7\r\n\r\n"
         )
-        assertTrue(response.startsWith("HTTP/1.1 206 Partial Content\\r\\n"))
-        assertTrue(response.contains("Content-Length: 4\\r\\n"))
-        assertTrue(response.contains("Content-Range: bytes 4-7/10\\r\\n"))
-        assertTrue(response.endsWith("\\r\\n\\r\\n"))
+        assertTrue(response.startsWith("HTTP/1.1 206 Partial Content\r\n"))
+        assertTrue(response.contains("Content-Length: 4\r\n"))
+        assertTrue(response.contains("Content-Range: bytes 4-7/10\r\n"))
+        assertTrue(response.endsWith("\r\n\r\n"))
     }
 }
