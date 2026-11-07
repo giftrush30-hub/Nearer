@@ -4152,7 +4152,7 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B416C), contentColor = White)
                         ) { Text("ADD TRUSTED SENDER", fontWeight = FontWeight.Bold) }
-                        Text("Pair each sender here before they send you a Flash. Only a salted number fingerprint is stored locally, not the raw number. Use the same number format shown on incoming calls (include +234 if that is how it appears). Calls from saved contacts may not reach this service unless you separately grant Contacts permission; NeaRer does not request it here.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                        Text("Pair each sender before they send you a Flash. NeaRer stores a salted number fingerprint and your optional chat name, not the raw phone number. Use the same number format shown on incoming calls (include +234 if that is how it appears). Calls from saved contacts may not reach this service unless you separately grant Contacts permission; NeaRer does not request it here.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
 
                         if (flashLastSignal != null) {
                             Text("LAST SIGNAL RECEIVED", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
