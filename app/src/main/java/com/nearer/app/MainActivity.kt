@@ -711,10 +711,11 @@ class MainActivity : ComponentActivity() {
                     .takeLast(8)
                     .ifBlank { "unknown" }
                 val flashConversationId = "nearer-flash:$senderTag"
-                val flashConversationName = if (senderTag == "unknown") {
-                    "NeaRer Flash"
-                } else {
-                    "Flash • $senderTag"
+                val senderName = event.optString("senderName").trim().take(32)
+                val flashConversationName = when {
+                    senderName.isNotBlank() -> senderName
+                    senderTag == "unknown" -> "NeaRer Flash"
+                    else -> "Flash • $senderTag"
                 }
                 val messageId = "flash:$eventId"
                 if (chatMessages.none { it.id == messageId }) {
@@ -2728,6 +2729,7 @@ private fun NeaRerHome(
     var flashCallStep by remember { mutableStateOf(0) }
     var flashSenderNotice by remember { mutableStateOf("Choose a signal and enter the recipient's phone number.") }
     var flashTrustedNumber by remember { mutableStateOf("") }
+    var flashTrustedName by remember { mutableStateOf("") }
     var flashTrustedCount by remember { mutableStateOf(FlashTrustedSenders.trustedCount(flashContext)) }
     val flashPresets = remember { FlashSignalPattern.presets() }
     val selectedFlashPreset = flashPresets.firstOrNull { it.name == flashPresetName } ?: flashPresets.first()
@@ -4122,12 +4124,27 @@ private fun NeaRerHome(
                                 cursorColor = Gold
                             )
                         )
+                        OutlinedTextField(
+                            value = flashTrustedName,
+                            onValueChange = { flashTrustedName = it.take(32) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Name to show in your chat (optional)") },
+                            placeholder = { Text("e.g. Tunde") },
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = White, unfocusedTextColor = White,
+                                focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF42618B),
+                                focusedLabelColor = AccentBlue, unfocusedLabelColor = Muted,
+                                cursorColor = Gold
+                            )
+                        )
                         Button(
                             onClick = {
-                                if (FlashTrustedSenders.addTrusted(flashContext, flashTrustedNumber)) {
+                                if (FlashTrustedSenders.addTrusted(flashContext, flashTrustedNumber, flashTrustedName)) {
                                     flashTrustedCount = FlashTrustedSenders.trustedCount(flashContext)
                                     flashTrustedNumber = ""
-                                    flashSenderNotice = "Sender paired on this phone. Only calls matching this saved fingerprint can form Flash signals."
+                                    flashTrustedName = ""
+                                    flashSenderNotice = "Sender paired. Their chosen name will label their Flash chat; only a salted number fingerprint is stored."
                                 } else {
                                     flashSenderNotice = "Enter a valid phone number with at least 7 digits."
                                 }
