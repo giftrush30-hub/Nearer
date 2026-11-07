@@ -26,8 +26,8 @@ object LudoDoubleDiceEngine {
         if (state.game.isFinished || state.turn != null) return state
         val pair = LudoDicePair(random.nextInt(1, 7), random.nextInt(1, 7))
         val turn = LudoTwoDiceTurn(pair)
-        val playable = LudoTwoDiceRules.playableDice(state.game.activePlayer, turn)
-        if (playable.isEmpty()) {
+        val playable = LudoTwoDiceRules.playableDice(state.game.activePlayer, turn).filterTo(linkedSetOf()) { it != LudoDieSlot.BOTH }
+        if (playable.isEmpty() && LudoDieSlot.BOTH !in LudoTwoDiceRules.playableDice(state.game.activePlayer, turn)) {
             val doubleBonus = pair.isDoubleSix
             val nextIndex = if (doubleBonus) state.game.activePlayerIndex
                 else (state.game.activePlayerIndex + 1) % state.game.players.size
@@ -105,7 +105,7 @@ object LudoDoubleDiceEngine {
             turnNumber = state.game.turnNumber
         )
         val afterDie = turn.copy(
-            remaining = turn.remaining - slot,
+            remaining = if (slot == LudoDieSlot.BOTH) emptySet() else turn.remaining - slot,
             selected = null
         )
         val playableRemaining = LudoTwoDiceRules.playableDice(
