@@ -2731,6 +2731,7 @@ private fun NeaRerHome(
 ) {
     val flashContext = androidx.compose.ui.platform.LocalContext.current
     var flashRecipientNumber by remember { mutableStateOf("") }
+    var flashCustomMessage by remember { mutableStateOf("") }
     var flashPresetName by remember { mutableStateOf("PING") }
     var flashCallStep by remember { mutableStateOf(0) }
     var flashSenderNotice by remember { mutableStateOf("Choose a signal and enter the recipient's phone number.") }
@@ -4064,6 +4065,64 @@ private fun NeaRerHome(
                                     color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
                                 )
                                 Text("The sender chooses a signal; the receiver does not need to select anything. NeaRer recognises the incoming-call timing and turns it into a normal chat message, without SMS or mobile data.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                            }
+                        }
+                        Surface(
+                            color = Color(0xFF0A203D),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, Color(0xFF31527A)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("TYPE ANY MESSAGE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                                Text(
+                                    "Send your own words as a real chat message over NeaRer’s offline nearby connection. This uses Bluetooth / nearby Wi-Fi—not the phone-call Flash signal.",
+                                    color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                                )
+                                OutlinedTextField(
+                                    value = flashCustomMessage,
+                                    onValueChange = { flashCustomMessage = it.take(1000) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    minLines = 2,
+                                    maxLines = 4,
+                                    label = { Text("Write your message") },
+                                    placeholder = { Text("Type anything you want…") },
+                                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = White, unfocusedTextColor = White,
+                                        focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF42618B),
+                                        focusedLabelColor = AccentBlue, unfocusedLabelColor = Muted,
+                                        cursorColor = Gold
+                                    )
+                                )
+                                Button(
+                                    onClick = {
+                                        val message = flashCustomMessage.trim()
+                                        if (message.isNotEmpty() && chatReady) {
+                                            onSendMessage(message)
+                                            flashCustomMessage = ""
+                                        }
+                                    },
+                                    enabled = chatReady && flashCustomMessage.isNotBlank(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Gold,
+                                        contentColor = Midnight,
+                                        disabledContainerColor = Color(0xFF33445C),
+                                        disabledContentColor = Muted
+                                    )
+                                ) {
+                                    Text(
+                                        if (chatReady) "SEND CUSTOM CHAT MESSAGE" else "CONNECT NEARBY TO SEND",
+                                        fontSize = 10.sp, fontWeight = FontWeight.Black
+                                    )
+                                }
+                                Text(
+                                    if (chatReady) "Connected • ${connectedDeviceName ?: "nearby contact"} • offline delivery ready"
+                                    else "Not connected • your text stays in this box until a nearby connection is ready",
+                                    color = if (chatReady) Color(0xFF8DDBB0) else Muted,
+                                    fontSize = 9.sp
+                                )
                             }
                         }
                         Text("SEND A FLASH SIGNAL", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
