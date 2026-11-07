@@ -11,7 +11,7 @@ import java.net.URL
 class OpenSendHttpServerTest {
     @Test
     fun landingPageRequiresSessionTokenAndListsSharedFile() {
-        val folder = createTempDir(prefix = "nearer-opensend-test")
+        val folder = kotlin.io.path.createTempDirectory(prefix = "nearer-opensend-test").toFile()
         val file = File(folder, "lecture.pdf").apply { writeText("sample lecture") }
         val server = OpenSendHttpServer(
             listOf(OpenSendFile(id = "lecture", displayName = "Lecture.pdf", file = file)),
@@ -33,7 +33,7 @@ class OpenSendHttpServerTest {
 
     @Test
     fun downloadSupportsByteRangeForResume() {
-        val folder = createTempDir(prefix = "nearer-opensend-range")
+        val folder = kotlin.io.path.createTempDirectory(prefix = "nearer-opensend-range").toFile()
         val bytes = "0123456789abcdefghijklmnopqrstuvwxyz".toByteArray()
         val file = File(folder, "sample.bin").apply { writeBytes(bytes) }
         val server = OpenSendHttpServer(
@@ -57,7 +57,7 @@ class OpenSendHttpServerTest {
 
     @Test
     fun suffixRangeReturnsLastBytesAndUnsatisfiableRangeReturns416() {
-        val folder = createTempDir(prefix = "nearer-opensend-suffix")
+        val folder = kotlin.io.path.createTempDirectory(prefix = "nearer-opensend-suffix").toFile()
         val bytes = "abcdefghij".toByteArray()
         val file = File(folder, "sample.bin").apply { writeBytes(bytes) }
         val server = OpenSendHttpServer(
@@ -94,7 +94,7 @@ class OpenSendHttpServerTest {
 
     @Test
     fun headRequestReturnsFileHeadersWithoutBody() {
-        val folder = createTempDir(prefix = "nearer-opensend-head")
+        val folder = kotlin.io.path.createTempDirectory(prefix = "nearer-opensend-head").toFile()
         val file = File(folder, "sample.txt").apply { writeText("hello world") }
         val server = OpenSendHttpServer(
             listOf(OpenSendFile(id = "head", displayName = "sample.txt", file = file, mimeType = "text/plain")),
@@ -129,7 +129,7 @@ class OpenSendHttpServerTest {
 
     @Test
     fun unknownFileIdReturns404AndWrongTokenReturns403() {
-        val folder = createTempDir(prefix = "nearer-opensend-deny")
+        val folder = kotlin.io.path.createTempDirectory(prefix = "nearer-opensend-deny").toFile()
         val file = File(folder, "visible.txt").apply { writeText("visible") }
         val server = OpenSendHttpServer(
             listOf(OpenSendFile(id = "known", displayName = "visible.txt", file = file)),
@@ -154,7 +154,7 @@ class OpenSendHttpServerTest {
 
     @Test
     fun emptyFileCanBeDownloadedWithZeroLengthAndNoRange() {
-        val folder = createTempDir(prefix = "nearer-opensend-empty")
+        val folder = kotlin.io.path.createTempDirectory(prefix = "nearer-opensend-empty").toFile()
         val file = File(folder, "empty.txt").apply { writeBytes(ByteArray(0)) }
         val server = OpenSendHttpServer(
             listOf(OpenSendFile(id = "empty", displayName = "empty.txt", file = file)),
@@ -176,7 +176,7 @@ class OpenSendHttpServerTest {
 
     @Test
     fun closingServerRevokesPreviouslyValidShareLink() {
-        val folder = createTempDir(prefix = "nearer-opensend-revoke")
+        val folder = kotlin.io.path.createTempDirectory(prefix = "nearer-opensend-revoke").toFile()
         val file = File(folder, "private.txt").apply { writeText("private") }
         val server = OpenSendHttpServer(
             listOf(OpenSendFile(id = "private", displayName = "private.txt", file = file)),
