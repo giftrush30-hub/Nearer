@@ -49,4 +49,8 @@ class ByteRangeTest {
     @Test fun unsupportedRangeUnitReturnsWholeFile() {
         assertEquals(ResolvedByteRange(0, 9, false), ByteRange.resolve("items=2-4", 10))
     }
+
+    @Test fun emptyFileWithoutRangeHasZeroLengthRepresentation() {
+        assertEquals(ResolvedByteRange(0, -1, false), ByteRange.resolve(null, 0))
+    }
 }
