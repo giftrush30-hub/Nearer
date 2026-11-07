@@ -2931,13 +2931,22 @@ private fun NeaRerHome(
     var isLoadingApps by remember { mutableStateOf(false) }
     var appShareNotice by remember { mutableStateOf<String?>(null) }
     var isPreparingApp by remember { mutableStateOf(false) }
-    var phoneFolderTreeUri by remember { mutableStateOf<Uri?>(null) }
+    var phoneFolderTreeUri by remember {
+        mutableStateOf(flashContext.getSharedPreferences("nearer_folder_browser", Context.MODE_PRIVATE)
+            .getString("tree_uri", null)?.let(Uri::parse))
+    }
     var showPhoneFolderBrowser by remember { mutableStateOf(false) }
+    val openPhoneFolderBrowser = {
+        if (phoneFolderTreeUri != null) showPhoneFolderBrowser = true
+        else phoneFolderPicker.launch(null)
+    }
     val phoneFolderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             try {
                 flashContext.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 phoneFolderTreeUri = uri
+                flashContext.getSharedPreferences("nearer_folder_browser", Context.MODE_PRIVATE)
+                    .edit().putString("tree_uri", uri.toString()).apply()
                 showPhoneFolderBrowser = true
             } catch (e: SecurityException) {
                 appShareNotice = "NeaRer could not keep access to that folder. Please choose it again."
@@ -2969,7 +2978,7 @@ private fun NeaRerHome(
                                 "media" -> filePicker.launch(arrayOf("image/*", "video/*"))
                                 "docs" -> filePicker.launch(arrayOf("application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "*/*"))
                                 "audio" -> filePicker.launch(arrayOf("audio/*"))
-                                "folders" -> phoneFolderPicker.launch(null)
+                                "folders" -> openPhoneFolderBrowser()
                                 "apps" -> {
                                     showInstalledApps = true
                                     isLoadingApps = true
