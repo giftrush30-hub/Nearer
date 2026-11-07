@@ -604,7 +604,7 @@ class MainActivity : ComponentActivity() {
                     chatNotice = chatNotice,
                     receivedFiles = receivedFiles,
                     sentFiles = sentFiles,
-                    onSendMessage = ::sendChatMessage,
+                    onSendMessage = { message, onSaved -> sendChatMessage(message, onSaved) },
                     onSelectConversation = { peerId, peerName ->
                         val connectedPeerId = connectedChatPeerId
                         activeChatPeerId = peerId
@@ -1716,9 +1716,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun persistOutgoingMessageThenDeliver(message: ChatMessage) {
+    private fun persistOutgoingMessageThenDeliver(message: ChatMessage, onSaved: (Boolean) -> Unit) {
         val snapshot = try { serializeChatMessages() } catch (_: Exception) {
             chatNotice = "NeaRer could not prepare your message for saving. It has not been sent."
+            onSaved(false)
             return
         }
         pendingOutgoingMessageSaves.add(message.id)
@@ -1733,11 +1734,13 @@ class MainActivity : ComponentActivity() {
                     val failedIndex = chatMessages.indexOfFirst { it.id == message.id && it.outgoing }
                     if (failedIndex >= 0) chatMessages[failedIndex] = chatMessages[failedIndex].copy(delivery = "Save failed")
                     chatNotice = "NeaRer could not save this message, so it was not sent. Please copy it and try again."
+                    onSaved(false)
                     return@runOnUiThread
                 }
                 val index = chatMessages.indexOfFirst { it.id == message.id && it.outgoing }
                 if (index < 0) return@runOnUiThread
                 val current = chatMessages[index]
+                onSaved(true)
                 if (!chatReady) {
                     chatNotice = "Saved on this phone • waiting for your next nearby connection. Not delivered yet."
                     return@runOnUiThread
@@ -1752,7 +1755,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun sendChatMessage(rawText: String) {
+    private fun sendChatMessage(rawText: String, onSaved: (Boolean) -> Unit = {}) {
         val body = rawText.trim()
         if (body.isEmpty()) return
         val message = ChatMessage(
@@ -1763,7 +1766,7 @@ class MainActivity : ComponentActivity() {
             conversationName = activeChatPeerName
         )
         chatMessages.add(message)
-        persistOutgoingMessageThenDeliver(message)
+        persistOutgoingMessageThenDeliver(message, onSaved)
     }
 
 
@@ -2749,7 +2752,7 @@ private fun NeaRerHome(
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
     sentFiles: List<SentFile>,
-    onSendMessage: (String) -> Unit,
+    onSendMessage: (String, (Boolean) -> Unit) -> Unit,
     onSelectConversation: (String, String) -> Unit,
     isRecordingVoiceNote: Boolean,
     onVoiceNoteAction: () -> Unit,
@@ -4185,8 +4188,9 @@ private fun NeaRerHome(
                                     onClick = {
                                         val message = flashCustomMessage.trim()
                                         if (message.isNotEmpty() && chatReady) {
-                                            onSendMessage(message)
-                                            flashCustomMessage = ""
+                                            onSendMessage(message) { saved ->
+                                                if (saved) flashCustomMessage = ""
+                                            }
                                         }
                                     },
                                     enabled = chatReady && flashCustomMessage.isNotBlank(),
@@ -4908,9 +4912,13 @@ private fun NeaRerHome(
                             )
                             Surface(
                                 modifier = Modifier.size(48.dp).clickable(enabled = draft.isNotBlank()) {
-                                    onSendMessage(draft.trim())
-                                    draft = ""
-                                    localChatPrefs.edit().remove("chat_draft").apply()
+                                    val submittedDraft = draft.trim()
+                                    onSendMessage(submittedDraft) { saved ->
+                                        if (saved && draft.trim() == submittedDraft) {
+                                            draft = ""
+                                            localChatPrefs.edit().remove("chat_draft").apply()
+                                        }
+                                    }
                                 },
                                 shape = CircleShape,
                                 color = if (draft.isNotBlank()) BrandBlue else Color(0xFF24436D)
