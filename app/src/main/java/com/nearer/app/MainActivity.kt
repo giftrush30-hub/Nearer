@@ -368,12 +368,39 @@ class MainActivity : ComponentActivity() {
                 }
             }
             override fun onMessage(id: String, senderName: String, senderStableId: String, body: String) {
+                // Compatibility path for older NeaRer builds that do not preserve message IDs.
                 runOnUiThread {
                     if (body.startsWith("NR_COMMUNITY:")) handleCommunityPacket(senderName, senderStableId, body.removePrefix("NR_COMMUNITY:"))
                     else {
-                        chatMessages.add(ChatMessage("hybrid-" + System.currentTimeMillis(), body, outgoing = false, delivery = "Received"))
+                        chatMessages.add(ChatMessage("legacy-" + System.currentTimeMillis(), body, outgoing = false, delivery = "Received"))
                         persistMessages()
                         chatNotice = "New offline message received from $senderName."
+                    }
+                }
+            }
+            override fun onMessageWithId(id: String, senderName: String, senderStableId: String, messageId: String, body: String) {
+                runOnUiThread {
+                    if (body.startsWith("NR_COMMUNITY:")) {
+                        handleCommunityPacket(senderName, senderStableId, body.removePrefix("NR_COMMUNITY:"))
+                    } else {
+                        if (receivedMessageIds.add(messageId)) {
+                            chatMessages.add(ChatMessage(messageId, body, outgoing = false, delivery = "Received"))
+                            persistMessages()
+                            chatNotice = "Message received and saved from $senderName."
+                        }
+                        // Re-send the receipt for duplicates too, so a lost ACK does not
+                        // leave the sender stuck on "Sent" after the message was saved.
+                        nearbyTransport?.sendDeliveryAck(id, messageId)
+                    }
+                }
+            }
+            override fun onDeliveryAck(id: String, messageId: String) {
+                runOnUiThread {
+                    val index = chatMessages.indexOfFirst { it.id == messageId && it.outgoing }
+                    if (index >= 0 && chatMessages[index].delivery != "Delivered") {
+                        chatMessages[index] = chatMessages[index].copy(delivery = "Delivered")
+                        persistMessages()
+                        chatNotice = "Your message was delivered and saved on the other phone."
                     }
                 }
             }
@@ -1251,7 +1278,7 @@ class MainActivity : ComponentActivity() {
         if (!chatReady) return false
         val sent = if (hybridConnected) {
             val endpoint = hybridConnectedEndpoint
-            !endpoint.isNullOrBlank() && nearbyTransport?.sendToEndpoint(endpoint, message.body) == true
+            !endpoint.isNullOrBlank() && nearbyTransport?.sendChatToEndpoint(endpoint, message.id, message.body) == true
         } else {
             val encoded = Base64.getEncoder().encodeToString(message.body.toByteArray(Charsets.UTF_8))
             sendWireLine("MSG|${message.id}|$encoded")
