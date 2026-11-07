@@ -4187,13 +4187,13 @@ private fun NeaRerHome(
                                 Button(
                                     onClick = {
                                         val message = flashCustomMessage.trim()
-                                        if (message.isNotEmpty() && chatReady) {
+                                        if (message.isNotEmpty()) {
                                             onSendMessage(message) { saved ->
-                                                if (saved) flashCustomMessage = ""
+                                                if (saved && flashCustomMessage.trim() == message) flashCustomMessage = ""
                                             }
                                         }
                                     },
-                                    enabled = chatReady && flashCustomMessage.isNotBlank(),
+                                    enabled = flashCustomMessage.isNotBlank(),
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
@@ -4204,7 +4204,7 @@ private fun NeaRerHome(
                                     )
                                 ) {
                                     Text(
-                                        if (chatReady) "SEND CUSTOM CHAT MESSAGE" else "CONNECT NEARBY TO SEND",
+                                        if (chatReady) "SEND CUSTOM CHAT MESSAGE" else "SAVE UNTIL NEARBY CONNECTION",
                                         fontSize = 10.sp, fontWeight = FontWeight.Black
                                     )
                                 }
