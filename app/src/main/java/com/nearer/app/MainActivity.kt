@@ -1230,7 +1230,7 @@ class MainActivity : ComponentActivity() {
         try {
             val folder = File(filesDir, "voice_notes").apply { if (!exists()) mkdirs() }
             val output = File(folder, "NeaRer-voice-${System.currentTimeMillis()}.m4a")
-            val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(this) else @Suppress("DEPRECATION") MediaRecorder()
+            @Suppress("DEPRECATION") val recorder = MediaRecorder()
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
             recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
