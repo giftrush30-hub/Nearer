@@ -431,6 +431,13 @@ class MainActivity : ComponentActivity() {
                         incomingRateSampleAt = 0L
                         incomingRateSampleBytes = 0L
                     }
+                    if (message.startsWith("File sent to the nearby phone") ||
+                        message.startsWith("Nearby file transfer failed") ||
+                        message.startsWith("Nearby file transfer cancelled") ||
+                        message.startsWith("Could not start file transfer") ||
+                        message.startsWith("File could not be prepared")) {
+                        flushPendingChatFiles()
+                    }
                 }
             }
         })
@@ -892,6 +899,8 @@ class MainActivity : ComponentActivity() {
                         connectionMessage = "NeaRer connection approved"
                         chatNotice = "Connected directly to $name. Say hello."
                         statusMessage = "You approved $name. Private chat is ready."
+                        flushQueuedChatMessages()
+                        flushPendingChatFiles()
                     }
                     startMessageReader(socket)
                 } else {
@@ -954,6 +963,8 @@ class MainActivity : ComponentActivity() {
                             connectionMessage = "NeaRer connection approved"
                             chatNotice = "Connected directly to the other phone. Say hello."
                             statusMessage = "Connection approved. Private chat is ready."
+                            flushQueuedChatMessages()
+                            flushPendingChatFiles()
                         }
                         startMessageReader(socket)
                     }
@@ -1174,7 +1185,9 @@ class MainActivity : ComponentActivity() {
 
     private fun flushQueuedChatMessages() {
         if (!chatReady) return
-        chatMessages.filter { it.outgoing && it.delivery == "Queued" }.forEach { message ->
+        val queuedMessages = chatMessages.filter { it.outgoing && it.delivery == "Queued" }
+        if (queuedMessages.isEmpty()) return
+        queuedMessages.forEach { message ->
             if (!deliverQueuedChatMessage(message)) {
                 chatNotice = "Your message is saved on this phone. It is still waiting for a working nearby connection."
                 return
@@ -3772,7 +3785,7 @@ private fun NeaRerHome(
                         }
                         Column(Modifier.weight(1f).padding(start = 11.dp)) {
                             Text(connectedDeviceName ?: "PRIVATE CHAT", color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Text(if (chatReady) "DIRECT • OFFLINE • PRIVATE" else "CONNECT TO A NEARBY PHONE",
+                            Text(if (chatReady) "DIRECT • OFFLINE • PRIVATE" else "OFFLINE • CHAT IS READY",
                                 color = if (chatReady) Color(0xFF8CE4C8) else Muted,
                                 fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 0.7.sp)
                         }
@@ -3931,9 +3944,9 @@ private fun NeaRerHome(
                                     Text("✉", color = Gold, fontSize = 32.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
-                            Text("Your next conversation starts nearby.", color = White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("Your chat is ready. No connection needed to open it.", color = White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
                             Text(
-                                "NeaRer connects phones directly. No account, mobile data or cloud chat server is needed for this local conversation.",
+                                "Write messages, keep drafts and prepare files now. They stay saved on this phone until you choose or connect to someone nearby.",
                                 color = Muted, fontSize = 11.sp, lineHeight = 17.sp
                             )
                         }
