@@ -564,6 +564,12 @@ class MainActivity : ComponentActivity() {
                     OpenSendFile(displayName = displayName, file = target, mimeType = mime)
                 }
                 runOnUiThread {
+                    try {
+                        OpenSendForegroundService.start(this)
+                    } catch (error: Exception) {
+                        openSendNotice = "Android could not keep OpenSend active in the background: \${error.localizedMessage ?: "foreground service unavailable"}"
+                        return@runOnUiThread
+                    }
                     val manager = OpenSendSessionManager(this)
                     openSendManager = manager
                     manager.start(files, onReady = { session ->
@@ -635,6 +641,7 @@ class MainActivity : ComponentActivity() {
         try { openSendManager?.close() } catch (_: Exception) { }
         openSendManager = null
         openSendSession = null
+        OpenSendForegroundService.stop(this)
         File(cacheDir, "opensend").deleteRecursively()
         openSendNotice = "Sharing stopped. The temporary download address is no longer available."
     }
