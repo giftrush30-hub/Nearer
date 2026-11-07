@@ -1177,12 +1177,6 @@ class MainActivity : ComponentActivity() {
                 for (i in 0 until queued.length()) pendingChatFileUris.add(queued.getString(i))
             } catch (_: Exception) { pendingChatFileUris.clear() }
         }
-        val folder = File(filesDir, "received")
-        if (folder.exists()) {
-            folder.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }?.forEach {
-                receivedFiles.add(ReceivedFile(it.name.substringAfter('-', it.name), it))
-            }
-        }
     }
 
     private fun persistPendingChatFiles() {
