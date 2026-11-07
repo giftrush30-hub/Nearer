@@ -658,6 +658,7 @@ class MainActivity : ComponentActivity() {
                     devices = nearbyDevices,
                     connectingAddress = connectingAddress,
                     connectedDeviceName = connectedDeviceName,
+                    connectedNearbyEndpoint = hybridConnectedEndpoint,
                     connectionMessage = connectionMessage,
                     incomingRequesterName = incomingRequesterName,
                     approvalMessage = approvalMessage,
@@ -3045,6 +3046,7 @@ private fun NeaRerHome(
     devices: List<WifiP2pDevice>,
     connectingAddress: String?,
     connectedDeviceName: String?,
+    connectedNearbyEndpoint: String?,
     connectionMessage: String,
     incomingRequesterName: String?,
     approvalMessage: String,
@@ -5624,7 +5626,8 @@ private fun NeaRerHome(
                                 ) {
                                     Text(
                                         when {
-                                            chatReady -> "CONNECTED"
+                                            connectedNearbyEndpoint == id -> "CONNECTED"
+                                            chatReady -> "IN ANOTHER CHAT"
                                             isConnecting -> "CONNECTING…"
                                             else -> "CONNECT"
                                         },
