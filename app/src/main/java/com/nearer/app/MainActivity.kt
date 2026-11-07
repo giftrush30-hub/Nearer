@@ -171,6 +171,8 @@ class MainActivity : ComponentActivity() {
     private var peerWriter: PrintWriter? = null
     private val writerLock = Any()
     private val receivedMessageIds = ConcurrentHashMap.newKeySet<String>()
+    private val persistedMessageIds = ConcurrentHashMap.newKeySet<String>()
+    private val messagePersistence = Executors.newSingleThreadExecutor()
     private val io = Executors.newCachedThreadPool()
     private val approvalDecision = LinkedBlockingQueue<Boolean>()
     private val chatMessages = mutableStateListOf<ChatMessage>()
@@ -410,12 +412,12 @@ class MainActivity : ComponentActivity() {
                                 conversationId = senderStableId.ifBlank { "nearby:$id" },
                                 conversationName = senderName
                             ))
-                            persistMessages()
-                            chatNotice = "Message received and saved from $senderName."
+                            chatNotice = "Saving message from $senderName before confirming delivery…"
+                            persistReceivedMessageThenAcknowledge(messageId, nearbyEndpointId = id)
+                        } else if (persistedMessageIds.contains(messageId)) {
+                            // Re-send receipts for already-saved duplicates if an earlier ACK was lost.
+                            nearbyTransport?.sendDeliveryAck(id, messageId)
                         }
-                        // Re-send the receipt for duplicates too, so a lost ACK does not
-                        // leave the sender stuck on "Sent" after the message was saved.
-                        nearbyTransport?.sendDeliveryAck(id, messageId)
                     }
                 }
             }
@@ -1283,7 +1285,10 @@ class MainActivity : ComponentActivity() {
                         conversationName = item.optString("conversationName", "Previous chat")
                     )
                     chatMessages.add(message)
-                    if (!message.outgoing) receivedMessageIds.add(message.id)
+                    if (!message.outgoing) {
+                        receivedMessageIds.add(message.id)
+                        persistedMessageIds.add(message.id)
+                    }
                 }
             } catch (_: Exception) {
                 chatMessages.clear()
@@ -1320,6 +1325,38 @@ class MainActivity : ComponentActivity() {
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .edit().putString("messages", array.toString()).apply()
         } catch (_: Exception) { }
+    }
+
+    private fun persistReceivedMessageThenAcknowledge(messageId: String, nearbyEndpointId: String? = null, socket: Socket? = null) {
+        val array = JSONArray()
+        chatMessages.takeLast(500).forEach { message ->
+            array.put(JSONObject()
+                .put("id", message.id)
+                .put("body", message.body)
+                .put("outgoing", message.outgoing)
+                .put("delivery", message.delivery)
+                .put("timestamp", message.timestamp)
+                .put("conversationId", message.conversationId)
+                .put("conversationName", message.conversationName))
+        }
+        val snapshot = array.toString()
+        messagePersistence.execute {
+            val saved = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .edit().putString("messages", snapshot).commit()
+            if (saved) persistedMessageIds.add(messageId)
+            runOnUiThread {
+                if (saved) {
+                    nearbyEndpointId?.let { nearbyTransport?.sendDeliveryAck(it, messageId) }
+                    socket?.let { source ->
+                        synchronized(writerLock) {
+                            if (peerSocket === source) peerWriter?.println("ACK|$messageId")
+                        }
+                    }
+                } else {
+                    chatNotice = "Message received, but NeaRer could not confirm it was saved. Please keep the connection open and retry."
+                }
+            }
+        }
     }
 
     private fun sha256(file: File): String {
@@ -2216,15 +2253,18 @@ class MainActivity : ComponentActivity() {
                                 if (body.isNotBlank() && receivedMessageIds.add(id)) {
                                     runOnUiThread {
                                         chatMessages.add(ChatMessage(
-                                    id, body, outgoing = false, delivery = "Received",
-                                    conversationId = connectedChatPeerId ?: activeChatPeerId,
-                                    conversationName = connectedChatPeerName ?: activeChatPeerName
-                                ))
-                                        persistMessages()
-                                        chatNotice = "New message received directly."
+                                            id, body, outgoing = false, delivery = "Received",
+                                            conversationId = connectedChatPeerId ?: activeChatPeerId,
+                                            conversationName = connectedChatPeerName ?: activeChatPeerName
+                                        ))
+                                        chatNotice = "Saving your received message before confirming delivery…"
+                                        persistReceivedMessageThenAcknowledge(id, socket = socket)
+                                    }
+                                } else if (body.isNotBlank() && persistedMessageIds.contains(id)) {
+                                    synchronized(writerLock) {
+                                        if (peerSocket === socket) peerWriter?.println("ACK|$id")
                                     }
                                 }
-                                synchronized(writerLock) { peerWriter?.println("ACK|$id") }
                             }
                         }
                         line.startsWith("ACK|") -> {
