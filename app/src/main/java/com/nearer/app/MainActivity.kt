@@ -151,6 +151,10 @@ class MainActivity : ComponentActivity() {
     private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
     private var outgoingTransferId by mutableStateOf<String?>(null)
     private var outgoingProgress by mutableStateOf(0f)
+    // Nearby multi-file jobs are sent one file at a time to protect slower phones.
+    private val pendingNearbyFileQueue = java.util.ArrayDeque<Uri>()
+    private var nearbyQueueTotal = 0
+    private var nearbyQueueCompleted = 0
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
@@ -339,6 +343,16 @@ class MainActivity : ComponentActivity() {
                         message.startsWith("File could not be prepared")) {
                         outgoingTransferId = null
                         outgoingProgress = 0f
+                        if (message.startsWith("File sent to the nearby phone")) {
+                            nearbyQueueCompleted += 1
+                            if (nearbyQueueTotal > 0) startNextNearbyQueuedFile()
+                        } else if (nearbyQueueTotal > 0) {
+                            val remaining = pendingNearbyFileQueue.size
+                            pendingNearbyFileQueue.clear()
+                            nearbyQueueTotal = 0
+                            nearbyQueueCompleted = 0
+                            chatNotice = message + " Remaining files were not sent (" + remaining + " still queued)."
+                        }
                     }
                     if (message.startsWith("Nearby file transfer failed")) {
                         incomingTransferName = null
@@ -411,7 +425,7 @@ class MainActivity : ComponentActivity() {
                     onGameChat = ::sendGameChat,
                     onGameRematch = ::requestGameRematch,
                     onEndGame = ::endGame,
-                    onSendFile = ::sendFile,
+                    onSendFiles = ::sendFiles,
                     onCancelTransfer = ::cancelOutgoingFileTransfer,
                     outgoingTransferId = outgoingTransferId,
                     outgoingProgress = outgoingProgress,
@@ -1600,12 +1614,80 @@ class MainActivity : ComponentActivity() {
             if (payloadId != null && endpoint != null) nearbyTransport?.cancelFile(payloadId)
             outgoingTransferId = null
             outgoingProgress = 0f
-            chatNotice = "Cancelling nearby file transfer…"
+            val discarded = pendingNearbyFileQueue.size
+            pendingNearbyFileQueue.clear()
+            nearbyQueueTotal = 0
+            nearbyQueueCompleted = 0
+            chatNotice = if (discarded > 0) "Transfer cancelled. " + discarded + " queued files were not sent." else "Cancelling nearby file transfer…"
             return
         }
         cancelledOutgoingTransfers.add(id)
         sendWireLine("FILE_CANCEL|$id")
         chatNotice = "Cancelling file transfer…"
+    }
+
+    private fun sendFiles(uris: List<Uri>) {
+        val selected = uris.distinct()
+        if (selected.isEmpty()) return
+        if (!hybridConnected) {
+            if (selected.size == 1) sendFile(selected.first())
+            else chatNotice = "Connect with Nearby Connections to send several files together. For this connection, select one file at a time."
+            return
+        }
+        if (outgoingTransferId != null || pendingNearbyFileQueue.isNotEmpty()) {
+            chatNotice = "Finish or cancel the current transfer job first."
+            return
+        }
+        selected.forEach { uri ->
+            try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            catch (_: Exception) { /* Some providers grant temporary access only. */ }
+            pendingNearbyFileQueue.addLast(uri)
+        }
+        nearbyQueueTotal = pendingNearbyFileQueue.size
+        nearbyQueueCompleted = 0
+        chatNotice = "Preparing " + nearbyQueueTotal + " files for one transfer job…"
+        startNextNearbyQueuedFile()
+    }
+
+    private fun startNextNearbyQueuedFile() {
+        if (outgoingTransferId != null) return
+        val uri = pendingNearbyFileQueue.pollFirst()
+        if (uri == null) {
+            val total = nearbyQueueTotal
+            val completed = nearbyQueueCompleted
+            nearbyQueueTotal = 0
+            nearbyQueueCompleted = 0
+            if (total > 0) chatNotice = "Transfer job finished: " + completed + " of " + total + " files sent."
+            return
+        }
+        val endpoint = hybridConnectedEndpoint
+        if (!hybridConnected || endpoint == null) {
+            pendingNearbyFileQueue.clear()
+            nearbyQueueTotal = 0
+            nearbyQueueCompleted = 0
+            chatNotice = "Connection lost. Reconnect before starting another file."
+            return
+        }
+        var fileName = "shared-file"
+        try {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (index >= 0) fileName = cursor.getString(index) ?: fileName
+                }
+            }
+        } catch (_: Exception) { }
+        val payloadId = nearbyTransport?.sendFile(endpoint, uri, fileName)
+        if (payloadId != null) {
+            outgoingTransferId = "nearby:" + payloadId
+            outgoingProgress = 0f
+            chatNotice = "Sending file " + (nearbyQueueCompleted + 1) + " of " + nearbyQueueTotal + ": " + fileName + "…"
+        } else {
+            pendingNearbyFileQueue.clear()
+            nearbyQueueTotal = 0
+            nearbyQueueCompleted = 0
+            chatNotice = "Could not start " + fileName + ". The remaining files were not sent."
+        }
     }
 
     private fun sendFile(uri: Uri) {
@@ -1948,7 +2030,7 @@ private fun NeaRerHome(
     onGameChat: (String) -> Unit,
     onGameRematch: () -> Unit,
     onEndGame: () -> Unit,
-    onSendFile: (Uri) -> Unit,
+    onSendFiles: (List<Uri>) -> Unit,
     onCancelTransfer: () -> Unit,
     outgoingTransferId: String?,
     outgoingProgress: Float,
@@ -1999,8 +2081,8 @@ private fun NeaRerHome(
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onSendFile(uri)
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) onSendFiles(uris)
     }
     // Native Android sharing allows Bluetooth/Quick Share recipients without NeaRer.
     val anyPhonePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -2313,7 +2395,7 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)
-                        ) { Text("Share a photo or file") }
+                        ) { Text("Share photos or files") }
                         Text(if (usingNearbyConnections) "Nearby Connections • no fixed file-size cap" else "Wi-Fi Direct • no fixed file-size cap", color = Muted, fontSize = 10.sp)
                     } else {
                         Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
