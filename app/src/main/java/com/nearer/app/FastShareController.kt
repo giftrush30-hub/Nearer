@@ -366,10 +366,11 @@ private class FastShareHttpServer(
                     input = source,
                     output = output,
                     shouldContinue = { running },
-                    onBytesCopied = { copied -> sent = copied }
-                ) { copied ->
-                    onTransferUpdate(copied, -1L, false, false, false)
-                }
+                    onBytesCopied = { copied -> sent = copied },
+                    onProgress = { copied ->
+                        onTransferUpdate(copied, -1L, false, false, false)
+                    }
+                )
                 sent = result.bytesCopied
                 onTransferUpdate(sent, -1L, result.complete, !result.complete, false)
             } catch (error: Exception) {
