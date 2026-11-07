@@ -55,6 +55,8 @@ fun NeaRerShareHub(
     val filteredApps = remember(apps, search) {
         apps.filter { it.label.contains(search, true) || it.packageName.contains(search, true) }
     }
+    val selectedApps = apps.filter { it.packageName in selected }
+    val canSendToAnyAndroidPhone = selectedApps.isNotEmpty() && selectedApps.all { it.packageFiles.size == 1 }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Surface(shape = RoundedCornerShape(24.dp), color = SharePanel, modifier = Modifier.fillMaxWidth()) {
@@ -92,7 +94,7 @@ fun NeaRerShareHub(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("OPENSEND • NO APP REQUIRED", color = ShareGold, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                 Text("Let any phone receive your files.", color = ShareWhite, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                Text("NeaRer creates a temporary local Wi-Fi network and a private download page. The receiver joins the network and opens the link in their browser. No mobile data is needed.", color = ShareMuted, fontSize = 12.sp, lineHeight = 18.sp)
+                Text("NeaRer creates a temporary local Wi-Fi network and a private download page. The receiver joins the network and opens the link in their browser. No mobile data is needed. Android and iPhone can receive ordinary files; only Android can install APK apps.", color = ShareMuted, fontSize = 12.sp, lineHeight = 18.sp)
                 Button(
                     onClick = onPickOpenSendFiles,
                     modifier = Modifier.fillMaxWidth(),
@@ -169,14 +171,18 @@ fun NeaRerShareHub(
                         shape = RoundedCornerShape(13.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = ShareMint, contentColor = ShareMidnight)
                     ) { Text("Send selected apps", fontWeight = FontWeight.Bold) }
+                    if (selectedApps.any { it.packageFiles.size > 1 }) {
+                        Text("One or more selected apps contain split APKs. They can be sent as complete packages to a NeaRer phone, but a phone without NeaRer can install only single-APK apps through this browser flow.", color = ShareGold, fontSize = 10.sp, lineHeight = 15.sp)
+                    }
                     Button(
                         onClick = { onShareAppsToAnyPhone(selected.toList()) },
-                        enabled = selected.isNotEmpty(),
+                        enabled = canSendToAnyAndroidPhone,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(13.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263F61), contentColor = ShareWhite)
                     ) { Text("Share installable APKs with any Android phone", fontWeight = FontWeight.Bold) }
                 }
+                Text("Privacy: when you tap the app-list button, NeaRer reads installed app names and package details on this phone to build the list. The inventory stays on this device unless you choose an app to send. App accounts, chats, passwords and private app data are never copied.", color = ShareMuted, fontSize = 10.sp, lineHeight = 15.sp)
                 if (appNotice.isNotBlank()) Text(appNotice, color = ShareMuted, fontSize = 11.sp)
                 Text("Single-APK apps can be downloaded by phones without NeaRer. Split APK apps need NeaRer on the receiving phone for package-aware installation. Android always asks the receiver to approve installation.", color = ShareMuted, fontSize = 10.sp, lineHeight = 15.sp)
             }
