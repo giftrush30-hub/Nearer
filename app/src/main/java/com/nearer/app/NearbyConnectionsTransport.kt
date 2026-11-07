@@ -63,6 +63,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         @Volatile var awaitingResume: Boolean = false
     )
     private val incomingMetadata = ConcurrentHashMap<Long, FileMeta>()
+    private val incomingPeerIds = ConcurrentHashMap<Long, String>()
     private val incomingPayloads = ConcurrentHashMap<Long, Payload>()
     private val completedPayloads = ConcurrentHashMap<Long, Payload>()
     private val outgoingFiles = ConcurrentHashMap<Long, OutgoingFile>()
@@ -211,9 +212,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             when (payload.type) {
                 Payload.Type.BYTES -> handleBytes(id, payload.asBytes())
                 Payload.Type.FILE -> {
-                    incomingPayloads.put(payload.id, payload)?.let { previous ->
-                        if (previous !== payload) try { previous.close() } catch (_: Exception) { }
-                    }
+                    incomingPayloads[payload.id] = payload
+                    incomingPeerIds[payload.id] = synchronized(names) { stableIds[id].orEmpty() }
                     val meta = incomingMetadata[payload.id]
                     listener.onFileProgress(id, payload.id, meta?.name ?: "Incoming file", 0L, meta?.size ?: -1L, true)
                     processCompletedFile(payload.id)
@@ -252,9 +252,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     outgoing.endpointId = ""
                     listener.onFileStatus("Nearby file transfer paused. Reconnect to the same phone to resume.")
                 } else {
-                    incomingMetadata.remove(payloadId)
-                    completedPayloads.remove(payloadId)?.close()
-                    listener.onFileStatus("Nearby file transfer failed or was cancelled.")
+                    // Keep the incoming payload and metadata: its SDK offset is needed
+                    // by the sender when the same peer reconnects.
+                    listener.onFileStatus("Nearby file transfer paused. Waiting to resume with the same phone.")
                 }
             }
         }
@@ -273,8 +273,21 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     return
                 }
                 incomingMetadata[payloadId] = FileMeta(endpointId, name, size, sha256)
+                incomingPeerIds[payloadId] = synchronized(names) { stableIds[endpointId].orEmpty() }
                 listener.onFileProgress(endpointId, payloadId, name, 0L, size, true)
                 processCompletedFile(payloadId)
+                return
+            }
+            if (envelope.optString("kind") == "file_resume_request") {
+                val payloadId = envelope.optLong("payloadId", -1L)
+                val offset = envelope.optLong("offset", -1L)
+                val outgoing = outgoingFiles[payloadId] ?: return
+                val requesterStableId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                if (!outgoing.awaitingResume || requesterStableId.isBlank() ||
+                    outgoing.stablePeerId != requesterStableId || offset < 0L || offset > outgoing.size) return
+                outgoing.endpointId = endpointId
+                outgoing.awaitingResume = false
+                sendPreparedFile(payloadId, outgoing, offset)
                 return
             }
             val kind = envelope.optString("kind", "message")
@@ -328,6 +341,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         if (!completedPayloads.remove(payloadId, payload)) return
         incomingPayloads.remove(payloadId)
         incomingMetadata.remove(payloadId)
+        incomingPeerIds.remove(payloadId)
+        incomingPeerIds.remove(payloadId)
         fileIo.execute {
             var destination: File? = null
             try {
@@ -557,7 +572,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
-    private fun sendPreparedFile(payloadId: Long, outgoing: OutgoingFile) {
+    private fun sendPreparedFile(payloadId: Long, outgoing: OutgoingFile, resumeOffset: Long = 0L) {
         val endpointId = outgoing.endpointId
         if (endpointId.isBlank() || outgoing.sha256.isBlank()) return
         val metadata = JSONObject().put("kind", "file_meta").put("payloadId", payloadId)
@@ -566,7 +581,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             .addOnSuccessListener {
                 outgoing.metadataReady = true
                 try {
-                    outgoing.payload.setOffset(outgoing.payload.offset)
+                    if (resumeOffset < 0L || resumeOffset > outgoing.size) throw IllegalArgumentException("Invalid resume offset")
+                    outgoing.payload.setOffset(resumeOffset)
                     client.sendPayload(endpointId, outgoing.payload)
                         .addOnSuccessListener { outgoing.awaitingResume = false }
                         .addOnFailureListener {
@@ -591,18 +607,22 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
-    fun resumePendingFilesForPeer(peerStableId: String, endpointId: String): Boolean {
+    fun requestPendingIncomingFilesForPeer(peerStableId: String, endpointId: String): Boolean {
         if (peerStableId.isBlank() || !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) return false
-        val pending = outgoingFiles.values.filter { it.stablePeerId == peerStableId && it.awaitingResume && it.metadataReady }
-        if (pending.isEmpty()) return false
-        pending.forEach { outgoing ->
-            outgoing.endpointId = endpointId
-            outgoing.awaitingResume = false
-            val id = outgoing.payload.id
-            listener.onFileProgress(endpointId, id, outgoing.name, outgoing.payload.offset, outgoing.size, false)
-            sendPreparedFile(id, outgoing)
+        var requested = false
+        incomingMetadata.entries.toList().forEach { (payloadId, meta) ->
+            if (incomingPeerIds[payloadId] != peerStableId) return@forEach
+            val receivedPayload = incomingPayloads[payloadId]
+            val offset = try { receivedPayload?.offset ?: 0L } catch (_: Exception) { 0L }
+            if (offset < 0L || offset > meta.size) return@forEach
+            incomingMetadata[payloadId] = meta.copy(endpointId = endpointId)
+            val request = JSONObject().put("kind", "file_resume_request")
+                .put("payloadId", payloadId).put("offset", offset)
+            client.sendPayload(endpointId, Payload.fromBytes(request.toString().toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener { listener.onFileStatus("Could not request the saved transfer offset. The file will need to restart.") }
+            requested = true
         }
-        return true
+        return requested
     }
 
     fun cancelFile(payloadId: Long) {
