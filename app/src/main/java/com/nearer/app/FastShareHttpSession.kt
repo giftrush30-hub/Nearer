@@ -11,26 +11,22 @@ internal data class FastShareHttpExchange(
 )
 
 /**
- * Reads one raw HTTP/1.x request from a stream and writes protocol-level errors.
+ * Reads one bounded HTTP/1.x request from a stream and writes protocol-level errors.
  * Kept free of Android and sockets so the exact wire contract can be tested.
  */
 internal object FastShareHttpSession {
     private const val MAX_LINE_BYTES = 8192
+    private const val MAX_HEADER_BYTES = 32768
+    private const val MAX_HEADER_COUNT = 100
 
     fun readRequest(input: InputStream, output: OutputStream): FastShareHttpExchange? {
-        val requestLine = readLine(input) ?: return null
-        if (requestLine.overflow) {
-            output.write(FastShareHttpErrors.badRequest())
-            output.flush()
-            return null
+        val requestLine = readLine(input)
+        if (requestLine == null || !requestLine.terminated || requestLine.overflow) {
+            return rejectBadRequest(output)
         }
 
         val request = FastShareHttpRequest.parse(requestLine.value)
-        if (request == null) {
-            output.write(FastShareHttpErrors.badRequest())
-            output.flush()
-            return null
-        }
+            ?: return rejectBadRequest(output)
         if (!request.supportsMethod) {
             output.write(FastShareHttpErrors.methodNotAllowed())
             output.flush()
@@ -43,23 +39,44 @@ internal object FastShareHttpSession {
         }
 
         var rangeHeader: String? = null
+        var headerBytes = 0
+        var headerCount = 0
         while (true) {
-            val header = readLine(input) ?: break
-            if (header.overflow) {
-                output.write(FastShareHttpErrors.badRequest())
-                output.flush()
-                return null
-            }
+            val header = readLine(input) ?: return rejectBadRequest(output)
+            if (!header.terminated || header.overflow) return rejectBadRequest(output)
+
+            headerBytes += header.byteCount + 2
+            if (headerBytes > MAX_HEADER_BYTES) return rejectBadRequest(output)
             if (header.value.isEmpty()) break
+
+            headerCount++
+            if (headerCount > MAX_HEADER_COUNT) return rejectBadRequest(output)
+
             val separator = header.value.indexOf(':')
-            if (separator > 0 && header.value.substring(0, separator).equals("Range", ignoreCase = true)) {
+            if (separator <= 0) return rejectBadRequest(output)
+            val name = header.value.substring(0, separator)
+            if (name.any { !it.isLetterOrDigit() && it !in "!#$%&'*+-.^_`|~" }) {
+                return rejectBadRequest(output)
+            }
+            if (name.equals("Range", ignoreCase = true)) {
                 rangeHeader = header.value.substring(separator + 1).trim()
             }
         }
         return FastShareHttpExchange(request, rangeHeader)
     }
 
-    private data class Line(val value: String, val overflow: Boolean)
+    private fun rejectBadRequest(output: OutputStream): FastShareHttpExchange? {
+        output.write(FastShareHttpErrors.badRequest())
+        output.flush()
+        return null
+    }
+
+    private data class Line(
+        val value: String,
+        val byteCount: Int,
+        val terminated: Boolean,
+        val overflow: Boolean
+    )
 
     private fun readLine(input: InputStream): Line? {
         val bytes = ByteArrayOutputStream()
@@ -73,8 +90,8 @@ internal object FastShareHttpSession {
             }
             if (value != 13) bytes.write(value)
         }
-        if (bytes.size() > MAX_LINE_BYTES) return Line("", true)
+        if (bytes.size() > MAX_LINE_BYTES) return Line("", bytes.size(), false, true)
         if (bytes.size() == 0 && !terminated) return null
-        return Line(bytes.toString("UTF-8"), false)
+        return Line(bytes.toString("UTF-8"), bytes.size(), terminated, false)
     }
 }
