@@ -214,39 +214,14 @@ private class FastShareHttpServer(
             output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
             return
         }
-        var start = 0L
-        var end = fileLength - 1
-        var partial = false
-        if (!rangeHeader.isNullOrBlank() && rangeHeader.startsWith("bytes=")) {
-            val range = rangeHeader.removePrefix("bytes=").substringBefore(',')
-            val bounds = range.split("-", limit = 2)
-            val first = bounds.getOrNull(0)?.toLongOrNull()
-            val last = bounds.getOrNull(1)?.toLongOrNull()
-            when {
-                bounds.size != 2 || (first == null && last == null) -> {
-                    output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$fileLength\r\nContent-Length: 0\r\n\r\n".toByteArray())
-                    return
-                }
-                first == null -> {
-                    val suffixLength = last ?: 0L
-                    if (suffixLength <= 0L || fileLength <= 0L) {
-                        output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$fileLength\r\nContent-Length: 0\r\n\r\n".toByteArray())
-                        return
-                    }
-                    start = (fileLength - suffixLength).coerceAtLeast(0L)
-                }
-                else -> {
-                    start = first
-                    end = last ?: end
-                }
-            }
-            if (start < 0L || start >= fileLength || end < start) {
-                output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$fileLength\r\nContent-Length: 0\r\n\r\n".toByteArray())
-                return
-            }
-            end = minOf(end, fileLength - 1)
-            partial = true
+        val resolvedRange = ByteRange.resolve(rangeHeader, fileLength)
+        if (resolvedRange == null) {
+            output.write("HTTP/1.1 416 Range Not Satisfiable\\r\\nContent-Range: bytes */$fileLength\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n".toByteArray())
+            return
         }
+        val start = resolvedRange.start
+        val end = resolvedRange.endInclusive
+        val partial = resolvedRange.partial
         val count = end - start + 1
         val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
         val statusLine = if (partial) "206 Partial Content" else "200 OK"
