@@ -168,6 +168,7 @@ class MainActivity : ComponentActivity() {
     private val io = Executors.newCachedThreadPool()
     private val approvalDecision = LinkedBlockingQueue<Boolean>()
     private val chatMessages = mutableStateListOf<ChatMessage>()
+    private val pendingChatFileUris = mutableListOf<String>()
     private val communityGroups = mutableStateListOf<CommunityGroup>()
     private val communityMessages = mutableStateListOf<CommunityChatMessage>()
     private var selectedCommunityCode by mutableStateOf<String?>(null)
@@ -343,6 +344,8 @@ class MainActivity : ComponentActivity() {
                     approvalMessage = "Connection approved"
                     chatNotice = "Connected to $name. Offline chat is ready."
                     statusMessage = "Connected to $name using Bluetooth / nearby Wi-Fi."
+                    flushQueuedChatMessages()
+                    flushPendingChatFiles()
                 }
             }
             override fun onDisconnected(id: String, stableId: String, name: String) {
@@ -1094,12 +1097,25 @@ class MainActivity : ComponentActivity() {
                 chatMessages.clear()
             }
         }
+        val pendingFiles = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("pending_chat_files", null)
+        if (!pendingFiles.isNullOrBlank()) {
+            try {
+                val queued = JSONArray(pendingFiles)
+                for (i in 0 until queued.length()) pendingChatFileUris.add(queued.getString(i))
+            } catch (_: Exception) { pendingChatFileUris.clear() }
+        }
         val folder = File(filesDir, "received")
         if (folder.exists()) {
             folder.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }?.forEach {
                 receivedFiles.add(ReceivedFile(it.name.substringAfter('-', it.name), it))
             }
         }
+    }
+
+    private fun persistPendingChatFiles() {
+        val array = JSONArray()
+        pendingChatFileUris.forEach { array.put(it) }
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("pending_chat_files", array.toString()).apply()
     }
 
     private fun persistMessages() {
@@ -1139,29 +1155,59 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun sendChatMessage(rawText: String) {
-        val body = rawText.trim()
-        if (body.isEmpty() || !chatReady) return
-        val id = UUID.randomUUID().toString()
-        if (hybridConnected) {
+    private fun deliverQueuedChatMessage(message: ChatMessage): Boolean {
+        if (!chatReady) return false
+        val sent = if (hybridConnected) {
             val endpoint = hybridConnectedEndpoint
-            if (endpoint.isNullOrBlank() || nearbyTransport?.sendToEndpoint(endpoint, body) != true) {
-                chatNotice = "Message could not be sent to the selected nearby person. Check the connection."
+            !endpoint.isNullOrBlank() && nearbyTransport?.sendToEndpoint(endpoint, message.body) == true
+        } else {
+            val encoded = Base64.getEncoder().encodeToString(message.body.toByteArray(Charsets.UTF_8))
+            sendWireLine("MSG|\${message.id}|$encoded")
+        }
+        if (sent) {
+            val index = chatMessages.indexOfFirst { it.id == message.id }
+            if (index >= 0) chatMessages[index] = message.copy(delivery = "Sent")
+            persistMessages()
+        }
+        return sent
+    }
+
+    private fun flushQueuedChatMessages() {
+        if (!chatReady) return
+        chatMessages.filter { it.outgoing && it.delivery == "Queued" }.forEach { message ->
+            if (!deliverQueuedChatMessage(message)) {
+                chatNotice = "Your message is saved on this phone. It is still waiting for a working nearby connection."
                 return
             }
-            chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sent"))
-            persistMessages()
-            chatNotice = "Sent securely over the offline nearby connection."
-            return
         }
-        val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
-        if (!sendWireLine("MSG|$id|$encoded")) {
-            chatNotice = "Message could not be sent. Check the nearby connection."
-            return
+        if (chatMessages.none { it.outgoing && it.delivery == "Queued" }) chatNotice = "Queued messages sent to the nearby connection."
+    }
+
+    private fun flushPendingChatFiles() {
+        if (!chatReady || outgoingTransferId != null || pendingChatFileUris.isEmpty()) return
+        val next = pendingChatFileUris.removeAt(0)
+        persistPendingChatFiles()
+        try { sendFile(Uri.parse(next)) } catch (_: Exception) {
+            chatNotice = "A queued attachment could not be opened. Please select it again."
         }
-        chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sent"))
+    }
+
+    private fun sendChatMessage(rawText: String) {
+        val body = rawText.trim()
+        if (body.isEmpty()) return
+        val message = ChatMessage(UUID.randomUUID().toString(), body, outgoing = true, delivery = if (chatReady) "Sending" else "Queued")
+        chatMessages.add(message)
         persistMessages()
-        chatNotice = "Sent directly • waiting for delivery confirmation"
+        if (!chatReady) {
+            chatNotice = "Saved on this phone • waiting for your next nearby connection. Not delivered yet."
+            return
+        }
+        if (!deliverQueuedChatMessage(message)) {
+            val index = chatMessages.indexOfFirst { it.id == message.id }
+            if (index >= 0) chatMessages[index] = message.copy(delivery = "Queued")
+            persistMessages()
+            chatNotice = "Message saved here. It will retry when the nearby link is ready."
+        } else chatNotice = "Sent over the offline nearby connection."
     }
 
 
@@ -1731,6 +1777,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun sendFile(uri: Uri) {
+        if (!chatReady) {
+            try { contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
+            if (uri.toString() !in pendingChatFileUris) pendingChatFileUris.add(uri.toString())
+            persistPendingChatFiles()
+            chatNotice = "Attachment saved on this phone • it will wait here until you connect to someone nearby."
+            return
+        }
         if (hybridConnected) {
             val endpoint = hybridConnectedEndpoint
             if (endpoint == null) {
@@ -2153,7 +2206,10 @@ private fun NeaRerHome(
     onStopSearch: () -> Unit,
     onConnect: (WifiP2pDevice) -> Unit
 ) {
-    var draft by remember { mutableStateOf("") }
+    val localChatPrefs = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+    var draft by remember { mutableStateOf(localChatPrefs.getString("chat_draft", "") ?: "") }
+    var showChatAttachmentMenu by remember { mutableStateOf(false) }
+    val isConnecting = status.contains("connecting", ignoreCase = true) && !chatReady
     val messageListState = rememberLazyListState()
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) messageListState.animateScrollToItem(messages.lastIndex)
@@ -2197,6 +2253,43 @@ private fun NeaRerHome(
     var isPreparingApp by remember { mutableStateOf(false) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendFile(uri)
+    }
+    if (showChatAttachmentMenu) {
+        AlertDialog(
+            onDismissRequest = { showChatAttachmentMenu = false },
+            containerColor = Color(0xFF102B50),
+            title = { Text("SHARE SOMETHING", color = White, fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Choose what you want to share. Files can wait here until someone connects nearby.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                    listOf(Triple("Photos & videos", "Images and clips", "media"), Triple("Documents", "PDF, Word, Excel and more", "docs"), Triple("Audio & music", "Sound files and recordings", "audio"), Triple("Any file", "Browse phone storage", "files"), Triple("Installed apps", "Share an app package", "apps")).forEach { item ->
+                        Surface(modifier = Modifier.fillMaxWidth().clickable {
+                            showChatAttachmentMenu = false
+                            when (item.third) {
+                                "media" -> filePicker.launch(arrayOf("image/*", "video/*"))
+                                "docs" -> filePicker.launch(arrayOf("application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "*/*"))
+                                "audio" -> filePicker.launch(arrayOf("audio/*"))
+                                "apps" -> {
+                                    showInstalledApps = true
+                                    isLoadingApps = true
+                                    navigationScope.launch {
+                                        installedApps = withContext(Dispatchers.IO) { onLoadShareableApps() }
+                                        isLoadingApps = false
+                                    }
+                                }
+                                else -> filePicker.launch(arrayOf("*/*"))
+                            }
+                        }, color = Color(0xFF173A67), shape = RoundedCornerShape(13.dp), border = BorderStroke(1.dp, Color(0xFF315B8D))) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(item.first, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text(item.second, color = Muted, fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showChatAttachmentMenu = false }) { Text("CLOSE", color = Gold) } }
+        )
     }
     // Keep the exact file-selection intent while nearby discovery establishes a connection.
     LaunchedEffect(chatReady, pendingFileTypes) {
@@ -3388,7 +3481,6 @@ private fun NeaRerHome(
                 }
             }
 
-            val isConnecting = status.contains("connecting", ignoreCase = true) && !chatReady
             Surface(
                 modifier = Modifier.fillMaxWidth().onGloballyPositioned {
                     sectionPositions["nearby"] = it.positionInParent().y.toInt()
@@ -3636,10 +3728,7 @@ private fun NeaRerHome(
                         }
                     }
                     Surface(
-                        modifier = Modifier.weight(1f).clickable {
-                            if (chatReady) filePicker.launch(arrayOf("*/*"))
-                            else { navigateToSection("nearby"); onFindNearby(); navigationScope.launch { pageScrollState.animateScrollTo(0) } }
-                        },
+                        modifier = Modifier.weight(1f).clickable { showChatAttachmentMenu = true },
                         color = Color(0xFF172F52), shape = RoundedCornerShape(15.dp),
                         border = BorderStroke(1.dp, Color(0xFF28589A))
                     ) {
@@ -3754,7 +3843,7 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Surface(
-                                modifier = Modifier.size(48.dp).clickable { filePicker.launch(arrayOf("*/*")) },
+                                modifier = Modifier.size(48.dp).clickable { showChatAttachmentMenu = true },
                                 shape = CircleShape,
                                 color = Color(0xFF173F78),
                                 border = BorderStroke(1.dp, Color(0xFF347CEB))
@@ -3765,7 +3854,7 @@ private fun NeaRerHome(
                             }
                             OutlinedTextField(
                                 value = draft,
-                                onValueChange = { draft = it.take(2000) },
+                                onValueChange = { draft = it.take(2000); localChatPrefs.edit().putString("chat_draft", draft).apply() },
                                 modifier = Modifier.weight(1f),
                                 placeholder = { Text("Write a message…", color = Muted, fontSize = 12.sp) },
                                 shape = RoundedCornerShape(22.dp),
@@ -3776,6 +3865,7 @@ private fun NeaRerHome(
                                 modifier = Modifier.size(48.dp).clickable(enabled = draft.isNotBlank()) {
                                     onSendMessage(draft.trim())
                                     draft = ""
+                                    localChatPrefs.edit().remove("chat_draft").apply()
                                 },
                                 shape = CircleShape,
                                 color = if (draft.isNotBlank()) BrandBlue else Color(0xFF24436D)
@@ -3811,6 +3901,21 @@ private fun NeaRerHome(
                         Text("＋ Share photos, videos and files from the attachment button.", color = Muted, fontSize = 9.sp)
                         Text(if (usingNearbyConnections) "DIRECT NEARBY LINK  •  NO MOBILE DATA" else "WI-FI DIRECT LINK  •  NO MOBILE DATA", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.35.sp)
                     } else {
+                        if (messages.isNotEmpty()) {
+                            LazyColumn(state = messageListState, modifier = Modifier.fillMaxWidth().heightIn(min = 90.dp, max = 260.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                itemsIndexed(messages, key = { _, message -> message.id }) { _, message ->
+                                    Column(Modifier.fillMaxWidth(), horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start) {
+                                        Surface(color = if (message.outgoing) Color(0xFF174A9B) else Color(0xFF19375D), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(0.86f)) {
+                                            Column(Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
+                                                Text(message.body, color = White, fontSize = 14.sp)
+                                                Text("\${message.delivery} • \${formatMessageTime(message.timestamp)}", color = Gold, fontSize = 9.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Text(chatNotice, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -3861,6 +3966,20 @@ private fun NeaRerHome(
                         ) {
                             Text("FIND PEOPLE NEARBY  →", fontWeight = FontWeight.Black, fontSize = 11.sp)
                         }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+                            Surface(modifier = Modifier.size(46.dp).clickable { showChatAttachmentMenu = true }, shape = CircleShape, color = Color(0xFF173F78), border = BorderStroke(1.dp, Color(0xFF347CEB))) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("+", color = Gold, fontSize = 27.sp, fontWeight = FontWeight.Medium) }
+                            }
+                            OutlinedTextField(value = draft, onValueChange = { draft = it.take(2000); localChatPrefs.edit().putString("chat_draft", draft).apply() }, modifier = Modifier.weight(1f), placeholder = { Text("Write a message to save…", color = Muted, fontSize = 11.sp) }, shape = RoundedCornerShape(22.dp), minLines = 1, maxLines = 4)
+                            Surface(modifier = Modifier.size(46.dp).clickable(enabled = draft.isNotBlank()) {
+                                onSendMessage(draft.trim())
+                                draft = ""
+                                localChatPrefs.edit().remove("chat_draft").apply()
+                            }, shape = CircleShape, color = if (draft.isNotBlank()) BrandBlue else Color(0xFF24436D)) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("➤", color = White, fontSize = 19.sp, fontWeight = FontWeight.Black) }
+                            }
+                        }
+                        Text("Messages and attachments stay on this phone until a nearby connection is available. Nothing is marked delivered early.", color = Muted, fontSize = 9.sp, lineHeight = 14.sp)
                     }
                 }
             }
