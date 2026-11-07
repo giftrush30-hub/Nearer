@@ -1,6 +1,7 @@
 package com.nearer.app
 
 import android.content.Context
+import android.bluetooth.BluetoothManager
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.google.android.gms.nearby.Nearby
