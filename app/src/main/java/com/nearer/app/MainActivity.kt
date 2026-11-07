@@ -1679,9 +1679,9 @@ class MainActivity : ComponentActivity() {
                     )
                     // A process may die after Nearby accepted a packet but before
                     // its ACK arrived. Treat that uncertain state as retryable on reconnect.
-                    val restoredMessage = if (message.outgoing &&
-                        message.delivery in setOf("Sending", "Awaiting delivery", "Sent")
-                    ) message.copy(delivery = "Queued") else message
+                    val restoredMessage = message.copy(
+                        delivery = ChatDeliveryRecoveryPolicy.restoreDelivery(message.outgoing, message.delivery)
+                    )
                     chatMessages.add(restoredMessage)
                     if (!message.outgoing) {
                         receivedMessageIds.add(message.id)
@@ -1829,9 +1829,12 @@ class MainActivity : ComponentActivity() {
         var changed = false
         chatMessages.indices.forEach { index ->
             val message = chatMessages[index]
-            if (message.outgoing &&
-                message.conversationId.ifBlank { "legacy" } == peerId &&
-                message.delivery in setOf("Sending", "Awaiting delivery", "Sent")
+            if (ChatDeliveryRecoveryPolicy.shouldQueueAfterDisconnect(
+                    outgoing = message.outgoing,
+                    delivery = message.delivery,
+                    conversationId = message.conversationId,
+                    disconnectedPeerId = peerId
+                )
             ) {
                 chatMessages[index] = message.copy(delivery = "Queued")
                 changed = true
@@ -1842,10 +1845,14 @@ class MainActivity : ComponentActivity() {
 
     private fun flushQueuedChatMessages() {
         if (!chatReady) return
-        val queuedMessages = chatMessages.filter {
-            it.outgoing && it.delivery == "Queued" &&
-                it.conversationId.ifBlank { "legacy" } == connectedChatPeerId &&
-                !pendingOutgoingMessageSaves.contains(it.id)
+        val queuedMessages = chatMessages.filter { message ->
+            ChatDeliveryRecoveryPolicy.canRetryOnReconnect(
+                outgoing = message.outgoing,
+                delivery = message.delivery,
+                conversationId = message.conversationId,
+                connectedPeerId = connectedChatPeerId,
+                persistenceInProgress = pendingOutgoingMessageSaves.contains(message.id)
+            )
         }
         if (queuedMessages.isEmpty()) return
         queuedMessages.forEach { message ->
