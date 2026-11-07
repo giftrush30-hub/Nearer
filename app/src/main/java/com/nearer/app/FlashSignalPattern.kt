@@ -1,7 +1,7 @@
 package com.nearer.app
 
 /**
- * NeaRer Flash is an experimental missed-call signalling codec.
+ * NeaRer Flash is an experimental incoming-call timing signalling codec.
  * Presets are separated far enough that the timing tolerance cannot make
  * one preset decode as another.
  */
@@ -14,6 +14,18 @@ object FlashSignalPattern {
     )
 
     data class Signal(val name: String, val gapsMillis: List<Long>)
+
+    /**
+     * Turns a decoded preset into the words shown in a NeaRer chat bubble.
+     * These are short preset messages, not arbitrary user-authored text.
+     */
+    fun toChatMessage(signalName: String): String = when (signalName) {
+        "PING" -> "Ping"
+        "COME" -> "Please come"
+        "URGENT" -> "Urgent — please check this"
+        "CALL_ME" -> "Please call me"
+        else -> "NeaRer Flash signal"
+    }
 
     fun presets(): List<Signal> = patterns.toList()
 

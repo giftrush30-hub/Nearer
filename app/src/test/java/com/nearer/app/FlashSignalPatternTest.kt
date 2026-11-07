@@ -12,6 +12,14 @@ class FlashSignalPatternTest {
         assertEquals("CALL_ME", FlashSignalPattern.decode(listOf(1_000L, 3_200L, 4_100L)))
     }
 
+    @Test fun mapsDecodedPresetsToHumanReadableChatMessages() {
+        assertEquals("Ping", FlashSignalPattern.toChatMessage("PING"))
+        assertEquals("Please come", FlashSignalPattern.toChatMessage("COME"))
+        assertEquals("Urgent — please check this", FlashSignalPattern.toChatMessage("URGENT"))
+        assertEquals("Please call me", FlashSignalPattern.toChatMessage("CALL_ME"))
+        assertEquals("NeaRer Flash signal", FlashSignalPattern.toChatMessage("UNKNOWN"))
+    }
+
     @Test fun rejectsAmbiguousOrMalformedSequences() {
         assertNull(FlashSignalPattern.decode(listOf(1_000L)))
         assertNull(FlashSignalPattern.decode(listOf(1_000L, 2_500L)))
