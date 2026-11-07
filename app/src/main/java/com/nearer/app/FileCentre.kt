@@ -203,8 +203,6 @@ internal object AndroidFileCatalog {
         ZipOutputStream(output.outputStream().buffered()).use { zip ->
             // APK entries are already compressed; avoid wasting CPU recompressing them.
             zip.setLevel(0)
-            // APK files are already compressed; avoid spending CPU recompressing them.
-            zip.setLevel(0)
             fun addApk(file: java.io.File, entryName: String) {
                 zip.putNextEntry(ZipEntry(entryName))
                 file.inputStream().buffered().use { input -> input.copyTo(zip, 64 * 1024) }
@@ -370,6 +368,8 @@ internal fun FileCentreScreen(
     }
     val selectedItems = items.filter { it.id in selected }
     val selectedUris = selectedItems.mapNotNull { it.uri }
+    val bulkSelectable = visible.filter { it.uri != null }
+    val allVisibleSelected = bulkSelectable.isNotEmpty() && bulkSelectable.all { it.id in selected }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -439,6 +439,26 @@ internal fun FileCentreScreen(
             Text("Tap an app to package its base APK and any split APK parts into one shareable bundle. Private app data and accounts are not included.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
         }
         Text(notice, color = Muted, fontSize = 10.sp)
+        if (bulkSelectable.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("${bulkSelectable.size} files in this view", color = Muted, fontSize = 10.sp)
+                Button(
+                    onClick = {
+                        if (allVisibleSelected) {
+                            bulkSelectable.forEach { selected.remove(it.id) }
+                        } else {
+                            bulkSelectable.forEach { item -> if (item.id !in selected) selected.add(item.id) }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Gold),
+                    shape = RoundedCornerShape(10.dp)
+                ) { Text(if (allVisibleSelected) "Deselect visible" else "Select all visible", fontSize = 10.sp) }
+            }
+        }
         if (visible.isEmpty() && !loading && (category == FileCentreCategory.APPS || hasAccess)) {
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 Text(if (search.isBlank()) "Nothing found in this category yet." else "No matches. Try another search.", color = Muted)
