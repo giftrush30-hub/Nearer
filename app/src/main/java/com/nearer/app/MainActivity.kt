@@ -2053,7 +2053,29 @@ private fun NeaRerHome(
             title = { Text("SHARE AN APP", color = White, fontWeight = FontWeight.Black) },
             text = {
                 Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Your installed apps", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Your installed apps", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Choose an app to package and send to the nearby phone.", color = Muted, fontSize = 9.sp)
+                        }
+                        TextButton(
+                            onClick = {
+                                if (!isLoadingApps) {
+                                    isLoadingApps = true
+                                    navigationScope.launch {
+                                        installedApps = withContext(Dispatchers.IO) { onLoadShareableApps() }
+                                        isLoadingApps = false
+                                    }
+                                }
+                            },
+                            enabled = !isLoadingApps
+                        ) {
+                            Text(if (isLoadingApps) "SCANNING…" else "↻ REFRESH", color = if (isLoadingApps) Muted else Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
                     if (isLoadingApps) {
                         Text("Scanning installed apps and preparing their icons…", color = Gold, fontSize = 11.sp)
                         LinearProgressIndicator(
@@ -2154,8 +2176,14 @@ private fun NeaRerHome(
                         }
                     }
                     if (installedApps.any { it.apkPaths.size > 1 }) {
-                        Text("Some apps contain split APKs. NeaRer sends those together in a ZIP package; the receiver will need a compatible split-APK installer.", color = Color(0xFFFFDFA0), fontSize = 10.sp)
+                        Text("Some apps contain split APKs. NeaRer sends those together in a ZIP package; the receiver will need a compatible split-APK installer.", color = Color(0xFFFFDFA0), fontSize = 10.sp, lineHeight = 15.sp)
                     }
+                    Text(
+                        "App availability depends on what Android allows NeaRer to access. Some protected system components may not appear.",
+                        color = Color(0xFF91A9C8),
+                        fontSize = 9.sp,
+                        lineHeight = 14.sp
+                    )
                 }
             },
             confirmButton = { TextButton(onClick = { showInstalledApps = false }) { Text("CLOSE", color = Gold) } }
