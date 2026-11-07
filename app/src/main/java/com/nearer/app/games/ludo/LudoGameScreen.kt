@@ -25,8 +25,12 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import android.media.AudioManager
-import android.media.ToneGenerator
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.SoundPool
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +45,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -72,9 +77,10 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
     var rollingFirst by remember { mutableIntStateOf(1) }
     var rollingSecond by remember { mutableIntStateOf(1) }
     var soundEnabled by remember { mutableStateOf(true) }
+    var aiDifficulty by remember { mutableStateOf(LudoAiDifficulty.MEDIUM) }
     var showRules by remember { mutableStateOf(false) }
-    val tones = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 48) }
-    DisposableEffect(tones) { onDispose { tones.release() } }
+    val soundFx = remember { LudoSoundEffects(LocalContext.current) }
+    DisposableEffect(soundFx) { onDispose { soundFx.release() } }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     // Highlight legal moves only while a player can actually choose a token.
@@ -94,7 +100,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
     suspend fun animateRoll(computer: Boolean = false) {
         if (rolling || !LudoDoubleDiceEngine.canRoll(doubleGame)) return
         rolling = true
-        if (soundEnabled && !computer) tones.startTone(ToneGenerator.TONE_PROP_BEEP, 90)
+        if (soundEnabled && !computer) soundFx.play(LudoSound.ROLL)
         repeat(if (computer) 8 else 12) {
             rollingFirst = Random.nextInt(1, 7)
             rollingSecond = Random.nextInt(1, 7)
@@ -106,22 +112,24 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
             rollingSecond = pair.second
         }
         rolling = false
-        if (soundEnabled && doubleGame.dice != null) tones.startTone(ToneGenerator.TONE_PROP_ACK, 110)
+        if (soundEnabled && doubleGame.dice != null) soundFx.play(LudoSound.LAND)
     }
 
     LaunchedEffect(game.winnerId) {
         if (game.winnerId != null && soundEnabled) {
-            tones.startTone(ToneGenerator.TONE_PROP_PROMPT, 180)
-            delay(220)
-            tones.startTone(ToneGenerator.TONE_PROP_ACK, 300)
+            soundFx.play(LudoSound.WIN)
         }
     }
 
     fun moveToken(tokenIndex: Int) {
         val next = LudoDoubleDiceEngine.move(doubleGame, tokenIndex)
         if (soundEnabled && next != doubleGame) {
-            val captured = next.game.lastAction.contains("captured", ignoreCase = true)
-            tones.startTone(if (captured) ToneGenerator.TONE_PROP_PROMPT else ToneGenerator.TONE_PROP_ACK, if (captured) 170 else 75)
+            val action = next.game.lastAction.lowercase()
+            when {
+                "captured" in action -> soundFx.play(LudoSound.CAPTURE)
+                "home" in action -> soundFx.play(LudoSound.HOME)
+                else -> soundFx.play(LudoSound.MOVE)
+            }
         }
         doubleGame = next
     }
@@ -140,7 +148,7 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                 }
                 else -> {
                     delay(720)
-                    LudoEngine.chooseComputerMove(game)?.let { moveToken(it) }
+                    LudoAiEngine.chooseComputerMove(game, aiDifficulty)?.let { moveToken(it) }
                 }
             }
         }
@@ -251,7 +259,8 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                                 modifier = Modifier.weight(1f)) {
                                 Column(Modifier.padding(vertical = 7.dp, horizontal = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(player.name.take(8), color = if (active) White else Muted, fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold, maxLines = 1)
+                                        fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                                    Text(if (player.isComputer) "AI PLAYER" else "HUMAN", color = Color(player.color.hex), fontSize = 7.sp, fontWeight = FontWeight.Black)
                                     Text(player.finishedTokens.toString() + "/4 HOME", color = if (active) Gold else Muted,
                                         fontSize = 8.sp, fontWeight = FontWeight.ExtraBold)
                                 }
@@ -422,6 +431,24 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
                             modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp))
                     }
                 }
+            }
+
+            if (computerOpponents) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("COMPUTER SKILL", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
+                    Spacer(Modifier.weight(1f))
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        LudoAiDifficulty.values().forEach { level ->
+                            Surface(color = if (aiDifficulty == level) Cobalt else Panel, shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, if (aiDifficulty == level) Gold else Color(0xFF294362)),
+                                modifier = Modifier.clickable { aiDifficulty = level }) {
+                                Text(level.label, color = White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp))
+                            }
+                        }
+                    }
+                }
+                Text(aiDifficulty.description, color = Color(0xFF9FB5D2), fontSize = 10.sp)
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -616,7 +643,8 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
             drawRoundRect(Color.White.copy(alpha = 0.16f), topLeft, tileSize, radius,
                 style = Stroke(cell * 0.025f))
         }
-        drawRoundRect(Brush.linearGradient(listOf(Color(0xFF1A3558), Color(0xFF0D1E35))), cornerRadius = CornerRadius(cell * 0.3f))
+        drawRoundRect(Brush.linearGradient(listOf(Color(0xFF28466D), Color(0xFF0D1E35))), cornerRadius = CornerRadius(cell * 0.3f))
+        drawRoundRect(Color(0xFF8FB8F2).copy(alpha = 0.16f), cornerRadius = CornerRadius(cell * 0.3f), style = Stroke(cell * 0.10f))
         for (y in 0..5) for (x in 0..5) tile(x, y, Color(0xFF3B2036))
         for (y in 9..14) for (x in 0..5) tile(x, y, Color(0xFF173D3B))
         for (y in 9..14) for (x in 9..14) tile(x, y, Color(0xFF49391F))
