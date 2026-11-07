@@ -18,6 +18,7 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.Collections
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Temporary, local-only hotspot sharing. The file is streamed from ContentResolver;
@@ -167,6 +168,7 @@ private class FastShareHttpServer(
 ) {
     private val executor = Executors.newCachedThreadPool()
     @Volatile private var running = true
+    private val transferActive = AtomicBoolean(false)
     private var socket: ServerSocket? = null
 
     fun start(): String {
@@ -231,7 +233,17 @@ private class FastShareHttpServer(
                 output.write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n".toByteArray())
                 if (!headOnly) output.write(bytes)
             } else if (path == "/download") {
-                streamFile(output, rangeHeader, headOnly)
+                if (headOnly) {
+                    streamFile(output, rangeHeader, true)
+                } else if (!transferActive.compareAndSet(false, true)) {
+                    output.write("HTTP/1.1 429 Too Many Requests\r\nRetry-After: 2\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 43\r\nConnection: close\r\n\r\nAnother download is already in progress.\n".toByteArray())
+                } else {
+                    try {
+                        streamFile(output, rangeHeader, false)
+                    } finally {
+                        transferActive.set(false)
+                    }
+                }
             } else {
                 output.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
             }
