@@ -373,16 +373,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 if (!target.isFile || target.length() != meta.size) {
                     throw IllegalStateException("Received file size did not match")
                 }
-                val digest = MessageDigest.getInstance("SHA-256")
-                target.inputStream().buffered(256 * 1024).use { input ->
-                    val buffer = ByteArray(256 * 1024)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        digest.update(buffer, 0, count)
-                    }
-                }
-                val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
+                val actualHash = target.inputStream().use { input -> sha256Hex(input) }
                 if (meta.sha256.isNotBlank() && !actualHash.equals(meta.sha256, ignoreCase = true)) {
                     throw IllegalStateException("File integrity check failed. The received file was not kept.")
                 }
@@ -392,6 +383,24 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 listener.onFileStatus("Could not save the received file: ${error.localizedMessage ?: "transfer error"}")
             } finally {
                 try { payload.close() } catch (_: Exception) { }
+            }
+        }
+    }
+
+    private fun sha256Hex(input: java.io.InputStream): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(1024 * 1024)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            digest.update(buffer, 0, count)
+        }
+        val hex = "0123456789abcdef"
+        return buildString(64) {
+            digest.digest().forEach { byte ->
+                val value = byte.toInt() and 0xff
+                append(hex[value ushr 4])
+                append(hex[value and 0x0f])
             }
         }
     }
@@ -537,20 +546,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val outgoing = OutgoingFile(endpointId, peerStableId, name, size, payload)
             outgoingFiles[id] = outgoing
             listener.onFileProgress(endpointId, id, name, 0L, size, false)
-            // Compute the checksum on a worker thread. This keeps multi-gigabyte
-            // selections from freezing the Compose/UI thread.
+            listener.onFileStatus("Preparing and verifying $name before sending…")
+            // Hash on a worker thread with a larger sequential buffer for large videos.
             transferPreparation.execute {
                 try {
-                    val digest = MessageDigest.getInstance("SHA-256")
-                    appContext.contentResolver.openInputStream(uri)?.use { input ->
-                        val buffer = ByteArray(256 * 1024)
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            digest.update(buffer, 0, count)
-                        }
+                    val sha256 = appContext.contentResolver.openInputStream(uri)?.use { input ->
+                        sha256Hex(input)
                     } ?: throw IllegalStateException("The selected file can no longer be read")
-                    val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
                     outgoing.sha256 = sha256
                     if (!synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) {
                         throw IllegalStateException("Nearby connection ended before transfer started")
