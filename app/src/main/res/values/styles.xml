@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.NeaRer" parent="@android:style/Theme.Material.Light.NoActionBar">
+    <style name="Theme.NeaRer" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:colorAccent">@color/nearer_royal_gold</item>
         <item name="android:windowBackground">@color/nearer_ivory</item>
