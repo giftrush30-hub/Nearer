@@ -361,10 +361,16 @@ class MainActivity : ComponentActivity() {
                     val lastName = hybridPeers.remove(id) ?: name
                     recordRecentlySeen(stableId.ifBlank { id }, lastName)
                     pendingHybridEndpoint = null
-                    connectedDeviceName = null
-                    chatReady = false
-                    connectionMessage = "Not connected"
-                    chatNotice = "Nearby connection ended. Search again to reconnect."
+                    val legacyLinkAlive = peerSocket?.isConnected == true && peerSocket?.isClosed == false
+                    chatReady = legacyLinkAlive
+                    if (legacyLinkAlive) {
+                        connectionMessage = "Wi-Fi Direct chat link still active"
+                        chatNotice = "Nearby Bluetooth/Wi-Fi link ended. Your chat is continuing over Wi-Fi Direct."
+                    } else {
+                        connectedDeviceName = null
+                        connectionMessage = "Not connected"
+                        chatNotice = "Nearby connection ended. Your messages remain safely queued."
+                    }
                 }
             }
             override fun onMessage(id: String, senderName: String, senderStableId: String, body: String) {
@@ -924,14 +930,20 @@ class MainActivity : ComponentActivity() {
                 if (info.isGroupOwner) startApprovalServer(info) else connectToApprovalServer(info)
             }
         } else {
-            connectedDeviceName = null
             connectingAddress = null
-            connectionMessage = "Not connected"
-            chatReady = false
             incomingRequesterName = null
             transportStarted = false
             closePeerTransport()
-            statusMessage = "The Wi-Fi Direct connection is not active. You can scan and connect again."
+            val nearbyLinkAlive = hybridConnected && !hybridConnectedEndpoint.isNullOrBlank()
+            chatReady = nearbyLinkAlive
+            if (nearbyLinkAlive) {
+                connectionMessage = "Nearby Connections chat link still active"
+                statusMessage = "Wi-Fi Direct ended. NeaRer chat remains connected through Nearby Connections."
+            } else {
+                connectedDeviceName = null
+                connectionMessage = "Not connected"
+                statusMessage = "The Wi-Fi Direct connection is not active. You can scan and connect again."
+            }
         }
     }
 
@@ -1286,19 +1298,31 @@ class MainActivity : ComponentActivity() {
 
     private fun deliverQueuedChatMessage(message: ChatMessage): Boolean {
         if (!chatReady) return false
-        val sent = if (hybridConnected) {
-            val endpoint = hybridConnectedEndpoint
-            !endpoint.isNullOrBlank() && nearbyTransport?.sendChatToEndpoint(endpoint, message.id, message.body) == true
-        } else {
-            val encoded = Base64.getEncoder().encodeToString(message.body.toByteArray(Charsets.UTF_8))
-            sendWireLine("MSG|${message.id}|$encoded")
-        }
-        if (sent) {
+        val endpoint = hybridConnectedEndpoint
+        val wifiDirectReady = peerSocket?.isConnected == true && peerSocket?.isClosed == false && peerWriter != null
+        val route = chatTransportRouter.send(
+            nearbyReady = hybridConnected && !endpoint.isNullOrBlank(),
+            wifiDirectReady = wifiDirectReady,
+            sendNearby = {
+                !endpoint.isNullOrBlank() &&
+                    nearbyTransport?.sendChatToEndpoint(endpoint, message.id, message.body) == true
+            },
+            sendWifiDirect = {
+                val encoded = Base64.getEncoder().encodeToString(message.body.toByteArray(Charsets.UTF_8))
+                sendWireLine("MSG|${message.id}|$encoded")
+            }
+        )
+        if (route != null) {
             val index = chatMessages.indexOfFirst { it.id == message.id }
             if (index >= 0) chatMessages[index] = message.copy(delivery = "Sent")
             persistMessages()
+            chatNotice = when (route) {
+                ChatTransportRoute.NEARBY_CONNECTIONS -> "Message sent through Nearby Connections (Bluetooth / nearby Wi-Fi)."
+                ChatTransportRoute.WIFI_DIRECT -> "Message sent through the direct Wi-Fi link."
+            }
+            return true
         }
-        return sent
+        return false
     }
 
     private fun flushQueuedChatMessages() {
