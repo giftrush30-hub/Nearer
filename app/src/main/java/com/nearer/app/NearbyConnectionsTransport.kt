@@ -11,6 +11,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
@@ -50,12 +51,14 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         return value.take(23) to ""
     }
 
-    private data class FileMeta(val endpointId: String, val name: String, val size: Long)
+    private data class FileMeta(val endpointId: String, val name: String, val size: Long, val sha256: String = "")
     private val incomingMetadata = ConcurrentHashMap<Long, FileMeta>()
     private val incomingPayloads = ConcurrentHashMap<Long, Payload>()
     private val completedPayloads = ConcurrentHashMap<Long, Payload>()
     private val outgoingFiles = ConcurrentHashMap<Long, Pair<String, String>>()
     private val fileIo = Executors.newSingleThreadExecutor()
+    // Hash large files away from the UI thread before the receiver is given the payload.
+    private val transferPreparation = Executors.newFixedThreadPool(2)
     private val seenMessageIds = ConcurrentHashMap.newKeySet<String>().apply {
         appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
             .getStringSet("nearby_seen_message_ids", HashSet<String>()).orEmpty().forEach { add(it) }
@@ -242,11 +245,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val payloadId = envelope.optLong("payloadId", -1L)
                 val name = safeFileName(envelope.optString("name", "shared-file"))
                 val size = envelope.optLong("size", -1L)
-                if (payloadId < 0L || size < 0L) {
+                val sha256 = envelope.optString("sha256", "").lowercase()
+                if (payloadId < 0L || size < 0L || (sha256.isNotEmpty() && !sha256.matches(Regex("[a-f0-9]{64}")))) {
                     listener.onFileStatus("A nearby phone sent invalid file information. The transfer was ignored.")
                     return
                 }
-                incomingMetadata[payloadId] = FileMeta(endpointId, name, size)
+                incomingMetadata[payloadId] = FileMeta(endpointId, name, size, sha256)
                 listener.onFileProgress(endpointId, payloadId, name, 0L, size, true)
                 processCompletedFile(payloadId)
                 return
@@ -313,15 +317,21 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     FileOutputStream(target).use { output ->
                         val buffer = ByteArray(32 * 1024)
                         var copied = 0L
+                        val digest = MessageDigest.getInstance("SHA-256")
                         while (true) {
                             val count = input.read(buffer)
                             if (count < 0) break
                             copied += count
+                            digest.update(buffer, 0, count)
                             if (copied > meta.size) throw IllegalStateException("Received file exceeded its declared size")
                             output.write(buffer, 0, count)
                         }
                         output.flush()
                         if (copied != meta.size) throw IllegalStateException("Received file size did not match")
+                        val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
+                        if (meta.sha256.isNotBlank() && !actualHash.equals(meta.sha256, ignoreCase = true)) {
+                            throw IllegalStateException("File integrity check failed. The received file was not kept.")
+                        }
                     }
                 } ?: throw IllegalStateException("Could not open the received file")
                 appContext.contentResolver.delete(uri, null, null)
@@ -473,24 +483,48 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             payload.setSensitive(true)
             val id = payload.id
             outgoingFiles[id] = endpointId to name
-            val metadata = JSONObject().put("kind", "file_meta").put("payloadId", id)
-                .put("name", name).put("size", size)
-            client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
-                .addOnSuccessListener {
-                    client.sendPayload(endpointId, payload)
+            listener.onFileProgress(endpointId, id, name, 0L, size, false)
+            // Compute the checksum on a worker thread. This keeps multi-gigabyte
+            // selections from freezing the Compose/UI thread.
+            transferPreparation.execute {
+                try {
+                    val digest = MessageDigest.getInstance("SHA-256")
+                    appContext.contentResolver.openInputStream(uri)?.use { input ->
+                        val buffer = ByteArray(256 * 1024)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            digest.update(buffer, 0, count)
+                        }
+                    } ?: throw IllegalStateException("The selected file can no longer be read")
+                    val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
+                    if (!synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) {
+                        throw IllegalStateException("Nearby connection ended before transfer started")
+                    }
+                    val metadata = JSONObject().put("kind", "file_meta").put("payloadId", id)
+                        .put("name", name).put("size", size).put("sha256", sha256)
+                    client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
+                        .addOnSuccessListener {
+                            client.sendPayload(endpointId, payload)
+                                .addOnFailureListener { error ->
+                                    outgoingFiles.remove(id)
+                                    try { payload.close() } catch (_: Exception) { }
+                                    listener.onFileStatus("Could not start file transfer: ${error.localizedMessage ?: "connection error"}")
+                                }
+                        }
                         .addOnFailureListener { error ->
                             outgoingFiles.remove(id)
+                            try { client.cancelPayload(id) } catch (_: Exception) { }
                             try { payload.close() } catch (_: Exception) { }
-                            listener.onFileStatus("Could not start file transfer: ${error.localizedMessage ?: "connection error"}")
+                            listener.onFileStatus("Could not send file details: ${error.localizedMessage ?: "connection error"}")
                         }
-                }
-                .addOnFailureListener { error ->
+                } catch (error: Exception) {
                     outgoingFiles.remove(id)
                     try { client.cancelPayload(id) } catch (_: Exception) { }
                     try { payload.close() } catch (_: Exception) { }
-                    listener.onFileStatus("Could not send file details: ${error.localizedMessage ?: "connection error"}")
+                    listener.onFileStatus("File could not be verified before sending: ${error.localizedMessage ?: "please try again"}")
                 }
-            listener.onFileProgress(endpointId, id, name, 0L, size, false)
+            }
             return id
         } catch (error: Exception) {
             try { filePayload?.close() } catch (_: Exception) { }
@@ -534,6 +568,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         pendingOutgoingMessages.values.forEach { it.retryTask?.let(deliveryHandler::removeCallbacks); it.retryTask = null }
         deliveryHandler.removeCallbacksAndMessages(null)
         fileIo.shutdownNow()
+        transferPreparation.shutdownNow()
     }
 
 }
