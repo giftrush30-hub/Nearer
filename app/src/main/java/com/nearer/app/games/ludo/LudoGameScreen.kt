@@ -79,7 +79,8 @@ fun LudoGameScreen(playerName: String, onExit: () -> Unit) {
     var soundEnabled by remember { mutableStateOf(true) }
     var aiDifficulty by remember { mutableStateOf(LudoAiDifficulty.MEDIUM) }
     var showRules by remember { mutableStateOf(false) }
-    val soundFx = remember { LudoSoundEffects(LocalContext.current) }
+    val context = LocalContext.current
+    val soundFx = remember(context) { LudoSoundEffects(context) }
     DisposableEffect(soundFx) { onDispose { soundFx.release() } }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
