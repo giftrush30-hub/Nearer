@@ -6247,29 +6247,34 @@ private fun HomeFeatureTile(
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = modifier.height(104.dp).clickable(onClick = onClick),
-        shape = RoundedCornerShape(21.dp),
+        modifier = modifier.height(118.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(22.dp),
         color = Color(0xFFF8FBFF),
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.35f)),
-        shadowElevation = 7.dp
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.30f)),
+        shadowElevation = 5.dp
     ) {
-        Row(
-            Modifier.fillMaxSize().padding(horizontal = 13.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        Column(
+            Modifier.fillMaxSize()
+                .background(Brush.linearGradient(listOf(Color.White, accent.copy(alpha = 0.075f))))
+                .padding(13.dp),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Surface(
-                modifier = Modifier.size(42.dp),
-                shape = RoundedCornerShape(14.dp),
-                color = accent.copy(alpha = 0.13f),
-                border = BorderStroke(1.dp, accent.copy(alpha = 0.28f))
-            ) {
-                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                    Text(symbol, color = accent, fontSize = 23.sp, fontWeight = FontWeight.Black)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    modifier = Modifier.size(43.dp),
+                    shape = RoundedCornerShape(15.dp),
+                    color = accent.copy(alpha = 0.13f),
+                    border = BorderStroke(1.dp, accent.copy(alpha = 0.25f))
+                ) {
+                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                        Text(symbol, color = accent, fontSize = 24.sp, fontWeight = FontWeight.Black)
+                    }
                 }
+                Spacer(Modifier.weight(1f))
+                Text("OPEN  ›", color = accent, fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 0.55.sp)
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(title, color = Color(0xFF193653), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold,
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, color = Color(0xFF193653), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(subtitle, color = Color(0xFF7187A0), fontSize = 9.sp, maxLines = 1,
                     overflow = TextOverflow.Ellipsis)
