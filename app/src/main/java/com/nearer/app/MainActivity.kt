@@ -152,6 +152,7 @@ class MainActivity : ComponentActivity() {
     private var hybridConnectedEndpoint: String? = null
     private var activeChatPeerId: String = "legacy"
     private var connectedChatPeerId: String? = null
+    private var connectedChatPeerName: String? = null
     private var activeChatPeerName: String = "Nearby person"
     private var meshRelayEnabled by mutableStateOf(false)
     private val discoveryHandler = Handler(Looper.getMainLooper())
@@ -350,6 +351,7 @@ class MainActivity : ComponentActivity() {
                     hybridConnectedEndpoint = id
                     activeChatPeerId = stableId.ifBlank { "nearby:$id" }
                     connectedChatPeerId = activeChatPeerId
+                    connectedChatPeerName = name
                     activeChatPeerName = name
                     pendingHybridEndpoint = null
                     incomingRequesterName = null
@@ -365,7 +367,10 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     hybridConnected = false
                     hybridConnectedEndpoint = null
-                    if (connectedChatPeerId == stableId || connectedChatPeerId == "nearby:$id") connectedChatPeerId = null
+                    if (connectedChatPeerId == stableId || connectedChatPeerId == "nearby:$id") {
+                        connectedChatPeerId = null
+                        connectedChatPeerName = null
+                    }
                     val lastName = hybridPeers.remove(id) ?: name
                     recordRecentlySeen(stableId.ifBlank { id }, lastName)
                     // Keep the last peer identity after disconnect so queued messages
@@ -989,9 +994,12 @@ class MainActivity : ComponentActivity() {
                     closePeerTransport()
                     return@execute
                 }
-                val name = hello.substringAfter("|").take(40).ifBlank { "Nearby NeaRer user" }
+                val helloParts = hello.split("|", limit = 3)
+                val name = helloParts.getOrNull(1).orEmpty().take(40).ifBlank { "Nearby NeaRer user" }
+                val remoteStableId = helloParts.getOrNull(2).orEmpty().ifBlank { "wifi:${name.lowercase(java.util.Locale.ROOT)}" }
                 val code = (100000 + SecureRandom().nextInt(900000)).toString()
-                writer.println("PAIR|$code")
+                val localStableId = nearbyTransport?.localMemberId.orEmpty().ifBlank { "wifi:${displayName.lowercase(java.util.Locale.ROOT)}" }
+                writer.println("PAIR|$code|$localStableId")
                 runOnUiThread {
                     pairingCode = code
                     incomingRequesterName = name
@@ -1003,6 +1011,10 @@ class MainActivity : ComponentActivity() {
                 if (accepted) {
                     runOnUiThread {
                         chatReady = true
+                        connectedChatPeerId = remoteStableId
+                        connectedChatPeerName = name
+                        activeChatPeerId = remoteStableId
+                        activeChatPeerName = name
                         incomingRequesterName = null
                         approvalMessage = "Connection approved. Private chat can now be opened."
                         connectionMessage = "NeaRer connection approved"
@@ -1054,10 +1066,13 @@ class MainActivity : ComponentActivity() {
                 peerWriter = writer
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
                 val localName = displayName.trim().replace("|", " ").take(40).ifBlank { "NeaRer User" }
-                writer.println("NEARER_HELLO|$localName")
+                val localStableId = nearbyTransport?.localMemberId.orEmpty().ifBlank { "wifi:${localName.lowercase(java.util.Locale.ROOT)}" }
+                writer.println("NEARER_HELLO|$localName|$localStableId")
                 val pairingLine = reader.readLine().orEmpty()
                 if (!pairingLine.startsWith("PAIR|")) throw IllegalStateException("The other phone did not provide a pairing code")
-                val code = pairingLine.substringAfter("PAIR|").take(6)
+                val pairingParts = pairingLine.split("|", limit = 3)
+                val code = pairingParts.getOrNull(1).orEmpty().take(6)
+                val remoteStableId = pairingParts.getOrNull(2).orEmpty().ifBlank { "wifi:${(connectedDeviceName ?: "Nearby NeaRer user").lowercase(java.util.Locale.ROOT)}" }
                 runOnUiThread {
                     pairingCode = code
                     statusMessage = "Compare code $code with the other phone before approving."
@@ -1066,6 +1081,10 @@ class MainActivity : ComponentActivity() {
                     "ACCEPT" -> {
                         runOnUiThread {
                             chatReady = true
+                            connectedChatPeerId = remoteStableId
+                            connectedChatPeerName = connectedDeviceName ?: "Nearby NeaRer user"
+                            activeChatPeerId = remoteStableId
+                            activeChatPeerName = connectedChatPeerName ?: "Nearby NeaRer user"
                             approvalMessage = "Your connection request was approved."
                             connectionMessage = "NeaRer connection approved"
                             chatNotice = "Connected directly to the other phone. Say hello."
@@ -1155,6 +1174,10 @@ class MainActivity : ComponentActivity() {
         peerSocket = null
         peerWriter = null
         serverSocket = null
+        if (!hybridConnected) {
+            connectedChatPeerId = null
+            connectedChatPeerName = null
+        }
         incomingTransfers.values.forEach {
             it.close()
             it.file.delete()
@@ -2194,8 +2217,8 @@ class MainActivity : ComponentActivity() {
                                     runOnUiThread {
                                         chatMessages.add(ChatMessage(
                                     id, body, outgoing = false, delivery = "Received",
-                                    conversationId = activeChatPeerId,
-                                    conversationName = activeChatPeerName
+                                    conversationId = connectedChatPeerId ?: activeChatPeerId,
+                                    conversationName = connectedChatPeerName ?: activeChatPeerName
                                 ))
                                         persistMessages()
                                         chatNotice = "New message received directly."
