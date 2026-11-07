@@ -65,7 +65,8 @@ internal object FastShareHttpSession {
                 rangeHeader = headerValue.trim()
             }
         }
-        return FastShareHttpExchange(request, rangeHeader)
+        // RFC byte ranges modify GET responses; HEAD must describe the full representation.
+        return FastShareHttpExchange(request, if (request.isHeadOnly) null else rangeHeader)
     }
 
     private fun isTokenCharacter(value: Char): Boolean =
