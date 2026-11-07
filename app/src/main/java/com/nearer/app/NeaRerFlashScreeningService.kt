@@ -3,6 +3,7 @@ package com.nearer.app
 import android.content.Context
 import android.content.Intent
 import android.telecom.Call
+import android.telecom.Connection
 import android.telecom.CallScreeningService
 import android.util.Base64
 import org.json.JSONArray
@@ -32,6 +33,20 @@ class NeaRerFlashScreeningService : CallScreeningService() {
             if (handle.scheme != "tel") return
             val number = handle.schemeSpecificPart.orEmpty()
             if (!FlashTrustedSenders.isTrusted(this, number)) return
+
+            // Android 11+ exposes network caller-number verification. A failed
+            // verification can indicate caller-ID spoofing, so never decode it
+            // as a trusted Flash signal. "Not verified" remains usable for
+            // carriers that do not provide this network check, but is labelled.
+            val numberVerification = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                callDetails.callerNumberVerificationStatus
+            } else {
+                Connection.VERIFICATION_STATUS_NOT_VERIFIED
+            }
+            if (numberVerification == Connection.VERIFICATION_STATUS_FAILED) return
+            val verificationLabel = if (
+                numberVerification == Connection.VERIFICATION_STATUS_PASSED
+            ) "NETWORK_VERIFIED" else "NOT_VERIFIED"
 
             val senderKey = FlashTrustedSenders.fingerprint(this, number) ?: return
             val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
@@ -67,12 +82,13 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                         .put("timestamp", receivedAt)
                         .put("senderTag", senderTag)
                         .put("senderName", senderName)
+                        .put("numberVerification", verificationLabel)
                 )
                 while (queue.length() > MAX_PENDING_EVENTS) queue.remove(0)
                 prefs.edit()
                     .putString(key, updated.joinToString(","))
                     .putString(PENDING_EVENTS, queue.toString())
-                    .apply()
+                    .commit()
             } else {
                 // The calls in a recognised pattern are one message, not several
                 // generic call bubbles plus a decoded preset bubble. Tell the chat
@@ -99,6 +115,7 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                         .put("timestamp", receivedAt)
                         .put("senderTag", senderTag)
                         .put("senderName", senderName)
+                        .put("numberVerification", verificationLabel)
                         .put("replaces", replacedEventIds)
                 )
                 while (queue.length() > MAX_PENDING_EVENTS) queue.remove(0)
@@ -108,7 +125,7 @@ class NeaRerFlashScreeningService : CallScreeningService() {
                     .putLong(LAST_SIGNAL_AT, receivedAt)
                     .putString(LAST_SIGNAL_FROM, senderKey)
                     .putString(PENDING_EVENTS, queue.toString())
-                    .apply()
+                    .commit()
             }
 
             // Wake an open NeaRer chat after the queue has been updated.
