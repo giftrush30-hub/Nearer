@@ -417,6 +417,9 @@ class MainActivity : ComponentActivity() {
                         } else if (persistedMessageIds.contains(messageId)) {
                             // Re-send receipts for already-saved duplicates if an earlier ACK was lost.
                             nearbyTransport?.sendDeliveryAck(id, messageId)
+                        } else {
+                            // A previous disk write may have failed; retry saving before acknowledging.
+                            persistReceivedMessageThenAcknowledge(messageId, nearbyEndpointId = id)
                         }
                     }
                 }
@@ -2264,6 +2267,8 @@ class MainActivity : ComponentActivity() {
                                     synchronized(writerLock) {
                                         if (peerSocket === socket) peerWriter?.println("ACK|$id")
                                     }
+                                } else if (body.isNotBlank()) {
+                                    persistReceivedMessageThenAcknowledge(id, socket = socket)
                                 }
                             }
                         }
