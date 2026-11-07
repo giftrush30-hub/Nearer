@@ -179,6 +179,12 @@ class MainActivity : ComponentActivity() {
     private var outgoingProgress by mutableStateOf(0f)
     private var outgoingTransferredBytes by mutableStateOf(0L)
     private var outgoingTotalBytes by mutableStateOf(0L)
+    private var outgoingSpeedBytesPerSecond by mutableStateOf(0L)
+    private var incomingSpeedBytesPerSecond by mutableStateOf(0L)
+    private var outgoingRateSampleAt = 0L
+    private var incomingRateSampleAt = 0L
+    private var outgoingRateSampleBytes = 0L
+    private var incomingRateSampleBytes = 0L
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
     private var incomingTransferredBytes by mutableStateOf(0L)
@@ -186,6 +192,25 @@ class MainActivity : ComponentActivity() {
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
+
+    private fun updateTransferRate(incoming: Boolean, bytes: Long) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (incoming) {
+            val elapsed = now - incomingRateSampleAt
+            if (incomingRateSampleAt > 0L && elapsed >= 700L && bytes >= incomingRateSampleBytes) {
+                val rate = ((bytes - incomingRateSampleBytes) * 1000L / elapsed).coerceAtLeast(0L)
+                incomingSpeedBytesPerSecond = if (incomingSpeedBytesPerSecond == 0L) rate else (incomingSpeedBytesPerSecond * 0.65 + rate * 0.35).toLong()
+                incomingRateSampleAt = now; incomingRateSampleBytes = bytes
+            } else if (incomingRateSampleAt == 0L) { incomingRateSampleAt = now; incomingRateSampleBytes = bytes }
+        } else {
+            val elapsed = now - outgoingRateSampleAt
+            if (outgoingRateSampleAt > 0L && elapsed >= 700L && bytes >= outgoingRateSampleBytes) {
+                val rate = ((bytes - outgoingRateSampleBytes) * 1000L / elapsed).coerceAtLeast(0L)
+                outgoingSpeedBytesPerSecond = if (outgoingSpeedBytesPerSecond == 0L) rate else (outgoingSpeedBytesPerSecond * 0.65 + rate * 0.35).toLong()
+                outgoingRateSampleAt = now; outgoingRateSampleBytes = bytes
+            } else if (outgoingRateSampleAt == 0L) { outgoingRateSampleAt = now; outgoingRateSampleBytes = bytes }
+        }
+    }
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -335,12 +360,14 @@ class MainActivity : ComponentActivity() {
                         incomingTransferName = name
                         incomingProgress = fraction
                         incomingTransferredBytes = transferred.coerceAtLeast(0L)
+                        updateTransferRate(true, transferred.coerceAtLeast(0L))
                         incomingTotalBytes = total.coerceAtLeast(0L)
                         chatNotice = if (total > 0L) "Receiving $name • ${(fraction * 100).toInt()}%" else "Receiving $name…"
                     } else {
                         outgoingTransferId = "nearby:$payloadId"
                         outgoingProgress = fraction
                         outgoingTransferredBytes = transferred.coerceAtLeast(0L)
+                        updateTransferRate(false, transferred.coerceAtLeast(0L))
                         outgoingTotalBytes = total.coerceAtLeast(0L)
                         chatNotice = if (total > 0L) "Sending $name • ${(fraction * 100).toInt()}%" else "Sending $name…"
                     }
@@ -453,6 +480,10 @@ class MainActivity : ComponentActivity() {
                     incomingProgress = incomingProgress,
                     incomingTransferredBytes = incomingTransferredBytes,
                     incomingTotalBytes = incomingTotalBytes,
+                    incomingSpeedBytesPerSecond = incomingSpeedBytesPerSecond,
+                    outgoingTransferredBytes = outgoingTransferredBytes,
+                    outgoingTotalBytes = outgoingTotalBytes,
+                    outgoingSpeedBytesPerSecond = outgoingSpeedBytesPerSecond,
                     onOpenFile = ::openReceivedFile,
                     onDisconnect = ::disconnectFromPeer,
                     onAccept = ::approveIncoming,
@@ -1734,6 +1765,7 @@ class MainActivity : ComponentActivity() {
                                 outgoingProgress = fraction
                                 outgoingTransferredBytes = sentBytes
                                 outgoingTotalBytes = fileSize.coerceAtLeast(0L)
+                                updateTransferRate(false, sentBytes)
                                 chatNotice = "Sending $fileName$progress"
                             }
                         }
@@ -1850,6 +1882,7 @@ class MainActivity : ComponentActivity() {
                                                 incomingProgress = fraction
                                                 incomingTransferredBytes = transfer.receivedBytes
                                                 incomingTotalBytes = transfer.expectedBytes
+                                                updateTransferRate(true, transfer.receivedBytes)
                                                 chatNotice = if (transfer.expectedBytes > 0L) {
                                                     "Receiving ${transfer.name} • ${(fraction * 100).toInt()}%"
                                                 } else {
@@ -2023,6 +2056,10 @@ private fun NeaRerHome(
     incomingProgress: Float,
     incomingTransferredBytes: Long,
     incomingTotalBytes: Long,
+    incomingSpeedBytesPerSecond: Long,
+    outgoingTransferredBytes: Long,
+    outgoingTotalBytes: Long,
+    outgoingSpeedBytesPerSecond: Long,
     onOpenFile: (ReceivedFile) -> Unit,
     onDisconnect: () -> Unit,
     onAccept: () -> Unit,
@@ -2884,7 +2921,7 @@ private fun NeaRerHome(
                                             Text("${(smoothIncomingProgress * 100).toInt().coerceIn(0, 100)}% received", color = Muted, fontSize = 9.sp)
                                             Spacer(Modifier.weight(1f))
                                             Text(
-                                                if (incomingTotalBytes > 0L) "${formatTransferSize(incomingTransferredBytes)} / ${formatTransferSize(incomingTotalBytes)}"
+                                                transferProgressDetail(incomingTransferredBytes, incomingTotalBytes, incomingSpeedBytesPerSecond)
                                                 else "Receiving data…",
                                                 color = Color(0xFFB9CBE2),
                                                 fontSize = 9.sp
@@ -2929,7 +2966,7 @@ private fun NeaRerHome(
                                             Text("${(smoothOutgoingProgress * 100).toInt().coerceIn(0, 100)}% sent", color = Muted, fontSize = 9.sp)
                                             Spacer(Modifier.weight(1f))
                                             Text(
-                                                if (outgoingTotalBytes > 0L) "${formatTransferSize(outgoingTransferredBytes)} / ${formatTransferSize(outgoingTotalBytes)}" else "Sending data…",
+                                                transferProgressDetail(outgoingTransferredBytes, outgoingTotalBytes, outgoingSpeedBytesPerSecond) else "Sending data…",
                                                 color = Color(0xFFB9CBE2), fontSize = 9.sp
                                             )
                                             Spacer(Modifier.weight(1f))
@@ -4230,6 +4267,18 @@ private data class ChatMessage(
     val outgoing: Boolean,
     val delivery: String
 )
+
+private fun transferProgressDetail(transferred: Long, total: Long, speed: Long): String {
+    if (total <= 0L) return if (speed > 0L) "${formatTransferSize(speed)}/s" else "Transferring data…"
+    if (speed <= 0L) return "${formatTransferSize(transferred)} / ${formatTransferSize(total)}"
+    val seconds = ((total - transferred).coerceAtLeast(0L) / speed.toDouble()).toLong()
+    val eta = when {
+        seconds < 60L -> "~${seconds}s left"
+        seconds < 3600L -> "~${seconds / 60}m ${seconds % 60}s left"
+        else -> "~${seconds / 3600}h ${(seconds % 3600) / 60}m left"
+    }
+    return "${formatTransferSize(speed)}/s • $eta"
+}
 
 private fun formatTransferSize(bytes: Long): String {
     val safeBytes = bytes.coerceAtLeast(0L)
