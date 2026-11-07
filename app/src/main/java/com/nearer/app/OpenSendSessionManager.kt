@@ -106,3 +106,4 @@ class OpenSendSessionManager(context: Context) : Closeable {
     override fun close() {
         stop()
     }
+}
