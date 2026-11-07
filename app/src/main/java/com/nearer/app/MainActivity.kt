@@ -2373,7 +2373,7 @@ private fun NeaRerHome(
                 }
             }
 
-            if (selectedTab == "Nearby") {
+            if (selectedTab == "Files") {\n                FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles)\n            }\n\n            if (selectedTab == "Nearby") {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), color = Panel) {
                 Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("NEARBY CONNECTION", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -2725,7 +2725,7 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Home" to "⌂", "Nearby" to "⌖", "Chats" to "▤", "Groups" to "◎", "More" to "•••").forEach { item ->
+                    listOf("Home" to "⌂", "Files" to "▦", "Nearby" to "⌖", "Chats" to "▤", "Groups" to "◎", "More" to "•••").forEach { item ->
                         val selected = selectedTab == item.first
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
@@ -2738,7 +2738,7 @@ private fun NeaRerHome(
                                 verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
                                 Text(item.second, color = if (selected) Mint else Muted, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text(item.first, color = if (selected) Mint else Muted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                Text(item.first, color = if (selected) Mint else Muted, fontSize = 8.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
                                 Surface(
                                     modifier = Modifier.width(16.dp).height(2.dp),
                                     shape = RoundedCornerShape(2.dp),
