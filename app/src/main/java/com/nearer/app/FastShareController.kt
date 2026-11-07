@@ -364,6 +364,7 @@ private class FastShareHttpServer(
     }
 
     private fun writeFileUnavailable(output: BufferedOutputStream) {
+        onTransferUpdate(0L, fileLength, false, true)
         val message = "The selected file is no longer available. Choose it again in NeaRer."
         val body = message.toByteArray(Charsets.UTF_8)
         output.write("HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
