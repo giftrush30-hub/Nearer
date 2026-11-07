@@ -2261,7 +2261,7 @@ class MainActivity : ComponentActivity() {
                         zip.closeEntry()
                     }
                     zip.putNextEntry(ZipEntry("README.txt"))
-                    zip.write(("NeaRer app package for " + app.label + " (" + app.packageName + "). Keep base.apk and every split_*.apk together. Installing requires an Android split-package installer.").toByteArray(Charsets.UTF_8))
+                    zip.write(("NeaRer app package for " + app.label + " (" + app.packageName + "). Keep base.apk and every split_*.apk together. NeaRer can hand this package to Android's built-in split-app installer. Android will ask the recipient to approve installation.").toByteArray(Charsets.UTF_8))
                     zip.closeEntry()
                 }
             }
