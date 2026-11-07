@@ -18,7 +18,7 @@ class ChunkedStreamCopyTest {
 
         assertTrue(result.complete)
         assertEquals(11L, result.bytesCopied)
-        assertEquals("5\\r\\nhello\\r\\n5\\r\\n worl\\r\\n1\\r\\nd\\r\\n0\\r\\n\\r\\n", output.toString("UTF-8"))
+        assertEquals("5\r\nhello\r\n5\r\n worl\r\n1\r\nd\r\n0\r\n\r\n", output.toString("UTF-8"))
     }
 
     @Test fun shortReadsAreFramedAsSeparateValidChunks() {
@@ -34,7 +34,7 @@ class ChunkedStreamCopyTest {
 
         assertTrue(result.complete)
         assertEquals(7L, result.bytesCopied)
-        assertEquals("2\\r\\nab\\r\\n2\\r\\ncd\\r\\n2\\r\\nef\\r\\n1\\r\\ng\\r\\n0\\r\\n\\r\\n", output.toString("UTF-8"))
+        assertEquals("2\r\nab\r\n2\r\ncd\r\n2\r\nef\r\n1\r\ng\r\n0\r\n\r\n", output.toString("UTF-8"))
     }
 
     @Test fun interruptedStreamDoesNotWriteFalseCompletionTerminator() {
@@ -50,8 +50,8 @@ class ChunkedStreamCopyTest {
 
         assertFalse(result.complete)
         assertEquals(6L, result.bytesCopied)
-        assertEquals("3\\r\\nabc\\r\\n3\\r\\ndef\\r\\n", output.toString("UTF-8"))
-        assertFalse(output.toString("UTF-8").endsWith("0\\r\\n\\r\\n"))
+        assertEquals("3\r\nabc\r\n3\r\ndef\r\n", output.toString("UTF-8"))
+        assertFalse(output.toString("UTF-8").endsWith("0\r\n\r\n"))
     }
 
     @Test fun emptyInputWritesOnlyFinalTerminator() {
@@ -60,7 +60,7 @@ class ChunkedStreamCopyTest {
 
         assertTrue(result.complete)
         assertEquals(0L, result.bytesCopied)
-        assertEquals("0\\r\\n\\r\\n", output.toString("UTF-8"))
+        assertEquals("0\r\n\r\n", output.toString("UTF-8"))
     }
 
     @Test(expected = IllegalArgumentException::class)
