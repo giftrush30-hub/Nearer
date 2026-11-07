@@ -22,6 +22,7 @@ import android.webkit.MimeTypeMap
 import android.os.Build
 import android.os.Bundle
 import android.os.Looper
+import android.media.MediaRecorder
 import android.os.Handler
 import java.io.BufferedReader
 import java.io.File
@@ -194,6 +195,9 @@ class MainActivity : ComponentActivity() {
     private var incomingTransferredBytes by mutableStateOf(0L)
     private var incomingTotalBytes by mutableStateOf(0L)
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
+    private var isRecordingVoiceNote by mutableStateOf(false)
+    private var voiceNoteRecorder: MediaRecorder? = null
+    private var activeVoiceNoteFile: File? = null
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
 
@@ -474,6 +478,8 @@ class MainActivity : ComponentActivity() {
                     chatNotice = chatNotice,
                     receivedFiles = receivedFiles,
                     onSendMessage = ::sendChatMessage,
+                    isRecordingVoiceNote = isRecordingVoiceNote,
+                    onVoiceNoteAction = ::toggleVoiceNoteRecording,
                     onSendQueuedMessages = ::flushQueuedChatMessages,
                     pendingChatFilesCount = pendingChatFileUris.size,
                     onSendQueuedFiles = ::flushPendingChatFiles,
@@ -546,6 +552,11 @@ class MainActivity : ComponentActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_RECORD_AUDIO) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) beginVoiceNoteRecording()
+            else chatNotice = "Microphone permission was not granted. You can still send text and files."
+            return
+        }
         if (requestCode == REQUEST_DISCOVERY_PERMISSION) {
             if (hasNearbyPermissions()) {
                 statusMessage = "Permissions granted. Starting nearby search…"
@@ -1199,6 +1210,69 @@ class MainActivity : ComponentActivity() {
         persistPendingChatFiles()
         try { sendFile(Uri.parse(next)) } catch (_: Exception) {
             chatNotice = "A queued attachment could not be opened. Please select it again."
+        }
+    }
+
+    private fun toggleVoiceNoteRecording() {
+        if (isRecordingVoiceNote) {
+            finishVoiceNoteRecording()
+            return
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
+            chatNotice = "Allow microphone access to record a voice note."
+            return
+        }
+        beginVoiceNoteRecording()
+    }
+
+    private fun beginVoiceNoteRecording() {
+        try {
+            val folder = File(filesDir, "voice_notes").apply { if (!exists()) mkdirs() }
+            val output = File(folder, "NeaRer-voice-${System.currentTimeMillis()}.m4a")
+            val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(this) else @Suppress("DEPRECATION") MediaRecorder()
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            recorder.setAudioEncodingBitRate(96000)
+            recorder.setAudioSamplingRate(44100)
+            recorder.setOutputFile(output.absolutePath)
+            recorder.prepare()
+            recorder.start()
+            voiceNoteRecorder = recorder
+            activeVoiceNoteFile = output
+            isRecordingVoiceNote = true
+            chatNotice = "Recording voice note… Tap the microphone again to finish and prepare it for sharing."
+        } catch (error: Exception) {
+            try { voiceNoteRecorder?.release() } catch (_: Exception) { }
+            voiceNoteRecorder = null
+            isRecordingVoiceNote = false
+            activeVoiceNoteFile?.delete()
+            activeVoiceNoteFile = null
+            chatNotice = "Voice recording could not start. Check microphone permission and available storage."
+        }
+    }
+
+    private fun finishVoiceNoteRecording() {
+        val recorder = voiceNoteRecorder
+        val file = activeVoiceNoteFile
+        try { recorder?.stop() } catch (_: Exception) {
+            file?.delete()
+            chatNotice = "That recording was too short or could not be saved. Please try again."
+        } finally {
+            try { recorder?.reset(); recorder?.release() } catch (_: Exception) { }
+            voiceNoteRecorder = null
+            activeVoiceNoteFile = null
+            isRecordingVoiceNote = false
+        }
+        if (file != null && file.exists() && file.length() > 0L) {
+            try {
+                val uri = FileProvider.getUriForFile(this, "${packageName}.files", file)
+                chatNotice = "Voice note saved • ${formatTransferSize(file.length())}. Preparing it for nearby sharing."
+                sendFile(uri)
+            } catch (_: Exception) {
+                chatNotice = "Voice note was recorded but could not be prepared for sharing."
+            }
         }
     }
 
@@ -2142,6 +2216,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val REQUEST_DISCOVERY_PERMISSION = 410
+    private const val REQUEST_RECORD_AUDIO = 411
     }
 }
 
@@ -2163,6 +2238,8 @@ private fun NeaRerHome(
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
     onSendMessage: (String) -> Unit,
+    isRecordingVoiceNote: Boolean,
+    onVoiceNoteAction: () -> Unit,
     onSendQueuedMessages: () -> Unit,
     pendingChatFilesCount: Int,
     onSendQueuedFiles: () -> Unit,
@@ -3994,6 +4071,9 @@ private fun NeaRerHome(
                             Surface(modifier = Modifier.size(46.dp).clickable { showChatAttachmentMenu = true }, shape = CircleShape, color = Color(0xFF173F78), border = BorderStroke(1.dp, Color(0xFF347CEB))) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("+", color = Gold, fontSize = 27.sp, fontWeight = FontWeight.Medium) }
                             }
+                            Surface(modifier = Modifier.size(46.dp).clickable { onVoiceNoteAction() }, shape = CircleShape, color = if (isRecordingVoiceNote) Color(0xFF8B2539) else Color(0xFF173F78), border = BorderStroke(1.dp, if (isRecordingVoiceNote) Color(0xFFFF8292) else Color(0xFF347CEB))) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(if (isRecordingVoiceNote) "■" else "🎙", color = if (isRecordingVoiceNote) White else Gold, fontSize = 18.sp, fontWeight = FontWeight.Black) }
+                            }
                             OutlinedTextField(value = draft, onValueChange = { draft = it.take(2000); localChatPrefs.edit().putString("chat_draft", draft).apply() }, modifier = Modifier.weight(1f), placeholder = { Text("Write a message to save…", color = Muted, fontSize = 11.sp) }, shape = RoundedCornerShape(22.dp), minLines = 1, maxLines = 4)
                             Surface(modifier = Modifier.size(46.dp).clickable(enabled = draft.isNotBlank()) {
                                 onSendMessage(draft.trim())
@@ -4003,6 +4083,7 @@ private fun NeaRerHome(
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("➤", color = White, fontSize = 19.sp, fontWeight = FontWeight.Black) }
                             }
                         }
+                        Text(if (isRecordingVoiceNote) "RECORDING VOICE NOTE • TAP ■ TO FINISH" else "VOICE NOTES • RECORD AND SHARE OVER YOUR NEARBY CONNECTION", color = if (isRecordingVoiceNote) Color(0xFFFFA5AE) else Muted, fontSize = 9.sp, fontWeight = if (isRecordingVoiceNote) FontWeight.Bold else FontWeight.Normal, lineHeight = 14.sp)
                         Text("Messages and attachments stay on this phone until a nearby connection is available. Nothing is marked delivered early.", color = Muted, fontSize = 9.sp, lineHeight = 14.sp)
                     }
                 }
