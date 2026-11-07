@@ -2931,8 +2931,28 @@ private fun NeaRerHome(
     var isLoadingApps by remember { mutableStateOf(false) }
     var appShareNotice by remember { mutableStateOf<String?>(null) }
     var isPreparingApp by remember { mutableStateOf(false) }
+    var phoneFolderTreeUri by remember { mutableStateOf<Uri?>(null) }
+    var showPhoneFolderBrowser by remember { mutableStateOf(false) }
+    val phoneFolderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            try {
+                flashContext.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                phoneFolderTreeUri = uri
+                showPhoneFolderBrowser = true
+            } catch (e: SecurityException) {
+                appShareNotice = "NeaRer could not keep access to that folder. Please choose it again."
+            }
+        }
+    }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         uris.forEach(onSendFile)
+    }
+    if (showPhoneFolderBrowser && phoneFolderTreeUri != null) {
+        PhoneFolderBrowser(
+            treeUri = phoneFolderTreeUri!!,
+            onSelectFile = { uri -> onSendFile(uri) },
+            onClose = { showPhoneFolderBrowser = false }
+        )
     }
     if (showChatAttachmentMenu) {
         AlertDialog(
@@ -2942,13 +2962,14 @@ private fun NeaRerHome(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Choose what you want to share. Files can wait here until someone connects nearby.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
-                    listOf(Triple("Photos & videos", "Images and clips", "media"), Triple("Documents", "PDF, Word, Excel and more", "docs"), Triple("Audio & music", "Sound files and recordings", "audio"), Triple("Any file", "Browse phone storage", "files"), Triple("Installed apps", "Share an app package", "apps")).forEach { item ->
+                    listOf(Triple("Photos & videos", "Images and clips", "media"), Triple("Documents", "PDF, Word, Excel and more", "docs"), Triple("Audio & music", "Sound files and recordings", "audio"), Triple("Browse phone folders", "Explore a folder inside NeaRer", "folders"), Triple("Any file", "Browse phone storage", "files"), Triple("Installed apps", "Share an app package", "apps")).forEach { item ->
                         Surface(modifier = Modifier.fillMaxWidth().clickable {
                             showChatAttachmentMenu = false
                             when (item.third) {
                                 "media" -> filePicker.launch(arrayOf("image/*", "video/*"))
                                 "docs" -> filePicker.launch(arrayOf("application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "*/*"))
                                 "audio" -> filePicker.launch(arrayOf("audio/*"))
+                                "folders" -> phoneFolderPicker.launch(null)
                                 "apps" -> {
                                     showInstalledApps = true
                                     isLoadingApps = true
@@ -3686,6 +3707,7 @@ private fun NeaRerHome(
                             Triple("♫", "Music", arrayOf("audio/*")),
                             Triple("▣", "Apps", arrayOf("application/vnd.android.package-archive")),
                             Triple("▤", "Documents", arrayOf("application/pdf", "text/*", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/rtf")),
+                            Triple("📁", "Phone folders", emptyArray()),
                             Triple("•••", "All files", arrayOf("*/*"))
                         )
                         fileCategories.chunked(3).forEachIndexed { rowIndex, rowItems ->
@@ -3702,7 +3724,9 @@ private fun NeaRerHome(
                                     Surface(
                                         modifier = Modifier.weight(1f).height(108.dp).animateContentSize().clickable {
                                             receiveMode = false
-                                            if (item.second == "Apps") {
+                                            if (item.second == "Phone folders") {
+                                                phoneFolderPicker.launch(null)
+                                            } else if (item.second == "Apps") {
                                                 showInstalledApps = true
                                                 isLoadingApps = true
                                                 navigationScope.launch {
