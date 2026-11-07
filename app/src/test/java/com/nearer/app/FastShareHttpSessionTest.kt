@@ -34,7 +34,7 @@ class FastShareHttpSessionTest {
 
     @Test fun headRequestIgnoresRangeHeaderAndDescribesWholeFile() {
         val (exchange, response) = read(
-            "HEAD /download HTTP/1.1\\r\\nRange: bytes=10-19\\r\\n\\r\\n"
+            "HEAD /download HTTP/1.1\r\nRange: bytes=10-19\r\n\r\n"
         )
         assertNotNull(exchange)
         assertTrue(exchange!!.request.isHeadOnly)
