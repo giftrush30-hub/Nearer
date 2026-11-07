@@ -67,3 +67,16 @@ app/build/outputs/apk/debug/app-debug.apk
 - [Nearby Connections overview](https://developers.google.com/nearby/connections/overview)
 - [Nearby Connections: exchange data](https://developers.google.com/nearby/connections/android/exchange-data)
 - [Android Room persistence guidance](https://developer.android.com/training/data-storage/room)
+
+
+## OpenSend and AppShare foundation (draft branch)
+
+The `feature/opensend-appshare-foundation` branch adds reusable Android building blocks:
+- `AppShareCatalog` lists visible installed apps and prepares base + split APK sets for sharing.
+- `OpenSendHotspot` requests an Android local-only hotspot and exposes the OS-provided network credentials.
+- `OpenSendHttpServer` serves a local branded download page with a session token and HTTP Range support.
+- Unit tests cover OpenSend session-token access control and byte-range downloads.
+
+These are engine foundations only. The Share hub screens, QR presentation, Nearby transfer wiring, receiving-side APK verification and PackageInstaller flow, foreground lifecycle, and physical-device testing are still required before the features are ready for users.
+
+The installed-app inventory permission (`QUERY_ALL_PACKAGES`) is policy-sensitive and requires a Google Play eligibility review if used in a Play-distributed build. OpenSend captive-portal auto-open and long-distance hotspot coverage are not guaranteed.
