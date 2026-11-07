@@ -43,6 +43,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import javax.crypto.SecretKey
 import java.util.concurrent.LinkedBlockingQueue
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -169,6 +170,7 @@ class MainActivity : ComponentActivity() {
     private var serverSocket: ServerSocket? = null
     private var peerSocket: Socket? = null
     private var peerWriter: PrintWriter? = null
+    @Volatile private var peerSessionKey: SecretKey? = null
     private val writerLock = Any()
     private val receivedMessageIds = ConcurrentHashMap.newKeySet<String>()
     private val persistedMessageIds = ConcurrentHashMap.newKeySet<String>()
@@ -993,27 +995,35 @@ class MainActivity : ComponentActivity() {
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 peerWriter = writer
                 val hello = reader.readLine().orEmpty()
-                if (!hello.startsWith("NEARER_HELLO|")) {
+                if (hello.length > 2048 || !hello.startsWith("NEARER_HELLO|")) {
                     writer.println("REJECT")
-                    runOnUiThread { statusMessage = "A device connected, but it did not identify as NeaRer." }
+                    runOnUiThread { statusMessage = "A device connected, but it did not identify as a secure NeaRer peer." }
                     closePeerTransport()
                     return@execute
                 }
-                val helloParts = hello.split("|", limit = 3)
+                val helloParts = hello.split("|", limit = 4)
                 val name = helloParts.getOrNull(1).orEmpty().take(40).ifBlank { "Nearby NeaRer user" }
                 val remoteStableId = helloParts.getOrNull(2).orEmpty().ifBlank { "wifi:${name.lowercase(java.util.Locale.ROOT)}" }
-                val code = (100000 + SecureRandom().nextInt(900000)).toString()
+                val remotePublicKey = helloParts.getOrNull(3).orEmpty()
+                require(remotePublicKey.isNotBlank()) { "The other phone does not support encrypted NeaRer sessions. Update both phones." }
                 val localStableId = nearbyTransport?.localMemberId.orEmpty().ifBlank { "wifi:${displayName.lowercase(java.util.Locale.ROOT)}" }
-                writer.println("PAIR|$code|$localStableId")
+                val localEphemeral = PeerSessionCrypto.createEphemeralKeyPair()
+                val identityTranscript = listOf(localStableId, remoteStableId).sorted().joinToString("|")
+                val sessionKey = PeerSessionCrypto.deriveSessionKey(
+                    localEphemeral.privateKey, remotePublicKey, identityTranscript
+                )
+                val code = PeerSessionCrypto.authenticationCode(sessionKey, identityTranscript)
+                writer.println("PAIR|$code|$localStableId|${localEphemeral.publicKeyBase64}")
                 runOnUiThread {
                     pairingCode = code
                     incomingRequesterName = name
-                    approvalMessage = "Compare the six-digit code before accepting"
+                    approvalMessage = "Compare the six-digit security code on both phones. Accept only if they match."
                     statusMessage = "$name wants to connect on NeaRer."
                 }
                 val accepted = approvalDecision.poll(60, java.util.concurrent.TimeUnit.SECONDS) ?: false
                 writer.println(if (accepted) "ACCEPT" else "REJECT")
                 if (accepted) {
+                    peerSessionKey = sessionKey
                     runOnUiThread {
                         chatReady = true
                         connectedChatPeerId = remoteStableId
@@ -1072,18 +1082,28 @@ class MainActivity : ComponentActivity() {
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
                 val localName = displayName.trim().replace("|", " ").take(40).ifBlank { "NeaRer User" }
                 val localStableId = nearbyTransport?.localMemberId.orEmpty().ifBlank { "wifi:${localName.lowercase(java.util.Locale.ROOT)}" }
-                writer.println("NEARER_HELLO|$localName|$localStableId")
+                val localEphemeral = PeerSessionCrypto.createEphemeralKeyPair()
+                writer.println("NEARER_HELLO|$localName|$localStableId|${localEphemeral.publicKeyBase64}")
                 val pairingLine = reader.readLine().orEmpty()
                 if (!pairingLine.startsWith("PAIR|")) throw IllegalStateException("The other phone did not provide a pairing code")
-                val pairingParts = pairingLine.split("|", limit = 3)
-                val code = pairingParts.getOrNull(1).orEmpty().take(6)
+                val pairingParts = pairingLine.split("|", limit = 4)
+                val remoteCode = pairingParts.getOrNull(1).orEmpty().take(6)
                 val remoteStableId = pairingParts.getOrNull(2).orEmpty().ifBlank { "wifi:${(connectedDeviceName ?: "Nearby NeaRer user").lowercase(java.util.Locale.ROOT)}" }
+                val remotePublicKey = pairingParts.getOrNull(3).orEmpty()
+                require(remotePublicKey.isNotBlank()) { "The other phone did not provide an encryption key." }
+                val identityTranscript = listOf(localStableId, remoteStableId).sorted().joinToString("|")
+                val sessionKey = PeerSessionCrypto.deriveSessionKey(
+                    localEphemeral.privateKey, remotePublicKey, identityTranscript
+                )
+                val code = PeerSessionCrypto.authenticationCode(sessionKey, identityTranscript)
+                require(remoteCode == code) { "Security code mismatch. Disconnect and decline this connection." }
                 runOnUiThread {
                     pairingCode = code
-                    statusMessage = "Compare code $code with the other phone before approving."
+                    statusMessage = "Security code $code. Compare it on both phones; decline if the codes differ."
                 }
                 when (reader.readLine()) {
                     "ACCEPT" -> {
+                        peerSessionKey = sessionKey
                         runOnUiThread {
                             chatReady = true
                             connectedChatPeerId = remoteStableId
@@ -1178,6 +1198,7 @@ class MainActivity : ComponentActivity() {
         try { serverSocket?.close() } catch (_: Exception) { }
         peerSocket = null
         peerWriter = null
+        peerSessionKey = null
         serverSocket = null
         if (!hybridConnected) {
             connectedChatPeerId = null
@@ -1352,7 +1373,7 @@ class MainActivity : ComponentActivity() {
                     nearbyEndpointId?.let { nearbyTransport?.sendDeliveryAck(it, messageId) }
                     socket?.let { source ->
                         synchronized(writerLock) {
-                            if (peerSocket === source) peerWriter?.println("ACK|$messageId")
+                            if (peerSocket === source) sendWireLine("ACK|$messageId")
                         }
                     }
                 } else {
@@ -1377,8 +1398,14 @@ class MainActivity : ComponentActivity() {
 
     private fun sendWireLine(line: String): Boolean {
         val writer = peerWriter ?: return false
+        val key = peerSessionKey ?: return false
+        val encryptedLine = try {
+            "ENC|" + PeerSessionCrypto.encrypt(line, key)
+        } catch (_: Exception) {
+            return false
+        }
         synchronized(writerLock) {
-            writer.println(line)
+            writer.println(encryptedLine)
             return !writer.checkError()
         }
     }
@@ -2243,7 +2270,12 @@ class MainActivity : ComponentActivity() {
                 socket.soTimeout = 0
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
                 while (!socket.isClosed) {
-                    val line = reader.readLine() ?: break
+                    val rawLine = reader.readLine() ?: break
+                    if (rawLine.length > 96 * 1024 || !rawLine.startsWith("ENC|")) {
+                        throw IllegalStateException("An unencrypted or oversized NeaRer frame was rejected")
+                    }
+                    val sessionKey = peerSessionKey ?: throw IllegalStateException("Encrypted session is not ready")
+                    val line = PeerSessionCrypto.decrypt(rawLine.substringAfter("ENC|"), sessionKey)
                     if (line.length > 24 * 1024) throw IllegalStateException("NeaRer message frame exceeded the allowed size")
                     when {
                         line.startsWith("MSG|") -> {
@@ -2265,7 +2297,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 } else if (body.isNotBlank() && persistedMessageIds.contains(id)) {
                                     synchronized(writerLock) {
-                                        if (peerSocket === socket) peerWriter?.println("ACK|$id")
+                                        if (peerSocket === socket) sendWireLine("ACK|$id")
                                     }
                                 } else if (body.isNotBlank()) {
                                     persistReceivedMessageThenAcknowledge(id, socket = socket)
@@ -2290,7 +2322,7 @@ class MainActivity : ComponentActivity() {
                                 val safeName = name.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100).ifBlank { "shared-file" }
                                 val expected = parts[3].toLongOrNull() ?: 0L
                                 if (expected < 0L) {
-                                    synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|ERROR") }
+                                    synchronized(writerLock) { sendWireLine("FILE_DONE|$id|ERROR") }
                                 } else {
                                     val folder = File(filesDir, "received").apply { mkdirs() }
                                     val target = File(folder, "${System.currentTimeMillis()}-$safeName")
@@ -2325,7 +2357,7 @@ class MainActivity : ComponentActivity() {
                                                 incomingRateSampleBytes = 0L
                                                 chatNotice = "The received file was larger than its declared size. Transfer stopped."
                                             }
-                                            synchronized(writerLock) { peerWriter?.println("FILE_DONE|${parts[1]}|ERROR") }
+                                            synchronized(writerLock) { sendWireLine("FILE_DONE|${parts[1]}|ERROR") }
                                         } else {
                                             transfer.output.write(bytes)
                                             val fraction = if (transfer.expectedBytes > 0L) {
@@ -2347,7 +2379,7 @@ class MainActivity : ComponentActivity() {
                                         val failedTransfer = incomingTransfers.remove(parts[1])
                                         failedTransfer?.close()
                                         failedTransfer?.file?.delete()
-                                        synchronized(writerLock) { peerWriter?.println("FILE_DONE|${parts[1]}|ERROR") }
+                                        synchronized(writerLock) { sendWireLine("FILE_DONE|${parts[1]}|ERROR") }
                                         runOnUiThread {
                                             incomingTransferName = null
                                             incomingProgress = 0f
@@ -2383,10 +2415,10 @@ class MainActivity : ComponentActivity() {
                                             receivedFiles.add(0, ReceivedFile(transfer.name, transfer.file))
                                             chatNotice = "Received and verified: ${transfer.name}. Tap it below to open."
                                         }
-                                        synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|OK") }
+                                        synchronized(writerLock) { sendWireLine("FILE_DONE|$id|OK") }
                                     } else {
                                         transfer.file.delete()
-                                        synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|ERROR") }
+                                        synchronized(writerLock) { sendWireLine("FILE_DONE|$id|ERROR") }
                                         runOnUiThread {
                                             incomingTransferName = null
                                             incomingProgress = 0f
@@ -2453,7 +2485,7 @@ class MainActivity : ComponentActivity() {
                                 chatNotice = "The other phone cancelled the file transfer."
                             }
                         }
-                        line == "PING" -> synchronized(writerLock) { peerWriter?.println("PONG") }
+                        line == "PING" -> synchronized(writerLock) { sendWireLine("PONG") }
                     }
                 }
             } catch (_: Exception) {
