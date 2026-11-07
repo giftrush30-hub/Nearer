@@ -105,6 +105,35 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             // Report every endpoint disconnect. The activity decides whether this was
             // the selected chat or another peer, so one lost peer cannot hide the rest.
             listener.onDisconnected(id, details.first, details.second)
+            // A disconnected endpoint can no longer acknowledge or finish its
+            // in-flight transfers. Release its partial payloads and make the
+            // uncertain delivery explicit instead of leaving a permanent spinner.
+            var interruptedFiles = 0
+            outgoingFiles.entries.toList().forEach { entry ->
+                if (entry.value.first == id && outgoingFiles.remove(entry.key, entry.value)) {
+                    interruptedFiles += 1
+                    try { client.cancelPayload(entry.key) } catch (_: Exception) { }
+                }
+            }
+            val interruptedIncoming = incomingPayloadEndpoints.entries
+                .filter { it.value == id }
+                .map { it.key }
+            interruptedIncoming.forEach { payloadId ->
+                incomingPayloads.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
+                completedPayloads.remove(payloadId)?.let { try { it.close() } catch (_: Exception) { } }
+                incomingPayloadEndpoints.remove(payloadId)
+                incomingMetadata.remove(payloadId)
+                successfulIncomingPayloadIds.remove(payloadId)
+            }
+            if (interruptedFiles > 0) {
+                listener.onFileStatus(
+                    if (interruptedFiles == 1) {
+                        "Connection lost before the other phone confirmed saving the file. Delivery is unconfirmed; reconnect and check before resending."
+                    } else {
+                        "$interruptedFiles file transfers lost their connection before recipient confirmation. Check with the recipients before resending."
+                    }
+                )
+            }
             if (remainingConnections > 0) {
                 listener.onStatus("One nearby person disconnected. Your other direct connections remain active.")
             }
