@@ -1,6 +1,6 @@
 package com.nearer.app.games.ludo
 
-/** NeaRer Royal Double Dice: two independent movement allowances, never summed. */
+/** NeaRer Royal Double Dice: two separate movement allowances, with an optional combined-total move. */
 enum class LudoDieSlot { FIRST, SECOND, BOTH }
 
 data class LudoDicePair(val first: Int, val second: Int) {
@@ -20,7 +20,7 @@ data class LudoTwoDiceTurn(
 
 /** Pure two-dice rules shared by the game engine, UI and tests. */
 object LudoTwoDiceRules {
-    /** A die is playable only when at least one token can legally use its value. */
+    /** Individual dice remain independently playable; BOTH is an optional one-token total move. */
     fun playableDice(player: LudoPlayer, turn: LudoTwoDiceTurn): Set<LudoDieSlot> =
         turn.remaining.filterTo(linkedSetOf()) { slot ->
             LudoEngine.legalMoves(player, turn.dice.value(slot)).isNotEmpty()
