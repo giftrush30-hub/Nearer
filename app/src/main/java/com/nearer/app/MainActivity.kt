@@ -2551,8 +2551,8 @@ private fun NeaRerHome(
     var showChatAttachmentMenu by remember { mutableStateOf(false) }
     val isConnecting = status.contains("connecting", ignoreCase = true) && !chatReady
     val messageListState = rememberLazyListState()
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) messageListState.animateScrollToItem(messages.lastIndex)
+    LaunchedEffect(visibleMessages.size, selectedConversationId) {
+        if (visibleMessages.isNotEmpty()) messageListState.animateScrollToItem(visibleMessages.lastIndex)
     }
     var showLudo by remember { mutableStateOf(false) }
     var activeSection by remember { mutableStateOf("home") }
@@ -4379,7 +4379,7 @@ private fun NeaRerHome(
                         Text("＋ Share photos, videos and files from the attachment button.", color = Muted, fontSize = 9.sp)
                         Text(if (usingNearbyConnections) "DIRECT NEARBY LINK  •  NO MOBILE DATA" else "WI-FI DIRECT LINK  •  NO MOBILE DATA", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.35.sp)
                      else {
-                        if (messages.isNotEmpty()) {
+                        if (visibleMessages.isNotEmpty()) {
                             LazyColumn(state = messageListState, modifier = Modifier.fillMaxWidth().heightIn(min = 90.dp, max = 260.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                                 itemsIndexed(visibleMessages, key = { _, message -> message.id }) { _, message ->
                                     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start) {
