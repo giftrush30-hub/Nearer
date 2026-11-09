@@ -6,10 +6,19 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
 class FastShareHttpSessionTest {
-    private fun read(raw: String): Pair<FastShareHttpExchange?, String> {
+    private fun read(raw: String, addDefaultHost: Boolean = true): Pair<FastShareHttpExchange?, String> {
+        val request = if (addDefaultHost && raw.startsWith("GET ") || addDefaultHost && raw.startsWith("HEAD ") ||
+            addDefaultHost && raw.startsWith("POST ")) {
+            val firstLineEnd = raw.indexOf("\\r\\n")
+            val head = if (firstLineEnd >= 0) raw.substring(0, firstLineEnd + 2) else ""
+            if (head.endsWith("HTTP/1.1\\r\\n") && !raw.substring(firstLineEnd + 2).startsWith("Host:", ignoreCase = true) &&
+                !raw.contains("\\r\\nHost:", ignoreCase = true) && !raw.contains("\\r\\nhost:", ignoreCase = true)) {
+                raw.replaceFirst("\\r\\n", "\\r\\nHost: test.local\\r\\n")
+            } else raw
+        } else raw
         val output = ByteArrayOutputStream()
         val exchange = FastShareHttpSession.readRequest(
-            ByteArrayInputStream(raw.toByteArray(Charsets.UTF_8)),
+            ByteArrayInputStream(request.toByteArray(Charsets.UTF_8)),
             output
         )
         return exchange to output.toString("UTF-8")
@@ -179,6 +188,18 @@ class FastShareHttpSessionTest {
         val (exchange, response) = read("GET /download HTTP/1.1\r\nHost: phone-a, phone-b\r\n\r\n")
         assertNull(exchange)
         assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun http11RequestWithoutHostIsRejected() {
+        val (exchange, response) = read("GET /download HTTP/1.1\\r\\n\\r\\n", addDefaultHost = false)
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+    }
+
+    @Test fun http10RequestMayOmitHostHeader() {
+        val (exchange, response) = read("GET /download HTTP/1.0\\r\\n\\r\\n", addDefaultHost = false)
+        assertNotNull(exchange)
+        assertTrue(response.isEmpty())
     }
 
     @Test fun oneNonEmptyHostHeaderIsAccepted() {
