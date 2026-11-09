@@ -328,7 +328,7 @@ class MainActivity : ComponentActivity() {
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
-                        chatMessages.add(ChatMessage(messageId, body, outgoing = false, delivery = "Received"))
+                        chatMessages.add(ChatMessage(messageId, body, outgoing = false, delivery = "Received", conversationId = conversationIdFor(senderName), conversationName = senderName))
                         safelyStored = persistMessages()
                         if (safelyStored) chatNotice = "New offline message received from $senderName."
                         else {
@@ -1136,6 +1136,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun conversationIdFor(peerName: String?): String {
+        val stableId = hybridConnectedStableId?.takeIf { it.isNotBlank() }
+        if (stableId != null) return "nearer:$stableId"
+        val normalizedName = peerName?.trim()?.lowercase(java.util.Locale.ROOT)?.takeIf { it.isNotBlank() }
+        return normalizedName?.let { "nearby-name:$it" }.orEmpty()
+    }
+
+
     private fun sendChatMessage(rawText: String) {
         val body = rawText.trim()
         if (body.isEmpty() || !chatReady) return
@@ -1147,7 +1155,7 @@ class MainActivity : ComponentActivity() {
                 return
             }
             // Add the pending bubble before dispatch so a very fast receipt cannot race the UI.
-            chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…"))
+            chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…", conversationId = conversationIdFor(connectedDeviceName), conversationName = connectedDeviceName.orEmpty()))
             persistMessages()
             if (nearbyTransport?.send(body, id, targetEndpoint) != true) {
                 val index = chatMessages.indexOfFirst { it.id == id }
@@ -2026,7 +2034,7 @@ class MainActivity : ComponentActivity() {
                                             receivedMessageIds.add(id)
                                             synchronized(writerLock) { peerWriter?.println("ACK|$id") }
                                         } else {
-                                            chatMessages.add(ChatMessage(id, body, outgoing = false, delivery = "Received"))
+                                            chatMessages.add(ChatMessage(id, body, outgoing = false, delivery = "Received", conversationId = conversationIdFor(connectedDeviceName), conversationName = connectedDeviceName.orEmpty()))
                                             if (persistMessages()) {
                                                 receivedMessageIds.add(id)
                                                 chatNotice = "New message received and saved directly."
