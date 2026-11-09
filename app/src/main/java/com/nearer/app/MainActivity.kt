@@ -333,7 +333,10 @@ class MainActivity : ComponentActivity() {
                             conversationName = senderName
                         ))
                         safelyStored = persistMessages()
-                        if (safelyStored) chatNotice = "New offline message received from $senderName."
+                        if (safelyStored) {
+                            trimChatMessages()
+                            chatNotice = "New offline message received from $senderName."
+                        }
                         else {
                             chatMessages.removeAll { it.id == messageId }
                             chatNotice = "Message received, but could not be saved. Delivery was not confirmed."
@@ -1055,6 +1058,7 @@ class MainActivity : ComponentActivity() {
                 chatMessages.clear()
             }
         }
+        trimChatMessages()
         val folder = File(filesDir, "received")
         if (folder.exists()) {
             folder.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }?.forEach {
@@ -1094,6 +1098,8 @@ class MainActivity : ComponentActivity() {
             }
         } catch (_: Exception) { nearbyTransferHistory.clear() }
     }
+
+    private fun trimChatMessages() { ChatHistoryPolicy.trim(chatMessages) }
 
     private fun persistMessages(): Boolean {
         return try {
@@ -1153,6 +1159,7 @@ class MainActivity : ComponentActivity() {
                 conversationName = nearbyTransport?.displayNameForEndpoint(targetEndpoint).orEmpty()
             ))
             persistMessages()
+            trimChatMessages()
             if (nearbyTransport?.send(body, id, targetEndpoint) != true) {
                 val index = chatMessages.indexOfFirst { it.id == id }
                 if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
@@ -1166,6 +1173,7 @@ class MainActivity : ComponentActivity() {
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
         chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…"))
         persistMessages()
+        trimChatMessages()
         if (!sendWireLine("MSG|$id|$encoded")) {
             val index = chatMessages.indexOfFirst { it.id == id }
             if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
@@ -2032,6 +2040,7 @@ class MainActivity : ComponentActivity() {
                                         } else {
                                             chatMessages.add(ChatMessage(id, body, outgoing = false, delivery = "Received"))
                                             if (persistMessages()) {
+                                                trimChatMessages()
                                                 receivedMessageIds.add(id)
                                                 chatNotice = "New message received and saved directly."
                                                 // Confirm only after the message is durably saved.
