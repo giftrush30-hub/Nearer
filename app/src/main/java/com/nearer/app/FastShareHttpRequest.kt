@@ -35,16 +35,22 @@ internal data class FastShareHttpRequest(
     internal enum class Route { RECEIVER_PAGE, DOWNLOAD, NOT_FOUND }
 
     companion object {
-        /** Returns null for malformed request lines; method matching is case-insensitive. */
+        /** Returns null unless the request line uses the exact HTTP/1.x SP-delimited form. */
         fun parse(requestLine: String): FastShareHttpRequest? {
-            val parts = requestLine.trim().split(Regex("\\s+"))
-            if (parts.size != 3) return null
+            // HTTP request-line is: method SP request-target SP HTTP-version.
+            // Do not normalize whitespace: accepting tabs, repeated spaces, or
+            // leading/trailing spaces can make different parsers see different requests.
+            val firstSpace = requestLine.indexOf(' ')
+            if (firstSpace <= 0) return null
+            val secondSpace = requestLine.indexOf(' ', firstSpace + 1)
+            if (secondSpace <= firstSpace + 1) return null
+            if (requestLine.indexOf(' ', secondSpace + 1) >= 0) return null
 
-            val method = parts[0]
-            val target = parts[1]
-            val version = parts[2]
+            val method = requestLine.substring(0, firstSpace)
+            val target = requestLine.substring(firstSpace + 1, secondSpace)
+            val version = requestLine.substring(secondSpace + 1)
             if (!method.matches(Regex("[A-Za-z!#$%&'*+.^_`|~0-9-]+"))) return null
-            if (!target.startsWith("/") || target.any { it <= ' ' || it.code == 127 }) return null
+            if (!target.startsWith("/") || target.any { it <= ' ' || it.code >= 127 }) return null
             if (version != "HTTP/1.0" && version != "HTTP/1.1") return null
 
             return FastShareHttpRequest(
