@@ -28,11 +28,12 @@ internal data class FastShareHttpRequest(
         get() = when {
             path == "/" || path == "/index.html" -> Route.RECEIVER_PAGE
             path == "/download" -> Route.DOWNLOAD
+            path == "/download-all" -> Route.DOWNLOAD_ALL
             path.matches(Regex("/download/[0-9]{1,4}")) && downloadIndex != null -> Route.DOWNLOAD
             else -> Route.NOT_FOUND
         }
 
-    internal enum class Route { RECEIVER_PAGE, DOWNLOAD, NOT_FOUND }
+    internal enum class Route { RECEIVER_PAGE, DOWNLOAD, DOWNLOAD_ALL, NOT_FOUND }
 
     companion object {
         /**
