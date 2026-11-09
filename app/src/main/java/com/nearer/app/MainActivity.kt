@@ -3059,6 +3059,13 @@ private fun PremiumChatsScreen(
                             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(if (thread.lastMessage.timestamp > 0L) java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(thread.lastMessage.timestamp)) else "Earlier", color = Muted, fontSize = 9.sp)
                                 Text("${thread.messageCount}", color = BlueAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                androidx.compose.material3.TextButton(
+                                    onClick = {
+                                        editingContactId = thread.conversationId
+                                        contactNameDraft = contactAliases[thread.conversationId] ?: thread.displayName
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                ) { Text(if (contactAliases.containsKey(thread.conversationId)) "Edit name" else "Save name", color = BlueAccent, fontSize = 9.sp) }
                             }
                         }
                     }
