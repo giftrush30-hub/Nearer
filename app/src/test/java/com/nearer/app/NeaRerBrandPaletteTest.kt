@@ -13,8 +13,8 @@ class NeaRerBrandPaletteTest {
     }
 
     @Test fun blueAndGoldAccentsRemainDistinctAndOpaque() {
-        assertEquals(1f, Mint.alpha)
-        assertEquals(1f, Gold.alpha)
+        assertEquals(1f, Mint.alpha, 0f)
+        assertEquals(1f, Gold.alpha, 0f)
         assertEquals(Color(0xFF2563EB), BrandBlue)
         assertEquals(Color(0xFF6EA8FF), Mint)
         assertEquals(Color(0xFFFFD12D), Gold)
