@@ -227,8 +227,9 @@ internal object AndroidFileCatalog {
     fun scanPcUploads(context: Context): List<FileCentreItem> {
         val directory = java.io.File(context.filesDir, "nearer-pc-uploads")
         return directory.listFiles()?.filter { it.isFile && !it.name.endsWith(".part") }?.map { file ->
-            FileCentreItem(Uri.fromFile(file).toString(), file.name, FileCentreCategory.DOWNLOADS,
-                Uri.fromFile(file), file.length().coerceAtLeast(0L), file.lastModified() / 1000L,
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+            FileCentreItem(uri.toString(), file.name, FileCentreCategory.DOWNLOADS,
+                uri, file.length().coerceAtLeast(0L), file.lastModified() / 1000L,
                 java.net.URLConnection.guessContentTypeFromName(file.name) ?: "application/octet-stream")
         }?.sortedByDescending { it.modifiedSeconds } ?: emptyList()
     }
