@@ -84,7 +84,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     if (id.isNotBlank()) add(id)
                 }
             } catch (_: Exception) {
-                preferences.getStringSet("nearby_seen_message_ids", emptySet()).orEmpty().forEach { add(it) }
+                preferences.getStringSet("nearby_seen_message_ids", HashSet<String>()).orEmpty().forEach { add(it) }
             }
         } else {
             preferences.getStringSet("nearby_seen_message_ids", emptySet()).orEmpty().forEach { add(it) }
@@ -218,7 +218,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         MessageIdHistoryPolicy.trimOldest(seenMessageIds)
         try {
             val ordered = org.json.JSONArray()
-            seenMessageIds.forEach(ordered::put)
+            seenMessageIds.forEach { ordered.put(it) }
             val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .edit()
                 .putString("nearby_seen_message_ids_ordered", ordered.toString())
