@@ -12,11 +12,25 @@ internal data class FastShareDownloadItem(
     val fileLength: Long
 )
 
+/** Converts provider metadata into a useful, non-empty receiver-facing file name. */
+internal object FastShareDisplayName {
+    fun resolve(providerName: String?, fallbackPath: String?): String {
+        providerName?.takeIf { it.isNotBlank() }?.let { return it }
+        return fallbackPath
+            ?.substringAfterLast('/')
+            ?.takeIf { it.isNotBlank() }
+            ?: "Shared file"
+    }
+}
+
 /** A bounded, zero-based view of the files offered by one Fast Share session. */
 internal class FastShareDownloadCatalog(items: List<FastShareDownloadItem>) {
     val items: List<FastShareDownloadItem> = items.toList()
 
     init {
+        require(this.items.all { it.fileLength >= -1L }) {
+            "File lengths must be non-negative or -1 when unknown."
+        }
         require(this.items.isNotEmpty()) { "Fast Share needs at least one file." }
         require(this.items.size <= MAX_FILES) { "Too many files in one Fast Share session." }
         require(this.items.map { it.index } == this.items.indices.toList()) {

@@ -290,13 +290,19 @@ class FastShareController(private val context: Context) {
     }
 
     private fun queryDisplayName(uri: Uri): String {
-        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        val providerName = context.contentResolver.query(
+            uri,
+            arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null
+        )?.use { cursor ->
             if (cursor.moveToFirst()) {
                 val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (index >= 0) return cursor.getString(index) ?: "Shared file"
-            }
+                if (index >= 0) cursor.getString(index) else null
+            } else null
         }
-        return uri.lastPathSegment?.substringAfterLast('/') ?: "Shared file"
+        return FastShareDisplayName.resolve(providerName, uri.lastPathSegment)
     }
 }
 

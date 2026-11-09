@@ -75,4 +75,26 @@ class FastShareDownloadCatalogTest {
         assertTrue(page.contains("outline-offset:3px"))
     }
 
+    @Test fun emptyProviderNamesFallBackToPathOrGenericName() {
+        assertEquals("holiday.mp4", FastShareDisplayName.resolve("", "content://provider/files/holiday.mp4"))
+        assertEquals("Shared file", FastShareDisplayName.resolve("   ", null))
+        assertEquals("report.pdf", FastShareDisplayName.resolve(null, "report.pdf"))
+    }
+
+    @Test fun nonEmptyProviderNameIsPreservedExactly() {
+        assertEquals("  My video.mp4  ", FastShareDisplayName.resolve("  My video.mp4  ", "fallback.mp4"))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsInvalidNegativeFileLengthMetadata() {
+        FastShareDownloadCatalog(listOf(FastShareDownloadItem(0, "bad.bin", "application/octet-stream", -2L)))
+    }
+
+    @Test fun unknownFileLengthRemainsSupported() {
+        val catalog = FastShareDownloadCatalog(
+            listOf(FastShareDownloadItem(0, "unknown.bin", "application/octet-stream", -1L))
+        )
+        assertEquals(-1L, catalog.itemAt(0)?.fileLength)
+    }
+
 }
