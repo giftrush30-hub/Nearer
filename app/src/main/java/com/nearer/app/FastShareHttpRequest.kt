@@ -50,7 +50,7 @@ internal data class FastShareHttpRequest(
             val method = requestLine.substring(0, firstSpace)
             val target = requestLine.substring(firstSpace + 1, secondSpace)
             val version = requestLine.substring(secondSpace + 1)
-            if (!method.matches(Regex("[A-Za-z!#$%&'*+.^_`|~0-9-]+"))) return null
+            if (!method.matches(Regex("[A-Za-z!#$%&'*+.^_|~0-9-]+"))) return null
             if (!target.startsWith("/") ||
                 target.any { it.code !in 0x21..0x7e } ||
                 target.contains('#')
