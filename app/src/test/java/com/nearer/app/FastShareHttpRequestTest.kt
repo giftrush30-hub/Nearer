@@ -142,4 +142,18 @@ class FastShareHttpRequestTest {
         }
     }
 
+    @Test fun encodedAccessKeyParameterNameCannotCreateAnAmbiguousDuplicate() {
+        val key = "f".repeat(64)
+        val duplicate = FastShareHttpRequest.parse("GET /?key=" + key + "&%6Bey=" + key + " HTTP/1.1")!!
+        val encodedOnly = FastShareHttpRequest.parse("GET /?%6Bey=" + key + " HTTP/1.1")!!
+        assertFalse(duplicate.hasAccessKey(key))
+        assertTrue(encodedOnly.hasAccessKey(key))
+    }
+
+    @Test fun malformedPercentEncodingInQueryParameterNameFailsClosed() {
+        val key = "9".repeat(64)
+        val request = FastShareHttpRequest.parse("GET /?%6B%ZZey=ignored&key=" + key + " HTTP/1.1")!!
+        assertFalse(request.hasAccessKey(key))
+    }
+
 }

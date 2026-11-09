@@ -8,8 +8,22 @@ internal data class FastShareHttpRequest(
     val query: String = ""
 ) {
     fun hasAccessKey(expected: String): Boolean {
-        val values = query.split('&').mapNotNull { part ->
-            if (part.startsWith("key=")) part.substringAfter("key=") else null
+        // Decode parameter names before counting them. Otherwise an encoded
+        // spelling such as %6Bey could create ambiguous duplicate key fields
+        // that a browser, proxy, or future parser might interpret differently.
+        val values = mutableListOf<String>()
+        for (part in query.split('&')) {
+            val separator = part.indexOf('=')
+            val rawName = if (separator >= 0) part.substring(0, separator) else part
+            val decodedName = try {
+                java.net.URLDecoder.decode(rawName, Charsets.UTF_8.name())
+            } catch (_: IllegalArgumentException) {
+                return false
+            }
+            if (decodedName == "key") {
+                if (separator < 0) return false
+                values += part.substring(separator + 1)
+            }
         }
         return values.size == 1 && FastShareAccessKey.matches(expected, values.single())
     }
