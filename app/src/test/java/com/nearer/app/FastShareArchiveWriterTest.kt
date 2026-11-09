@@ -92,6 +92,13 @@ class FastShareArchiveWriterTest {
         )
     }
 
+    @Test fun archiveNamesMakeWindowsReservedDeviceNamesSafe() {
+        assertEquals(
+            listOf("_CON.txt", "_LPT1.pdf", "_AUX"),
+            FastShareArchiveNames.uniqueEntryNames(listOf("CON.txt", "LPT1.pdf", "AUX"))
+        )
+    }
+
     @Test fun archiveNamesStripPathsAndWindowsReservedCharacters() {
         val names = FastShareArchiveNames.uniqueEntryNames(
             listOf("../folder/name?.txt", "name?.txt", "", "日本語.mp4")
