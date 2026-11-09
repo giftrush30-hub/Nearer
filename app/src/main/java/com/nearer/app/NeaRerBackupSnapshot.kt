@@ -51,13 +51,62 @@ internal object NeaRerBackupSnapshot {
                 }
             }
         }
-        listOf("onboarding_answers", "community_groups", "community_messages",
+        // Parse each portable JSON preference using its expected top-level type.
+        // JSONTokener.nextValue() alone accepts trailing junk, so use the strict
+        // JSONObject/JSONArray constructors and validate queued-message envelopes.
+        val objectKeys = setOf("onboarding_answers")
+        val arrayKeys = setOf("community_groups", "community_messages",
             "nearby_transfer_history", "recently_seen", "nearby_outbox",
-            "nearby_seen_message_ids_ordered").forEach { key ->
-            val value = profile.optString(key, "")
-            if (value.isNotEmpty()) {
-                try { org.json.JSONTokener(value).nextValue() }
-                catch (failure: Exception) { throw IOException("Backup profile data is invalid: $key", failure) }
+            "nearby_seen_message_ids_ordered")
+        (objectKeys + arrayKeys).forEach { key ->
+            if (!profile.has(key)) return@forEach
+            val raw = profile.optString(key, "")
+            if (raw.isEmpty()) return@forEach
+            try {
+                if (key in objectKeys) {
+                    JSONObject(raw)
+                } else {
+                    val array = org.json.JSONArray(raw)
+                    if (key == "nearby_outbox") {
+                        if (array.length() > MAX_PENDING_OUTBOX_ITEMS) {
+                            throw IOException("Backup pending-message queue is too large")
+                        }
+                        val ids = HashSet<String>()
+                        for (index in 0 until array.length()) {
+                            val item = array.optJSONObject(index)
+                                ?: throw IOException("Backup pending-message entry is invalid")
+                            val id = item.optString("id")
+                            val peer = item.optString("peer")
+                            val payload = item.optString("payload")
+                            if (id.isBlank() || id.length > 80 || !ids.add(id) ||
+                                peer.isBlank() || peer.length > 64 ||
+                                payload.isBlank() || payload.length > MAX_PENDING_PAYLOAD_CHARS) {
+                                throw IOException("Backup pending-message entry has invalid fields")
+                            }
+                            val envelope = JSONObject(payload)
+                            val body = envelope.optString("body")
+                            if (envelope.optString("kind") != "message" ||
+                                envelope.optString("id") != id || body.isBlank() ||
+                                body.length > MAX_PENDING_MESSAGE_BODY_CHARS) {
+                                throw IOException("Backup pending-message envelope is invalid")
+                            }
+                        }
+                    } else if (key == "nearby_seen_message_ids_ordered") {
+                        if (array.length() > MAX_SEEN_MESSAGE_IDS) {
+                            throw IOException("Backup duplicate-protection history is too large")
+                        }
+                        val ids = HashSet<String>()
+                        for (index in 0 until array.length()) {
+                            val id = array.optString(index)
+                            if (id.isBlank() || id.length > 160 || !ids.add(id)) {
+                                throw IOException("Backup duplicate-protection entry is invalid")
+                            }
+                        }
+                    }
+                }
+            } catch (failure: IOException) { throw failure }
+            catch (failure: Exception) {
+                throw IOException("Backup profile data is invalid: $key", failure)
             }
         }
         if (profile.optString("format") != "NeaRerLocalSnapshot" || profile.optInt("version") != 1) {
@@ -252,6 +301,10 @@ internal object NeaRerBackupSnapshot {
     private const val BUFFER_BYTES = 64 * 1024
     private const val MAX_PROFILE_BYTES = 1024 * 1024L
     private const val MAX_PROFILE_VALUE_CHARS = 512 * 1024
+    private const val MAX_PENDING_OUTBOX_ITEMS = 10_000
+    private const val MAX_PENDING_PAYLOAD_CHARS = 12_000
+    private const val MAX_PENDING_MESSAGE_BODY_CHARS = 4_000
+    private const val MAX_SEEN_MESSAGE_IDS = 20_000
     private const val MAX_PROFILE_PHOTO_BYTES = 5L * 1024L * 1024L
     private const val MAX_CHAT_ARCHIVE_BYTES = 64L * 1024L * 1024L
     private const val MAX_CHAT_RECORD_CHARS = 2 * 1024 * 1024
