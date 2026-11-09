@@ -3007,6 +3007,7 @@ private fun PremiumChatsScreen(
         val visibleThreads = remember(inboxThreads, inboxQuery) {
             if (inboxQuery.isBlank()) inboxThreads else inboxThreads.filter {
                 it.displayName.contains(inboxQuery, ignoreCase = true) ||
+                    contactAliases[it.conversationId].orEmpty().contains(inboxQuery, ignoreCase = true) ||
                     it.lastMessage.body.contains(inboxQuery, ignoreCase = true)
             }
         }
@@ -3084,6 +3085,9 @@ private fun PremiumChatsScreen(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("This name is stored only on this phone. It does not change the other person's profile.", color = Muted, fontSize = 12.sp)
+                        if (editingContactId?.startsWith("nearby-name:") == true) {
+                            Text("This older link is matched by display name, not a verified ID. People using the same name may be confused.", color = Gold, fontSize = 11.sp)
+                        }
                         OutlinedTextField(
                             value = contactNameDraft,
                             onValueChange = { contactNameDraft = it.take(32) },
@@ -3099,8 +3103,14 @@ private fun PremiumChatsScreen(
                     }) { Text("Save", color = BlueAccent) }
                 },
                 dismissButton = {
-                    androidx.compose.material3.TextButton(onClick = { editingContactId = null }) {
-                        Text("Cancel", color = Muted)
+                    Row {
+                        androidx.compose.material3.TextButton(onClick = {
+                            editingContactId?.let { saveContactAlias(it, "") }
+                            editingContactId = null
+                        }) { Text("Reset", color = Muted) }
+                        androidx.compose.material3.TextButton(onClick = { editingContactId = null }) {
+                            Text("Cancel", color = Muted)
+                        }
                     }
                 }
             )
