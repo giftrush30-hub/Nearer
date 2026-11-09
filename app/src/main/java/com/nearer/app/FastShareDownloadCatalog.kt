@@ -9,7 +9,8 @@ internal data class FastShareDownloadItem(
     val index: Int,
     val fileName: String,
     val mimeType: String,
-    val fileLength: Long
+    val fileLength: Long,
+    val lastModifiedMillis: Long? = null
 )
 
 /** Converts provider metadata into a useful, non-empty receiver-facing file name. */
