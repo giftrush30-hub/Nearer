@@ -108,7 +108,12 @@ class FastShareController(private val context: Context) {
                     // Each HTTP worker owns its own progress clock. Two concurrent
                     // receivers must never overwrite one another's speed/timing state.
                     val progressByThread = ThreadLocal.withInitial { LongArray(4) }
-                    val httpServer = FastShareHttpServer(context, selectedUris, catalog, accessKey) { transferId, fileName, sent, total, complete, interrupted, partialResponse ->
+                    val httpServer = FastShareHttpServer(context, selectedUris, catalog, accessKey, onTransferQueued = { transferId, fileName ->
+                        Handler(Looper.getMainLooper()).post {
+                            transferLedger.update(FastShareActiveTransfer(transferId, fileName, 0L, -1L, 0L, android.os.SystemClock.elapsedRealtime(), isQueued = true))
+                            activeTransfers = transferLedger.snapshot()
+                        }
+                    }) { transferId, fileName, sent, total, complete, interrupted, partialResponse ->
                         val progress = progressByThread.get()
                         val now = android.os.SystemClock.elapsedRealtime()
                         var transferStartedAt = progress[0]
@@ -289,7 +294,7 @@ class FastShareController(private val context: Context) {
 }
 
 data class FastShareDetails(val ssid: String, val password: String, val url: String)
-data class FastShareActiveTransfer(val id: String, val fileName: String, val bytesSent: Long, val totalBytes: Long, val bytesPerSecond: Long, val startedAtMillis: Long)
+data class FastShareActiveTransfer(val id: String, val fileName: String, val bytesSent: Long, val totalBytes: Long, val bytesPerSecond: Long, val startedAtMillis: Long, val isQueued: Boolean = false)
 
 data class FastShareHistoryEntry(val fileName: String, val bytesTransferred: Long, val result: String, val timestampMillis: Long)
 
@@ -299,6 +304,7 @@ private class FastShareHttpServer(
     private val uris: List<Uri>,
     private val catalog: FastShareDownloadCatalog,
     private val accessKey: String,
+    private val onTransferQueued: (transferId: String, fileName: String) -> Unit,
     private val onTransferUpdate: (transferId: String, fileName: String, sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean, partialResponse: Boolean) -> Unit
 ) {
     // Bound client work so a busy or hostile local-network peer cannot
@@ -438,8 +444,10 @@ private class FastShareHttpServer(
                     if (item == null || uri == null) {
                         output.write(FastShareHttpErrors.notFound())
                     } else if (headOnly) {
-                        streamFile(output, uri, item, rangeHeader, true)
+                        streamFile(output, uri, item, rangeHeader, true, java.util.UUID.randomUUID().toString())
                     } else {
+                        val transferId = java.util.UUID.randomUUID().toString()
+                        onTransferQueued(transferId, item.fileName)
                         // Allow five file streams for small-group sharing while keeping memory
                         // bounded. Additional receivers wait fairly instead of being
                         // rejected immediately; the wait is bounded.
@@ -450,10 +458,11 @@ private class FastShareHttpServer(
                             false
                         }
                         if (!acquired) {
+                            onTransferUpdate(transferId, item.fileName, 0L, item.fileLength, false, true, false)
                             output.write(FastShareHttpErrors.tooManyRequests())
                         } else {
                             try {
-                                if (running) streamFile(output, uri, item, rangeHeader, false)
+                                if (running) streamFile(output, uri, item, rangeHeader, false, transferId)
                             } finally {
                                 downloadGate.release()
                             }
@@ -466,10 +475,9 @@ private class FastShareHttpServer(
         }
     }
 
-    private fun streamFile(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, rangeHeader: String?, headOnly: Boolean) {
-        val transferId = java.util.UUID.randomUUID().toString()
+    private fun streamFile(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, rangeHeader: String?, headOnly: Boolean, transferId: String) {
         if (item.fileLength < 0L) {
-            streamUnknownLength(output, uri, item, headOnly)
+            streamUnknownLength(output, uri, item, headOnly, transferId)
             return
         }
         val response = FileHttpResponses.resolve(rangeHeader, item.fileLength)
@@ -489,7 +497,7 @@ private class FastShareHttpServer(
             null
         }
         if (!headOnly && stream == null) {
-            writeFileUnavailable(output, item)
+            writeFileUnavailable(output, item, transferId)
             return
         }
         if (stream != null) {
@@ -537,8 +545,7 @@ private class FastShareHttpServer(
      * these files shareable without buffering the entire file in memory.
      * Resume/range requests are not available when the length is unknown.
      */
-    private fun streamUnknownLength(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, headOnly: Boolean) {
-        val transferId = java.util.UUID.randomUUID().toString()
+    private fun streamUnknownLength(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, headOnly: Boolean, transferId: String) {
         val stream = if (headOnly) null else try {
             context.contentResolver.openInputStream(uri)
         } catch (_: Exception) {
@@ -575,8 +582,8 @@ private class FastShareHttpServer(
         }
     }
 
-    private fun writeFileUnavailable(output: BufferedOutputStream, item: FastShareDownloadItem) {
-        onTransferUpdate(java.util.UUID.randomUUID().toString(), item.fileName, 0L, item.fileLength, false, true, false)
+    private fun writeFileUnavailable(output: BufferedOutputStream, item: FastShareDownloadItem, transferId: String) {
+        onTransferUpdate(transferId, item.fileName, 0L, item.fileLength, false, true, false)
         val message = "The selected file is no longer available. Choose it again in NeaRer."
         val body = message.toByteArray(Charsets.UTF_8)
         output.write(FastShareHttpWire.responseHead(
