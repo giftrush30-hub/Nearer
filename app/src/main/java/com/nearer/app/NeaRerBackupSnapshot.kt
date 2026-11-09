@@ -43,11 +43,21 @@ internal object NeaRerBackupSnapshot {
         if (profile.optString("format") != "NeaRerLocalSnapshot" || profile.optInt("version") != 1) {
             throw IOException("Backup profile version is not supported")
         }
-        val displayName = profile.optString("display_name", "NeaRer User").take(24)
-        if (displayName.isBlank()) throw IOException("Backup profile name is invalid")
+        val displayName = profile.optString("display_name", "NeaRer User")
+        if (displayName.isBlank() || displayName.length > 24) {
+            throw IOException("Backup profile name is invalid")
+        }
+        val avatarId = profile.optString("profile_avatar_id", "orbit")
+        if (avatarId !in PROFILE_AVATARS) throw IOException("Backup avatar is not supported")
+        if (profile.has("onboardingComplete") && profile.opt("onboardingComplete") !is Boolean) {
+            throw IOException("Backup onboarding state is invalid")
+        }
         val photo = File(root, "profile/profile-photo.jpg")
         val hasPhoto = profile.optBoolean("hasProfilePhoto", false)
-        if (hasPhoto != photo.isFile || photo.length() > MAX_PROFILE_PHOTO_BYTES) {
+        if (hasPhoto != photo.isFile ||
+            photo.length() > MAX_PROFILE_PHOTO_BYTES ||
+            (photo.exists() && !photo.canonicalPath.startsWith(root.path + File.separator))
+        ) {
             throw IOException("Backup profile photo is missing or invalid")
         }
         val chatFile = File(root, "chats/messages.jsonl")
@@ -55,13 +65,25 @@ internal object NeaRerBackupSnapshot {
             throw IOException("Backup chat archive is missing or too large")
         }
         var chatCount = 0L
+        val seenMessageIds = HashSet<String>()
         chatFile.bufferedReader(Charsets.UTF_8).useLines { lines ->
             lines.forEach { line ->
-                if (line.isBlank() || line.length > MAX_CHAT_RECORD_CHARS) throw IOException("Backup chat record is invalid")
+                if (line.isBlank() || line.length > MAX_CHAT_RECORD_CHARS) {
+                    throw IOException("Backup chat record is invalid")
+                }
                 try {
                     val item = JSONObject(line)
-                    if (item.optString("id").isBlank() || !item.has("timestamp") || !item.has("outgoing")) {
-                        throw IOException("Backup chat record is incomplete")
+                    val id = item.optString("id")
+                    val body = item.optString("body")
+                    val delivery = item.optString("delivery")
+                    val conversationId = item.optString("conversationId")
+                    val conversationName = item.optString("conversationName")
+                    if (id.isBlank() || id.length > 160 || !seenMessageIds.add(id) ||
+                        body.length > MAX_CHAT_BODY_CHARS || delivery.length > 40 ||
+                        conversationId.length > 200 || conversationName.length > 160 ||
+                        item.opt("timestamp") !is Number || item.opt("outgoing") !is Boolean
+                    ) {
+                        throw IOException("Backup chat record has invalid fields")
                     }
                 } catch (failure: IOException) { throw failure }
                 catch (failure: Exception) { throw IOException("Backup chat record is invalid", failure) }
@@ -93,7 +115,10 @@ internal object NeaRerBackupSnapshot {
         "onboarding_answers",
         "community_groups",
         "community_messages",
-        "nearby_transfer_history"
+        "nearby_transfer_history",
+        "recently_seen",
+        "nearby_outbox",
+        "nearby_seen_message_ids_ordered"
     )
 
     @Throws(IOException::class)
@@ -200,6 +225,8 @@ internal object NeaRerBackupSnapshot {
     private const val MAX_CHAT_ARCHIVE_BYTES = 64L * 1024L * 1024L
     private const val MAX_CHAT_RECORD_CHARS = 2 * 1024 * 1024
     private const val MAX_CHAT_MESSAGES = 200_000L
+    private const val MAX_CHAT_BODY_CHARS = 1 * 1024 * 1024
+    private val PROFILE_AVATARS = setOf("aurora", "spark", "wave", "sun", "orbit", "bloom", "leaf", "star")
     private const val MAX_RECEIVED_FILE_BYTES = 512L * 1024L * 1024L
     private const val MAX_RECEIVED_TOTAL_BYTES = 2L * 1024L * 1024L * 1024L
 }
