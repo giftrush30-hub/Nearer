@@ -3004,7 +3004,7 @@ private fun PremiumChatsScreen(
         }
         val canSendInSelectedThread = chatReady && effectiveConversationId.isNotBlank() &&
             effectiveConversationId == currentConversationId
-        val visibleThreads = remember(inboxThreads, inboxQuery) {
+        val visibleThreads = remember(inboxThreads, inboxQuery, contactAliases.toMap()) {
             if (inboxQuery.isBlank()) inboxThreads else inboxThreads.filter {
                 it.displayName.contains(inboxQuery, ignoreCase = true) ||
                     contactAliases[it.conversationId].orEmpty().contains(inboxQuery, ignoreCase = true) ||
