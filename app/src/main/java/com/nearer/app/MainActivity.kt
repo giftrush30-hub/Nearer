@@ -2905,9 +2905,7 @@ private fun PremiumChatsScreen(
                     Text("YOUR NEARER ID", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
                     Text(nearerId, color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
-                androidx.compose.material3.TextButton(onClick = { /* ID can be copied from the profile in a later identity pass. */ }) {
-                    Text("MY ID", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
+                Text("Share this ID with people you want to find you.", color = Muted, fontSize = 10.sp)
             }
         }
 
