@@ -25,6 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -333,4 +335,99 @@ internal fun NeaRerOnboarding(
             Text("No data required to create your local identity.", color = Color(0xFF71849E), fontSize = 11.sp, textAlign = TextAlign.Center)
         }
     }
+}
+
+
+@Composable
+internal fun NeaRerProfileEditor(
+    currentName: String,
+    currentAvatarId: String,
+    currentPhotoPath: String?,
+    onSave: (String, String, Uri?, Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var name by remember(currentName) { mutableStateOf(currentName) }
+    var avatarId by remember(currentAvatarId) { mutableStateOf(currentAvatarId) }
+    var photoUri by remember { mutableStateOf<Uri?>(null) }
+    var removePhoto by remember { mutableStateOf(false) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) { photoUri = uri; removePhoto = false }
+    }
+    val preview = remember(photoUri, currentPhotoPath, removePhoto) {
+        runCatching {
+            if (photoUri != null) {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                context.contentResolver.openInputStream(photoUri!!)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                var sample = 1
+                while (bounds.outWidth / sample > 512 || bounds.outHeight / sample > 512) sample *= 2
+                val options = BitmapFactory.Options().apply { inSampleSize = sample }
+                context.contentResolver.openInputStream(photoUri!!)?.use { BitmapFactory.decodeStream(it, null, options) }
+            } else if (!removePhoto && currentPhotoPath != null) {
+                BitmapFactory.decodeFile(currentPhotoPath)
+            } else null
+        }.getOrNull()
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF17263A),
+        title = { Text("Your NeaRer profile", color = Color.White, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().height(420.dp).verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (preview != null) {
+                    Image(preview.asImageBitmap(), contentDescription = "Profile photo preview", modifier = Modifier.size(92.dp).clip(CircleShape))
+                } else {
+                    NeaRerAvatarBadge(avatarId, Modifier.size(92.dp))
+                }
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.take(40) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Display name") }
+                )
+                Text("YOUR AVATAR", color = Color(0xFFFFD12D), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                NeaRerAvatarChoices.chunked(4).forEach { choices ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        choices.forEach { choice ->
+                            Column(
+                                modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                                    .background(if (avatarId == choice.id && photoUri == null && !removePhoto) Color(0xFF263D5B) else Color(0xFF203047))
+                                    .clickable { avatarId = choice.id; photoUri = null; removePhoto = true }
+                                    .padding(vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                NeaRerAvatarBadge(choice.id, Modifier.size(42.dp))
+                                Text(choice.label, color = Color(0xFFDCE7F5), fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
+                Button(
+                    onClick = { picker.launch("image/*") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF244B78))
+                ) { Text("Choose profile photo") }
+                if (currentPhotoPath != null || photoUri != null) {
+                    TextButton(onClick = { photoUri = null; removePhoto = true }) {
+                        Text("Remove profile photo", color = Color(0xFFFFC1B8))
+                    }
+                }
+                Text("Your name, avatar and photo stay on this phone until you share or back them up.", color = Color(0xFF9FB2CC), fontSize = 11.sp, textAlign = TextAlign.Center)
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(name.trim().replace(Regex("\\s+"), " ").take(24), avatarId, photoUri, removePhoto) },
+                enabled = name.isNotBlank()
+            ) { Text("Save changes", color = Color(0xFFFFD12D), fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Color(0xFFB8C8DD)) }
+        }
+    )
 }
