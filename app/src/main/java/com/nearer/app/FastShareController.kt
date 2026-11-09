@@ -225,7 +225,7 @@ class FastShareController(private val context: Context) {
                     val address = httpServer.start()
                     server = httpServer
                     details = FastShareDetails(ssid, password, "http://$address:8765/?key=$accessKey")
-                    status = "Fast Share is ready · ${selectedUris.size} file(s). Keep NeaRer open while the other phone downloads."
+                    status = "Fast Share is ready · ${selectedUris.size} file(s). Other devices can download from or upload to this phone."
                 } catch (error: Exception) {
                     status = "Could not start the download page: ${error.message ?: "please try again"}"
                     stop(updateStatus = false)
@@ -392,7 +392,7 @@ data class FastShareActiveTransfer(val id: String, val fileName: String, val byt
 
 data class FastShareHistoryEntry(val fileName: String, val bytesTransferred: Long, val result: String, val timestampMillis: Long)
 
-/** Small HTTP server with byte-range support; streams from the selected content URI. */
+/** Local HTTP server for authenticated downloads, ZIP bundles and browser uploads. */
 private class FastShareHttpServer(
     private val context: Context,
     private val uris: List<Uri>,
