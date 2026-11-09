@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420">
+<defs><linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071b91"/><stop offset=".5" stop-color="#0758ff"/><stop offset="1" stop-color="#071b91"/></linearGradient></defs>
+<rect width="1200" height="420" rx="28" fill="url(#blue)"/>
+<g transform="translate(55 50) scale(.8)"><rect width="320" height="320" rx="70" fill="#0648ef" stroke="#37dcff" stroke-width="5"/><path d="M65 160 Q160 35 255 75 M65 160 Q160 200 255 250" fill="none" stroke="#ffd21f" stroke-width="14" stroke-linecap="round"/><path d="M115 100h40v190h-40zM205 100h40v190h-40z" fill="#fff"/></g>
+<text x="390" y="230" font-family="Arial,Helvetica,sans-serif" font-size="145" font-weight="700"><tspan fill="#fff">Nea</tspan><tspan fill="#ffd21f">R</tspan><tspan fill="#fff">er</tspan></text>
+<path d="M400 270 Q770 245 1080 270" fill="none" stroke="#ffd21f" stroke-width="5"/>
+<text x="400" y="330" font-family="Arial,Helvetica,sans-serif" font-size="42" font-style="italic" font-weight="700" fill="#fff">NeaRer You, NeaRer Everything</text>
+</svg>
