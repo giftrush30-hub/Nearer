@@ -70,4 +70,40 @@ class FileHttpResponsesTest {
         assertEquals("bytes */100", response.contentRange)
     }
 
+
+    @Test fun zeroLengthSuffixRangeIsUnsatisfiable() {
+        val response = FileHttpResponses.resolve("bytes=-0", 100)
+        assertEquals(416, response.statusCode)
+        assertEquals("bytes */100", response.contentRange)
+    }
+
+    @Test fun reversedRangeIsUnsatisfiable() {
+        val response = FileHttpResponses.resolve("bytes=80-20", 100)
+        assertEquals(416, response.statusCode)
+        assertEquals(0L, response.contentLength)
+    }
+
+    @Test fun overflowingRangePositionIsRejected() {
+        val response = FileHttpResponses.resolve("bytes=999999999999999999999999-", 100)
+        assertEquals(416, response.statusCode)
+        assertEquals("bytes */100", response.contentRange)
+    }
+
+    @Test fun unsupportedRangeUnitFallsBackToFullRepresentation() {
+        val response = FileHttpResponses.resolve("items=1-2", 100)
+        assertEquals(200, response.statusCode)
+        assertEquals(100L, response.contentLength)
+    }
+
+    @Test fun multipartRangeFallsBackToFullRepresentation() {
+        val response = FileHttpResponses.resolve("bytes=0-9,20-29", 100)
+        assertEquals(200, response.statusCode)
+        assertEquals(100L, response.contentLength)
+    }
+
+    @Test fun rangeAgainstEmptyFileIsUnsatisfiable() {
+        val response = FileHttpResponses.resolve("bytes=0-", 0)
+        assertEquals(416, response.statusCode)
+        assertEquals("bytes */0", response.contentRange)
+    }
 }
