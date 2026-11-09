@@ -26,8 +26,9 @@ internal object NeaRerBackupManager {
         destination: File,
         password: CharArray
     ): CreatedBackup {
-        val snapshot = newPrivateWorkDirectory(context, "nearer-backup-")
+        var snapshot: File? = null
         try {
+            snapshot = newPrivateWorkDirectory(context, "nearer-backup-")
             val summary = NeaRerBackupSnapshot.create(context, chatDatabase, snapshot)
             NeaRerBackupArchive.createEncryptedBackup(snapshot, destination, password)
             return CreatedBackup(
@@ -41,7 +42,7 @@ internal object NeaRerBackupManager {
             if (failure is IOException) throw failure
             throw IOException("Could not create encrypted NeaRer backup", failure)
         } finally {
-            snapshot.deleteRecursively()
+            snapshot?.deleteRecursively()
         }
     }
 
