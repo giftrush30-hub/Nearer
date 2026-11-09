@@ -2395,20 +2395,21 @@ private fun NeaRerHome(
                                 modifier = Modifier.fillMaxWidth().background(Midnight, RoundedCornerShape(16.dp)).padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Text("LIVE DOWNLOADS · ${fastShare.activeTransfers.size}/5", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("LIVE DOWNLOADS · ${fastShare.activeTransfers.count { !it.isQueued }}/5 · ${fastShare.activeTransfers.count { it.isQueued }} waiting", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 fastShare.activeTransfers.forEach { transfer ->
                                     val percent = if (transfer.totalBytes > 0L) ((transfer.bytesSent.toDouble() / transfer.totalBytes.toDouble()) * 100.0).toInt().coerceIn(0, 100) else -1
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text(transfer.fileName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                             Text(
-                                                if (percent >= 0) "${formatTransferBytes(transfer.bytesSent)} / ${formatTransferBytes(transfer.totalBytes)} · $percent%"
+                                                if (transfer.isQueued) "Waiting for a download slot…"
+                                                else if (percent >= 0) "${formatTransferBytes(transfer.bytesSent)} / ${formatTransferBytes(transfer.totalBytes)} · $percent%"
                                                 else "${formatTransferBytes(transfer.bytesSent)} sent · size unknown",
                                                 color = Muted, fontSize = 10.sp
                                             )
                                             Text("${formatTransferBytes(transfer.bytesPerSecond)}/s", color = Mint, fontSize = 10.sp)
                                         }
-                                        if (percent >= 0) {
+                                        if (percent >= 0 && !transfer.isQueued) {
                                             androidx.compose.material3.LinearProgressIndicator(
                                                 progress = { percent / 100f },
                                                 modifier = Modifier.fillMaxWidth().height(5.dp),
