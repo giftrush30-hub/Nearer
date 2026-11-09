@@ -1839,7 +1839,7 @@ class MainActivity : ComponentActivity() {
     private fun captureExternalShareIntent(sharedIntent: Intent?) {
         if (sharedIntent == null) return
         if (sharedIntent.action != Intent.ACTION_SEND && sharedIntent.action != Intent.ACTION_SEND_MULTIPLE) return
-        val uris = LinkedHashSet<Uri>()
+        val uris = linkedSetOf<Uri>()
         if (sharedIntent.action == Intent.ACTION_SEND) {
             @Suppress("DEPRECATION")
             (sharedIntent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri)?.let { uris.add(it) }
