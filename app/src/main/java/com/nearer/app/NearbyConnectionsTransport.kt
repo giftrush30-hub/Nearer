@@ -504,7 +504,7 @@ internal object IncomingFilePayloadPolicy {
                     val uri: Uri = receivedFile.asUri() ?: throw IllegalStateException("Nearby file content is unavailable")
                     appContext.contentResolver.openInputStream(uri)?.use { input ->
                         FileOutputStream(target).use { output ->
-                            val buffer = ByteArray(256 * 1024)
+                            val buffer = ByteArray(1024 * 1024)
                             while (true) {
                                 val count = input.read(buffer)
                                 if (count < 0) break
@@ -701,7 +701,7 @@ internal object IncomingFilePayloadPolicy {
                     ?: throw IllegalStateException("The selected file could not be opened as a stream")
                 input.use { source ->
                     stagedSource!!.outputStream().buffered().use { output ->
-                        source.copyTo(output, 256 * 1024)
+                        source.copyTo(output, 1024 * 1024)
                     }
                 }
                 size = stagedSource!!.length()
