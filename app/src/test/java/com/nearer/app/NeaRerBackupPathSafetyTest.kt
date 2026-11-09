@@ -20,6 +20,20 @@ class NeaRerBackupPathSafetyTest {
         }
     }
 
+
+    @Test fun directChildCheckRejectsParentItselfAndPrefixSibling() {
+        val root = Files.createTempDirectory("nearer-direct-child").toFile()
+        try {
+            val valid = File(root, "nearer-restore-stage-abc")
+            val prefixSibling = File(root.parentFile, root.name + "-elsewhere")
+            assertTrue(NeaRerBackupPathSafety.isDirectChild(root, valid))
+            assertFalse(NeaRerBackupPathSafety.isDirectChild(root, root))
+            assertFalse(NeaRerBackupPathSafety.isDirectChild(root, prefixSibling))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun rejectsAChildReachedThroughAnEscapingSymlink() {
         val root = Files.createTempDirectory("nearer-path-root").toFile()
         val outside = Files.createTempDirectory("nearer-path-outside").toFile()
