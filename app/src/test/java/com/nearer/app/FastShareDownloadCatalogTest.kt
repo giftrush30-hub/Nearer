@@ -55,4 +55,24 @@ class FastShareDownloadCatalogTest {
             FastShareDownloadItem(it, "file-$it", "application/octet-stream", 1L)
         })
     }
+    @Test fun receiverPageUsesNeaRerBlueAndGoldBrandColors() {
+        val page = FastShareDownloadCatalog(
+            listOf(FastShareDownloadItem(0, "photo.jpg", "image/jpeg", 1024L))
+        ).receiverPage("c".repeat(64))
+
+        assertTrue(page.contains("background:#ffd12d"))
+        assertTrue(page.contains("color:#6ea8ff"))
+        assertTrue(page.contains("outline:3px solid #6ea8ff"))
+        assertTrue(page.contains("Download"))
+    }
+
+    @Test fun receiverPageDownloadActionHasKeyboardFocusTreatment() {
+        val page = FastShareDownloadCatalog(
+            listOf(FastShareDownloadItem(0, "document.pdf", "application/pdf", 2048L))
+        ).receiverPage("d".repeat(64))
+
+        assertTrue(page.contains(".download:focus-visible"))
+        assertTrue(page.contains("outline-offset:3px"))
+    }
+
 }
