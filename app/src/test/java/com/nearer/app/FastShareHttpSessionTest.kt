@@ -208,6 +208,49 @@ class FastShareHttpSessionTest {
         assertTrue(response.isEmpty())
     }
 
+
+    @Test fun explicitZeroContentLengthIsAccepted() {
+        val (exchange, response) = read("GET /download HTTP/1.1\r\nContent-Length: 0\r\n\r\n")
+        assertNotNull(exchange)
+        assertTrue(response.isEmpty())
+    }
+
+    @Test fun duplicateContentLengthIsRejected() {
+        val (exchange, response) = read(
+            "GET /download HTTP/1.1\r\nContent-Length: 0\r\ncontent-length: 0\r\n\r\n"
+        )
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun nonzeroContentLengthIsRejected() {
+        val (exchange, response) = read("GET /download HTTP/1.1\r\nContent-Length: 1\r\n\r\n")
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun malformedContentLengthIsRejected() {
+        val (exchange, response) = read("GET /download HTTP/1.1\r\nContent-Length: +0\r\n\r\n")
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun overflowingContentLengthIsRejected() {
+        val (exchange, response) = read(
+            "GET /download HTTP/1.1\r\nContent-Length: 999999999999999999999999\r\n\r\n"
+        )
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun transferEncodingIsRejected() {
+        val (exchange, response) = read(
+            "GET /download HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"
+        )
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
     @Test fun rangeHeaderOuterWhitespaceIsTrimmedBeforeResolution() {
         val (exchange, response) = read(
             "GET /download HTTP/1.1\r\nRange:   bytes=10-19  \r\n\r\n"
