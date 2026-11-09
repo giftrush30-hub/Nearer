@@ -407,9 +407,9 @@ private class FastShareHttpServer(
                     } else if (headOnly) {
                         streamFile(output, uri, item, rangeHeader, true)
                     } else {
-                        // Keep one active file stream for stable progress and low-memory
-                        // devices, but queue a few receivers fairly instead of rejecting
-                        // every simultaneous request. The wait is bounded.
+                        // Allow two file streams for small-group sharing while keeping memory
+                        // bounded. Additional receivers wait fairly instead of being
+                        // rejected immediately; the wait is bounded.
                         val acquired = try {
                             downloadGate.tryAcquire(120, TimeUnit.SECONDS)
                         } catch (_: InterruptedException) {
