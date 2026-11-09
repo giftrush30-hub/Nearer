@@ -275,4 +275,16 @@ class FastShareHttpSessionTest {
         assertTrue(response.isEmpty())
     }
 
+    @Test fun nonAsciiHostAuthorityIsRejected() {
+        val (exchange, response) = read("GET /download HTTP/1.1\r\nHost: telé.local\r\n\r\n")
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun hostAuthorityContainingUrlPathDelimiterIsRejected() {
+        val (exchange, response) = read("GET /download HTTP/1.1\r\nHost: phone.local/path\r\n\r\n")
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
 }
