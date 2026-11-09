@@ -792,13 +792,47 @@ internal object IncomingFilePayloadPolicy {
             val offset = try { receivedPayload?.offset ?: 0L } catch (_: Exception) { 0L }
             if (offset < 0L || offset > meta.size) return@forEach
             incomingMetadata[payloadId] = meta.copy(endpointId = endpointId)
-            val request = JSONObject().put("kind", "file_resume_request")
-                .put("payloadId", payloadId).put("offset", offset)
-            client.sendPayload(endpointId, Payload.fromBytes(request.toString().toByteArray(Charsets.UTF_8)))
-                .addOnFailureListener { listener.onFileStatus("Could not request the saved transfer offset. The file will need to restart.") }
+            requestIncomingFileResume(payloadId, peerStableId, endpointId, offset)
             requested = true
         }
         return requested
+    }
+
+    /**
+     * Retry a transient failure while asking the original sender for the SDK's
+     * saved byte offset. Re-check peer identity and connection before every retry
+     * so a delayed callback can never send a resume request to a different phone.
+     */
+    private fun requestIncomingFileResume(
+        payloadId: Long,
+        peerStableId: String,
+        endpointId: String,
+        offset: Long,
+        attempt: Int = 0
+    ) {
+        val meta = incomingMetadata[payloadId] ?: return
+        if (incomingPeerIds[payloadId] != peerStableId ||
+            meta.endpointId != endpointId ||
+            !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) return
+
+        val request = JSONObject().put("kind", "file_resume_request")
+            .put("payloadId", payloadId).put("offset", offset)
+        val retryOrReport = {
+            if (attempt < 2) {
+                deliveryHandler.postDelayed(
+                    { requestIncomingFileResume(payloadId, peerStableId, endpointId, offset, attempt + 1) },
+                    1200L * (attempt + 1)
+                )
+            } else {
+                listener.onFileStatus("Could not request the saved transfer offset after several attempts. Reconnect to try again.")
+            }
+        }
+        try {
+            client.sendPayload(endpointId, Payload.fromBytes(request.toString().toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener { retryOrReport() }
+        } catch (_: Exception) {
+            retryOrReport()
+        }
     }
 
     fun cancelFile(payloadId: Long) {
