@@ -120,3 +120,13 @@ The canonical containment check is extracted into
 `NeaRerBackupPathSafety` and has unit coverage for a normal in-root file and
 an escaping symbolic link. These tests are authored but have not been run in a
 Gradle build.
+
+
+## Private restore staging boundary (2026-11-10)
+
+Before decrypting an archive, the manager now confirms that its fresh staging
+destination is a direct child of the app's canonical private cache directory
+and does not already exist. This prevents a malformed or redirected path from
+being used as the plaintext restore workspace. Unit coverage checks valid
+direct children, the parent itself, and similarly prefixed sibling paths.
+Tests remain authored but unexecuted until an Android/Gradle build is run.
