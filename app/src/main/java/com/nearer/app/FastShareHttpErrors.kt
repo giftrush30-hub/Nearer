@@ -6,6 +6,8 @@ internal object FastShareHttpErrors {
         val bytes = body.toByteArray(Charsets.UTF_8)
         val head = buildString {
             append("HTTP/1.1 ").append(status).append("\r\n")
+            append("Cache-Control: no-store\r\n")
+            append("X-Content-Type-Options: nosniff\r\n")
             if (headers.isNotEmpty()) append(headers)
             append("Content-Length: ").append(bytes.size).append("\r\n")
             append("Connection: close\r\n\r\n")
@@ -23,7 +25,7 @@ internal object FastShareHttpErrors {
         response(
             "429 Too Many Requests",
             "Retry-After: 2\r\nContent-Type: text/plain; charset=utf-8\r\n",
-            "Another download is already in progress.\n"
+            "Another download is already in progress. Wait briefly, then retry.\n"
         )
 
     fun forbidden(): ByteArray =

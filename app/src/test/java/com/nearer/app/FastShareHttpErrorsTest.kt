@@ -37,8 +37,22 @@ class FastShareHttpErrorsTest {
         val (headers, body) = headersAndBody(FastShareHttpErrors.tooManyRequests())
         assertTrue(headers.startsWith("HTTP/1.1 429 Too Many Requests"))
         assertTrue(headers.contains("\r\nRetry-After: 2\r\n"))
-        assertEquals("Another download is already in progress.\n", body)
+        assertEquals("Another download is already in progress. Wait briefly, then retry.\n", body)
         assertContentLength(headers, body)
+    }
+
+    @Test fun allErrorResponsesAreNotCachedAndDisableMimeSniffing() {
+        listOf(
+            FastShareHttpErrors.badRequest(),
+            FastShareHttpErrors.methodNotAllowed(),
+            FastShareHttpErrors.tooManyRequests(),
+            FastShareHttpErrors.forbidden(),
+            FastShareHttpErrors.notFound()
+        ).forEach { response ->
+            val (headers, _) = headersAndBody(response)
+            assertTrue(headers.contains("\r\nCache-Control: no-store\r\n"))
+            assertTrue(headers.contains("\r\nX-Content-Type-Options: nosniff\r\n"))
+        }
     }
 
     @Test fun unknownRouteReturns404WithEmptyBody() {
@@ -47,6 +61,7 @@ class FastShareHttpErrorsTest {
         assertEquals("", body)
         assertContentLength(headers, body)
     }
+
     @Test fun missingOrInvalidSessionKeyReturns403() {
         val (headers, body) = headersAndBody(FastShareHttpErrors.forbidden())
         assertTrue(headers.startsWith("HTTP/1.1 403 Forbidden"))
@@ -54,5 +69,4 @@ class FastShareHttpErrorsTest {
         assertTrue(body.contains("invalid"))
         assertContentLength(headers, body)
     }
-
 }

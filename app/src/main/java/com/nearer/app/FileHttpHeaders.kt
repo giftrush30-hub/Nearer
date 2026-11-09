@@ -14,6 +14,14 @@ internal object FileHttpHeaders {
         return "Content-Disposition: attachment; filename*=UTF-8''$encoded\r\n"
     }
 
+    /**
+     * Prevent browsers and intermediary caches from retaining private local-share
+     * content, and prevent MIME sniffing of provider-supplied file types.
+     */
     fun fileHeaders(mimeType: String, fileName: String): String =
-        "Content-Type: ${contentType(mimeType)}\r\n" + contentDisposition(fileName)
+        "Content-Type: ${contentType(mimeType)}\r\n" +
+            contentDisposition(fileName) +
+            "Cache-Control: no-store\r\n" +
+            "X-Content-Type-Options: nosniff\r\n" +
+            "Referrer-Policy: no-referrer\r\n"
 }

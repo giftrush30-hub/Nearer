@@ -1,6 +1,7 @@
 package com.nearer.app
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FileHttpHeadersTest {
@@ -25,10 +26,13 @@ class FileHttpHeadersTest {
 
     @Test fun fileHeadersContainOnlyValidatedValues() {
         val headers = FileHttpHeaders.fileHeaders("application/pdf\r\nX: y", "report.pdf")
-        assertEquals(
+        assertTrue(headers.startsWith(
             "Content-Type: application/octet-stream\r\n" +
-                "Content-Disposition: attachment; filename*=UTF-8''report.pdf\r\n",
-            headers
-        )
+                "Content-Disposition: attachment; filename*=UTF-8''report.pdf\r\n"
+        ))
+        assertTrue(headers.contains("Cache-Control: no-store\r\n"))
+        assertTrue(headers.contains("X-Content-Type-Options: nosniff\r\n"))
+        assertTrue(headers.contains("Referrer-Policy: no-referrer\r\n"))
+        assertEquals(1, Regex("(?m)^Cache-Control:").findAll(headers).count())
     }
 }
