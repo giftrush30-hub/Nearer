@@ -342,6 +342,10 @@ private class FastShareHttpServer(
     private var acceptThread: Thread? = null
 
     fun start(): String {
+        // A process death can leave a hidden .part file behind. Sweep the
+        // previous session's staging files before this server accepts uploads.
+        val uploadDirectory = File(context.filesDir, "nearer-pc-uploads")
+        FastShareTempFileCleanup.removeAbandoned(uploadDirectory)
         val listener = ServerSocket(8765, 8, java.net.InetAddress.getByName("0.0.0.0"))
         socket = listener
         // Keep accepting on its own daemon thread. If the accept loop occupied
