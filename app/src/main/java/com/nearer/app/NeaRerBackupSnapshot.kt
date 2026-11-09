@@ -40,6 +40,26 @@ internal object NeaRerBackupSnapshot {
         }
         val profile = try { JSONObject(profileFile.readText(Charsets.UTF_8)) }
             catch (failure: Exception) { throw IOException("Backup profile information is invalid", failure) }
+        if (profile.has("hasProfilePhoto") && profile.opt("hasProfilePhoto") !is Boolean) {
+            throw IOException("Backup profile photo flag is invalid")
+        }
+        profileStringKeys.forEach { key ->
+            if (profile.has(key)) {
+                val value = profile.opt(key)
+                if (value !is String || value.length > MAX_PROFILE_VALUE_CHARS) {
+                    throw IOException("Backup profile field is invalid: $key")
+                }
+            }
+        }
+        listOf("onboarding_answers", "community_groups", "community_messages",
+            "nearby_transfer_history", "recently_seen", "nearby_outbox",
+            "nearby_seen_message_ids_ordered").forEach { key ->
+            val value = profile.optString(key, "")
+            if (value.isNotEmpty()) {
+                try { org.json.JSONTokener(value).nextValue() }
+                catch (failure: Exception) { throw IOException("Backup profile data is invalid: $key", failure) }
+            }
+        }
         if (profile.optString("format") != "NeaRerLocalSnapshot" || profile.optInt("version") != 1) {
             throw IOException("Backup profile version is not supported")
         }
@@ -231,6 +251,7 @@ internal object NeaRerBackupSnapshot {
 
     private const val BUFFER_BYTES = 64 * 1024
     private const val MAX_PROFILE_BYTES = 1024 * 1024L
+    private const val MAX_PROFILE_VALUE_CHARS = 512 * 1024
     private const val MAX_PROFILE_PHOTO_BYTES = 5L * 1024L * 1024L
     private const val MAX_CHAT_ARCHIVE_BYTES = 64L * 1024L * 1024L
     private const val MAX_CHAT_RECORD_CHARS = 2 * 1024 * 1024
