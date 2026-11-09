@@ -93,7 +93,7 @@ If a phone is lost or destroyed, no backup exists, and the old phone cannot be a
 1. First-run onboarding, name, optional answers, avatar/photo choice, ID reveal and local persistence — implemented.
 2. Local profile editor and profile preview in More — implemented. Nearby display-name/avatar metadata exchange and avatar rendering in discovery/connection lists — implemented. SQLite chat archive migration and older-message paging — implemented in code; build/device verification remains pending. Profile-photo sharing and avatar rendering in chat/contact surfaces remain pending.
 3. Recovery Kit generation and secure key storage.
-4. Encrypted backup/export and restore groundwork — encrypted backup creation, authenticated staging, strict snapshot validation and a read-only typed restore plan are implemented. The plan exposes only portable allow-listed preferences, profile photo and received files, and explicitly excludes device permissions, relay consent, Android URI grants, live transport sessions and device-specific identity. Applying the plan with a cross-store rollback coordinator and user-facing confirmation UI remains pending.
+4. Encrypted backup/export and restore groundwork — encrypted backup creation, authenticated staging, strict snapshot validation and a read-only typed restore plan are implemented. The plan exposes only portable allow-listed preferences, profile photo and received files, and explicitly excludes device permissions, relay consent, Android URI grants, live transport sessions and device-specific identity. A cross-store restore transaction now exists in code, but it is not yet connected to a user-facing confirmation screen or Activity restart flow. Build/device verification remains pending.
 5. Old-to-new phone migration with pairing, integrity checks and rollback-safe completion.
 6. Device management and credential revocation.
 7. Optional cloud backup only if later approved; never make it a prerequisite for the offline-first core.
@@ -107,3 +107,14 @@ If a phone is lost or destroyed, no backup exists, and the old phone cannot be a
 - Planning is read-only: it does not change SharedPreferences, SQLite, the active profile, received files or transport state.
 - Device-specific identity, Android permissions/nearby consent, active mesh-relay consent, pending Android content-URI selections and live Bluetooth/Wi-Fi sessions are excluded and must be re-established locally.
 - This is not yet a restore/apply feature. A confirmed apply path still needs a tested rollback coordinator across SQLite, preferences, profile media and received files, followed by a controlled app-state/transport restart.
+
+
+## Coordinated restore transaction (implementation groundwork)
+
+- `NeaRerBackupRestoreTransaction.apply` refuses to run unless the caller passes an explicit-confirmation flag.
+- Before modifying live data it exports the current complete SQLite chat archive, snapshots all supported SharedPreferences value types, and stages received files/profile photo inside app-private storage.
+- Received files are installed by same-filesystem directory rename after preserving the current folder. The chat archive is replaced through SQLite's transaction. Portable profile/community/queue preferences and onboarding state are committed only after the file and database steps succeed.
+- If a later step fails, the transaction attempts to restore the original preferences, SQLite archive and received-files folder. If any rollback step itself fails, it deliberately retains the private rollback workspace and reports its location in the error's suppressed details rather than deleting the last recovery copy.
+- Existing profile photos are kept until the new preferences commit succeeds; only then is an old photo inside app-private storage eligible for cleanup.
+- The transaction returns `restartRequired=true`: MainActivity keeps profile, community and nearby-transport state in memory. The UI must close the prepared restore, stop/recreate the activity and reload stores after success.
+- This code is not yet wired to a screen, must not be exposed as a casual/background action, and has not been compiled or device-tested. A future UI must show the exact preview and exclusions, require a clear destructive confirmation, and handle restart-required success.
