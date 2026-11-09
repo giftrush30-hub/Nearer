@@ -65,15 +65,15 @@ internal class NeaRerChatHistoryDatabase(context: Context) :
         arrayOf(limit.coerceIn(1, 5000).toString())
     ).asReversed()
 
-    fun loadBefore(timestampExclusive: Long, limit: Int = 500): List<ChatMessage> = query(
-        "SELECT id, body, outgoing, delivery, timestamp, conversation_id, conversation_name FROM messages WHERE timestamp < ? ORDER BY timestamp DESC, id DESC LIMIT ?",
-        arrayOf(timestampExclusive.toString(), limit.coerceIn(1, 5000).toString())
+    fun loadBefore(oldest: ChatMessage, limit: Int = 500): List<ChatMessage> = query(
+        "SELECT id, body, outgoing, delivery, timestamp, conversation_id, conversation_name FROM messages WHERE timestamp < ? OR (timestamp = ? AND id < ?) ORDER BY timestamp DESC, id DESC LIMIT ?",
+        arrayOf(oldest.timestamp.toString(), oldest.timestamp.toString(), oldest.id, limit.coerceIn(1, 5000).toString())
     ).asReversed()
 
-    fun hasBefore(timestampExclusive: Long): Boolean {
+    fun hasBefore(oldest: ChatMessage): Boolean {
         readableDatabase.rawQuery(
-            "SELECT 1 FROM messages WHERE timestamp < ? LIMIT 1",
-            arrayOf(timestampExclusive.toString())
+            "SELECT 1 FROM messages WHERE timestamp < ? OR (timestamp = ? AND id < ?) LIMIT 1",
+            arrayOf(oldest.timestamp.toString(), oldest.timestamp.toString(), oldest.id)
         ).use { return it.moveToFirst() }
     }
 
