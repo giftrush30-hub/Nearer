@@ -271,30 +271,50 @@ internal object AndroidFileCatalog {
     fun exportContactsBundle(context: Context, contacts: List<FileCentreItem>): FileCentreItem {
         require(contacts.isNotEmpty()) { "Select at least one contact." }
         val resolver = context.contentResolver
+        val outputDir = java.io.File(context.cacheDir, "nearer-share").apply { mkdirs() }
+        val output = java.io.File.createTempFile("nearer-contacts-", ".vcf", outputDir)
+        output.bufferedWriter(Charsets.UTF_8).use { writer ->
+            contacts.forEach { item ->
+                val id = requireNotNull(item.contactId) { "A selected contact is unavailable." }
                 val phoneNumbers = ArrayList<String>()
-                resolver.query(android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                resolver.query(
+                    android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
                     arrayOf(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER),
-                    android.provider.ContactsContract.CommonDataKinds.Phone.CONTACT_ID + "=?", arrayOf(id), null
+                    android.provider.ContactsContract.CommonDataKinds.Phone.CONTACT_ID + "=?",
+                    arrayOf(id),
+                    null
                 )?.use { cursor ->
-                    val col = cursor.getColumnIndexOrThrow(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
-                    while (cursor.moveToNext()) cursor.getString(col)?.takeIf { it.isNotBlank() }?.let { phoneNumbers.add(it) }
+                    val column = cursor.getColumnIndexOrThrow(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
+                    while (cursor.moveToNext()) {
+                        cursor.getString(column)?.takeIf { it.isNotBlank() }?.let { phoneNumbers.add(it) }
+                    }
                 }
                 val emailAddresses = ArrayList<String>()
-                resolver.query(android.provider.ContactsContract.CommonDataKinds.Email.CONTENT_URI,
+                resolver.query(
+                    android.provider.ContactsContract.CommonDataKinds.Email.CONTENT_URI,
                     arrayOf(android.provider.ContactsContract.CommonDataKinds.Email.ADDRESS),
-                    android.provider.ContactsContract.CommonDataKinds.Email.CONTACT_ID + "=?", arrayOf(id), null
+                    android.provider.ContactsContract.CommonDataKinds.Email.CONTACT_ID + "=?",
+                    arrayOf(id),
+                    null
                 )?.use { cursor ->
-                    val col = cursor.getColumnIndexOrThrow(android.provider.ContactsContract.CommonDataKinds.Email.ADDRESS)
-                    while (cursor.moveToNext()) cursor.getString(col)?.takeIf { it.isNotBlank() }?.let { emailAddresses.add(it) }
+                    val column = cursor.getColumnIndexOrThrow(android.provider.ContactsContract.CommonDataKinds.Email.ADDRESS)
+                    while (cursor.moveToNext()) {
+                        cursor.getString(column)?.takeIf { it.isNotBlank() }?.let { emailAddresses.add(it) }
+                    }
                 }
                 writer.append(VCardFormatPolicy.create(item.name, phoneNumbers, emailAddresses))
             }
         }
         val uri = FileProvider.getUriForFile(context, context.packageName + ".files", output)
-        return FileCentreItem(id = uri.toString(),
+        return FileCentreItem(
+            id = uri.toString(),
             name = if (contacts.size == 1) contacts.first().name + ".vcf" else contacts.size.toString() + " contacts.vcf",
-            category = FileCentreCategory.CONTACTS, uri = uri, sizeBytes = output.length(),
-            modifiedSeconds = System.currentTimeMillis() / 1000L, mimeType = "text/vcard")
+            category = FileCentreCategory.CONTACTS,
+            uri = uri,
+            sizeBytes = output.length(),
+            modifiedSeconds = System.currentTimeMillis() / 1000L,
+            mimeType = "text/vcard"
+        )
     }
 
     fun appIcon(context: Context, packageName: String): Drawable? =
