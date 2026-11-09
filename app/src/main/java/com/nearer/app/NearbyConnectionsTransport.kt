@@ -66,8 +66,10 @@ internal object IncomingFilePayloadPolicy {
         incomingPeerId: String
     ): Boolean {
         if (incomingEndpointId.isBlank()) return false
-        if (!expectedPeerId.isNullOrBlank() && incomingPeerId.isNotBlank()) {
-            return expectedPeerId == incomingPeerId
+        // Once metadata establishes a stable sender, an empty identity is not
+        // a legacy fallback: it is an unidentified sender and must be rejected.
+        if (!expectedPeerId.isNullOrBlank()) {
+            return incomingPeerId.isNotBlank() && expectedPeerId == incomingPeerId
         }
         return expectedEndpointId == null || expectedEndpointId == incomingEndpointId
     }
