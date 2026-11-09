@@ -16,11 +16,12 @@ internal class DirectChatOutbox(context: Context) {
     private val preferences = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
     private val lock = Any()
     private val entries = LinkedHashMap<String, Entry>()
+    private var restoreFailed = false
 
     init { restore() }
 
     fun enqueue(id: String, peerId: String, body: String): Boolean = synchronized(lock) {
-        if (!validId(id) || !NeaRerIdentity.isValid(peerId) || body.isBlank() || body.length > 4000) return false
+        if (restoreFailed || !validId(id) || !NeaRerIdentity.isValid(peerId) || body.isBlank() || body.length > 4000) return false
         if (entries.containsKey(id)) return entries[id] == Entry(id, peerId, body)
         if (entries.size >= 500) return false
         entries[id] = Entry(id, peerId, body)
@@ -61,6 +62,7 @@ internal class DirectChatOutbox(context: Context) {
             }
         } catch (_: Exception) {
             // Preserve unreadable ciphertext; never overwrite it with an empty queue.
+            restoreFailed = true
         }
     }
 
