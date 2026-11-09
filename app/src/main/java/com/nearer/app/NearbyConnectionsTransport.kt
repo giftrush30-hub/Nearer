@@ -305,13 +305,21 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     if (challenge.size != 32 || !SecurePeerIdentity.isValidPublicKey(publicKey)) return
                     peerIdentityKeys[endpointId] = publicKey
                     peerIdentityIds[endpointId] = publicId
+                    val localId = localPublicId
+                    if (!NeaRerIdentity.isValid(localId)) return
+                    val localKey = try { SecurePeerIdentity.publicKeyEncoded() } catch (_: Exception) {
+                        listener.onStatus("NeaRer could not load this phone's secure identity key.")
+                        return
+                    }
                     val proof = try {
-                        SecurePeerIdentity.signChallenge(publicId, publicKey, challenge)
+                        SecurePeerIdentity.signChallenge(localId, localKey, challenge)
                     } catch (_: Exception) {
                         listener.onStatus("NeaRer could not complete secure identity verification on this phone.")
                         return
                     }
                     val response = JSONObject().put("kind", "identity_proof").put("version", 2)
+                        .put("publicId", localId)
+                        .put("publicKey", android.util.Base64.encodeToString(localKey, android.util.Base64.NO_WRAP))
                         .put("signature", android.util.Base64.encodeToString(proof, android.util.Base64.NO_WRAP))
                     try {
                         client.sendPayload(endpointId, Payload.fromBytes(response.toString().toByteArray(Charsets.UTF_8)))
@@ -325,10 +333,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     val publicKey = peerIdentityKeys[endpointId] ?: return
                     val publicId = peerIdentityIds[endpointId] ?: return
                     val stableId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                    val responseId = envelope.optString("publicId").uppercase()
+                    val responseKey = try {
+                        android.util.Base64.decode(envelope.optString("publicKey"), android.util.Base64.NO_WRAP)
+                    } catch (_: Exception) { return }
                     val signature = try {
                         android.util.Base64.decode(envelope.optString("signature"), android.util.Base64.NO_WRAP)
                     } catch (_: Exception) { return }
-                    if (stableId.isNotBlank() &&
+                    val sameKey = java.security.MessageDigest.isEqual(publicKey, responseKey)
+                    if (stableId.isNotBlank() && responseId == publicId && sameKey &&
                         SecurePeerIdentity.verifyChallenge(publicId, publicKey, challenge, signature)) {
                         listener.onPeerIdentity(endpointId, stableId, publicId)
                     } else {
