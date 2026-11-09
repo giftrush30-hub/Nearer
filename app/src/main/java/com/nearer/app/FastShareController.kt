@@ -102,13 +102,17 @@ class FastShareController(private val context: Context) {
                     }
                     val catalog = FastShareDownloadCatalog(items)
                     val accessKey = FastShareAccessKey.create()
-                    var transferStartedAt = 0L
-                    var lastProgressAt = 0L
-                    var lastProgressBytes = 0L
-                    var bytesPerSecond = 0.0
+                    // Each HTTP worker owns its own progress clock. Two concurrent
+                    // receivers must never overwrite one another's speed/timing state.
+                    val progressByThread = ThreadLocal.withInitial { LongArray(4) }
                     val httpServer = FastShareHttpServer(context, selectedUris, catalog, accessKey) { fileName, sent, total, complete, interrupted, partialResponse ->
+                        val progress = progressByThread.get()
                         val now = android.os.SystemClock.elapsedRealtime()
-                        if (transferStartedAt == 0L || sent < lastProgressBytes) {
+                        var transferStartedAt = progress[0]
+                        var lastProgressAt = progress[1]
+                        var lastProgressBytes = progress[2]
+                        var bytesPerSecond = progress[3].toDouble()
+                        if ((sent == 0L && !complete && !interrupted) || transferStartedAt == 0L || sent < lastProgressBytes) {
                             transferStartedAt = now
                             lastProgressAt = now
                             lastProgressBytes = 0L
@@ -120,6 +124,10 @@ class FastShareController(private val context: Context) {
                         }
                         lastProgressAt = now
                         lastProgressBytes = sent
+                        progress[0] = transferStartedAt
+                        progress[1] = lastProgressAt
+                        progress[2] = lastProgressBytes
+                        progress[3] = bytesPerSecond.toLong()
                         val speedLabel = if (bytesPerSecond > 0.0) " · ${formatProgressSize(bytesPerSecond.toLong())}/s" else ""
                         val averageSpeed = formatProgressSize(((sent * 1000.0) / (now - transferStartedAt).coerceAtLeast(1L)).toLong())
                         Handler(Looper.getMainLooper()).post {
@@ -140,10 +148,7 @@ class FastShareController(private val context: Context) {
                             }
                         }
                         if (complete || interrupted) {
-                            transferStartedAt = 0L
-                            lastProgressAt = 0L
-                            lastProgressBytes = 0L
-                            bytesPerSecond = 0.0
+                            progressByThread.remove()
                         }
                     }
                     val address = httpServer.start()
