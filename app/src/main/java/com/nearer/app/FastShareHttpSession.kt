@@ -8,7 +8,9 @@ import java.io.OutputStream
 internal data class FastShareHttpExchange(
     val request: FastShareHttpRequest,
     val rangeHeader: String?,
-    val ifRangeHeader: String? = null
+    val ifRangeHeader: String? = null,
+    val contentLength: Long = 0L,
+    val contentType: String? = null
 )
 
 /**
@@ -34,6 +36,9 @@ internal object FastShareHttpSession {
         var sawIfRangeHeader = false
         var sawHostHeader = false
         var sawContentLengthHeader = false
+        var contentLength = 0L
+        var contentType: String? = null
+        var sawContentTypeHeader = false
         var headerBytes = 0
         var headerCount = 0
         while (true) {
@@ -70,13 +75,16 @@ internal object FastShareHttpSession {
                 return rejectBadRequest(output)
             }
             if (name.equals("Content-Length", ignoreCase = true)) {
-                // GET/HEAD requests have no body in this protocol. Accept zero only.
                 if (sawContentLengthHeader) return rejectBadRequest(output)
                 sawContentLengthHeader = true
                 val length = headerValue.trim()
-                if (length.isEmpty() || length.any { it !in '0'..'9' } ||
-                    length.toLongOrNull() != 0L
-                ) return rejectBadRequest(output)
+                if (length.isEmpty() || length.any { it !in '0'..'9' }) return rejectBadRequest(output)
+                contentLength = length.toLongOrNull() ?: return rejectBadRequest(output)
+            }
+            if (name.equals("Content-Type", ignoreCase = true)) {
+                if (sawContentTypeHeader) return rejectBadRequest(output)
+                sawContentTypeHeader = true
+                contentType = headerValue.trim().takeIf { it.isNotBlank() } ?: return rejectBadRequest(output)
             }
             if (name.equals("Range", ignoreCase = true)) {
                 if (sawRangeHeader) return rejectBadRequest(output)
@@ -103,10 +111,20 @@ internal object FastShareHttpSession {
             output.flush()
             return null
         }
+        if (request.method == "POST") {
+            if (!request.isUpload || !sawContentLengthHeader || !sawContentTypeHeader) return rejectBadRequest(output)
+        } else if (contentLength != 0L) {
+            return rejectBadRequest(output)
+        }
+        if (request.route == FastShareHttpRequest.Route.UPLOAD && request.method != "POST") {
+            output.write(FastShareHttpErrors.methodNotAllowed())
+            output.flush()
+            return null
+        }
 
         // RFC byte ranges modify GET responses; HEAD must describe the full representation.
         // The server decides whether If-Range still matches the selected source file.
-        return FastShareHttpExchange(request, if (request.isHeadOnly) null else rangeHeader, ifRangeHeader)
+        return FastShareHttpExchange(request, if (request.isHeadOnly) null else rangeHeader, ifRangeHeader, contentLength, contentType)
     }
 
     private fun isValidHostAuthority(value: String): Boolean =
