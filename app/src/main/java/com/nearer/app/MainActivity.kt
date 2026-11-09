@@ -1160,7 +1160,7 @@ class MainActivity : ComponentActivity() {
         chatMessages.clear()
         chatMessages.addAll(chatHistoryDatabase.loadLatest())
         chatMessages.filterNot { it.outgoing }.forEach { receivedMessageIds.add(it.id) }
-        hasOlderChatMessages = chatMessages.firstOrNull()?.let { chatHistoryDatabase.hasBefore(it.timestamp) } ?: false
+        hasOlderChatMessages = chatMessages.firstOrNull()?.let { chatHistoryDatabase.hasBefore(it) } ?: false
         val folder = File(filesDir, "received")
         if (folder.exists()) {
             folder.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }?.forEach {
@@ -2743,6 +2743,14 @@ private fun NeaRerHome(
                         if (messages.isEmpty()) {
                             Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         } else {
+                            if (hasOlderChatMessages) {
+                                androidx.compose.material3.TextButton(
+                                    onClick = onLoadOlderMessages,
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                ) {
+                                    Text("Load older messages", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
                             Column(
                                 modifier = Modifier.fillMaxWidth().height(150.dp).verticalScroll(rememberScrollState()),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
