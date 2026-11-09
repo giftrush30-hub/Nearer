@@ -303,7 +303,11 @@ private class FastShareHttpServer(
                     // Register before dispatch so stop() can close both active and
                     // queued clients. track() also closes sockets accepted during
                     // the shutdown race.
-                    if (!running || !clients.track(client)) continue
+                    if (!running) {
+                        runCatching { client.close() }
+                        continue
+                    }
+                    if (!clients.track(client)) continue
                     try {
                         executor.execute { handle(client) }
                     } catch (_: RejectedExecutionException) {
