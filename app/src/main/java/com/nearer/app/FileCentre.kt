@@ -642,10 +642,10 @@ internal fun FileCentreScreen(
                 FilterChip(selected = sortMode == mode, onClick = { sortMode = mode }, label = { Text(mode, fontSize = 10.sp) })
             }
         }
-        val selectableVisibleIds = visible.filter { it.uri != null }.map { it.id }
+        val selectableVisibleIds = visible.filter { it.uri != null || it.packageName != null }.map { it.id }
         val allVisibleSelected = selectableVisibleIds.isNotEmpty() && selectableVisibleIds.all { it in selected }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("${selectableVisibleIds.size} files in view", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
+            Text("${selectableVisibleIds.size} shareable items in view", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
             Button(
                 onClick = {
                     if (allVisibleSelected) selected.removeAll(selectableVisibleIds.toSet())
@@ -812,15 +812,27 @@ internal fun FileCentreScreen(
                         Button(
                             onClick = {
                                 if (!connected) notice = "Connect to a nearby NeaRer phone before sending."
-                                else if (selectedUris.isNotEmpty()) {
-                                    onSendFiles(selectedUris)
-                                    // Keep the basket intact until the user clears it.
-                                    // The sender callback reports failures through the chat/transfer status,
-                                    // so clearing here could silently discard a selection that was not queued.
-                                    notice = "Send request handed to NeaRer. Check the transfer status before clearing your basket."
+                                else if (selectedItems.isNotEmpty()) {
+                                    notice = "Preparing selected files and app bundles…"
+                                    scope.launch {
+                                        val prepared = withContext(Dispatchers.IO) {
+                                            selectedItems.mapNotNull { item ->
+                                                if (item.packageName == null || item.uri != null) item
+                                                else runCatching { AndroidFileCatalog.exportAppBundle(context, item) }.getOrNull()
+                                            }
+                                        }
+                                        val uris = prepared.mapNotNull { it.uri }.distinct()
+                                        if (uris.isNotEmpty()) {
+                                            onSendFiles(uris)
+                                            // Keep the basket intact until the user clears it.
+                                            notice = "Send request handed to NeaRer. Check the transfer status before clearing your basket."
+                                        } else {
+                                            notice = "NeaRer could not prepare the selected items. Check app availability and try again."
+                                        }
+                                    }
                                 }
                             },
-                            enabled = selectedUris.isNotEmpty(),
+                            enabled = selectedItems.isNotEmpty(),
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
                         ) { Text("Send selected") }
