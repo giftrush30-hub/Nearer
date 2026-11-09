@@ -53,6 +53,26 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         return value.take(23) to ""
     }
 
+internal object IncomingFilePayloadPolicy {
+    /**
+     * A file payload must come from the peer that supplied its metadata (or the
+     * peer that first supplied the payload). Stable identities survive reconnects;
+     * legacy peers are restricted to the original endpoint.
+     */
+    fun canAccept(
+        expectedEndpointId: String?,
+        expectedPeerId: String?,
+        incomingEndpointId: String,
+        incomingPeerId: String
+    ): Boolean {
+        if (incomingEndpointId.isBlank()) return false
+        if (!expectedPeerId.isNullOrBlank() && incomingPeerId.isNotBlank()) {
+            return expectedPeerId == incomingPeerId
+        }
+        return expectedEndpointId == null || expectedEndpointId == incomingEndpointId
+    }
+}
+
     private data class FileMeta(val endpointId: String, val name: String, val size: Long, val sha256: String = "")
     private data class OutgoingFile(
         @Volatile var endpointId: String,
@@ -284,9 +304,25 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             when (payload.type) {
                 Payload.Type.BYTES -> handleBytes(id, payload.asBytes())
                 Payload.Type.FILE -> {
-                    incomingPayloads[payload.id] = payload
-                    incomingPeerIds[payload.id] = synchronized(names) { stableIds[id].orEmpty() }
+                    val incomingPeerId = synchronized(names) { stableIds[id].orEmpty() }
+                    val existingPeerId = incomingPeerIds[payload.id]
                     val meta = incomingMetadata[payload.id]
+                    val expectedEndpoint = meta?.endpointId
+                        ?: incomingPayloads[payload.id]?.let { existingPeerId?.let { _ -> id } }
+                    if (!IncomingFilePayloadPolicy.canAccept(
+                            expectedEndpoint,
+                            existingPeerId,
+                            id,
+                            incomingPeerId
+                        )) {
+                        try { payload.close() } catch (_: Exception) { }
+                        listener.onFileStatus("A different nearby phone tried to supply data for this transfer. The file payload was rejected.")
+                        return
+                    }
+                    incomingPayloads[payload.id] = payload
+                    if (existingPeerId == null || existingPeerId.isBlank()) {
+                        incomingPeerIds[payload.id] = incomingPeerId
+                    }
                     listener.onFileProgress(id, payload.id, meta?.name ?: "Incoming file", 0L, meta?.size ?: -1L, true)
                     processCompletedFile(payload.id)
                 }
