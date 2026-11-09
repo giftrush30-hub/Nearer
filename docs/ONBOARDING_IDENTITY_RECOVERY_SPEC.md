@@ -1,6 +1,6 @@
 # NeaRer onboarding, identity and recovery specification
 
-Status: product decisions approved. First-run onboarding, local profile persistence, profile editing, the More-tab profile preview and nearby avatar metadata exchange are implemented on the `feature/premium-onboarding-identity` branch. Profile-photo exchange, recovery and cross-device migration remain separate implementation milestones.
+Status: product decisions approved. First-run onboarding, local profile persistence, profile editing, the More-tab profile preview, nearby avatar metadata exchange and the first durable SQLite chat-history archive with older-message paging are implemented on the `feature/premium-onboarding-identity` branch. Profile-photo exchange, encrypted backup verification, recovery and cross-device migration remain separate implementation milestones.
 
 ## Product promise
 
@@ -28,6 +28,7 @@ The public NeaRer ID is an identifier, not a password, secret, recovery key or p
 
 - Keep the current public ID format and compatibility rules in `NeaRerIdentity`; do not silently change existing IDs or break peer records.
 - Store display name, selected avatar ID, onboarding completion, optional personalisation answers and local profile-photo path in app-private storage/preferences.
+- Store chat messages in an unbounded SQLite archive, migrate the legacy SharedPreferences JSON without deleting the source, and page older messages into the chat timeline. Keep only a bounded recent page in Compose memory; never delete archived rows just because the UI trims its in-memory list.
 - Copy picked photos into app-private storage rather than relying on a temporary gallery URI.
 - Resize/compress profile photos for nearby transfer and cached display; preserve a user-selected original only if they explicitly opt in.
 - Nearby connections exchange only the public display name and selected avatar ID after connection approval; avatar updates are broadcast to active peers. Do not send personalisation answers.
@@ -90,9 +91,9 @@ If a phone is lost or destroyed, no backup exists, and the old phone cannot be a
 ## Implementation sequence
 
 1. First-run onboarding, name, optional answers, avatar/photo choice, ID reveal and local persistence — implemented.
-2. Local profile editor and profile preview in More — implemented. Nearby display-name/avatar metadata exchange and avatar rendering in discovery/connection lists — implemented. Profile-photo sharing and avatar rendering in chat/contact surfaces remain pending.
+2. Local profile editor and profile preview in More — implemented. Nearby display-name/avatar metadata exchange and avatar rendering in discovery/connection lists — implemented. SQLite chat archive migration and older-message paging — implemented in code; build/device verification remains pending. Profile-photo sharing and avatar rendering in chat/contact surfaces remain pending.
 3. Recovery Kit generation and secure key storage.
-4. Encrypted local backup/export and restore, including verification tests.
+4. Encrypted backup/export and restore for SQLite chat history, contacts/profile and selected media, with preview, integrity checks and rollback-safe replacement.
 5. Old-to-new phone migration with pairing, integrity checks and rollback-safe completion.
 6. Device management and credential revocation.
 7. Optional cloud backup only if later approved; never make it a prerequisite for the offline-first core.
