@@ -2188,8 +2188,12 @@ class MainActivity : ComponentActivity() {
                             runOnUiThread {
                                 val index = chatMessages.indexOfFirst { it.id == id && it.outgoing }
                                 if (index >= 0) {
-                                    chatMessages[index] = chatMessages[index].copy(delivery = "Delivered")
-                                    persistMessages()
+                                    val previous = chatMessages[index]
+                                    chatMessages[index] = previous.copy(delivery = "Delivered")
+                                    if (!persistMessages()) {
+                                        chatMessages[index] = previous.copy(delivery = "Queued")
+                                        chatNotice = "The other phone received your message, but NeaRer could not save the delivery receipt. It remains unconfirmed here."
+                                    }
                                 }
                             }
                         }

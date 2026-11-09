@@ -26,6 +26,8 @@ The UI must therefore continue to describe the ID as self-reported. Do not call 
 ## Not yet covered
 
 - Chat and file payload encryption in transit has not been added by this change.
+- Nearby Connections sender outbox entries are retained until the sender's Delivered receipt state is durably saved to encrypted chat history. If saving fails, the message stays queued and can be retried; receiver-side message-ID deduplication permits a repeated send to receive a fresh acknowledgement without duplicating the chat entry.
+- The Wi-Fi Direct fallback now also avoids displaying Delivered when its local receipt update cannot be saved. Its older text-socket send queue is not yet a durable, identity-bound outbox equivalent to Nearby Connections.
 - The local chat-history JSON store is now encrypted at rest with the same Android Keystore AES-256-GCM key used for the pending outbox; older plaintext chat history is migrated on successful load/save.
 - Received files are still stored in the app's private received folder without application-level file encryption.
 - No cross-phone identity recovery or user-managed trusted-contact/key-change approval flow exists. A changed key is blocked, but this version has no safe in-app recovery/rotation flow.
