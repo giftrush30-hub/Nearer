@@ -115,6 +115,7 @@ class MainActivity : ComponentActivity() {
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
     private val hybridPeers = mutableStateMapOf<String, String>()
+    private val nearbyPeerPublicIds = mutableStateMapOf<String, String>()
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
     private var nearerId by mutableStateOf("")
@@ -259,6 +260,17 @@ class MainActivity : ComponentActivity() {
                     pairingCode = token
                     approvalMessage = "Compare the security code on both phones before accepting"
                     statusMessage = "$name is requesting a nearby connection."
+                }
+            }
+            override fun onPeerIdentity(id: String, stableId: String, publicId: String) {
+                runOnUiThread {
+                    if (stableId.isNotBlank()) {
+                        nearbyPeerPublicIds[stableId] = publicId
+                        val saved = org.json.JSONObject()
+                        nearbyPeerPublicIds.forEach { (key, value) -> saved.put(key, value) }
+                        getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                            .edit().putString("nearby_peer_public_ids", saved.toString()).apply()
+                    }
                 }
             }
             override fun onConnected(id: String, name: String, stableId: String) {
@@ -454,6 +466,17 @@ class MainActivity : ComponentActivity() {
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
         nearbyTransport?.setDisplayName(displayName)
         nearerId = NeaRerIdentity.loadOrCreate(getSharedPreferences("nearer_local", Context.MODE_PRIVATE))
+        nearbyTransport?.setLocalIdentity(nearerId)
+        try {
+            val savedPeerIds = org.json.JSONObject(
+                getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                    .getString("nearby_peer_public_ids", "{}") ?: "{}"
+            )
+            savedPeerIds.keys().forEach { key ->
+                val value = savedPeerIds.optString(key).uppercase()
+                if (key.isNotBlank() && Regex("^NR-[0-9A-F]{32}$").matches(value)) nearbyPeerPublicIds[key] = value
+            }
+        } catch (_: Exception) { }
         restoreRecentlySeen()
         // Multi-hop relay is paused until recipient routing and end-to-end encryption are ready.
         meshRelayEnabled = false
@@ -2619,6 +2642,7 @@ private fun NeaRerHome(
                         }
                         context.startActivity(android.content.Intent.createChooser(share, "Share your NeaRer ID"))
                     },
+                    peerPublicIds = nearbyPeerPublicIds.toMap(),
                     currentConversationId = conversationIdFor(connectedDeviceName),
                     connectedDeviceName = connectedDeviceName,
                     connectionMessage = connectionMessage,
@@ -2905,6 +2929,7 @@ private fun PremiumChatsScreen(
     nearerId: String,
     onCopyNearerId: () -> Unit,
     onShareNearerId: () -> Unit,
+    peerPublicIds: Map<String, String>,
     currentConversationId: String,
     connectedDeviceName: String?,
     connectionMessage: String,
@@ -3079,8 +3104,10 @@ private fun PremiumChatsScreen(
                                         Text("PINNED", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                                     }
                                     Text(
-                                        stablePeerId?.let { "Nearby device code · " + it + " · unverified" }
-                                            ?: if (thread.conversationId.startsWith("nearby-name:")) "Name-based link · identity not verified" else "Older local history",
+                                        stablePeerId?.let { code ->
+                                            peerPublicIds[code]?.let { "NeaRer ID · " + it.take(13) + "... · self-reported" }
+                                                ?: "Nearby device code · " + code + " · unverified"
+                                        } ?: if (thread.conversationId.startsWith("nearby-name:")) "Name-based link · identity not verified" else "Older local history",
                                         color = if (stablePeerId != null) Color(0xFF9BD8FF) else Muted,
                                         fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
                                     )

@@ -22,6 +22,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onLost(id: String, stableId: String)
         fun onRequest(id: String, name: String, token: String)
         fun onConnected(id: String, name: String, stableId: String)
+        fun onPeerIdentity(id: String, stableId: String, publicId: String)
         fun onDisconnected(id: String, stableId: String, name: String)
         fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit)
         fun onMessageStatus(messageId: String, status: String)
@@ -36,6 +37,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val names = mutableMapOf<String, String>()
     private val stableIds = mutableMapOf<String, String>()
     private val activeEndpoints = mutableSetOf<String>()
+    @Volatile private var localPublicId: String = ""
     private val localStableId = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         .let { prefs ->
             prefs.getString("nearer_stable_id", null) ?: UUID.randomUUID().toString().replace("-", "").take(6).uppercase().also {
@@ -192,6 +194,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 synchronized(activeEndpoints) { activeEndpoints.add(id) }
                 val details = synchronized(names) { (names[id] ?: "Nearby NeaRer user") to stableIds[id].orEmpty() }
                 retryQueuedMessagesForPeer(details.second, id)
+                sendIdentity(id)
                 listener.onConnected(id, details.first, details.second)
             } else listener.onStatus("Nearby connection was not approved. Try again.")
         }
@@ -263,6 +266,14 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private fun handleBytes(endpointId: String, bytes: ByteArray?) {
         try {
             val envelope = JSONObject(bytes?.toString(Charsets.UTF_8).orEmpty())
+            if (envelope.optString("kind") == "identity") {
+                val publicId = envelope.optString("publicId").uppercase()
+                val stableId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                if (Regex("^NR-[0-9A-F]{32}$").matches(publicId) && stableId.isNotBlank()) {
+                    listener.onPeerIdentity(endpointId, stableId, publicId)
+                }
+                return
+            }
             if (envelope.optString("kind") == "file_meta") {
                 val payloadId = envelope.optLong("payloadId", -1L)
                 val name = safeFileName(envelope.optString("name", "shared-file"))
@@ -413,6 +424,30 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
         client.startAdvertising(encodedName(), serviceId, lifecycle, options).addOnFailureListener {
             listener.onStatus("Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}")
+        }
+    }
+
+    fun setLocalIdentity(publicId: String) {
+        val clean = publicId.trim().uppercase()
+        if (!Regex("^NR-[0-9A-F]{32}$").matches(clean)) return
+        localPublicId = clean
+        val endpoints = synchronized(activeEndpoints) { activeEndpoints.toList() }
+        endpoints.forEach(::sendIdentity)
+    }
+
+    private fun sendIdentity(endpointId: String) {
+        val publicId = localPublicId
+        if (publicId.isBlank() || synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return
+        val envelope = JSONObject()
+            .put("kind", "identity")
+            .put("version", 1)
+            .put("publicId", publicId)
+            .toString()
+        try {
+            client.sendPayload(endpointId, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
+                .addOnFailureListener { listener.onStatus("Your NeaRer ID could not be exchanged yet. It will retry after reconnecting.") }
+        } catch (_: Exception) {
+            listener.onStatus("Your NeaRer ID could not be exchanged yet. It will retry after reconnecting.")
         }
     }
 
