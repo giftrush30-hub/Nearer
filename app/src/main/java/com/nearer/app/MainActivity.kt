@@ -2239,7 +2239,6 @@ class MainActivity : ComponentActivity() {
                             val ok = parts.getOrNull(2) == "OK"
                             val transferId = parts.getOrNull(1)
                             val completed = transferId?.let { pendingDirectOutgoing.remove(it) }
-                            val completesDirectQueueItem = completed != null && outgoingTransferId == transferId && directFileQueue.hasPending
                             if (completed != null) {
                                 runOnUiThread {
                                     recordNearbyTransfer("Sent", completed.fileName, completed.bytes, if (ok) "Complete" else "Not verified")
@@ -2253,6 +2252,7 @@ class MainActivity : ComponentActivity() {
                                     outgoingTransferId = null
                                     outgoingProgress = 0f
                                 }
+                                val completesDirectQueueItem = completed != null && outgoingTransferId == transferId && directFileQueue.hasPending
                                 if (completesDirectQueueItem) completeDirectQueuedFile(ok)
                                 else chatNotice = if (ok) "File delivered and verified by the nearby phone." else "The other phone could not verify the file."
                             }
