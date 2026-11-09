@@ -12,6 +12,20 @@ import java.util.UUID
  * across SQLite, preferences, profile media and received files before it is exposed.
  */
 internal object NeaRerBackupManager {
+    /**
+     * A fully decrypted, integrity-checked restore staged in app-private cache.
+     * The caller must close it after confirmation/cancellation; it is never applied
+     * automatically and is not a durable copy of the user's backup.
+     */
+    class PreparedRestore internal constructor(
+        internal val directory: File,
+        val preview: NeaRerBackupSnapshot.Preview
+    ) : java.io.Closeable {
+        override fun close() {
+            directory.deleteRecursively()
+        }
+    }
+
     data class CreatedBackup(
         val chatMessages: Long,
         val receivedFiles: Int,
@@ -48,8 +62,33 @@ internal object NeaRerBackupManager {
     }
 
     /**
-     * Decrypts and validates into a private temporary folder, returns only preview
-     * metadata, then deletes all plaintext restore material. No app data is changed.
+     * Decrypts, authenticates and validates a backup into a private staged folder.
+     * The caller owns the returned PreparedRestore and MUST close it on every path.
+     * This method does not modify live app data.
+     */
+    @Throws(IOException::class)
+    fun prepareEncryptedBackup(
+        context: Context,
+        encryptedBackup: File,
+        password: CharArray
+    ): PreparedRestore {
+        val restored = newNonexistentWorkPath(context, "nearer-restore-stage-")
+        try {
+            NeaRerBackupArchive.restoreEncryptedBackup(encryptedBackup, restored, password)
+            val preview = NeaRerBackupSnapshot.inspect(restored)
+            return PreparedRestore(restored, preview)
+        } catch (failure: Exception) {
+            password.fill('\\u0000')
+            restored.deleteRecursively()
+            if (failure is IOException) throw failure
+            throw IOException("Could not prepare NeaRer backup restore", failure)
+        }
+    }
+
+    /**
+     * Read-only convenience preview. The staged plaintext is deleted immediately
+     * after metadata has been read; use prepareEncryptedBackup when a later,
+     * separately confirmed restore step needs the same verified staging directory.
      */
     @Throws(IOException::class)
     fun previewEncryptedBackup(
@@ -57,16 +96,11 @@ internal object NeaRerBackupManager {
         encryptedBackup: File,
         password: CharArray
     ): NeaRerBackupSnapshot.Preview {
-        val restored = newNonexistentWorkPath(context, "nearer-restore-preview-")
-        try {
-            NeaRerBackupArchive.restoreEncryptedBackup(encryptedBackup, restored, password)
-            return NeaRerBackupSnapshot.inspect(restored)
-        } catch (failure: Exception) {
-            password.fill('\u0000')
-            if (failure is IOException) throw failure
-            throw IOException("Could not validate NeaRer backup", failure)
+        val prepared = prepareEncryptedBackup(context, encryptedBackup, password)
+        return try {
+            prepared.preview
         } finally {
-            restored.deleteRecursively()
+            prepared.close()
         }
     }
 
