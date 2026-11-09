@@ -553,6 +553,43 @@ private class FastShareHttpServer(
                         }
                     }
                 }
+                FastShareHttpRequest.Route.DOWNLOAD_ALL -> {
+                    val archiveName = "NeaRer-Files.zip"
+                    if (headOnly) {
+                        streamAllFiles(output, true, java.util.UUID.randomUUID().toString())
+                    } else {
+                        val transferId = java.util.UUID.randomUUID().toString()
+                        onTransferQueued(transferId, archiveName)
+                        val totalBytes = knownArchiveSize()
+                        val acquired = try {
+                            downloadGate.tryAcquire(120, TimeUnit.SECONDS)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            false
+                        }
+                        if (!acquired) {
+                            onTransferUpdate(transferId, archiveName, 0L, totalBytes, false, true, false)
+                            output.write(FastShareHttpErrors.tooManyRequests())
+                        } else {
+                            try {
+                                if (running) {
+                                    writeGuard.arm()
+                                    try {
+                                        streamAllFiles(output, false, transferId)
+                                    } catch (error: Exception) {
+                                        onTransferDiscarded(transferId)
+                                        throw error
+                                    }
+                                } else {
+                                    onTransferDiscarded(transferId)
+                                }
+                            } finally {
+                                writeGuard.disarm()
+                                downloadGate.release()
+                            }
+                        }
+                    }
+                }
                 FastShareHttpRequest.Route.NOT_FOUND -> output.write(FastShareHttpErrors.notFound())
             }
             output.flush()
@@ -562,6 +599,54 @@ private class FastShareHttpServer(
         }
     }
 
+    private fun knownArchiveSize(): Long {
+        var total = 0L
+        for (item in catalog.items) {
+            if (item.fileLength < 0L || total > Long.MAX_VALUE - item.fileLength) return -1L
+            total += item.fileLength
+        }
+        return total
+    }
+
+    /** Stream every selected source into a single ZIP without a temporary archive. */
+    private fun streamAllFiles(output: BufferedOutputStream, headOnly: Boolean, transferId: String) {
+        val archiveName = "NeaRer-Files.zip"
+        val totalBytes = knownArchiveSize()
+        output.write("HTTP/1.1 200 OK\\r\\n".toByteArray())
+        output.write(FileHttpHeaders.archiveHeaders(archiveName).toByteArray())
+        if (headOnly) return
+
+        var copiedBytes = 0L
+        var lastReportedBytes = 0L
+        onTransferUpdate(transferId, archiveName, 0L, totalBytes, false, false, false)
+        try {
+            val archiveItems = catalog.items.map { item ->
+                FastShareArchiveItem(item.index, item.fileName, item.fileLength)
+            }
+            val copied = FastShareArchiveWriter.write(
+                items = archiveItems,
+                openInput = { item ->
+                    val uri = uris.getOrNull(item.sourceIndex)
+                        ?: throw IllegalStateException("A selected file is no longer available.")
+                    context.contentResolver.openInputStream(uri)
+                        ?: throw IllegalStateException("Could not open ${item.fileName} for sharing.")
+                },
+                output = output,
+                shouldContinue = { running },
+                onBytesCopied = { bytes ->
+                    copiedBytes = bytes
+                    if (bytes - lastReportedBytes >= 1024L * 1024L) {
+                        lastReportedBytes = bytes
+                        onTransferUpdate(transferId, archiveName, bytes, totalBytes, false, false, false)
+                    }
+                }
+            )
+            onTransferUpdate(transferId, archiveName, copied, totalBytes, true, false, false)
+        } catch (error: Exception) {
+            onTransferUpdate(transferId, archiveName, copiedBytes, totalBytes, false, true, false)
+            throw error
+        }
+    }
     private fun streamFile(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, rangeHeader: String?, ifRangeHeader: String?, headOnly: Boolean, transferId: String) {
         if (item.fileLength < 0L) {
             streamUnknownLength(output, uri, item, headOnly, transferId)
