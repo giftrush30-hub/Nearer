@@ -462,6 +462,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             }
             val kind = envelope.optString("kind", "message")
             if (kind == "ack") {
+                // Receipts are trusted only on a session that completed identity proof.
+                if (!isPeerVerified(endpointId)) {
+                    listener.onStatus("An unverified nearby device tried to send a delivery receipt. It was ignored.")
+                    return
+                }
                 val acknowledgedId = envelope.optString("id")
                 // Only the peer we actually sent this message to may confirm it.
                 if (acknowledgedId.isNotBlank() && outgoingMessageTargets[acknowledgedId] == endpointId) {
@@ -480,6 +485,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 return
             }
             if (kind != "message") return
+            // Do not let a merely connected or legacy/unverified endpoint inject chat.
+            // The six-character transport code is not an identity credential.
+            if (!isPeerVerified(endpointId)) {
+                listener.onStatus("An unverified nearby device tried to send a chat message. Accept and verify its NeaRer identity before chatting.")
+                return
+            }
             val messageId = envelope.optString("id")
             val body = envelope.optString("body")
             val ttl = envelope.optInt("ttl", 0)

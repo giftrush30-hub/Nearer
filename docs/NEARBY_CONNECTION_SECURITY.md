@@ -41,3 +41,10 @@ The UI must therefore continue to describe the ID as self-reported. Do not call 
 1. Add a user-facing trusted-peer review and safe key-change/recovery UX; current first-seen pinning blocks silent key changes but cannot safely approve a legitimate key rotation.
 2. Design and test end-to-end message/file encryption independently of the nearby transport.
 3. Exercise simultaneous discovery, approval, reconnect, stale challenge, replay, key mismatch, and mixed-version cases on real Android devices.
+
+
+## Additional message-session gate
+
+- Incoming direct chat messages and delivery acknowledgements are now accepted only after the current Nearby Connections endpoint has completed the v2 challenge-response and local key/ID continuity checks.
+- A successful connection approval or a legacy v1 self-reported ID alone is not sufficient to inject chat or mark a message Delivered.
+- This is an authentication gate, not end-to-end encryption: message bodies are still not encrypted in transit.
