@@ -52,6 +52,20 @@ internal object FileHttpHeaders {
             "Connection: close\r\n\r\n"
     }
 
+    /** Headers for a provider URI that disappeared before its download began. */
+    fun unavailableFileHeaders(contentLength: Long): List<Pair<String, String>> {
+        require(contentLength >= 0L) { "Content length must be non-negative" }
+        return listOf(
+            "Content-Type" to "text/plain; charset=utf-8",
+            "Content-Length" to contentLength.toString(),
+            "Cache-Control" to "no-store",
+            "Pragma" to "no-cache",
+            "X-Content-Type-Options" to "nosniff",
+            "Referrer-Policy" to "no-referrer",
+            "Connection" to "close"
+        )
+    }
+
     /**
      * Prevent browsers and intermediary caches from retaining private local-share
      * content, and prevent MIME sniffing of provider-supplied file types.
