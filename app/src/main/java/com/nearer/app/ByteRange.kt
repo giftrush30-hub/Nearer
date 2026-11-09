@@ -33,8 +33,8 @@ internal object ByteRange {
         val lastText = bounds[1].trim()
         // HTTP byte-range positions are decimal digits, not signed integers.
         // Long.toLongOrNull alone accepts a leading '+', which is not valid here.
-        val first = firstText.takeIf { it.isNotEmpty() && it.all(Char::isDigit) }?.toLongOrNull()
-        val last = lastText.takeIf { it.isNotEmpty() && it.all(Char::isDigit) }?.toLongOrNull()
+        val first = firstText.takeIf { it.isNotEmpty() && it.all { digit -> digit in '0'..'9' } }?.toLongOrNull()
+        val last = lastText.takeIf { it.isNotEmpty() && it.all { digit -> digit in '0'..'9' } }?.toLongOrNull()
         if ((firstText.isNotEmpty() && first == null) ||
             (lastText.isNotEmpty() && last == null) ||
             (first == null && last == null)
