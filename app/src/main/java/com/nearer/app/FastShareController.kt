@@ -113,6 +113,11 @@ class FastShareController(private val context: Context) {
                             transferLedger.update(FastShareActiveTransfer(transferId, fileName, 0L, -1L, 0L, android.os.SystemClock.elapsedRealtime(), isQueued = true))
                             activeTransfers = transferLedger.snapshot()
                         }
+                    }, onTransferDiscarded = { transferId ->
+                        Handler(Looper.getMainLooper()).post {
+                            transferLedger.finish(transferId)
+                            activeTransfers = transferLedger.snapshot()
+                        }
                     }) { transferId, fileName, sent, total, complete, interrupted, partialResponse ->
                         val progress = progressByThread.get()
                         val now = android.os.SystemClock.elapsedRealtime()
@@ -305,6 +310,7 @@ private class FastShareHttpServer(
     private val catalog: FastShareDownloadCatalog,
     private val accessKey: String,
     private val onTransferQueued: (transferId: String, fileName: String) -> Unit,
+    private val onTransferDiscarded: (transferId: String) -> Unit,
     private val onTransferUpdate: (transferId: String, fileName: String, sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean, partialResponse: Boolean) -> Unit
 ) {
     // Bound client work so a busy or hostile local-network peer cannot
@@ -463,6 +469,7 @@ private class FastShareHttpServer(
                         } else {
                             try {
                                 if (running) streamFile(output, uri, item, rangeHeader, false, transferId)
+                                else onTransferDiscarded(transferId)
                             } finally {
                                 downloadGate.release()
                             }
@@ -483,6 +490,7 @@ private class FastShareHttpServer(
         val response = FileHttpResponses.resolve(rangeHeader, item.fileLength)
         val resolvedRange = response.range
         if (resolvedRange == null) {
+            onTransferDiscarded(transferId)
             output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\n".toByteArray())
             output.write(FileHttpHeaders.unsatisfiedRangeHeaders(item.fileLength).toByteArray())
             return
