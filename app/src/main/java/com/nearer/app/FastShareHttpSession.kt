@@ -36,7 +36,9 @@ internal object FastShareHttpSession {
         var sawContentLengthHeader = false
         var contentLength = 0L
         var uploadFileName: String? = null
+        var sawUploadFileName = false
         var uploadMimeType: String? = null
+        var sawUploadMimeType = false
         var headerBytes = 0
         var headerCount = 0
         while (true) {
@@ -80,11 +82,13 @@ internal object FastShareHttpSession {
                 contentLength = length.toLongOrNull() ?: return rejectBadRequest(output)
             }
             if (name.equals("X-Filename", ignoreCase = true)) {
-                if (uploadFileName != null) return rejectBadRequest(output)
+                if (sawUploadFileName) return rejectBadRequest(output)
+                sawUploadFileName = true
                 uploadFileName = headerValue.trim().takeIf { it.isNotEmpty() }
             }
             if (name.equals("Content-Type", ignoreCase = true)) {
-                if (uploadMimeType != null) return rejectBadRequest(output)
+                if (sawUploadMimeType) return rejectBadRequest(output)
+                sawUploadMimeType = true
                 uploadMimeType = headerValue.substringBefore(';').trim().takeIf { it.isNotEmpty() }
             }
             if (name.equals("Range", ignoreCase = true)) {

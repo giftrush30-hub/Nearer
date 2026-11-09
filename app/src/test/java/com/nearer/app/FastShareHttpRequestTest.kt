@@ -41,6 +41,14 @@ class FastShareHttpRequestTest {
         assertEquals(FastShareHttpRequest.Route.DOWNLOAD, request.route)
     }
 
+    @Test fun browserUploadUsesDedicatedPostRoute() {
+        val request = FastShareHttpRequest.parse("POST /upload HTTP/1.1")!!
+        assertTrue(request.supportsMethod)
+        assertTrue(request.isUpload)
+        assertEquals(FastShareHttpRequest.Route.UPLOAD, request.route)
+        assertFalse(FastShareHttpRequest.parse("GET /upload HTTP/1.1")!!.isUpload)
+    }
+
     @Test fun unknownPathSelectsNotFoundRoute() {
         assertEquals(
             FastShareHttpRequest.Route.NOT_FOUND,

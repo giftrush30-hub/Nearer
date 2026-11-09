@@ -55,6 +55,15 @@ class FastShareDownloadCatalogTest {
             FastShareDownloadItem(it, "file-$it", "application/octet-stream", 1L)
         })
     }
+    @Test fun receiverPageOffersBrowserToPhoneUploads() {
+        val page = FastShareDownloadCatalog(
+            listOf(FastShareDownloadItem(0, "photo.jpg", "image/jpeg", 1024L))
+        ).receiverPage("e".repeat(64))
+        assertTrue(page.contains("id=\\"uploads\\" type=\\"file\\" multiple"))
+        assertTrue(page.contains("fetch(\\"/upload?key=e"))
+        assertTrue(page.contains("Send files to NeaRer"))
+    }
+
     @Test fun receiverPageUsesNeaRerBlueAndGoldBrandColors() {
         val page = FastShareDownloadCatalog(
             listOf(FastShareDownloadItem(0, "photo.jpg", "image/jpeg", 1024L))

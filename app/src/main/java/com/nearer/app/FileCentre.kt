@@ -592,7 +592,7 @@ internal fun FileCentreScreen(
         AndroidFileCatalog.scanPcUploads(context).forEach { uploaded -> if (items.none { it.id == uploaded.id }) items.add(uploaded) }
         if (AndroidFileCatalog.hasMediaAccess(context, category)) {
             val media = withContext(Dispatchers.IO) { AndroidFileCatalog.scanMedia(context) }
-            items.removeAll { it.category != FileCentreCategory.APPS }
+            items.removeAll { it.category != FileCentreCategory.APPS && it.category != FileCentreCategory.DOWNLOADS }
             items.addAll(media)
             notice = "Showing accessible files and installed apps on this phone."
         } else {
