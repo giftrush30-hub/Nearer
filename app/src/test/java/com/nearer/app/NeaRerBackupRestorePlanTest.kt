@@ -65,7 +65,7 @@ class NeaRerBackupRestorePlanTest {
                     .toString()
             )
 
-            val plan = NeaRerBackupRestorePlan.fromStagedDirectory(root)
+            val plan = NeaRerBackupRestorePlan.fromPreparedRestore(\n                NeaRerBackupManager.PreparedRestore(root, NeaRerBackupSnapshot.inspect(root))\n            )
 
             assertEquals(setOf("display_name"), plan.portablePreferences.keys)
             assertFalse(plan.portablePreferences.containsKey("mesh_relay_enabled"))
