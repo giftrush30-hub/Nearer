@@ -75,4 +75,25 @@ class FileHttpHeadersTest {
         FileHttpHeaders.unsatisfiedRangeHeaders(-1L)
     }
 
+    @Test fun unicodeFileNamesRemainUtf8EncodedInContentDisposition() {
+        val header = FileHttpHeaders.contentDisposition("日本語 résumé 🎬.mp4")
+        assertEquals(
+            "Content-Disposition: attachment; filename*=UTF-8''%E6%97%A5%E6%9C%AC%E8%AA%9E%20r%C3%A9sum%C3%A9%20%F0%9F%8E%AC.mp4\\r\\n",
+            header
+        )
+        assertFalse(header.contains("\\n"))
+    }
+
+    @Test fun emptyAndParameterisedMimeTypesFallBackSafely() {
+        assertEquals("application/octet-stream", FileHttpHeaders.contentType(" "))
+        assertEquals("application/octet-stream", FileHttpHeaders.contentType("video/mp4; charset=utf-8"))
+        assertEquals("application/octet-stream", FileHttpHeaders.contentType("image/png\\r\\nX-Test: 1"))
+    }
+
+    @Test fun unsatisfiedRangeHeadersEndWithExactlyOneHeaderTerminator() {
+        val headers = FileHttpHeaders.unsatisfiedRangeHeaders(0L)
+        assertTrue(headers.endsWith("Connection: close\\r\\n\\r\\n"))
+        assertFalse(headers.contains("\\r\\n\\r\\n\\r\\n"))
+    }
+
 }

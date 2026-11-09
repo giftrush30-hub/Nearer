@@ -107,4 +107,31 @@ class FastShareHttpRequestTest {
         assertFalse(wrong.hasAccessKey(key))
     }
 
+    @Test fun accessKeyMayAppearAlongsideOtherQueryParameters() {
+        val key = "c".repeat(64)
+        val request = FastShareHttpRequest.parse("GET /download/4?name=clip.mp4&key=" + key + "&source=nearer HTTP/1.1")!!
+        assertEquals(4, request.downloadIndex)
+        assertTrue(request.hasAccessKey(key))
+    }
+
+    @Test fun accessKeyCannotBeSmuggledThroughSimilarParameterNames() {
+        val key = "d".repeat(64)
+        val request = FastShareHttpRequest.parse("GET /?Key=" + key + "&access_key=" + key + " HTTP/1.1")!!
+        assertFalse(request.hasAccessKey(key))
+    }
+
+    @Test fun malformedAndRepeatedAccessKeyParametersAreRejected() {
+        val key = "e".repeat(64)
+        listOf(
+            "key=",
+            "key=" + key + "x",
+            "key=" + key + "&key=",
+            "key=" + key + "&key=" + key,
+            "key=" + key.uppercase(java.util.Locale.ROOT)
+        ).forEach { query ->
+            val request = FastShareHttpRequest.parse("GET /?" + query + " HTTP/1.1")!!
+            assertFalse("Query should not authenticate: " + query, request.hasAccessKey(key))
+        }
+    }
+
 }
