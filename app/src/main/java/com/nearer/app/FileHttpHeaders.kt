@@ -7,8 +7,8 @@ internal object FileHttpHeaders {
 
     /**
      * Security and cache headers for the private HTML receiver page.
-     * The page intentionally permits its embedded stylesheet but no scripts,
-     * external resources, forms, framing, or privileged browser capabilities.
+     * The page permits its embedded stylesheet and one nonce-bound upload script,
+     * but no external resources, form submissions, framing, or privileged APIs.
      */
     fun receiverPageHeaders(contentLength: Long, scriptNonce: String): List<Pair<String, String>> {
         require(contentLength >= 0L) { "Content length must be non-negative" }
