@@ -45,6 +45,18 @@ class FastShareTransferLedgerTest {
         assertEquals(listOf("b"), ledger.snapshot().map { it.id })
     }
 
+    @Test fun queuedTransferBecomesActiveWithoutChangingItsIdentity() {
+        val ledger = FastShareTransferLedger()
+        ledger.update(FastShareActiveTransfer("receiver-6", "large.mp4", 0, -1, 0, 1, isQueued = true))
+        assertTrue(ledger.snapshot().single().isQueued)
+        ledger.update(FastShareActiveTransfer("receiver-6", "large.mp4", 1024, 4096, 512, 1))
+        val active = ledger.snapshot().single()
+        assertEquals("receiver-6", active.id)
+        assertEquals(1024L, active.bytesSent)
+        assertEquals(1, ledger.snapshot().size)
+        assertTrue(!active.isQueued)
+    }
+
     @Test fun clearRemovesAllActiveTransfers() {
         val ledger = FastShareTransferLedger()
         ledger.update(FastShareActiveTransfer("a", "a.bin", 1, 2, 1, 1))
