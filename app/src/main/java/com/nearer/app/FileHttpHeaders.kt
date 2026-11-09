@@ -88,6 +88,18 @@ internal object FileHttpHeaders {
         )
     }
 
+    /** Headers for a successfully stored browser upload. */
+    fun uploadCreatedHeaders(contentLength: Long): List<Pair<String, String>> {
+        require(contentLength >= 0L) { "Content length must be non-negative" }
+        return listOf(
+            "Content-Type" to "text/plain; charset=utf-8",
+            "Content-Length" to contentLength.toString(),
+            "Cache-Control" to "no-store",
+            "X-Content-Type-Options" to "nosniff",
+            "Referrer-Policy" to "no-referrer",
+            "Connection" to "close"
+        )
+    }
     /** Headers for a streaming ZIP archive of the selected files. */
     fun archiveHeaders(fileName: String): String =
         "Content-Type: application/zip\r\n" +
