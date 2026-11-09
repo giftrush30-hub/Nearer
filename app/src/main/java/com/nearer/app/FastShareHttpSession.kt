@@ -7,7 +7,8 @@ import java.io.OutputStream
 /** One parsed HTTP request and the range header relevant to file downloads. */
 internal data class FastShareHttpExchange(
     val request: FastShareHttpRequest,
-    val rangeHeader: String?
+    val rangeHeader: String?,
+    val ifRangeHeader: String? = null
 )
 
 /**
@@ -28,6 +29,7 @@ internal object FastShareHttpSession {
         val request = FastShareHttpRequest.parse(requestLine.value)
             ?: return rejectBadRequest(output)
         var rangeHeader: String? = null
+        var ifRangeHeader: String? = null
         var sawRangeHeader = false
         var sawIfRangeHeader = false
         var sawHostHeader = false
@@ -82,12 +84,9 @@ internal object FastShareHttpSession {
                 rangeHeader = headerValue.trim()
             }
             if (name.equals("If-Range", ignoreCase = true)) {
-                // This server does not emit ETag or Last-Modified validators.
-                // Therefore no If-Range value can be proven current: RFC 9110
-                // requires sending the full representation rather than risking
-                // a partial append to a changed source file.
                 if (sawIfRangeHeader) return rejectBadRequest(output)
                 sawIfRangeHeader = true
+                ifRangeHeader = headerValue.trim()
             }
         }
         // HTTP/1.1 requires exactly one Host field. HTTP/1.0 remains compatible
@@ -106,7 +105,8 @@ internal object FastShareHttpSession {
         }
 
         // RFC byte ranges modify GET responses; HEAD must describe the full representation.
-        return FastShareHttpExchange(request, if (request.isHeadOnly || sawIfRangeHeader) null else rangeHeader)
+        // The server decides whether If-Range still matches the selected source file.
+        return FastShareHttpExchange(request, if (request.isHeadOnly) null else rangeHeader, ifRangeHeader)
     }
 
     private fun isValidHostAuthority(value: String): Boolean =
