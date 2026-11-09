@@ -687,9 +687,10 @@ private class FastShareHttpServer(
             if (!running) throw java.io.InterruptedIOException("Fast Share is stopping.")
             val folder = java.io.File(context.filesDir, "received")
             if (!folder.exists() && !folder.mkdirs()) throw java.io.IOException("Could not create the received-files folder.")
-            temporaryFile = java.io.File.createTempFile("nearer-upload-", ".part", folder)
+            val uploadTempFile = java.io.File.createTempFile("nearer-upload-", ".part", folder)
+            temporaryFile = uploadTempFile
             onUploadProgress(transferId, fileName, 0L, totalBytes, false, false)
-            java.io.FileOutputStream(temporaryFile).use { destination ->
+            java.io.FileOutputStream(uploadTempFile).use { destination ->
                 receivedBytes = FastShareUploadReceiver.copy(
                     input = input,
                     output = destination,
@@ -705,14 +706,23 @@ private class FastShareHttpServer(
                 )
                 destination.fd.sync()
             }
-            if (temporaryFile.length() != totalBytes) throw java.io.IOException("The received file length did not match its HTTP request.")
-            val finalFile = java.io.File(folder, System.currentTimeMillis().toString() + "-" + java.util.UUID.randomUUID() + "-" + fileName)
-            if (!temporaryFile.renameTo(finalFile)) throw java.io.IOException("Could not move the completed upload into received files.")
+            if (uploadTempFile.length() != totalBytes) throw java.io.IOException("The received file length did not match its HTTP request.")
+            val timestamp = System.currentTimeMillis()
+            val dot = fileName.lastIndexOf('.')
+            val stem = if (dot > 0) fileName.substring(0, dot) else fileName
+            val extension = if (dot > 0) fileName.substring(dot) else ""
+            var suffix = 1
+            var finalFile = java.io.File(folder, timestamp.toString() + "-" + fileName)
+            while (finalFile.exists()) {
+                suffix++
+                finalFile = java.io.File(folder, timestamp.toString() + "-" + stem + " (" + suffix + ")" + extension)
+            }
+            if (!uploadTempFile.renameTo(finalFile)) throw java.io.IOException("Could not move the completed upload into received files.")
             temporaryFile = null
             savedFile = finalFile
             runCatching { onFileReceived(fileName, finalFile) }
             onUploadProgress(transferId, fileName, receivedBytes, totalBytes, true, false)
-            val body = ("Received " + fileName + "\\n").toByteArray(Charsets.UTF_8)
+            val body = ("Received " + fileName + "\n").toByteArray(Charsets.UTF_8)
             writeGuard.arm()
             output.write(FastShareHttpWire.responseHead("HTTP/1.1 201 Created", FileHttpHeaders.uploadCreatedHeaders(body.size.toLong())))
             output.write(body)
