@@ -1,6 +1,6 @@
 # NeaRer onboarding, identity and recovery specification
 
-Status: product decisions approved; first-run onboarding UI is implemented on the `feature/premium-onboarding-identity` branch. Recovery and cross-device migration are specified here and remain separate implementation milestones.
+Status: product decisions approved. First-run onboarding, local profile persistence, profile editing and the More-tab profile preview are implemented on the `feature/premium-onboarding-identity` branch. Peer-to-peer profile propagation, recovery and cross-device migration remain separate implementation milestones.
 
 ## Product promise
 
@@ -88,8 +88,8 @@ If a phone is lost or destroyed, no backup exists, and the old phone cannot be a
 
 ## Implementation sequence
 
-1. First-run onboarding, name, optional answers, avatar/photo choice, ID reveal and local persistence.
-2. Profile editor and avatar/photo rendering across discovery, chats, groups and contact details.
+1. First-run onboarding, name, optional answers, avatar/photo choice, ID reveal and local persistence — implemented.
+2. Local profile editor and profile preview in More — implemented; peer profile propagation and rendering across discovery, chats and groups remain pending.
 3. Recovery Kit generation and secure key storage.
 4. Encrypted local backup/export and restore, including verification tests.
 5. Old-to-new phone migration with pairing, integrity checks and rollback-safe completion.
