@@ -82,7 +82,8 @@ class FileHttpHeadersTest {
             "Content-Disposition: attachment; filename*=UTF-8''%E6%97%A5%E6%9C%AC%E8%AA%9E%20r%C3%A9sum%C3%A9%20%F0%9F%8E%AC.mp4\r\n",
             header
         )
-        assertFalse(header.contains("\n"))
+        assertTrue(header.endsWith("\r\n"))
+        assertFalse(header.removeSuffix("\r\n").contains("\n"))
     }
 
     @Test fun emptyAndParameterisedMimeTypesFallBackSafely() {
