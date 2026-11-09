@@ -25,7 +25,16 @@ internal object FastShareHostAuthority {
         if (host.isEmpty() || host.length > 253) return false
         val normalized = host.removeSuffix(".")
         if (normalized.isEmpty()) return false
-        return normalized.split('.').all { label ->
+        val labels = normalized.split('.')
+        // Four all-numeric labels are interpreted as IPv4, not as a DNS name.
+        // Reject out-of-range octets and ambiguous leading-zero forms.
+        if (labels.size == 4 && labels.all { label -> label.isNotEmpty() && label.all { it in '0'..'9' } }) {
+            return labels.all { octet ->
+                (octet == "0" || !octet.startsWith('0')) &&
+                    (octet.toIntOrNull()?.let { it in 0..255 } == true)
+            }
+        }
+        return labels.all { label ->
             label.isNotEmpty() && label.length <= 63 &&
                 label.first().isLetterOrDigit() && label.last().isLetterOrDigit() &&
                 label.all { it.isLetterOrDigit() || it == '-' }
