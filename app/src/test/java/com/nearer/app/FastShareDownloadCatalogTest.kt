@@ -84,4 +84,15 @@ class FastShareDownloadCatalogTest {
         assertTrue(page.contains("outline-offset:3px"))
     }
 
+
+    @Test fun receiverPageOffersProgressCancelAndReceiptValidationForUploads() {
+        val page = FastShareDownloadCatalog(listOf(
+            FastShareDownloadItem(0, "sample.txt", "text/plain", 5L)
+        )).receiverPage("test-key")
+        assertTrue(page.contains("id=\"cancel\""))
+        assertTrue(page.contains("xhr.upload.onprogress"))
+        assertTrue(page.contains("X-Received-Bytes"))
+        assertTrue(page.contains("X-Content-SHA256"))
+        assertTrue(page.contains("xhr.abort()"))
+    }
 }
