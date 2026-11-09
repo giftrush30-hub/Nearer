@@ -343,7 +343,23 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     val sameKey = java.security.MessageDigest.isEqual(publicKey, responseKey)
                     if (stableId.isNotBlank() && responseId == publicId && sameKey &&
                         SecurePeerIdentity.verifyChallenge(publicId, publicKey, challenge, signature)) {
-                        listener.onPeerIdentity(endpointId, stableId, publicId)
+                        when (TrustedPeerKeyStore.checkAndPin(appContext, publicId, publicKey)) {
+                            TrustedPeerKeyStore.Result.FIRST_SEEN -> {
+                                listener.onStatus("First-seen security key saved for $publicId on this phone. This is not proof of a person's identity.")
+                                listener.onPeerIdentity(endpointId, stableId, publicId)
+                            }
+                            TrustedPeerKeyStore.Result.MATCH -> listener.onPeerIdentity(endpointId, stableId, publicId)
+                            TrustedPeerKeyStore.Result.KEY_CHANGED -> {
+                                peerIdentityKeys.remove(endpointId)
+                                peerIdentityIds.remove(endpointId)
+                                listener.onStatus("SECURITY WARNING: $publicId is presenting a different security key. NeaRer did not replace the saved key or trust this identity.")
+                            }
+                            TrustedPeerKeyStore.Result.STORAGE_ERROR -> {
+                                peerIdentityKeys.remove(endpointId)
+                                peerIdentityIds.remove(endpointId)
+                                listener.onStatus("NeaRer could not safely remember this peer's security key. Its identity remains untrusted.")
+                            }
+                        }
                     } else {
                         peerIdentityKeys.remove(endpointId)
                         peerIdentityIds.remove(endpointId)

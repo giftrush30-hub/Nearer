@@ -8,6 +8,8 @@
 - The other side signs the challenge with its own Keystore private key and returns its ID, public key, and signature.
 - The receiver checks that the response ID and public key match the hello, then verifies the ECDSA signature against the one-use challenge.
 - Challenges and temporary peer key state are cleared when that endpoint disconnects.
+- After a valid proof, the first public key seen for a self-reported NeaRer ID is saved locally (trust on first use). Later connections must present the same key; a changed key is rejected and the saved pin is never silently overwritten.
+- A first-seen pin is a continuity warning mechanism, not proof that the ID belongs to a particular person. Users still need a future explicit verification / recovery UX.
 - Older version-1 identity messages remain displayable as self-reported metadata for compatibility.
 
 ## Important security boundary
@@ -21,12 +23,12 @@ The UI must therefore continue to describe the ID as self-reported. Do not call 
 - Wi-Fi Direct fallback has not been given this challenge-response protocol.
 - Chat and file payload encryption in transit has not been added by this change.
 - Existing chat history and received files are not encrypted at rest by this change.
-- No cross-phone identity recovery or trusted contact/key-change flow exists.
+- No cross-phone identity recovery or user-managed trusted-contact/key-change approval flow exists. A changed key is blocked, but this version has no safe in-app recovery/rotation flow.
 - No Gradle compilation, automated Android instrumentation test, or physical-device interoperability test has been run for this change.
 
 ## Next engineering gates
 
-1. Add trusted peer-key pinning and a safe key-change/recovery UX before treating a returning ID as the same identity.
+1. Add a user-facing trusted-peer review and safe key-change/recovery UX; current automatic first-seen pinning only detects later key changes.
 2. Apply equivalent authentication to the Wi-Fi Direct transport.
 3. Design and test end-to-end message/file encryption independently of the nearby transport.
 4. Exercise simultaneous discovery, approval, reconnect, stale challenge, replay, key mismatch, and mixed-version cases on real Android devices.
