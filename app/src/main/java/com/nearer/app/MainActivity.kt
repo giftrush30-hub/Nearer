@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.Context
+import android.content.ContentValues
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
@@ -17,6 +18,8 @@ import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.provider.MediaStore
+import android.os.Environment
 import android.webkit.MimeTypeMap
 import android.os.Build
 import android.os.Bundle
@@ -517,6 +520,7 @@ class MainActivity : ComponentActivity() {
                     incomingTransferName = incomingTransferName,
                     incomingProgress = incomingProgress,
                     onOpenFile = ::openReceivedFile,
+                    onSaveReceivedFile = ::saveReceivedFileToDownloads,
                     onDisconnect = ::disconnectFromPeer,
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
@@ -1749,6 +1753,49 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun saveReceivedFileToDownloads(item: ReceivedFile) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            chatNotice = "Saving directly to Downloads is supported on Android 10 and newer. You can still open this file and use your phone's Save or Share option."
+            return
+        }
+        chatNotice = "Saving ${item.displayName} to Downloads…"
+        io.execute {
+            var destination: Uri? = null
+            try {
+                val extension = item.file.extension.lowercase()
+                val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "application/octet-stream"
+                val safeName = item.displayName.replace(Regex("[\\\\/:*?\\\"<>|]"), "_").ifBlank { "received-file" }
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/NeaRer")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                destination = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IllegalStateException("Android could not create a Downloads entry")
+                contentResolver.openOutputStream(destination!!, "w")?.use { output ->
+                    item.file.inputStream().use { input ->
+                        val buffer = ByteArray(256 * 1024)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                        }
+                        output.flush()
+                    }
+                } ?: throw IllegalStateException("Android could not open the Downloads file")
+                val ready = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
+                if (contentResolver.update(destination!!, ready, null, null) <= 0) {
+                    throw IllegalStateException("Android could not finish saving the Downloads file")
+                }
+                runOnUiThread { chatNotice = "Saved ${item.displayName} to Downloads/NeaRer." }
+            } catch (error: Exception) {
+                destination?.let { runCatching { contentResolver.delete(it, null, null) } }
+                runOnUiThread { chatNotice = "Could not save ${item.displayName} to Downloads: ${error.localizedMessage ?: "please try again"}" }
+            }
+        }
+    }
+
     private fun cancelOutgoingFileTransfer() {
         val id = outgoingTransferId ?: return
         if (id.startsWith("nearby:")) {
@@ -2358,6 +2405,7 @@ private fun NeaRerHome(
     incomingTransferName: String?,
     incomingProgress: Float,
     onOpenFile: (ReceivedFile) -> Unit,
+    onSaveReceivedFile: (ReceivedFile) -> Unit,
     onDisconnect: () -> Unit,
     onAccept: () -> Unit,
     onReject: () -> Unit,
@@ -2756,12 +2804,23 @@ private fun NeaRerHome(
                             }
                         }
                         receivedFiles.take(3).forEach { fileItem ->
-                            Button(
-                                onClick = { onOpenFile(fileItem) },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)
-                            ) { Text("Open ${fileItem.displayName}", maxLines = 1) }
+                            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text(fileItem.displayName, color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    Button(
+                                        onClick = { onOpenFile(fileItem) },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)
+                                    ) { Text("Open", maxLines = 1) }
+                                    Button(
+                                        onClick = { onSaveReceivedFile(fileItem) },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                                    ) { Text("Save to Downloads", maxLines = 1) }
+                                }
+                            }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
