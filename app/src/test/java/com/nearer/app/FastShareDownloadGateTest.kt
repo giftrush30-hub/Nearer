@@ -82,5 +82,6 @@ class FastShareDownloadGateTest {
         gate.release()
         assertTrue(gate.tryAcquire(0, TimeUnit.MILLISECONDS))
         gate.release()
+        gate.release()
     }
 }
