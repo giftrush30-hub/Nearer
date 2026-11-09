@@ -158,7 +158,7 @@ class FastShareController(private val context: Context) {
                                 total > 0L -> "Receiving " + formatProgressSize(received) + " of " + formatProgressSize(total) + " · " + formatProgressSize(speed.toLong()) + "/s…"
                                 else -> "Receiving " + formatProgressSize(received) + " · " + formatProgressSize(speed.toLong()) + "/s…"
                             }
-                            if (complete || interrupted) recordHistory(fileName, received, if (complete) "Received" else "Interrupted")
+                            if (complete || interrupted) recordHistory(fileName, received, if (complete) "Received" else "Interrupted", "Received")
                         }
                         if (complete || interrupted) progressByThread.remove()
                     }, onFileReceived = { fileName, file ->
@@ -290,8 +290,8 @@ class FastShareController(private val context: Context) {
             .edit().remove("entries").apply()
     }
 
-    private fun recordHistory(fileName: String, bytes: Long, result: String) {
-        val entry = FastShareHistoryEntry(fileName, bytes, result, System.currentTimeMillis())
+    private fun recordHistory(fileName: String, bytes: Long, result: String, direction: String = "Sent") {
+        val entry = FastShareHistoryEntry(fileName, bytes, result, System.currentTimeMillis(), direction)
         history = (listOf(entry) + history).take(50)
         val array = org.json.JSONArray()
         history.forEach { item ->
@@ -300,6 +300,7 @@ class FastShareController(private val context: Context) {
                 put("bytes", item.bytesTransferred)
                 put("result", item.result)
                 put("time", item.timestampMillis)
+                put("direction", item.direction)
             })
         }
         context.getSharedPreferences("nearer_fast_share_history", Context.MODE_PRIVATE)
@@ -317,7 +318,8 @@ class FastShareController(private val context: Context) {
                     item.optString("name", "Shared file"),
                     item.optLong("bytes", 0L),
                     item.optString("result", "Unknown"),
-                    item.optLong("time", 0L)
+                    item.optLong("time", 0L),
+                    item.optString("direction", "Sent")
                 )
             }
         } catch (_: Exception) {
@@ -390,7 +392,7 @@ class FastShareController(private val context: Context) {
 data class FastShareDetails(val ssid: String, val password: String, val url: String)
 data class FastShareActiveTransfer(val id: String, val fileName: String, val bytesSent: Long, val totalBytes: Long, val bytesPerSecond: Long, val startedAtMillis: Long, val isQueued: Boolean = false, val isReceiving: Boolean = false)
 
-data class FastShareHistoryEntry(val fileName: String, val bytesTransferred: Long, val result: String, val timestampMillis: Long)
+data class FastShareHistoryEntry(val fileName: String, val bytesTransferred: Long, val result: String, val timestampMillis: Long, val direction: String = "Sent")
 
 /** Local HTTP server for authenticated downloads, ZIP bundles and browser uploads. */
 private class FastShareHttpServer(
