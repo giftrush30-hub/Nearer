@@ -298,13 +298,18 @@ private class FastShareHttpServer(
     private val downloadGate = FastShareDownloadGate()
     private val clients = FastShareSocketRegistry()
     private var socket: ServerSocket? = null
+    private var acceptThread: Thread? = null
 
     fun start(): String {
-        socket = ServerSocket(8765, 8, java.net.InetAddress.getByName("0.0.0.0"))
-        executor.execute {
+        val listener = ServerSocket(8765, 8, java.net.InetAddress.getByName("0.0.0.0"))
+        socket = listener
+        // Keep accepting on its own daemon thread. If the accept loop occupied
+        // a worker-pool slot, only one core worker would remain for downloads,
+        // silently defeating the two-receiver concurrency limit.
+        acceptThread = Thread({
             while (running) {
                 try {
-                    val client = socket?.accept() ?: break
+                    val client = listener.accept()
                     // Register before dispatch so stop() can close both active and
                     // queued clients. track() also closes sockets accepted during
                     // the shutdown race.
@@ -326,6 +331,9 @@ private class FastShareHttpServer(
                     break
                 }
             }
+        }, "NeaRer-FastShare-Accept").apply {
+            isDaemon = true
+            start()
         }
         return findHotspotAddress()
     }
@@ -333,6 +341,8 @@ private class FastShareHttpServer(
     fun stop() {
         running = false
         try { socket?.close() } catch (_: Exception) {}
+        acceptThread?.interrupt()
+        acceptThread = null
         // shutdownNow interrupts workers but does not close sockets already
         // accepted or waiting in the executor queue.
         clients.closeAll()
