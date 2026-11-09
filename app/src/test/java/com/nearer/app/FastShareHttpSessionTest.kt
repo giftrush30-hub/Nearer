@@ -287,4 +287,33 @@ class FastShareHttpSessionTest {
         assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
+    @Test fun ifRangeWithoutAValidatorForcesAFullRepresentation() {
+        val (exchange, response) = read(
+            "GET /download HTTP/1.1\\r\\nRange: bytes=10-19\\r\\nIf-Range: \"stale-validator\"\\r\\n\\r\\n"
+        )
+
+        assertTrue(response.isEmpty())
+        assertNotNull(exchange)
+        assertNull(exchange!!.rangeHeader)
+    }
+
+    @Test fun ifRangeDateAlsoForcesAFullRepresentationWhenNoLastModifiedIsSent() {
+        val (exchange, response) = read(
+            "GET /download HTTP/1.1\\r\\nRange: bytes=10-19\\r\\nIf-Range: Wed, 21 Oct 2015 07:28:00 GMT\\r\\n\\r\\n"
+        )
+
+        assertTrue(response.isEmpty())
+        assertNotNull(exchange)
+        assertNull(exchange!!.rangeHeader)
+    }
+
+    @Test fun duplicateIfRangeHeadersAreRejectedAsAmbiguous() {
+        val (exchange, response) = read(
+            "GET /download HTTP/1.1\\r\\nRange: bytes=10-19\\r\\nIf-Range: \"a\"\\r\\nIf-Range: \"b\"\\r\\n\\r\\n"
+        )
+
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400"))
+    }
+
 }
