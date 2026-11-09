@@ -116,13 +116,13 @@ class FileHttpHeadersTest {
 
     @Test fun filenameStarEscapesCharactersOutsideRfc5987AttrCharSet() {
         val header = FileHttpHeaders.contentDisposition("a*b`c|d~e'f.txt")
-        assertTrue(header.contains("filename*=UTF-8''a%2Ab`c|d~e%27f.txt\\r\\n"))
+        assertTrue(header.contains("filename*=UTF-8''a%2Ab`c|d~e%27f.txt\r\n"))
         assertFalse(header.contains("filename*=UTF-8''a*b"))
     }
 
     @Test fun asciiFallbackCannotInjectAnotherHeader() {
-        val header = FileHttpHeaders.contentDisposition("report.pdf\\r\\nX-Injected: yes")
+        val header = FileHttpHeaders.contentDisposition("report.pdf\r\nX-Injected: yes")
         assertTrue(header.startsWith("Content-Disposition: attachment; filename=\"report.pdf__X-Injected_ yes\";"))
-        assertFalse(header.contains("\\r\\nX-Injected"))
+        assertFalse(header.contains("\r\nX-Injected"))
     }
 }
