@@ -492,6 +492,11 @@ class MainActivity : ComponentActivity() {
                     messages = chatMessages,
                     chatNotice = chatNotice,
                     receivedFiles = receivedFiles,
+                    onReceiveFile = { fileName, file ->
+                        receivedFiles.add(0, ReceivedFile(fileName, file))
+                        while (receivedFiles.size > 100) receivedFiles.removeAt(receivedFiles.lastIndex)
+                        chatNotice = "Received " + fileName + " from the connected browser device."
+                    },
                     transferHistory = nearbyTransferHistory.toList(),
                     onSendMessage = ::sendChatMessage,
                     groups = communityGroups.toList(),
@@ -2393,6 +2398,7 @@ private fun NeaRerHome(
     messages: List<ChatMessage>,
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
+    onReceiveFile: (String, File) -> Unit,
     transferHistory: List<NearbyTransferRecord>,
     onSendMessage: (String) -> Unit,
     groups: List<CommunityGroup>,
@@ -2444,9 +2450,10 @@ private fun NeaRerHome(
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val fastShare = remember(context) { FastShareController(context) }
+    fastShare.onFileReceived = onReceiveFile
     val unifiedTransferHistory = remember(transferHistory, fastShare.history) {
         (transferHistory.map { UnifiedTransferHistoryEntry(it.direction, it.fileName, it.bytes, it.status, it.timestamp, "Nearby") } +
-            fastShare.history.map { UnifiedTransferHistoryEntry("Fast Share", it.fileName, it.bytesTransferred, it.result, it.timestampMillis, "Fast Share") })
+            fastShare.history.map { UnifiedTransferHistoryEntry(if (it.result == "Received") "Received" else "Sent", it.fileName, it.bytesTransferred, it.result, it.timestampMillis, "Fast Share") })
             .sortedByDescending { it.timestamp }
     }
     var pendingFastShareUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -2592,12 +2599,12 @@ private fun NeaRerHome(
                                 fastShare.activeTransfers.forEach { transfer ->
                                     val percent = if (transfer.totalBytes > 0L) ((transfer.bytesSent.toDouble() / transfer.totalBytes.toDouble()) * 100.0).toInt().coerceIn(0, 100) else -1
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(transfer.fileName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text((if (transfer.isReceiving) "Receiving · " else "Sending · ") + transfer.fileName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                             Text(
                                                 if (transfer.isQueued) "Waiting for a download slot…"
                                                 else if (percent >= 0) "${formatTransferBytes(transfer.bytesSent)} / ${formatTransferBytes(transfer.totalBytes)} · $percent%"
-                                                else "${formatTransferBytes(transfer.bytesSent)} sent · size unknown",
+                                                else if (transfer.isReceiving) "${formatTransferBytes(transfer.bytesSent)} received · size unknown" else "${formatTransferBytes(transfer.bytesSent)} sent · size unknown",
                                                 color = Muted, fontSize = 10.sp
                                             )
                                             Text("${formatTransferBytes(transfer.bytesPerSecond)}/s", color = BlueAccent, fontSize = 10.sp)
