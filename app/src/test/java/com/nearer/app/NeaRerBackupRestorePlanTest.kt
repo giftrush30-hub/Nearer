@@ -39,6 +39,7 @@ class NeaRerBackupRestorePlanTest {
             assertTrue(plan.onboardingComplete)
             assertEquals(1, plan.receivedFiles.size)
             assertEquals("hello", plan.receivedFiles.single().readText())
+            assertEquals(File(root, "chats/messages.jsonl").canonicalFile, plan.chatArchive.canonicalFile)
             assertNull(plan.profilePhoto)
             assertTrue(plan.excludedDeviceState.any { it.contains("permissions") })
             // Planning must not consume, move or alter staged content.
