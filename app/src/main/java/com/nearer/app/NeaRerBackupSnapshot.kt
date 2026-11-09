@@ -35,7 +35,7 @@ internal object NeaRerBackupSnapshot {
         if (!snapshotDirectory.isDirectory) throw IOException("Backup snapshot folder is missing")
         val root = snapshotDirectory.canonicalFile
         val profileFile = File(root, "profile.json")
-        if (!profileFile.isFile || profileFile.length() > MAX_PROFILE_BYTES) {
+        if (!profileFile.isFile || !isContained(root, profileFile) || profileFile.length() > MAX_PROFILE_BYTES) {
             throw IOException("Backup profile information is missing or too large")
         }
         val profile = try { JSONObject(profileFile.readText(Charsets.UTF_8)) }
@@ -130,7 +130,7 @@ internal object NeaRerBackupSnapshot {
             throw IOException("Backup profile photo is missing or invalid")
         }
         val chatFile = File(root, "chats/messages.jsonl")
-        if (!chatFile.isFile || chatFile.length() > MAX_CHAT_ARCHIVE_BYTES) {
+        if (!chatFile.isFile || !isContained(root, chatFile) || chatFile.length() > MAX_CHAT_ARCHIVE_BYTES) {
             throw IOException("Backup chat archive is missing or too large")
         }
         var chatCount = 0L
@@ -161,12 +161,12 @@ internal object NeaRerBackupSnapshot {
             }
         }
         val received = File(root, "received")
-        if (!received.isDirectory) throw IOException("Backup received-files folder is missing")
+        if (!received.isDirectory || !isContained(root, received)) throw IOException("Backup received-files folder is missing or unsafe")
         var receivedCount = 0
         var receivedBytes = 0L
         val receivedItems = received.listFiles() ?: throw IOException("Could not inspect received files")
         receivedItems.forEach { item ->
-            if (!item.isFile || !item.canonicalPath.startsWith(received.canonicalPath + File.separator)) {
+            if (!item.isFile || !isContained(received, item)) {
                 throw IOException("Backup contains an unsafe received-file entry")
             }
             receivedBytes += item.length()
@@ -273,6 +273,12 @@ internal object NeaRerBackupSnapshot {
             if (failure is IOException) throw failure
             throw IOException("Could not create NeaRer backup snapshot", failure)
         }
+    }
+
+    private fun isContained(parent: File, child: File): Boolean {
+        val parentPath = parent.canonicalPath
+        val childPath = child.canonicalPath
+        return childPath.startsWith(parentPath + File.separator)
     }
 
     private fun copyFile(source: File, destination: File) {
