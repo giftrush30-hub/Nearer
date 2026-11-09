@@ -56,3 +56,12 @@ The UI must therefore continue to describe the ID as self-reported. Do not call 
 - Outgoing Nearby file transfers require a verified endpoint session.
 - Group-name fan-out includes only endpoints with a verified session; unverified nearby devices are not sent group chat payloads.
 - These checks authenticate the session's possession of a pinned key. They do not encrypt file bytes or message bodies in transit.
+
+
+## Incoming file sender binding and integrity checks
+
+- Raw Nearby file payloads are rejected unless their endpoint has completed the current-session identity proof.
+- Each incoming SDK payload ID is bound to the endpoint ID that delivered it. File metadata must arrive from that same endpoint; a payload cannot be paired with metadata from another nearby phone.
+- On a legitimate reconnect/resume, the receiver rebinds the pending payload ID to the newly authenticated endpoint for that same stable peer before requesting the saved offset.
+- File metadata must include a syntactically valid SHA-256 digest. Completed files are checked against both the advertised byte length and SHA-256 before they are retained in the app's received folder.
+- This protects against accidental corruption and mismatched sender metadata. It is not a substitute for end-to-end authenticated encryption of file contents.
