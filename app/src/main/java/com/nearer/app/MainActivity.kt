@@ -117,6 +117,7 @@ class MainActivity : ComponentActivity() {
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
     private val hybridPeers = mutableStateMapOf<String, String>()
+    private val hybridPeerAvatars = mutableStateMapOf<String, String>()
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
     private var onboardingComplete by mutableStateOf(false)
@@ -251,6 +252,7 @@ class MainActivity : ComponentActivity() {
         channel = wifiManager?.initialize(this, mainLooper, null)
         nearbyTransport = NearbyConnectionsTransport(this, object : NearbyConnectionsTransport.Listener {
             override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
+            override fun onProfile(id: String, name: String, avatarId: String) { runOnUiThread { hybridPeers[id] = name; hybridPeerAvatars[id] = avatarId } }
             override fun onFound(id: String, name: String, stableId: String) { runOnUiThread { hybridPeers[id] = name; if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId) } }
             override fun onLost(id: String, stableId: String) { runOnUiThread {
                 val name = hybridPeers.remove(id)
@@ -270,6 +272,7 @@ class MainActivity : ComponentActivity() {
                     hybridConnected = true
                     hybridConnectedEndpoint = id
                     hybridConnectedStableId = stableId.ifBlank { null }
+                    nearbyTransport?.sendProfile(id)
                     val requestedIncomingResume = nearbyTransport?.requestPendingIncomingFilesForPeer(stableId, id) == true
                     val hasQueuedOutgoingFile = currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()
                     if (hasQueuedOutgoingFile) {
@@ -467,7 +470,7 @@ class MainActivity : ComponentActivity() {
         onboardingComplete = profilePrefs.getBoolean("onboarding_complete", profilePrefs.contains("display_name") && displayName != "NeaRer User")
         profileAvatarId = profilePrefs.getString("profile_avatar_id", "orbit") ?: "orbit"
         profilePhotoPath = profilePrefs.getString("profile_photo_path", null)
-        nearbyTransport?.setDisplayName(displayName)
+        nearbyTransport?.setDisplayName(displayName, profileAvatarId)
         restoreRecentlySeen()
         // Multi-hop relay is paused until recipient routing and end-to-end encryption are ready.
         meshRelayEnabled = false
@@ -529,6 +532,7 @@ class MainActivity : ComponentActivity() {
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
                     hybridPeers = hybridPeers.toMap(),
+                    hybridPeerAvatars = hybridPeerAvatars.toMap(),
                     recentlySeenPeers = recentlySeenPeers.toMap(),
                     displayName = displayName,
                     profileAvatarId = profileAvatarId,
@@ -658,7 +662,7 @@ class MainActivity : ComponentActivity() {
         displayName = cleanName
         profileAvatarId = avatarId
         profilePhotoPath = savedPhotoPath
-        nearbyTransport?.setDisplayName(cleanName)
+        nearbyTransport?.setDisplayName(cleanName, avatarId)
         onboardingComplete = true
         statusMessage = "Welcome to NeaRer, $cleanName."
     }
@@ -701,7 +705,7 @@ class MainActivity : ComponentActivity() {
         displayName = cleanName
         profileAvatarId = avatarId
         profilePhotoPath = newPhotoPath
-        nearbyTransport?.setDisplayName(cleanName)
+        nearbyTransport?.setDisplayName(cleanName, avatarId)
         statusMessage = "Your NeaRer profile has been updated."
     }
 
@@ -2367,6 +2371,7 @@ private fun NeaRerHome(
     onAccept: () -> Unit,
     onReject: () -> Unit,
     hybridPeers: Map<String, String>,
+    hybridPeerAvatars: Map<String, String>,
     recentlySeenPeers: Map<String, NearbyPerson>,
     displayName: String,
     profileAvatarId: String,
@@ -2881,7 +2886,11 @@ private fun NeaRerHome(
                                 val drift by searchMotion.animateFloat(0f, if (index % 2 == 0) 5f else -5f, infiniteRepeatable(tween(1300 + index * 170), RepeatMode.Reverse), label = "bubble-$index")
                                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
                                     Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(54.dp).rotate(drift)) {
-                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(entry.value.take(1).uppercase(), color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                        val avatarId = hybridPeerAvatars[entry.key]
+                                        if (avatarId != null) NeaRerAvatarBadge(avatarId, Modifier.size(54.dp))
+                                        else Text(entry.value.take(1).uppercase(), color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    }
                                     }
                                     Text(entry.value, color = White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                     Text("Active now", color = BlueAccent, fontSize = 9.sp)
@@ -2923,7 +2932,11 @@ private fun NeaRerHome(
                         Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Panel) {
                             Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(38.dp)) {
-                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(name.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold) }
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    val avatarId = hybridPeerAvatars[id]
+                                    if (avatarId != null) NeaRerAvatarBadge(avatarId, Modifier.size(38.dp))
+                                    else Text(name.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold)
+                                }
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
                                     Text(name, color = White, fontWeight = FontWeight.SemiBold)
