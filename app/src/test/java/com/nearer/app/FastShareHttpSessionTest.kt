@@ -67,7 +67,7 @@ class FastShareHttpSessionTest {
 
     @Test fun browserUploadRequestCarriesFilenameAndLength() {
         val (exchange, response) = read(
-            "POST /upload HTTP/1.1\\r\\nX-Filename: holiday%20photo.jpg\\r\\nContent-Type: image/jpeg\\r\\nContent-Length: 12345\\r\\n\\r\\n"
+            "POST /upload HTTP/1.1\r\nX-Filename: holiday%20photo.jpg\r\nContent-Type: image/jpeg\r\nContent-Length: 12345\r\n\r\n"
         )
         assertNotNull(exchange)
         assertEquals(FastShareHttpRequest.Route.UPLOAD, exchange!!.request.route)
@@ -78,23 +78,23 @@ class FastShareHttpSessionTest {
     }
 
     @Test fun uploadWithoutFilenameOrLengthIsRejected() {
-        val (exchange, response) = read("POST /upload HTTP/1.1\\r\\n\\r\\n")
+        val (exchange, response) = read("POST /upload HTTP/1.1\r\n\r\n")
         assertNull(exchange)
-        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
     @Test fun duplicateUploadFilenameHeadersAreRejected() {
         val (exchange, response) = read(
-            "POST /upload HTTP/1.1\\r\\nX-Filename: first.txt\\r\\nX-Filename: second.txt\\r\\nContent-Length: 1\\r\\n\\r\\n"
+            "POST /upload HTTP/1.1\r\nX-Filename: first.txt\r\nX-Filename: second.txt\r\nContent-Length: 1\r\n\r\n"
         )
         assertNull(exchange)
-        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
     @Test fun getStillRejectsNonzeroRequestBodies() {
-        val (exchange, response) = read("GET /download HTTP/1.1\\r\\nContent-Length: 1\\r\\n\\r\\n")
+        val (exchange, response) = read("GET /download HTTP/1.1\r\nContent-Length: 1\r\n\r\n")
         assertNull(exchange)
-        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
     @Test fun unknownPathWrites404WithoutCallingFileRoute() {
@@ -317,6 +317,32 @@ class FastShareHttpSessionTest {
         val (exchange, response) = read("GET /download HTTP/1.1\r\nHost: phone.local/path\r\n\r\n")
         assertNull(exchange)
         assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun duplicateUploadContentLengthsAreRejected() {
+        val (exchange, response) = read(
+            "POST /upload HTTP/1.1\\r\\nX-Filename: first.txt\\r\\nContent-Length: 1\\r\\ncontent-length: 1\\r\\n\\r\\n"
+        )
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+    }
+
+    @Test fun negativeUploadContentLengthIsRejected() {
+        val (exchange, response) = read(
+            "POST /upload HTTP/1.1\\r\\nX-Filename: first.txt\\r\\nContent-Length: -1\\r\\n\\r\\n"
+        )
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+    }
+
+    @Test fun zeroByteUploadIsAValidRequest() {
+        val (exchange, response) = read(
+            "POST /upload HTTP/1.1\\r\\nX-Filename: empty.txt\\r\\nContent-Length: 0\\r\\n\\r\\n"
+        )
+        assertNotNull(exchange)
+        assertEquals(0L, exchange!!.contentLength)
+        assertEquals("empty.txt", exchange.uploadFileName)
+        assertTrue(response.isEmpty())
     }
 
 }
