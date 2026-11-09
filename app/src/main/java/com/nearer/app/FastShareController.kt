@@ -10,6 +10,8 @@ import android.os.Looper
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.OutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.ServerSocket
@@ -468,6 +470,7 @@ private class FastShareHttpServer(
                     output.write(FastShareHttpWire.responseHead("HTTP/1.1 200 OK", FileHttpHeaders.receiverPageHeaders(bytes.size.toLong())))
                     if (!headOnly) output.write(bytes)
                 }
+                FastShareHttpRequest.Route.UPLOAD -> { saveBrowserUpload(input, output, exchange) }
                 FastShareHttpRequest.Route.DOWNLOAD -> {
                     val index = request.downloadIndex
                     val item = index?.let { catalog.itemAt(it) }
@@ -520,6 +523,54 @@ private class FastShareHttpServer(
             } finally {
                 writeGuard.close()
             }
+        }
+    }
+
+    private fun saveBrowserUpload(input: BufferedInputStream, output: BufferedOutputStream, exchange: FastShareHttpExchange) {
+        val rawName = runCatching { URLDecoder.decode(exchange.uploadFileName.orEmpty(), Charsets.UTF_8.name()) }.getOrDefault("")
+        val safeName = rawName.map { c -> if (c.isLetterOrDigit() || c in " ._-()[]") c else '_' }
+            .joinToString("").trim().trim('.').take(180).ifBlank { "Received file" }
+        val directory = File(context.filesDir, "nearer-pc-uploads")
+        if (!directory.exists() && !directory.mkdirs()) { output.write(FastShareHttpErrors.uploadFailed()); return }
+        val available = runCatching { android.os.StatFs(directory.absolutePath).availableBytes }.getOrDefault(0L)
+        if (exchange.contentLength > available) { output.write(FastShareHttpErrors.insufficientStorage()); return }
+        val temporary = runCatching { File.createTempFile(".nearer-upload-", ".part", directory) }.getOrNull()
+        if (temporary == null) { output.write(FastShareHttpErrors.uploadFailed()); return }
+        var published = false
+        try {
+            FileOutputStream(temporary).use { sink ->
+                val buffer = ByteArray(64 * 1024)
+                var remaining = exchange.contentLength
+                while (remaining > 0L) {
+                    if (!running || Thread.currentThread().isInterrupted) throw java.io.IOException("Stopped")
+                    val count = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                    if (count < 0) throw java.io.EOFException("Incomplete upload")
+                    if (count > 0) { sink.write(buffer, 0, count); remaining -= count.toLong() }
+                }
+                sink.fd.sync()
+            }
+            var destination = File(directory, safeName)
+            var suffix = 2
+            val extension = safeName.substringAfterLast('.', "").takeIf { it.isNotEmpty() }
+            val stem = if (extension == null) safeName else safeName.removeSuffix(".$extension")
+            while (destination.exists()) {
+                destination = File(directory, if (extension == null) "$stem ($suffix)" else "$stem ($suffix).$extension")
+                suffix++
+            }
+            if (!temporary.renameTo(destination)) throw java.io.IOException("Could not publish file")
+            published = true
+            val body = "File received by NeaRer".toByteArray(Charsets.UTF_8)
+            output.write(FastShareHttpWire.responseHead("HTTP/1.1 201 Created", listOf(
+                "Content-Type" to "text/plain; charset=utf-8",
+                "Content-Length" to body.size.toString(),
+                "Cache-Control" to "no-store",
+                "Connection" to "close"
+            )))
+            output.write(body)
+        } catch (_: Exception) {
+            if (!published) output.write(FastShareHttpErrors.uploadFailed())
+        } finally {
+            if (temporary.exists()) temporary.delete()
         }
     }
 

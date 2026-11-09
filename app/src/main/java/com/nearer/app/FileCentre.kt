@@ -224,6 +224,15 @@ internal object AndroidFileCatalog {
         return results
     }
 
+    fun scanPcUploads(context: Context): List<FileCentreItem> {
+        val directory = java.io.File(context.filesDir, "nearer-pc-uploads")
+        return directory.listFiles()?.filter { it.isFile && !it.name.endsWith(".part") }?.map { file ->
+            FileCentreItem(Uri.fromFile(file).toString(), file.name, FileCentreCategory.DOWNLOADS,
+                Uri.fromFile(file), file.length().coerceAtLeast(0L), file.lastModified() / 1000L,
+                java.net.URLConnection.guessContentTypeFromName(file.name) ?: "application/octet-stream")
+        }?.sortedByDescending { it.modifiedSeconds } ?: emptyList()
+    }
+
     fun installedApps(context: Context): List<FileCentreItem> {
         val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         return try {
@@ -469,7 +478,7 @@ internal fun FileCentreScreen(
             loading = true
             scope.launch {
                 val media = withContext(Dispatchers.IO) { AndroidFileCatalog.scanMedia(context) }
-                items.removeAll { it.category != FileCentreCategory.APPS }
+                items.removeAll { it.category != FileCentreCategory.APPS && it.category != FileCentreCategory.DOWNLOADS }
                 items.addAll(media)
                 loading = false
                 notice = "Your accessible pictures, videos and music are ready."
@@ -580,6 +589,7 @@ internal fun FileCentreScreen(
         val apps = withContext(Dispatchers.IO) { AndroidFileCatalog.installedApps(context) }
         items.removeAll { it.category == FileCentreCategory.APPS }
         items.addAll(apps)
+        AndroidFileCatalog.scanPcUploads(context).forEach { uploaded -> if (items.none { it.id == uploaded.id }) items.add(uploaded) }
         if (AndroidFileCatalog.hasMediaAccess(context, category)) {
             val media = withContext(Dispatchers.IO) { AndroidFileCatalog.scanMedia(context) }
             items.removeAll { it.category != FileCentreCategory.APPS }

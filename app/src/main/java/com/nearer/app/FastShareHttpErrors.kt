@@ -19,7 +19,7 @@ internal object FastShareHttpErrors {
         response("400 Bad Request")
 
     fun methodNotAllowed(): ByteArray =
-        response("405 Method Not Allowed", "Allow: GET, HEAD\r\n")
+        response("405 Method Not Allowed", "Allow: GET, HEAD, POST\r\n")
 
     fun tooManyRequests(): ByteArray =
         response(
@@ -27,6 +27,10 @@ internal object FastShareHttpErrors {
             "Retry-After: 2\r\nContent-Type: text/plain; charset=utf-8\r\n",
             "Another download is already in progress. Wait briefly, then retry.\n"
         )
+
+    fun insufficientStorage(): ByteArray = response("507 Insufficient Storage", "Content-Type: text/plain; charset=utf-8\r\n", "Not enough free storage.\n")
+
+    fun uploadFailed(): ByteArray = response("500 Internal Server Error", "Content-Type: text/plain; charset=utf-8\r\n", "Upload could not be saved.\n")
 
     fun forbidden(): ByteArray =
         response("403 Forbidden", "Content-Type: text/plain; charset=utf-8\r\n", "This Fast Share link is missing or invalid. Ask the sender for the current link.\n")
