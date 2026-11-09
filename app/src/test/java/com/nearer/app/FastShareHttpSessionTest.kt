@@ -175,6 +175,12 @@ class FastShareHttpSessionTest {
         assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
+    @Test fun commaSeparatedHostAuthoritiesAreRejected() {
+        val (exchange, response) = read("GET /download HTTP/1.1\\r\\nHost: phone-a, phone-b\\r\\n\\r\\n")
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+    }
+
     @Test fun oneNonEmptyHostHeaderIsAccepted() {
         val (exchange, response) = read("GET /download HTTP/1.1\r\nHost: 192.168.43.1:8765\r\n\r\n")
         assertNotNull(exchange)
