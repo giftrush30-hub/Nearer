@@ -87,6 +87,7 @@ internal object IncomingFilePayloadPolicy {
     )
     private val incomingMetadata = ConcurrentHashMap<Long, FileMeta>()
     private val incomingPeerIds = ConcurrentHashMap<Long, String>()
+    private val incomingPayloadEndpoints = ConcurrentHashMap<Long, String>()
     private val incomingPayloads = ConcurrentHashMap<Long, Payload>()
     private val completedPayloads = ConcurrentHashMap<Long, Payload>()
     private val outgoingFiles = ConcurrentHashMap<Long, OutgoingFile>()
@@ -307,8 +308,7 @@ internal object IncomingFilePayloadPolicy {
                     val incomingPeerId = synchronized(names) { stableIds[id].orEmpty() }
                     val existingPeerId = incomingPeerIds[payload.id]
                     val meta = incomingMetadata[payload.id]
-                    val expectedEndpoint = meta?.endpointId
-                        ?: incomingPayloads[payload.id]?.let { existingPeerId?.let { _ -> id } }
+                    val expectedEndpoint = meta?.endpointId ?: incomingPayloadEndpoints[payload.id]
                     if (!IncomingFilePayloadPolicy.canAccept(
                             expectedEndpoint,
                             existingPeerId,
@@ -320,6 +320,7 @@ internal object IncomingFilePayloadPolicy {
                         return
                     }
                     incomingPayloads[payload.id] = payload
+                    incomingPayloadEndpoints.putIfAbsent(payload.id, id)
                     if (existingPeerId == null || existingPeerId.isBlank()) {
                         incomingPeerIds[payload.id] = incomingPeerId
                     }
@@ -483,6 +484,7 @@ internal object IncomingFilePayloadPolicy {
         incomingPayloads.remove(payloadId)
         incomingMetadata.remove(payloadId)
         incomingPeerIds.remove(payloadId)
+        incomingPayloadEndpoints.remove(payloadId)
         fileIo.execute {
             var destination: File? = null
             try {
