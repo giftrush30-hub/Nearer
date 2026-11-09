@@ -6,31 +6,31 @@ import org.junit.Test
 
 class IncomingFilePayloadPolicyTest {
     @Test fun acceptsPayloadFromOriginalStablePeer() {
-        assertTrue(IncomingFilePayloadPolicy.canAccept("endpoint-1", "peer-a", "endpoint-1", "peer-a"))
+        assertTrue(NearbyConnectionsTransport.IncomingFilePayloadPolicy.canAccept("endpoint-1", "peer-a", "endpoint-1", "peer-a"))
     }
 
     @Test fun acceptsReconnectFromSameStablePeer() {
-        assertTrue(IncomingFilePayloadPolicy.canAccept("endpoint-1", "peer-a", "endpoint-2", "peer-a"))
+        assertTrue(NearbyConnectionsTransport.IncomingFilePayloadPolicy.canAccept("endpoint-1", "peer-a", "endpoint-2", "peer-a"))
     }
 
     @Test fun rejectsDifferentStablePeerEvenWhenEndpointIsReused() {
-        assertFalse(IncomingFilePayloadPolicy.canAccept("endpoint-1", "peer-a", "endpoint-1", "peer-b"))
+        assertFalse(NearbyConnectionsTransport.IncomingFilePayloadPolicy.canAccept("endpoint-1", "peer-a", "endpoint-1", "peer-b"))
     }
 
     @Test fun rejectsDifferentStablePeerAfterReconnect() {
-        assertFalse(IncomingFilePayloadPolicy.canAccept("endpoint-2", "peer-a", "endpoint-3", "peer-b"))
+        assertFalse(NearbyConnectionsTransport.IncomingFilePayloadPolicy.canAccept("endpoint-2", "peer-a", "endpoint-3", "peer-b"))
     }
 
     @Test fun legacyPeerMustUseOriginalEndpoint() {
-        assertTrue(IncomingFilePayloadPolicy.canAccept("endpoint-1", "", "endpoint-1", ""))
-        assertFalse(IncomingFilePayloadPolicy.canAccept("endpoint-1", "", "endpoint-2", ""))
+        assertTrue(NearbyConnectionsTransport.IncomingFilePayloadPolicy.canAccept("endpoint-1", "", "endpoint-1", ""))
+        assertFalse(NearbyConnectionsTransport.IncomingFilePayloadPolicy.canAccept("endpoint-1", "", "endpoint-2", ""))
     }
 
     @Test fun firstPayloadMayArriveBeforeMetadata() {
-        assertTrue(IncomingFilePayloadPolicy.canAccept(null, null, "endpoint-1", "peer-a"))
+        assertTrue(NearbyConnectionsTransport.IncomingFilePayloadPolicy.canAccept(null, null, "endpoint-1", "peer-a"))
     }
 
     @Test fun rejectsBlankIncomingEndpoint() {
-        assertFalse(IncomingFilePayloadPolicy.canAccept(null, null, "", "peer-a"))
+        assertFalse(NearbyConnectionsTransport.IncomingFilePayloadPolicy.canAccept(null, null, "", "peer-a"))
     }
 }
