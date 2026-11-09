@@ -332,6 +332,7 @@ private class FastShareHttpServer(
     )
     @Volatile private var running = true
     private val downloadGate = FastShareDownloadGate()
+    private val uploadGate = FastShareUploadGate()
     private val uploadPublishLock = Any()
     private val clients = FastShareSocketRegistry()
     private val writeWatchdog = Executors.newSingleThreadScheduledExecutor { task ->
@@ -471,7 +472,7 @@ private class FastShareHttpServer(
                     output.write(FastShareHttpWire.responseHead("HTTP/1.1 200 OK", FileHttpHeaders.receiverPageHeaders(bytes.size.toLong())))
                     if (!headOnly) output.write(bytes)
                 }
-                FastShareHttpRequest.Route.UPLOAD -> { saveBrowserUpload(input, output, exchange) }
+                FastShareHttpRequest.Route.UPLOAD -> { handleBrowserUpload(input, output, exchange) }
                 FastShareHttpRequest.Route.DOWNLOAD -> {
                     val index = request.downloadIndex
                     val item = index?.let { catalog.itemAt(it) }
@@ -527,14 +528,33 @@ private class FastShareHttpServer(
         }
     }
 
-    private fun saveBrowserUpload(input: BufferedInputStream, output: BufferedOutputStream, exchange: FastShareHttpExchange) {
+    private fun handleBrowserUpload(input: BufferedInputStream, output: BufferedOutputStream, exchange: FastShareHttpExchange) {
+        val directory = File(context.filesDir, "nearer-pc-uploads")
+        if (!directory.exists() && !directory.mkdirs()) {
+            output.write(FastShareHttpErrors.uploadFailed())
+            return
+        }
+        val available = runCatching { android.os.StatFs(directory.absolutePath).availableBytes }.getOrDefault(0L)
+        if (!uploadGate.tryAcquire(exchange.contentLength, available)) {
+            output.write(FastShareHttpErrors.tooManyRequests())
+            return
+        }
+        try {
+            saveBrowserUpload(input, output, exchange, directory)
+        } finally {
+            uploadGate.release(exchange.contentLength)
+        }
+    }
+
+    private fun saveBrowserUpload(
+        input: BufferedInputStream,
+        output: BufferedOutputStream,
+        exchange: FastShareHttpExchange,
+        directory: File
+    ) {
         val rawName = runCatching { URLDecoder.decode(exchange.uploadFileName.orEmpty(), Charsets.UTF_8.name()) }.getOrDefault("")
         val safeName = rawName.map { c -> if (c.isLetterOrDigit() || c in " ._-()[]") c else '_' }
             .joinToString("").trim().trim('.').take(180).ifBlank { "Received file" }
-        val directory = File(context.filesDir, "nearer-pc-uploads")
-        if (!directory.exists() && !directory.mkdirs()) { output.write(FastShareHttpErrors.uploadFailed()); return }
-        val available = runCatching { android.os.StatFs(directory.absolutePath).availableBytes }.getOrDefault(0L)
-        if (exchange.contentLength > available) { output.write(FastShareHttpErrors.insufficientStorage()); return }
         val temporary = runCatching { File.createTempFile(".nearer-upload-", ".part", directory) }.getOrNull()
         if (temporary == null) { output.write(FastShareHttpErrors.uploadFailed()); return }
         var published = false
