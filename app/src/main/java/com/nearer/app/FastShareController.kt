@@ -34,6 +34,7 @@ class FastShareController(private val context: Context) {
         private set
     var activeTransfers by androidx.compose.runtime.mutableStateOf<List<FastShareActiveTransfer>>(emptyList())
         private set
+    private val transferLedger = FastShareTransferLedger()
 
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
     private var callback: WifiManager.LocalOnlyHotspotCallback? = null
@@ -134,10 +135,12 @@ class FastShareController(private val context: Context) {
                         val averageSpeed = formatProgressSize(((sent * 1000.0) / (now - transferStartedAt).coerceAtLeast(1L)).toLong())
                         Handler(Looper.getMainLooper()).post {
                             if (complete || interrupted) {
-                                activeTransfers = activeTransfers.filterNot { it.id == transferId }
+                                transferLedger.finish(transferId)
+                                activeTransfers = transferLedger.snapshot()
                             } else {
                                 val transfer = FastShareActiveTransfer(transferId, fileName, sent, total, bytesPerSecond.toLong(), transferStartedAt)
-                                activeTransfers = (activeTransfers.filterNot { it.id == transferId } + transfer).sortedBy { it.startedAtMillis }
+                                transferLedger.update(transfer)
+                                activeTransfers = transferLedger.snapshot()
                             }
                             status = when {
                                 interrupted -> "Download interrupted at ${formatProgressSize(sent)}. Keep both phones connected and retry."
@@ -176,7 +179,9 @@ class FastShareController(private val context: Context) {
                 reservation = null
                 pendingUris = emptyList()
                 details = null
-                activeTransfers = emptyList()
+                transferLedger.clear()
+                transferLedger.clear()
+        activeTransfers = emptyList()
                 callback = null
                 status = "The temporary Wi-Fi connection stopped."
             }
