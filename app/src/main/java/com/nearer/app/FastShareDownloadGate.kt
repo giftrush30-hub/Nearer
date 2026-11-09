@@ -13,6 +13,9 @@ internal class FastShareDownloadGate {
         // First group-sharing milestone: five simultaneous file streams.
         // Keep this aligned with FastShareController's five core workers.
         const val MAX_CONCURRENT_DOWNLOADS = 5
+        // Keep a small bounded group of additional receivers waiting for a slot.
+        const val MAX_WAITING_DOWNLOADS = 7
+        const val MAX_HANDLED_DOWNLOAD_REQUESTS = MAX_CONCURRENT_DOWNLOADS + MAX_WAITING_DOWNLOADS
     }
 
     private val permits = Semaphore(MAX_CONCURRENT_DOWNLOADS, true)
