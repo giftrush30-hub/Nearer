@@ -89,9 +89,14 @@ internal fun NeaRerOnboarding(
         if (uri != null) photoUri = uri
     }
     val photoBitmap = remember(photoUri) {
-        photoUri?.let { uri ->
-            runCatching { context.contentResolver.openInputStream(uri)?.use { stream -> BitmapFactory.decodeStream(stream) } }.getOrNull()
-        }
+        photoUri?.let { uri -> runCatching {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            var sample = 1
+            while (bounds.outWidth / sample > 512 || bounds.outHeight / sample > 512) sample *= 2
+            val options = BitmapFactory.Options().apply { inSampleSize = sample }
+            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        }.getOrNull() }
     }
     val pages = listOf("Your name", "A little about you", "Choose your look", "Your NeaRer ID")
     val cleanName = displayName.trim().replace(Regex("\\s+"), " ").take(24)
