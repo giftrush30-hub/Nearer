@@ -30,7 +30,7 @@ class NeaRerBackupRestorePlanTest {
                     .toString()
             )
 
-            val plan = NeaRerBackupRestorePlan.fromStagedDirectory(root)
+            val plan = NeaRerBackupRestorePlan.fromPreparedRestore(\n                NeaRerBackupManager.PreparedRestore(root, NeaRerBackupSnapshot.inspect(root))\n            )
 
             assertEquals("Ada", plan.portablePreferences["display_name"])
             assertEquals("orbit", plan.portablePreferences["profile_avatar_id"])
