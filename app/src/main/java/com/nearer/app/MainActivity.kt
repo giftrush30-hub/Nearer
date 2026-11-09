@@ -306,6 +306,7 @@ class MainActivity : ComponentActivity() {
                     connectionMessage = "Nearby connection active • checking peer identity"
                     approvalMessage = "Connection approved"
                     chatNotice = when {
+                        !chatReady -> "Connected to $name. Checking the other phone's cryptographic identity before private chat is enabled…"
                         requestedIncomingResume -> "Connection restored. Requesting the saved receive position…"
                         hasQueuedOutgoingFile -> "Connection restored. Checking for a saved transfer position…"
                         else -> "Connected to $name. Offline chat is ready."
