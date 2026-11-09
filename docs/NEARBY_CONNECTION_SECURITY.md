@@ -19,13 +19,12 @@
 
 ## Important security boundary
 
-A valid signature proves that the connected device controls the private key corresponding to the public key it announced. It does **not** prove that the self-reported `NR-...` ID belongs to a particular human or to the same person who previously used that ID. The current random installation ID is not derived from the signing public key and there is no global identity registry or trusted key-pinning/recovery flow yet.
+A valid signature proves that the connected device controls the private key corresponding to the public key it announced. It does **not** prove that the self-reported `NR-...` ID belongs to a particular human or to the same person who previously used that ID. The current random installation ID is not derived from the signing public key and there is no global identity registry or verified-human identity system. Local trust-on-first-use key pins and stable-code-to-ID continuity checks are present, but there is not yet a user-managed trusted-contact review or safe key recovery/rotation flow.
 
 The UI must therefore continue to describe the ID as self-reported. Do not call this verified human identity, end-to-end encrypted chat, or a secure mesh.
 
 ## Not yet covered
 
-- Wi-Fi Direct fallback has not been given this challenge-response protocol.
 - Chat and file payload encryption in transit has not been added by this change.
 - The local chat-history JSON store is now encrypted at rest with the same Android Keystore AES-256-GCM key used for the pending outbox; older plaintext chat history is migrated on successful load/save.
 - Received files are still stored in the app's private received folder without application-level file encryption.
@@ -34,7 +33,6 @@ The UI must therefore continue to describe the ID as self-reported. Do not call 
 
 ## Next engineering gates
 
-1. Add a user-facing trusted-peer review and safe key-change/recovery UX; current automatic first-seen pinning only detects later key changes.
-2. Apply equivalent authentication to the Wi-Fi Direct transport.
-3. Design and test end-to-end message/file encryption independently of the nearby transport.
-4. Exercise simultaneous discovery, approval, reconnect, stale challenge, replay, key mismatch, and mixed-version cases on real Android devices.
+1. Add a user-facing trusted-peer review and safe key-change/recovery UX; current first-seen pinning blocks silent key changes but cannot safely approve a legitimate key rotation.
+2. Design and test end-to-end message/file encryption independently of the nearby transport.
+3. Exercise simultaneous discovery, approval, reconnect, stale challenge, replay, key mismatch, and mixed-version cases on real Android devices.
