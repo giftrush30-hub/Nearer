@@ -90,7 +90,10 @@ class FastShareDownloadCatalogTest {
             FastShareDownloadItem(0, "sample.txt", "text/plain", 5L)
         )).receiverPage("test-key")
         assertTrue(page.contains("id=\"cancel\""))
-        assertTrue(page.contains("xhr.upload.onprogress"))
+        assertTrue(page.contains("xhr.upload.onprogress"));
+        assertTrue(page.contains("connection became idle; reconnect and retry"))
+        assertTrue(page.contains("NeaRer is busy; wait briefly and retry"))
+        assertTrue(page.contains("not enough free storage on the receiving phone"))
         assertTrue(page.contains("X-Received-Bytes"))
         assertTrue(page.contains("X-Content-SHA256"))
         assertTrue(page.contains("xhr.abort()"))
