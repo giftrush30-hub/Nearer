@@ -422,6 +422,8 @@ internal object AndroidFileCatalog {
 internal fun FileCentreScreen(
     connected: Boolean,
     onSendFiles: (List<Uri>) -> Unit,
+    externalShareUris: List<Uri>,
+    onExternalShareConsumed: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -544,6 +546,57 @@ internal fun FileCentreScreen(
                 notice = "Loaded " + contacts.size + " contacts. Select the people you want to share."
             }
         } else notice = "Contacts permission was not granted. Your contacts remain private."
+    }
+
+    LaunchedEffect(externalShareUris) {
+        if (externalShareUris.isNotEmpty()) {
+            loading = true
+            val imported = withContext(Dispatchers.IO) {
+                externalShareUris.distinct().mapNotNull { uri ->
+                    runCatching {
+                        var name = uri.lastPathSegment?.substringAfterLast('/') ?: "Shared file"
+                        var size = 0L
+                        context.contentResolver.query(
+                            uri,
+                            arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE),
+                            null, null, null
+                        )?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                val nameColumn = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                val sizeColumn = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                                if (nameColumn >= 0) name = cursor.getString(nameColumn)?.takeIf { it.isNotBlank() } ?: name
+                                if (sizeColumn >= 0 && !cursor.isNull(sizeColumn)) size = cursor.getLong(sizeColumn).coerceAtLeast(0L)
+                            }
+                        }
+                        val mime = context.contentResolver.getType(uri)
+                        val fileCategory = when {
+                            mime?.startsWith("image/") == true -> FileCentreCategory.PICTURES
+                            mime?.startsWith("video/") == true -> FileCentreCategory.VIDEOS
+                            mime?.startsWith("audio/") == true -> FileCentreCategory.MUSIC
+                            mime == "application/vnd.android.package-archive" -> FileCentreCategory.APPS
+                            mime?.contains("pdf") == true || mime?.contains("word") == true ||
+                                mime?.contains("sheet") == true || mime?.startsWith("text/") == true -> FileCentreCategory.DOCUMENTS
+                            else -> FileCentreCategory.OTHER
+                        }
+                        FileCentreItem(id = uri.toString(), name = name, category = fileCategory,
+                            uri = uri, sizeBytes = size, mimeType = mime)
+                    }.getOrNull()
+                }
+            }
+            imported.forEach { item ->
+                if (items.none { it.id == item.id }) items.add(item)
+                if (item.id !in selected) selected.add(item.id)
+                markRecent(item.id)
+            }
+            category = FileCentreCategory.RECENT
+            loading = false
+            notice = if (imported.isEmpty()) {
+                "NeaRer could not access the files shared by the other app. Choose them again."
+            } else {
+                imported.size.toString() + " file(s) from another app added to your send basket. Connect to a nearby phone and tap Send selected."
+            }
+            onExternalShareConsumed()
+        }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(

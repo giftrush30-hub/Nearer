@@ -87,6 +87,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -184,6 +185,7 @@ class MainActivity : ComponentActivity() {
     private var incomingLastSampleBytes = 0L
     private var incomingLastSampleAt = 0L
     private var incomingRateBytesPerSecond = 0L
+    private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
@@ -250,6 +252,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        captureExternalShareIntent(intent)
         window.statusBarColor = android.graphics.Color.rgb(16, 26, 43)
         window.navigationBarColor = android.graphics.Color.rgb(16, 26, 43)
         window.decorView.systemUiVisibility = 0
@@ -500,6 +503,8 @@ class MainActivity : ComponentActivity() {
                     usingNearbyConnections = hybridConnected,
                     messages = chatMessages,
                     chatNotice = chatNotice,
+                    externalShareUris = pendingExternalShareUris,
+                    onExternalShareConsumed = { pendingExternalShareUris = emptyList() },
                     receivedFiles = receivedFiles,
                     transferHistory = nearbyTransferHistory.toList(),
                     onSendMessage = ::sendChatMessage,
@@ -1832,6 +1837,38 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun captureExternalShareIntent(sharedIntent: Intent?) {
+        if (sharedIntent == null) return
+        if (sharedIntent.action != Intent.ACTION_SEND && sharedIntent.action != Intent.ACTION_SEND_MULTIPLE) return
+        val uris = linkedSetOf<Uri>()
+        if (sharedIntent.action == Intent.ACTION_SEND) {
+            @Suppress("DEPRECATION")
+            (sharedIntent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri)?.let { uris.add(it) }
+        } else {
+            @Suppress("DEPRECATION")
+            sharedIntent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.forEach { uris.add(it) }
+        }
+        sharedIntent.clipData?.let { clip ->
+            for (index in 0 until clip.itemCount) clip.getItemAt(index).uri?.let { uris.add(it) }
+        }
+        if (uris.isEmpty()) return
+        uris.forEach { uri ->
+            try {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (_: Exception) {
+                // Many Android share providers grant temporary read access only.
+            }
+        }
+        pendingExternalShareUris = (pendingExternalShareUris + uris).distinct()
+        chatNotice = uris.size.toString() + " file(s) received from another app. Choose a nearby recipient in Share."
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        captureExternalShareIntent(intent)
+    }
+
     private fun openReceivedFile(item: ReceivedFile) {
         try {
             val uri = FileProvider.getUriForFile(this, "${packageName}.files", item.file)
@@ -2486,6 +2523,8 @@ private fun NeaRerHome(
     messages: List<ChatMessage>,
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
+    externalShareUris: List<Uri>,
+    onExternalShareConsumed: () -> Unit,
     transferHistory: List<NearbyTransferRecord>,
     onSendMessage: (String) -> Unit,
     groups: List<CommunityGroup>,
@@ -2535,6 +2574,7 @@ private fun NeaRerHome(
     val context = LocalContext.current
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
+    LaunchedEffect(externalShareUris) { if (externalShareUris.isNotEmpty()) selectedTab = "Share" }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val fastShare = remember(context) { FastShareController(context) }
@@ -2827,7 +2867,7 @@ private fun NeaRerHome(
             }
 
             if (selectedTab == "Share") {
-                FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, modifier = Modifier.weight(1f))
+                FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, externalShareUris = externalShareUris, onExternalShareConsumed = onExternalShareConsumed, modifier = Modifier.weight(1f))
             }
 
             if (selectedTab == "Nearby") {
