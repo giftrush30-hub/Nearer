@@ -25,7 +25,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onPeerIdentity(id: String, stableId: String, publicId: String, verified: Boolean)
         fun onDisconnected(id: String, stableId: String, name: String)
         fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit)
-        fun onMessageStatus(messageId: String, status: String)
+        fun onMessageStatus(messageId: String, status: String, onPersisted: ((Boolean) -> Unit)? = null)
         fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
@@ -462,8 +462,17 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val acknowledgedId = envelope.optString("id")
                 // Only the peer we actually sent this message to may confirm it.
                 if (acknowledgedId.isNotBlank() && outgoingMessageTargets[acknowledgedId] == endpointId) {
-                    clearPendingOutgoingMessage(acknowledgedId)
-                    listener.onMessageStatus(acknowledgedId, "Delivered")
+                    // Keep the encrypted outbox entry until the sender's Delivered state
+                    // is durably written to chat history. If storage fails, retry the
+                    // message; the receiver's dedupe record will safely re-acknowledge it.
+                    listener.onMessageStatus(acknowledgedId, "Delivered") { saved ->
+                        if (saved) {
+                            clearPendingOutgoingMessage(acknowledgedId)
+                        } else {
+                            listener.onMessageStatus(acknowledgedId, "Queued")
+                            scheduleMessageRetry(acknowledgedId, 1500L)
+                        }
+                    }
                 }
                 return
             }

@@ -357,17 +357,26 @@ class MainActivity : ComponentActivity() {
                     if (safelyStored) acknowledge()
                 }
             }
-            override fun onMessageStatus(messageId: String, status: String) {
+            override fun onMessageStatus(messageId: String, status: String, onPersisted: ((Boolean) -> Unit)?) {
                 runOnUiThread {
                     val index = chatMessages.indexOfFirst { it.id == messageId }
                     if (index >= 0) {
-                        chatMessages[index] = chatMessages[index].copy(delivery = status)
-                        persistMessages()
-                        chatNotice = when (status) {
-                            "Delivered" -> "Your message was received by the other NeaRer phone."
-                            "Queued" -> "Not delivered yet. NeaRer saved it and will retry when this person reconnects."
-                            else -> "Message delivery failed. Reconnect and try again."
+                        val previous = chatMessages[index]
+                        chatMessages[index] = previous.copy(delivery = status)
+                        val saved = persistMessages()
+                        if (!saved && status == "Delivered") {
+                            chatMessages[index] = previous.copy(delivery = "Queued")
+                            chatNotice = "The other phone received your message, but NeaRer could not save the delivery receipt. It will safely retry."
+                        } else {
+                            chatNotice = when (status) {
+                                "Delivered" -> "Your message was received by the other NeaRer phone."
+                                "Queued" -> "Not delivered yet. NeaRer saved it and will retry when this person reconnects."
+                                else -> "Message delivery failed. Reconnect and try again."
+                            }
                         }
+                        onPersisted?.invoke(saved)
+                    } else {
+                        onPersisted?.invoke(false)
                     }
                 }
             }
