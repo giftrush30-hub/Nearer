@@ -3,13 +3,13 @@ package com.nearer.app
 import java.security.SecureRandom
 
 /**
- * Public, non-secret nearby identity. New installations use 50-bit IDs;
+ * Public, non-secret nearby identity. New installations use 60-bit IDs;
  * six-character IDs remain accepted so existing installations keep their
  * established peer identity and conversation history.
  */
 internal object NeaRerIdentity {
     private const val ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-    const val ID_LENGTH = 10
+    const val ID_LENGTH = 12
     private const val LEGACY_ID_LENGTH = 6
 
     fun normalize(value: String?): String? {
