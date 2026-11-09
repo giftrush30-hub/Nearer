@@ -553,7 +553,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val meta = incomingMetadata[payloadId] ?: return
         if (!completedPayloads.remove(payloadId, payload)) return
         val payloadEndpoint = incomingPayloadEndpoints.remove(payloadId)
-        if (payloadEndpoint != null && payloadEndpoint != meta.endpointId) {
+        if (payloadEndpoint == null || payloadEndpoint != meta.endpointId) {
             incomingPayloads.remove(payloadId)
             incomingMetadata.remove(payloadId)
             incomingPayloadEndpoints.remove(payloadId)
@@ -882,6 +882,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val offset = try { receivedPayload?.offset ?: 0L } catch (_: Exception) { 0L }
             if (offset < 0L || offset > meta.size) return@forEach
             incomingMetadata[payloadId] = meta.copy(endpointId = endpointId)
+            // A resumed SDK payload arrives on the new endpoint ID after reconnect.
+            incomingPayloadEndpoints[payloadId] = endpointId
             val request = JSONObject().put("kind", "file_resume_request")
                 .put("payloadId", payloadId).put("offset", offset)
             client.sendPayload(endpointId, Payload.fromBytes(request.toString().toByteArray(Charsets.UTF_8)))
