@@ -56,6 +56,7 @@ internal object NeaRerBackupRestoreTransaction {
         val rollbackRoot = createPrivateDirectory(context, "nearer-restore-rollback-")
         val rollbackChats = File(rollbackRoot, "messages.jsonl")
         val oldPreferences = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).all
+        validatePreferenceSnapshot(oldPreferences)
         val prefs = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         val stagedReceived = File(filesRoot, ".nearer-received-stage-${UUID.randomUUID()}")
         val oldReceived = File(filesRoot, ".nearer-received-rollback-${UUID.randomUUID()}")
@@ -153,10 +154,26 @@ internal object NeaRerBackupRestoreTransaction {
             }
             stagedReceived.deleteRecursively()
             newPhoto?.delete()
-            rollbackRoot.deleteRecursively()
+            if (rollbackFailures.isEmpty()) {
+                rollbackRoot.deleteRecursively()
+            } else {
+                failure.addSuppressed(IOException("Rollback data retained in private cache at ${rollbackRoot.absolutePath}"))
+            }
             rollbackFailures.forEach(failure::addSuppressed)
             if (failure is IOException) throw failure
             throw IOException("Could not apply NeaRer restore", failure)
+        }
+    }
+
+    private fun validatePreferenceSnapshot(values: Map<String, *>) {
+        values.forEach { (key, value) ->
+            if (value !is String && value !is Boolean && value !is Int &&
+                value !is Long && value !is Float && value !is Set<*>) {
+                throw IOException("Unsupported saved preference type for $key")
+            }
+            if (value is Set<*> && value.any { it !is String }) {
+                throw IOException("Unsupported saved preference set for $key")
+            }
         }
     }
 
