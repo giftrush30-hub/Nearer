@@ -4,6 +4,15 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import java.io.BufferedReader
+import java.io.BufferedWriter
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.io.IOException
+import org.json.JSONObject
 
 /**
  * Durable, unbounded chat archive. The UI pages recent records into memory;
@@ -12,7 +21,7 @@ import android.database.sqlite.SQLiteOpenHelper
 internal class NeaRerChatHistoryDatabase(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "nearer_chat_history.db", null, 1) {
 
-    override fun onCreate(db: SQLiteDatabase) {
+    companion object {\n        private const val MAX_BACKUP_MESSAGES = 1_000_000\n        private const val MAX_BACKUP_RECORD_CHARS = 8 * 1024 * 1024\n        private const val MAX_BACKUP_BODY_CHARS = 4 * 1024 * 1024\n    }\n\n    override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             """
             CREATE TABLE messages (
@@ -82,6 +91,105 @@ internal class NeaRerChatHistoryDatabase(context: Context) :
         readableDatabase.rawQuery("SELECT COUNT(*) FROM messages", null).use {
             return if (it.moveToFirst()) it.getLong(0) else 0L
         }
+    }
+
+    /**
+     * Writes every archived message as one UTF-8 JSON object per line.
+     * A line-oriented format avoids loading the complete chat archive into memory.
+     */
+    @Throws(IOException::class)
+    fun exportPortableArchive(destination: File): Long {
+        val parent = destination.absoluteFile.parentFile ?: throw IOException("Chat export has no parent folder")
+        if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create chat export folder")
+        if (destination.exists()) throw IOException("Chat export destination already exists")
+        val temporary = File.createTempFile(".nearer-chat-export-", ".tmp", parent)
+        var exported = 0L
+        try {
+            BufferedWriter(OutputStreamWriter(FileOutputStream(temporary), Charsets.UTF_8)).use { writer ->
+                readableDatabase.rawQuery(
+                    "SELECT id, body, outgoing, delivery, timestamp, conversation_id, conversation_name FROM messages ORDER BY timestamp ASC, id ASC",
+                    null
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val record = JSONObject()
+                            .put("id", cursor.getString(0))
+                            .put("body", cursor.getString(1))
+                            .put("outgoing", cursor.getInt(2) != 0)
+                            .put("delivery", cursor.getString(3))
+                            .put("timestamp", cursor.getLong(4))
+                            .put("conversationId", cursor.getString(5))
+                            .put("conversationName", cursor.getString(6))
+                        writer.write(record.toString())
+                        writer.newLine()
+                        exported++
+                    }
+                }
+                writer.flush()
+            }
+            FileInputStream(temporary).use { it.channel.force(true) }
+            if (!temporary.renameTo(destination)) throw IOException("Could not publish chat archive")
+            return exported
+        } catch (failure: Exception) {
+            temporary.delete()
+            if (failure is IOException) throw failure
+            throw IOException("Could not export chat history", failure)
+        }
+    }
+
+    /**
+     * Validates the complete portable archive before opening a database transaction.
+     * Existing IDs are updated and new IDs are added; unrelated local messages remain.
+     */
+    @Throws(IOException::class)
+    fun mergePortableArchive(source: File): Long {
+        if (!source.isFile || !source.canRead()) throw IOException("Chat archive is not readable")
+        val records = mutableListOf<ChatMessage>()
+        val seenIds = HashSet<String>()
+        try {
+            BufferedReader(InputStreamReader(FileInputStream(source), Charsets.UTF_8)).use { reader ->
+                var lineNumber = 0
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    lineNumber++
+                    if (line.isBlank() || line.length > MAX_BACKUP_RECORD_CHARS) {
+                        throw IOException("Chat archive record $lineNumber is invalid or too large")
+                    }
+                    val json = try { JSONObject(line) } catch (failure: Exception) {
+                        throw IOException("Chat archive record $lineNumber is not valid JSON", failure)
+                    }
+                    val id = json.optString("id")
+                    val body = json.optString("body")
+                    val delivery = json.optString("delivery")
+                    val conversationId = json.optString("conversationId")
+                    val conversationName = json.optString("conversationName")
+                    if (id.isBlank() || id.length > 160 || !seenIds.add(id) ||
+                        body.length > MAX_BACKUP_BODY_CHARS || delivery.length > 40 ||
+                        conversationId.length > 200 || conversationName.length > 160 ||
+                        !json.has("timestamp") || !json.has("outgoing")
+                    ) throw IOException("Chat archive record $lineNumber has invalid fields")
+                    records.add(
+                        ChatMessage(
+                            id = id,
+                            body = body,
+                            outgoing = json.optBoolean("outgoing"),
+                            delivery = delivery,
+                            timestamp = json.optLong("timestamp"),
+                            conversationId = conversationId,
+                            conversationName = conversationName
+                        )
+                    )
+                    if (records.size > MAX_BACKUP_MESSAGES) throw IOException("Chat archive contains too many messages")
+                }
+            }
+        } catch (failure: IOException) {
+            throw failure
+        } catch (failure: Exception) {
+            throw IOException("Could not read chat archive", failure)
+        }
+
+        if (records.isEmpty()) return 0L
+        if (!upsert(records)) throw IOException("Could not import chat archive")
+        return records.size.toLong()
     }
 
     private fun query(sql: String, args: Array<String>): List<ChatMessage> {
