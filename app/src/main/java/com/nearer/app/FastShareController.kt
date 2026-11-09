@@ -307,8 +307,7 @@ private class FastShareHttpServer(
         val listener = ServerSocket(8765, 8, java.net.InetAddress.getByName("0.0.0.0"))
         socket = listener
         // Keep accepting on its own daemon thread. If the accept loop occupied
-        // a worker-pool slot, only one core worker would remain for downloads,
-        // silently defeating the two-receiver concurrency limit.
+        // a worker-pool slot, it would reduce the five-worker download capacity.
         acceptThread = Thread({
             while (running) {
                 try {
@@ -425,7 +424,7 @@ private class FastShareHttpServer(
                     } else if (headOnly) {
                         streamFile(output, uri, item, rangeHeader, true)
                     } else {
-                        // Allow two file streams for small-group sharing while keeping memory
+                        // Allow five file streams for small-group sharing while keeping memory
                         // bounded. Additional receivers wait fairly instead of being
                         // rejected immediately; the wait is bounded.
                         val acquired = try {
