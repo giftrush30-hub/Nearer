@@ -42,9 +42,17 @@ Make nearby Android file sharing as fast as the two phones and their wireless li
 - The stream copier now handles a zero-progress bulk read without spinning forever, and its SHA-256 hex formatter treats digest bytes as unsigned.
 - Google documents that `onPayloadReceived` for FILE/STREAM is an early notification, not proof that all bytes arrived; completion must be confirmed by the transfer-update SUCCESS event. STREAM input must be drained promptly on a background worker, and the owning `Payload` must be closed when finished or cancelled.
 - Filename sanitization preserves Unicode names while stripping path components and reserved/control characters.
-- The Android compile/test workflow does not assemble an APK.
+- GitHub Actions runs Android unit tests and assembles the debug APK with `testDebugUnitTest assembleDebug`; the APK is uploaded as a build artifact.
 
 These changes tune the local file-save stage and expose real measurements. They do not, by themselves, increase the Wi-Fi radio's throughput.
+
+## Fast Share local HTTP receiver
+
+The Android local-hotspot receiver serves selected files directly from their ContentResolver URIs. It streams bytes with bounded buffers instead of loading an entire file into memory. The HTTP request parser is deliberately limited to GET and HEAD, validates CRLF framing and bounded headers, requires exactly one valid Host field for HTTP/1.1, and permits HTTP/1.0 clients without Host.
+
+The receiver does not accept request bodies. It rejects Transfer-Encoding and rejects Content-Length unless exactly one ASCII-decimal zero value is supplied. This avoids leaving unconsumed body bytes on the connection. Byte-range requests support a single range and stream from the requested offset; unsupported multipart ranges fall back to a full response. Range support is server-side capability, not proof of automatic receiver-side resume: the current browser download page does not persist offsets or automatically retry interrupted files.
+
+The local HTTP server allows five active file streams and up to seven waiting request workers. Additional requests receive a retryable 429 response. This is a software concurrency limit; actual throughput and stability still depend on both phones, storage, hotspot implementation and radio conditions. Physical multi-phone testing remains required.
 
 ## Transport strategy to evaluate
 
