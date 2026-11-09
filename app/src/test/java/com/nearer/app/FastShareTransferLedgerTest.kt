@@ -57,6 +57,51 @@ class FastShareTransferLedgerTest {
         assertTrue(!active.isQueued)
     }
 
+    @Test fun twelveRequestsShowFiveActiveAndSevenWaitingUntilSlotsOpen() {
+        val gate = FastShareDownloadGate()
+        val ledger = FastShareTransferLedger()
+        val pool = Executors.newFixedThreadPool(12)
+        val allQueued = java.util.concurrent.CountDownLatch(12)
+        val fiveActive = java.util.concurrent.CountDownLatch(5)
+        val releaseTransfers = java.util.concurrent.CountDownLatch(1)
+        val active = java.util.concurrent.atomic.AtomicInteger(0)
+        val peak = java.util.concurrent.atomic.AtomicInteger(0)
+        try {
+            val tasks = (1..12).map { index ->
+                pool.submit {
+                    val id = "receiver-$index"
+                    ledger.update(FastShareActiveTransfer(id, "video.mp4", 0, 1000, 0, index.toLong(), isQueued = true))
+                    allQueued.countDown()
+                    assertTrue(gate.tryAcquire(3, TimeUnit.SECONDS))
+                    try {
+                        ledger.update(FastShareActiveTransfer(id, "video.mp4", 1, 1000, 1, index.toLong()))
+                        val now = active.incrementAndGet()
+                        peak.updateAndGet { previous -> maxOf(previous, now) }
+                        fiveActive.countDown()
+                        assertTrue(releaseTransfers.await(3, TimeUnit.SECONDS))
+                    } finally {
+                        active.decrementAndGet()
+                        ledger.finish(id)
+                        gate.release()
+                    }
+                }
+            }
+            assertTrue(allQueued.await(2, TimeUnit.SECONDS))
+            assertTrue(fiveActive.await(2, TimeUnit.SECONDS))
+            val waitingSnapshot = ledger.snapshot()
+            assertEquals(5, waitingSnapshot.count { !it.isQueued })
+            assertEquals(7, waitingSnapshot.count { it.isQueued })
+            assertEquals(5, peak.get())
+            releaseTransfers.countDown()
+            tasks.forEach { it.get(4, TimeUnit.SECONDS) }
+            assertTrue(ledger.snapshot().isEmpty())
+            assertEquals(0, active.get())
+        } finally {
+            releaseTransfers.countDown()
+            pool.shutdownNow()
+        }
+    }
+
     @Test fun clearRemovesAllActiveTransfers() {
         val ledger = FastShareTransferLedger()
         ledger.update(FastShareActiveTransfer("a", "a.bin", 1, 2, 1, 1))
