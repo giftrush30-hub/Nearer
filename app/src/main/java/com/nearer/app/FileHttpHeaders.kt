@@ -1,9 +1,9 @@
 package com.nearer.app
 
-import java.net.URLEncoder
 
 /** Builds safe HTTP header values for metadata supplied by Android file providers. */
 internal object FileHttpHeaders {
+    private val HEX = "0123456789ABCDEF"
 
     /**
      * Security and cache headers for the private HTML receiver page.
@@ -32,8 +32,30 @@ internal object FileHttpHeaders {
         if (mimeTypePattern.matches(value)) value else "application/octet-stream"
 
     fun contentDisposition(fileName: String): String {
-        val encoded = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        return "Content-Disposition: attachment; filename*=UTF-8''$encoded\r\n"
+        // RFC 6266 recommends an ASCII fallback plus RFC 5987 filename*.
+        // Encode UTF-8 bytes explicitly; form encoding has different rules.
+        val encoded = buildString {
+            fileName.toByteArray(Charsets.UTF_8).forEach { byte ->
+                val value = byte.toInt() and 0xff
+                val allowed = value in 97..122 || value in 65..90 || value in 48..57 ||
+                    value.toChar() in "!#$&+-.^_|~" || value == 96
+                if (allowed) append(value.toChar())
+                else append('%').append(HEX[value ushr 4]).append(HEX[value and 0x0f])
+            }
+        }
+        val fallback = buildString {
+            var index = 0
+            while (index < fileName.length) {
+                val codePoint = fileName.codePointAt(index)
+                index += Character.charCount(codePoint)
+                when {
+                    codePoint in 0x20..0x7e && codePoint != 34 && codePoint != 58 && codePoint != 92 -> append(codePoint.toChar())
+                    codePoint == 34 || codePoint == 92 -> { append('\\'); append(codePoint.toChar()) }
+                    else -> append('_')
+                }
+            }
+        }
+        return "Content-Disposition: attachment; filename=\"$fallback\"; filename*=UTF-8''$encoded\r\n"
     }
 
     /**
