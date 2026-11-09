@@ -5,8 +5,6 @@ import java.net.Socket
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Closes a receiver socket when one of its active writes remains blocked too long.
@@ -21,9 +19,9 @@ internal class SocketWriteStallGuard(
     scheduler: ScheduledExecutorService,
     private val timeoutMillis: Long
 ) : AutoCloseable {
-    private val armed = AtomicBoolean(false)
-    private val timedOut = AtomicBoolean(false)
-    private val lastSuccessfulWriteNanos = AtomicLong(0L)
+    private var armed = false
+    private var timedOut = false
+    private var lastSuccessfulWriteNanos = 0L
     private val watchdog: ScheduledFuture<*>?
 
     init {
@@ -63,30 +61,43 @@ internal class SocketWriteStallGuard(
         }
     }
 
+    @Synchronized
     fun arm() {
-        if (!timedOut.get()) {
-            lastSuccessfulWriteNanos.set(System.nanoTime())
-            armed.set(true)
+        if (!timedOut) {
+            lastSuccessfulWriteNanos = System.nanoTime()
+            armed = true
         }
     }
 
+    @Synchronized
     fun disarm() {
-        armed.set(false)
+        armed = false
     }
 
+    @Synchronized
     private fun markWriteCompleted() {
-        if (armed.get()) lastSuccessfulWriteNanos.set(System.nanoTime())
+        if (armed && !timedOut) lastSuccessfulWriteNanos = System.nanoTime()
     }
 
     private fun checkForStall() {
-        if (!armed.get() || timedOut.get()) return
-        val idleNanos = System.nanoTime() - lastSuccessfulWriteNanos.get()
-        if (idleNanos >= TimeUnit.MILLISECONDS.toNanos(timeoutMillis) &&
-            timedOut.compareAndSet(false, true)
-        ) {
-            armed.set(false)
-            runCatching { socket.close() }
+        // Claim the timeout under the same monitor used by disarm(). This
+        // prevents a watchdog that observed an old armed state from closing
+        // a socket after the transfer has already released its slot.
+        val shouldClose = synchronized(this) {
+            if (!armed || timedOut) {
+                false
+            } else {
+                val idleNanos = System.nanoTime() - lastSuccessfulWriteNanos
+                if (idleNanos >= TimeUnit.MILLISECONDS.toNanos(timeoutMillis)) {
+                    timedOut = true
+                    armed = false
+                    true
+                } else {
+                    false
+                }
+            }
         }
+        if (shouldClose) runCatching { socket.close() }
     }
 
     override fun close() {
