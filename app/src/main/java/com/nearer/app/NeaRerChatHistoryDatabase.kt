@@ -21,7 +21,13 @@ import org.json.JSONObject
 internal class NeaRerChatHistoryDatabase(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "nearer_chat_history.db", null, 1) {
 
-    companion object {\n        private const val MAX_BACKUP_MESSAGES = 1_000_000\n        private const val MAX_BACKUP_RECORD_CHARS = 8 * 1024 * 1024\n        private const val MAX_BACKUP_BODY_CHARS = 4 * 1024 * 1024\n    }\n\n    override fun onCreate(db: SQLiteDatabase) {
+    companion object {
+        private const val MAX_BACKUP_MESSAGES = 1_000_000
+        private const val MAX_BACKUP_RECORD_CHARS = 8 * 1024 * 1024
+        private const val MAX_BACKUP_BODY_CHARS = 4 * 1024 * 1024
+    }
+
+    override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             """
             CREATE TABLE messages (
