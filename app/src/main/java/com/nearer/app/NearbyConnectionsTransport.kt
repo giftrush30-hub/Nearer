@@ -420,6 +420,12 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
 
     fun localIdentityId(): String = localStableId
 
+    fun stableIdentityForEndpoint(endpointId: String): String =
+        synchronized(names) { stableIds[endpointId].orEmpty() }
+
+    fun displayNameForEndpoint(endpointId: String): String =
+        synchronized(names) { names[endpointId].orEmpty() }
+
     fun setDisplayName(name: String) {
         val clean = name.trim().replace("|", " ").take(23).ifBlank { "NeaRer User" }
         if (clean == localName) return
