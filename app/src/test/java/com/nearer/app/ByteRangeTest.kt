@@ -89,6 +89,17 @@ class ByteRangeTest {
         assertEquals(ResolvedByteRange(90, 99, true), ByteRange.resolve("bytes=90-9223372036854775807", 100))
     }
 
+    @Test fun signedRangePositionsAreRejected() {
+        assertNull(ByteRange.resolve("bytes=+5-9", 100))
+        assertNull(ByteRange.resolve("bytes=-+10", 100))
+        assertNull(ByteRange.resolve("bytes=5-+9", 100))
+    }
+
+    @Test fun nonAsciiDigitsAreRejectedInRangePositions() {
+        assertNull(ByteRange.resolve("bytes=５-９", 100))
+        assertNull(ByteRange.resolve("bytes=-١٠", 100))
+    }
+
     @Test fun whitespaceAroundRangeBoundsIsAccepted() {
         assertEquals(ResolvedByteRange(10, 20, true), ByteRange.resolve("bytes= 10 - 20 ", 100))
     }
