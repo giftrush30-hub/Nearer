@@ -21,6 +21,72 @@ internal object NeaRerBackupSnapshot {
         val includesProfilePhoto: Boolean
     )
 
+    data class Preview(
+        val chatMessages: Long,
+        val receivedFiles: Int,
+        val receivedBytes: Long,
+        val displayName: String,
+        val includesProfilePhoto: Boolean
+    )
+
+    /** Validates the portable snapshot structure and returns safe restore-preview data. */
+    @Throws(IOException::class)
+    fun inspect(snapshotDirectory: File): Preview {
+        if (!snapshotDirectory.isDirectory) throw IOException("Backup snapshot folder is missing")
+        val root = snapshotDirectory.canonicalFile
+        val profileFile = File(root, "profile.json")
+        if (!profileFile.isFile || profileFile.length() > MAX_PROFILE_BYTES) {
+            throw IOException("Backup profile information is missing or too large")
+        }
+        val profile = try { JSONObject(profileFile.readText(Charsets.UTF_8)) }
+            catch (failure: Exception) { throw IOException("Backup profile information is invalid", failure) }
+        if (profile.optString("format") != "NeaRerLocalSnapshot" || profile.optInt("version") != 1) {
+            throw IOException("Backup profile version is not supported")
+        }
+        val displayName = profile.optString("display_name", "NeaRer User").take(24)
+        if (displayName.isBlank()) throw IOException("Backup profile name is invalid")
+        val photo = File(root, "profile/profile-photo.jpg")
+        val hasPhoto = profile.optBoolean("hasProfilePhoto", false)
+        if (hasPhoto != photo.isFile || photo.length() > MAX_PROFILE_PHOTO_BYTES) {
+            throw IOException("Backup profile photo is missing or invalid")
+        }
+        val chatFile = File(root, "chats/messages.jsonl")
+        if (!chatFile.isFile || chatFile.length() > MAX_CHAT_ARCHIVE_BYTES) {
+            throw IOException("Backup chat archive is missing or too large")
+        }
+        var chatCount = 0L
+        chatFile.bufferedReader(Charsets.UTF_8).useLines { lines ->
+            lines.forEach { line ->
+                if (line.isBlank() || line.length > MAX_CHAT_RECORD_CHARS) throw IOException("Backup chat record is invalid")
+                try {
+                    val item = JSONObject(line)
+                    if (item.optString("id").isBlank() || !item.has("timestamp") || !item.has("outgoing")) {
+                        throw IOException("Backup chat record is incomplete")
+                    }
+                } catch (failure: IOException) { throw failure }
+                catch (failure: Exception) { throw IOException("Backup chat record is invalid", failure) }
+                chatCount++
+                if (chatCount > MAX_CHAT_MESSAGES) throw IOException("Backup contains too many chat messages")
+            }
+        }
+        val received = File(root, "received")
+        if (!received.isDirectory) throw IOException("Backup received-files folder is missing")
+        var receivedCount = 0
+        var receivedBytes = 0L
+        val receivedItems = received.listFiles() ?: throw IOException("Could not inspect received files")
+        receivedItems.forEach { item ->
+            if (!item.isFile || !item.canonicalPath.startsWith(received.canonicalPath + File.separator)) {
+                throw IOException("Backup contains an unsafe received-file entry")
+            }
+            receivedBytes += item.length()
+            if (item.length() > MAX_RECEIVED_FILE_BYTES || receivedBytes > MAX_RECEIVED_TOTAL_BYTES) {
+                throw IOException("Backup received files exceed supported limits")
+            }
+            receivedCount++
+        }
+        return Preview(chatCount, receivedCount, receivedBytes, displayName, hasPhoto)
+    }
+
     private val profileStringKeys = setOf(
         "display_name",
         "profile_avatar_id",
@@ -129,6 +195,11 @@ internal object NeaRerBackupSnapshot {
     }
 
     private const val BUFFER_BYTES = 64 * 1024
+    private const val MAX_PROFILE_BYTES = 1024 * 1024L
+    private const val MAX_PROFILE_PHOTO_BYTES = 5L * 1024L * 1024L
+    private const val MAX_CHAT_ARCHIVE_BYTES = 64L * 1024L * 1024L
+    private const val MAX_CHAT_RECORD_CHARS = 2 * 1024 * 1024
+    private const val MAX_CHAT_MESSAGES = 200_000L
     private const val MAX_RECEIVED_FILE_BYTES = 512L * 1024L * 1024L
     private const val MAX_RECEIVED_TOTAL_BYTES = 2L * 1024L * 1024L * 1024L
 }
