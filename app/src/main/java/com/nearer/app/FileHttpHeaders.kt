@@ -10,7 +10,7 @@ internal object FileHttpHeaders {
      * The page intentionally permits its embedded stylesheet but no scripts,
      * external resources, forms, framing, or privileged browser capabilities.
      */
-    fun receiverPageHeaders(contentLength: Long): List<Pair<String, String>> {
+    fun receiverPageHeaders(contentLength: Long, scriptNonce: String): List<Pair<String, String>> {
         require(contentLength >= 0L) { "Content length must be non-negative" }
         return listOf(
             "Content-Type" to "text/html; charset=utf-8",
@@ -20,7 +20,7 @@ internal object FileHttpHeaders {
             "X-Content-Type-Options" to "nosniff",
             "Referrer-Policy" to "no-referrer",
             "X-Frame-Options" to "DENY",
-            "Content-Security-Policy" to "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            "Content-Security-Policy" to "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-$scriptNonce'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             "Permissions-Policy" to "camera=(), microphone=(), geolocation=()",
             "Connection" to "close"
         )
