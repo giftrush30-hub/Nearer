@@ -345,8 +345,38 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     listener.onFileStatus("A nearby phone sent invalid file information. The transfer was ignored.")
                     return
                 }
-                incomingMetadata[payloadId] = FileMeta(endpointId, name, size, sha256)
-                incomingPeerIds[payloadId] = synchronized(names) { stableIds[endpointId].orEmpty() }
+                val incomingPeerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                val previousPeerId = incomingPeerIds[payloadId].orEmpty()
+                if (previousPeerId.isNotBlank() && incomingPeerId.isNotBlank() && previousPeerId != incomingPeerId) {
+                    listener.onFileStatus("A different nearby phone tried to replace this file's transfer details. The update was rejected.")
+                    return
+                }
+                val existing = incomingMetadata[payloadId]
+                val existingIdentity = existing?.let {
+                    IncomingFileMetadataIdentity(
+                        endpointId = it.endpointId,
+                        peerId = previousPeerId,
+                        name = it.name,
+                        size = it.size,
+                        sha256 = it.sha256
+                    )
+                }
+                val proposedIdentity = IncomingFileMetadataIdentity(
+                    endpointId = endpointId,
+                    peerId = incomingPeerId,
+                    name = name,
+                    size = size,
+                    sha256 = sha256
+                )
+                if (!IncomingFileMetadataPolicy.canAccept(existingIdentity, proposedIdentity)) {
+                    listener.onFileStatus("Conflicting file details were received for this transfer. The update was rejected.")
+                    return
+                }
+                val acceptedHash = sha256.ifBlank { existing?.sha256.orEmpty() }
+                incomingMetadata[payloadId] = FileMeta(endpointId, name, size, acceptedHash)
+                if (incomingPeerId.isNotBlank() || previousPeerId.isBlank()) {
+                    incomingPeerIds[payloadId] = incomingPeerId
+                }
                 listener.onFileProgress(endpointId, payloadId, name, 0L, size, true)
                 processCompletedFile(payloadId)
                 return
