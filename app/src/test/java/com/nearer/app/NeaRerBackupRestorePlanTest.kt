@@ -30,7 +30,9 @@ class NeaRerBackupRestorePlanTest {
                     .toString()
             )
 
-            val plan = NeaRerBackupRestorePlan.fromPreparedRestore(\n                NeaRerBackupManager.PreparedRestore(root, NeaRerBackupSnapshot.inspect(root))\n            )
+            val plan = NeaRerBackupRestorePlan.fromPreparedRestore(
+                NeaRerBackupManager.PreparedRestore(root, NeaRerBackupSnapshot.inspect(root))
+            )
 
             assertEquals("Ada", plan.portablePreferences["display_name"])
             assertEquals("orbit", plan.portablePreferences["profile_avatar_id"])
@@ -65,7 +67,9 @@ class NeaRerBackupRestorePlanTest {
                     .toString()
             )
 
-            val plan = NeaRerBackupRestorePlan.fromPreparedRestore(\n                NeaRerBackupManager.PreparedRestore(root, NeaRerBackupSnapshot.inspect(root))\n            )
+            val plan = NeaRerBackupRestorePlan.fromPreparedRestore(
+                NeaRerBackupManager.PreparedRestore(root, NeaRerBackupSnapshot.inspect(root))
+            )
 
             assertEquals(setOf("display_name"), plan.portablePreferences.keys)
             assertFalse(plan.portablePreferences.containsKey("mesh_relay_enabled"))
