@@ -106,3 +106,17 @@ preferences, profile media or received files. The live-data transaction and
 rollback coordinator, app-state refresh/restart, user-facing backup controls,
 and device testing remain outstanding. A UI must not present this as a
 completed restore feature until those steps are implemented and tested.
+
+
+## Backup source-path containment hardening (2026-11-10)
+
+Snapshot creation now checks canonical paths for both profile photos and received
+files. In particular, the `files/received` directory itself must resolve beneath
+NeaRer's canonical app-private files directory before any of its contents are
+copied. Checking only each child relative to the resolved received directory
+would be insufficient if that directory had been redirected through a symlink.
+
+The canonical containment check is extracted into
+`NeaRerBackupPathSafety` and has unit coverage for a normal in-root file and
+an escaping symbolic link. These tests are authored but have not been run in a
+Gradle build.
