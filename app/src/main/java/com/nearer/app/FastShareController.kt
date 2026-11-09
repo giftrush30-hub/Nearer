@@ -612,7 +612,7 @@ private class FastShareHttpServer(
     private fun streamAllFiles(output: BufferedOutputStream, headOnly: Boolean, transferId: String) {
         val archiveName = "NeaRer-Files.zip"
         val totalBytes = knownArchiveSize()
-        output.write("HTTP/1.1 200 OK\\r\\n".toByteArray())
+        output.write("HTTP/1.1 200 OK\r\n".toByteArray())
         output.write(FileHttpHeaders.archiveHeaders(archiveName).toByteArray())
         if (headOnly) return
 
