@@ -16,6 +16,7 @@ import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.net.Uri
+import android.graphics.BitmapFactory
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import android.os.Build
@@ -87,6 +88,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
@@ -529,6 +531,8 @@ class MainActivity : ComponentActivity() {
                     hybridPeers = hybridPeers.toMap(),
                     recentlySeenPeers = recentlySeenPeers.toMap(),
                     displayName = displayName,
+                    profileAvatarId = profileAvatarId,
+                    profilePhotoPath = profilePhotoPath,
                     nearbyIdentityId = nearbyTransport?.localIdentityId().orEmpty(),
                     onSaveDisplayName = ::saveDisplayName,
                     meshRelayEnabled = meshRelayEnabled,
@@ -2330,6 +2334,8 @@ private fun NeaRerHome(
     hybridPeers: Map<String, String>,
     recentlySeenPeers: Map<String, NearbyPerson>,
     displayName: String,
+    profileAvatarId: String,
+    profilePhotoPath: String?,
     nearbyIdentityId: String,
     onSaveDisplayName: (String) -> Unit,
     meshRelayEnabled: Boolean,
@@ -2344,6 +2350,8 @@ private fun NeaRerHome(
     var selectedTab by remember { mutableStateOf("Chats") }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
+    val profileBitmap = remember(profilePhotoPath) { profilePhotoPath?.let { path -> runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull() } }
+    val profileGlyph = when (profileAvatarId) { "aurora" -> "✦"; "spark" -> "✧"; "wave" -> "≈"; "sun" -> "☼"; "bloom" -> "❋"; "leaf" -> "❧"; "star" -> "✴"; else -> "◉" }
     val fastShare = remember(context) { FastShareController(context) }
     val unifiedTransferHistory = remember(transferHistory, fastShare.history) {
         (transferHistory.map { UnifiedTransferHistoryEntry(it.direction, it.fileName, it.bytes, it.status, it.timestamp, "Nearby") } +
@@ -2924,6 +2932,22 @@ private fun NeaRerHome(
             }
 
             if (selectedTab == "More") {
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        if (profileBitmap != null) {
+                            androidx.compose.foundation.Image(profileBitmap, contentDescription = "Your profile photo", modifier = Modifier.size(66.dp).clip(CircleShape))
+                        } else {
+                            Surface(modifier = Modifier.size(66.dp), shape = CircleShape, color = BlueAccent.copy(alpha = 0.2f)) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(profileGlyph, color = Gold, fontSize = 30.sp) }
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("YOUR NEARER PROFILE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                            Text(displayName, color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Text("ID  $nearbyIdentityId", color = Muted, fontSize = 11.sp)
+                        }
+                    }
+                }
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
                     Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("YOUR NEARER", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
