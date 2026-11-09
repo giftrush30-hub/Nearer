@@ -19,6 +19,7 @@ internal data class NeaRerBackupRestorePlan(
     val onboardingComplete: Boolean,
     val portablePreferences: Map<String, String>,
     val profilePhoto: File?,
+    val chatArchive: File,
     val receivedFiles: List<File>,
     val excludedDeviceState: List<String>
 ) {
@@ -71,6 +72,12 @@ internal data class NeaRerBackupRestorePlan(
                 }
             }
 
+            val chatArchive = File(root, "chats/messages.jsonl").also {
+                if (!it.isFile || !NeaRerBackupPathSafety.isContained(root, it)) {
+                    throw IOException("Staged chat archive is missing or unsafe")
+                }
+            }
+
             val photo = if (preview.includesProfilePhoto) {
                 File(root, "profile/profile-photo.jpg").also {
                     if (!it.isFile || !NeaRerBackupPathSafety.isContained(root, it)) {
@@ -98,6 +105,7 @@ internal data class NeaRerBackupRestorePlan(
                 onboardingComplete = profile.optBoolean("onboardingComplete", false),
                 portablePreferences = values.toMap(),
                 profilePhoto = photo,
+                chatArchive = chatArchive,
                 receivedFiles = received,
                 excludedDeviceState = exclusions.toList()
             )
