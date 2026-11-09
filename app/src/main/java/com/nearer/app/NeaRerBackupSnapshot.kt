@@ -224,8 +224,7 @@ internal object NeaRerBackupSnapshot {
             val photoPath = prefs.getString("profile_photo_path", null)
             val appRoot = context.filesDir.canonicalFile
             val photo = photoPath?.let(::File)?.takeIf { candidate ->
-                candidate.isFile && candidate.canRead() &&
-                    candidate.canonicalPath.startsWith(appRoot.path + File.separator)
+                candidate.isFile && candidate.canRead() && isContained(appRoot, candidate)
             }
             val profileDirectory = File(destination, "profile")
             if (!profileDirectory.mkdirs()) throw IOException("Could not create profile snapshot folder")
@@ -246,6 +245,12 @@ internal object NeaRerBackupSnapshot {
             var fileCount = 0
             var totalBytes = 0L
             if (receivedSource.exists()) {
+                // The received directory itself must remain inside app-private storage.
+                // Checking only its children against its canonical target would allow a
+                // redirected "received" symlink to make a backup copy unrelated files.
+                if (!isContained(appRoot, receivedSource)) {
+                    throw IOException("Received-files folder resolves outside NeaRer storage")
+                }
                 val root = receivedSource.canonicalFile
                 val items = receivedSource.listFiles() ?: throw IOException("Could not list received files")
                 items.filter { it.isFile }.forEach { source ->
