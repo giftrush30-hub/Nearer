@@ -332,6 +332,7 @@ private class FastShareHttpServer(
     )
     @Volatile private var running = true
     private val downloadGate = FastShareDownloadGate()
+    private val uploadPublishLock = Any()
     private val clients = FastShareSocketRegistry()
     private val writeWatchdog = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "NeaRer-FastShare-WriteWatchdog").apply { isDaemon = true }
@@ -549,16 +550,18 @@ private class FastShareHttpServer(
                 }
                 sink.fd.sync()
             }
-            var destination = File(directory, safeName)
-            var suffix = 2
-            val extension = safeName.substringAfterLast('.', "").takeIf { it.isNotEmpty() }
-            val stem = if (extension == null) safeName else safeName.removeSuffix(".$extension")
-            while (destination.exists()) {
-                destination = File(directory, if (extension == null) "$stem ($suffix)" else "$stem ($suffix).$extension")
-                suffix++
+            synchronized(uploadPublishLock) {
+                var destination = File(directory, safeName)
+                var suffix = 2
+                val extension = safeName.substringAfterLast('.', "").takeIf { it.isNotEmpty() }
+                val stem = if (extension == null) safeName else safeName.removeSuffix(".$extension")
+                while (destination.exists()) {
+                    destination = File(directory, if (extension == null) "$stem ($suffix)" else "$stem ($suffix).$extension")
+                    suffix++
+                }
+                if (!temporary.renameTo(destination)) throw java.io.IOException("Could not publish file")
+                published = true
             }
-            if (!temporary.renameTo(destination)) throw java.io.IOException("Could not publish file")
-            published = true
             val body = "File received by NeaRer".toByteArray(Charsets.UTF_8)
             output.write(FastShareHttpWire.responseHead("HTTP/1.1 201 Created", listOf(
                 "Content-Type" to "text/plain; charset=utf-8",
