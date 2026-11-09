@@ -74,13 +74,18 @@ internal object FastShareArchiveWriter {
                     if (!shouldContinue()) throw InterruptedIOException("Archive transfer cancelled.")
                     val count = input.read(buffer)
                     if (count < 0) break
-                    if (count == 0) continue
-                    if (item.expectedBytes >= 0L && itemCopied > item.expectedBytes - count) {
+                    val bytesRead = if (count == 0) {
+                        val single = input.read()
+                        if (single < 0) break
+                        buffer[0] = single.toByte()
+                        1
+                    } else count
+                    if (item.expectedBytes >= 0L && itemCopied > item.expectedBytes - bytesRead) {
                         throw IllegalStateException("Source file grew while the archive was being prepared.")
                     }
-                    zip.write(buffer, 0, count)
-                    itemCopied += count
-                    totalCopied += count
+                    zip.write(buffer, 0, bytesRead)
+                    itemCopied += bytesRead
+                    totalCopied += bytesRead
                     onBytesCopied(totalCopied)
                 }
             }
