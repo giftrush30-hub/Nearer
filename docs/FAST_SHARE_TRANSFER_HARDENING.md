@@ -20,7 +20,7 @@
 - Request parsing bounds request-line length, individual header length, aggregate header bytes, and header count.
 - HTTP/1.1 requires one valid Host header. Duplicate Host, Content-Length, Range, filename, or MIME headers are rejected.
 - Transfer-Encoding is rejected because this endpoint only accepts a fixed Content-Length body; malformed, negative, overflowing, missing, and duplicate upload lengths fail closed.
-- Upload requests require a filename and a Content-Length. Zero-byte uploads are valid; ordinary GET/HEAD routes reject non-zero request bodies.
+- Upload requests require a filename and a Content-Length. Zero-byte uploads are valid; ordinary GET/HEAD routes reject non-zero request bodies. Upload requests also reject range and If-Range headers because partial POST bodies are not supported.
 - Header parsing rejects bare-LF line endings, embedded carriage returns, control characters, invalid header names, and oversized input.
 
 ## Limits and verification boundary

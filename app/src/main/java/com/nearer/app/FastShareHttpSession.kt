@@ -115,7 +115,7 @@ internal object FastShareHttpSession {
             return null
         }
         if (request.isUpload) {
-            if (!sawContentLengthHeader || uploadFileName.isNullOrBlank() || rangeHeader != null) return rejectBadRequest(output)
+            if (!sawContentLengthHeader || uploadFileName.isNullOrBlank() || rangeHeader != null || ifRangeHeader != null) return rejectBadRequest(output)
         } else if (contentLength != 0L || uploadFileName != null) {
             return rejectBadRequest(output)
         }
