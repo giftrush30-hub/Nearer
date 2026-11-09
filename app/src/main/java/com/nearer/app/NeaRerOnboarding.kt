@@ -98,9 +98,9 @@ internal fun NeaRerOnboarding(
             context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
         }.getOrNull() }
     }
-    val pages = listOf("Your name", "A little about you", "Choose your look", "Your NeaRer ID")
+    val pages = listOf("Welcome", "Your name", "A little about you", "Choose your look", "Your NeaRer ID")
     val cleanName = displayName.trim().replace(Regex("\\s+"), " ").take(24)
-    val canContinue = page != 0 || cleanName.isNotBlank()
+    val canContinue = page != 1 || cleanName.isNotBlank()
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF0C1728)) {
         Column(
@@ -121,13 +121,14 @@ internal fun NeaRerOnboarding(
                 }
             }
             Spacer(Modifier.height(26.dp))
-            Text("STEP ${page + 1} OF 4", color = Color(0xFFFFD12D), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+            Text("STEP ${page + 1} OF 5", color = Color(0xFFFFD12D), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
             Spacer(Modifier.height(9.dp))
             Text(
                 when (page) {
-                    0 -> "What should we call you?"
-                    1 -> "A little about you."
-                    2 -> "Make it yours."
+                    0 -> "Closer begins here."
+                    1 -> "What should we call you?"
+                    2 -> "A little about you."
+                    3 -> "Make it yours."
                     else -> "Your identity is ready."
                 },
                 color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center
@@ -135,9 +136,10 @@ internal fun NeaRerOnboarding(
             Spacer(Modifier.height(8.dp))
             Text(
                 when (page) {
-                    0 -> "Choose the name people will see around NeaRer."
-                    1 -> "These optional answers help shape a more welcoming experience."
-                    2 -> "Choose an avatar, add a photo, or skip for now."
+                    0 -> "A closer way to chat, share and belong — even when mobile data is unavailable."
+                    1 -> "Choose the name people will see around NeaRer."
+                    2 -> "These optional answers help shape a more welcoming experience."
+                    3 -> "Choose an avatar, add a photo, or skip for now."
                     else -> "This is your permanent public NeaRer ID. Keep it safe."
                 },
                 color = Color(0xFFAAB9CC), fontSize = 14.sp, textAlign = TextAlign.Center, lineHeight = 21.sp
@@ -146,6 +148,19 @@ internal fun NeaRerOnboarding(
 
             when (page) {
                 0 -> {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color(0xFF142A45)).padding(vertical = 30.dp, horizontal = 20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("✦", color = Color(0xFFFFD12D), fontSize = 56.sp)
+                            Text("NeaRer", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("No data? We are NeaRer.", color = Color(0xFFFFD12D), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Your people. Your space. Your way to stay connected.", color = Color(0xFFB9CBE1), fontSize = 13.sp, textAlign = TextAlign.Center, lineHeight = 20.sp)
+                        }
+                    }
+                }
+                1 -> {
                     OutlinedTextField(
                         value = displayName,
                         onValueChange = { displayName = it.take(40) },
@@ -158,7 +173,7 @@ internal fun NeaRerOnboarding(
                     Spacer(Modifier.height(12.dp))
                     Text("You can change this whenever you like. No phone number or email needed.", color = Color(0xFF8195AF), fontSize = 12.sp, textAlign = TextAlign.Center)
                 }
-                1 -> {
+                2 -> {
                     NeaRerOnboardingQuestions.forEach { question ->
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 17.dp),
@@ -182,7 +197,7 @@ internal fun NeaRerOnboarding(
                     }
                     Text("Every question is optional. You can skip this whole step.", color = Color(0xFF8195AF), fontSize = 12.sp)
                 }
-                2 -> {
+                3 -> {
                     if (photoBitmap != null) {
                         Image(photoBitmap.asImageBitmap(), contentDescription = "Selected profile photo", modifier = Modifier.size(112.dp).clip(CircleShape))
                         Spacer(Modifier.height(10.dp))
@@ -259,7 +274,7 @@ internal fun NeaRerOnboarding(
                 }
                 Button(
                     onClick = {
-                        if (page < 3) page += 1
+                        if (page < 4) page += 1
                         else onComplete(cleanName, avatarId, photoUri, answers.toMap())
                     },
                     enabled = canContinue,
@@ -270,11 +285,11 @@ internal fun NeaRerOnboarding(
                     Text(if (page == 3) "Enter NeaRer" else "Continue", fontWeight = FontWeight.Bold)
                 }
             }
-            if (page == 1) {
-                Text("Skip questions", modifier = Modifier.padding(top = 14.dp).clickable { page = 2 }, color = Color(0xFFB8C8DD), fontSize = 13.sp)
-            }
             if (page == 2) {
-                Text("Skip for now", modifier = Modifier.padding(top = 14.dp).clickable { photoUri = null; page = 3 }, color = Color(0xFFB8C8DD), fontSize = 13.sp)
+                Text("Skip questions", modifier = Modifier.padding(top = 14.dp).clickable { page = 3 }, color = Color(0xFFB8C8DD), fontSize = 13.sp)
+            }
+            if (page == 3) {
+                Text("Skip for now", modifier = Modifier.padding(top = 14.dp).clickable { photoUri = null; page = 4 }, color = Color(0xFFB8C8DD), fontSize = 13.sp)
             }
             Spacer(Modifier.height(20.dp))
             Text("No data required to create your local identity.", color = Color(0xFF71849E), fontSize = 11.sp, textAlign = TextAlign.Center)
