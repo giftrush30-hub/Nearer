@@ -44,4 +44,27 @@ class FastShareDownloadGateTest {
     fun negativeWaitIsRejected() {
         FastShareDownloadGate().tryAcquire(-1, TimeUnit.MILLISECONDS)
     }
+    @Test fun interruptedWaiterDoesNotConsumeTheActiveTransferPermit() {
+        val gate = FastShareDownloadGate()
+        assertTrue(gate.tryAcquire(0, TimeUnit.MILLISECONDS))
+        val interrupted = java.util.concurrent.CountDownLatch(1)
+        val worker = Thread {
+            try {
+                gate.tryAcquire(5, TimeUnit.SECONDS)
+            } catch (_: InterruptedException) {
+                interrupted.countDown()
+            }
+        }
+        worker.start()
+        worker.interrupt()
+
+        assertTrue("Waiting request should respond to interruption", interrupted.await(1, TimeUnit.SECONDS))
+        worker.join(1000)
+        assertFalse(worker.isAlive)
+        assertFalse("Interrupted waiter must not release or steal the permit", gate.tryAcquire(0, TimeUnit.MILLISECONDS))
+        gate.release()
+        assertTrue(gate.tryAcquire(0, TimeUnit.MILLISECONDS))
+        gate.release()
+    }
+
 }
