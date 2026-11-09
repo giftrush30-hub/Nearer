@@ -10,7 +10,8 @@ internal data class FastShareHttpExchange(
     val rangeHeader: String?,
     val contentLength: Long = 0L,
     val uploadFileName: String? = null,
-    val uploadMimeType: String? = null
+    val uploadMimeType: String? = null,
+    val ifRangeHeader: String? = null
 )
 
 /**
@@ -32,6 +33,8 @@ internal object FastShareHttpSession {
             ?: return rejectBadRequest(output)
         var rangeHeader: String? = null
         var sawRangeHeader = false
+        var ifRangeHeader: String? = null
+        var sawIfRangeHeader = false
         var sawHostHeader = false
         var sawContentLengthHeader = false
         var contentLength = 0L
@@ -96,6 +99,11 @@ internal object FastShareHttpSession {
                 sawRangeHeader = true
                 rangeHeader = headerValue.trim()
             }
+            if (name.equals("If-Range", ignoreCase = true)) {
+                if (sawIfRangeHeader) return rejectBadRequest(output)
+                sawIfRangeHeader = true
+                ifRangeHeader = headerValue.trim()
+            }
         }
         // HTTP/1.1 requires exactly one Host field. HTTP/1.0 remains compatible
         // with clients that omit it. Validate headers before dispatching even
@@ -118,7 +126,14 @@ internal object FastShareHttpSession {
         }
 
         // RFC byte ranges modify GET responses; HEAD must describe the full representation.
-        return FastShareHttpExchange(request, if (request.isHeadOnly) null else rangeHeader, contentLength, uploadFileName, uploadMimeType)
+        return FastShareHttpExchange(
+            request,
+            if (request.isHeadOnly || ifRangeHeader != null) null else rangeHeader,
+            contentLength,
+            uploadFileName,
+            uploadMimeType,
+            ifRangeHeader
+        )
     }
 
     private fun isValidHostAuthority(value: String): Boolean =
