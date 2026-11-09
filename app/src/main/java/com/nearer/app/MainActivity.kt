@@ -2266,7 +2266,7 @@ private fun NeaRerHome(
 ) {
     val context = LocalContext.current
     var draft by remember { mutableStateOf("") }
-    var selectedTab by remember { mutableStateOf("Home") }
+    var selectedTab by remember { mutableStateOf("Chats") }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val fastShare = remember(context) { FastShareController(context) }
@@ -2689,6 +2689,12 @@ private fun NeaRerHome(
                         Text(if (usingNearbyConnections) "Nearby Connections • no fixed file-size cap" else "Wi-Fi Direct • no fixed file-size cap", color = Muted, fontSize = 10.sp)
                     } else {
                         Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        Button(
+                            onClick = { selectedTab = "Nearby"; onFindNearby() },
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                        ) { Text("Find people nearby", fontWeight = FontWeight.Bold) }
                     }
                 }
             }
@@ -2893,7 +2899,7 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Home" to "⌂", "Files" to "▦", "Nearby" to "⌖", "Chats" to "▤", "Groups" to "◎", "More" to "•••").forEach { item ->
+                    listOf("Chats" to "▤", "Files" to "⇧", "Groups" to "♟").forEach { item ->
                         val selected = selectedTab == item.first
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
@@ -2906,7 +2912,7 @@ private fun NeaRerHome(
                                 verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
                                 Text(item.second, color = if (selected) BlueAccent else Muted, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text(item.first, color = if (selected) BlueAccent else Muted, fontSize = 8.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                Text(when (item.first) { "Files" -> "Share"; "Groups" -> "Games"; else -> "Chats" }, color = if (selected) BlueAccent else Muted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
                                 Surface(
                                     modifier = Modifier.width(16.dp).height(2.dp),
                                     shape = RoundedCornerShape(2.dp),
