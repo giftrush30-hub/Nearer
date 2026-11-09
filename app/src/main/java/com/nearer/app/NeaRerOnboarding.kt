@@ -45,6 +45,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -117,6 +119,7 @@ internal fun NeaRerOnboarding(
     onComplete: (String, String, Uri?, Map<String, String>) -> Unit
 ) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     var page by remember { mutableStateOf(0) }
     var displayName by remember { mutableStateOf("") }
     var avatarId by remember { mutableStateOf("orbit") }
@@ -288,6 +291,12 @@ internal fun NeaRerOnboarding(
                     }
                     Spacer(Modifier.height(14.dp))
                     Text("Your ID helps people find and recognise you nearby. It is not a password or a recovery key.", color = Color(0xFF8195AF), fontSize = 12.sp, textAlign = TextAlign.Center, lineHeight = 18.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = { clipboard.setText(AnnotatedString(publicId)) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF244B78)),
+                        shape = RoundedCornerShape(14.dp)
+                    ) { Text("Copy my NeaRer ID") }
                 }
             }
 
