@@ -2321,7 +2321,7 @@ private fun NeaRerHome(
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Files") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 22.dp, vertical = 22.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 22.dp, vertical = 22.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
             Row(
@@ -2521,7 +2521,7 @@ private fun NeaRerHome(
                 }
             }
 
-            if (selectedTab == "Files") {
+            if (selectedTab == "Share") {
                 FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, modifier = Modifier.weight(1f))
             }
 
@@ -2701,7 +2701,7 @@ private fun NeaRerHome(
 
             }
 
-            if (selectedTab == "Groups") {
+            if (selectedTab == "Games") {
             CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
                 activeGame, gameChatMessages, (usingNearbyConnections || chatReady), onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
@@ -2899,7 +2899,7 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Chats" to "▤", "Files" to "⇧", "Groups" to "♟").forEach { item ->
+                    listOf("Chats" to "▤", "Share" to "⇧", "Games" to "♟").forEach { item ->
                         val selected = selectedTab == item.first
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
@@ -2912,7 +2912,7 @@ private fun NeaRerHome(
                                 verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
                                 Text(item.second, color = if (selected) BlueAccent else Muted, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text(when (item.first) { "Files" -> "Share"; "Groups" -> "Games"; else -> "Chats" }, color = if (selected) BlueAccent else Muted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                Text(item.first, color = if (selected) BlueAccent else Muted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
                                 Surface(
                                     modifier = Modifier.width(16.dp).height(2.dp),
                                     shape = RoundedCornerShape(2.dp),
