@@ -60,20 +60,20 @@ class FastShareHttpSessionTest {
 
     @Test fun ifRangeValidatorForcesSafeFullDownloadWhenServerHasNoValidators() {
         val (exchange, response) = read(
-            "GET /download HTTP/1.1\\r\\nRange: bytes=500-\\r\\nIf-Range: \\"stale-validator\\"\\r\\n\\r\\n"
+            "GET /download HTTP/1.1\r\nRange: bytes=500-\r\nIf-Range: \"stale-validator\"\r\n\r\n"
         )
         assertNotNull(exchange)
         assertNull(exchange!!.rangeHeader)
-        assertEquals("\\"stale-validator\\"", exchange.ifRangeHeader)
+        assertEquals("\"stale-validator\"", exchange.ifRangeHeader)
         assertTrue(response.isEmpty())
     }
 
     @Test fun duplicateIfRangeHeadersAreRejectedEvenWhenFirstValueIsEmpty() {
         val (exchange, response) = read(
-            "GET /download HTTP/1.1\\r\\nIf-Range:\\r\\nif-range: \\"validator\\"\\r\\n\\r\\n"
+            "GET /download HTTP/1.1\r\nIf-Range:\r\nif-range: \"validator\"\r\n\r\n"
         )
         assertNull(exchange)
-        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
     @Test fun unsupportedMethodWrites405AndAllowHeader() {
