@@ -17,7 +17,7 @@
 
 ## Browser receiver page policy
 
-- The receiver page Content Security Policy explicitly permits its embedded JavaScript and styles, and same-origin XHR uploads through `connect-src 'self'`, while retaining `default-src 'none'`. This enables browser upload progress, cancellation, and retry controls without allowing external scripts, images, fonts, or connections. The generated page HTML-escapes file names and embeds only a per-session hexadecimal access key.
+- The receiver page Content Security Policy uses a fresh per-response CSP nonce for its embedded JavaScript and styles, and permits same-origin XHR uploads through `connect-src 'self'`, while retaining `default-src 'none'`. It does not rely on the weaker `unsafe-inline` script policy. This enables browser upload progress, cancellation, and retry controls without allowing external scripts, images, fonts, or connections. The generated page HTML-escapes file names and embeds only a per-session hexadecimal access key.
 
 ## HTTP request validation
 

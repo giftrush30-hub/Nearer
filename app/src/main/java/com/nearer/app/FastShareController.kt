@@ -473,8 +473,9 @@ private class FastShareHttpServer(
             }
             when (request.route) {
                 FastShareHttpRequest.Route.RECEIVER_PAGE -> {
-                    val bytes = catalog.receiverPage(accessKey).toByteArray(Charsets.UTF_8)
-                    output.write(FastShareHttpWire.responseHead("HTTP/1.1 200 OK", FileHttpHeaders.receiverPageHeaders(bytes.size.toLong())))
+                    val pageNonce = FastSharePageNonce.create()
+                    val bytes = catalog.receiverPage(accessKey, pageNonce).toByteArray(Charsets.UTF_8)
+                    output.write(FastShareHttpWire.responseHead("HTTP/1.1 200 OK", FileHttpHeaders.receiverPageHeaders(bytes.size.toLong(), pageNonce)))
                     if (!headOnly) output.write(bytes)
                 }
                 FastShareHttpRequest.Route.UPLOAD -> { handleBrowserUpload(connection, input, output, exchange) }

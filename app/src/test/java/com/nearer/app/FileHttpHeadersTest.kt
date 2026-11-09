@@ -38,7 +38,7 @@ class FileHttpHeadersTest {
     }
 
     @Test fun receiverPageHeadersAllowEmbeddedScriptWithoutExternalResources() {
-        val headers = FileHttpHeaders.receiverPageHeaders(123L).toMap()
+        val headers = FileHttpHeaders.receiverPageHeaders(123L, "abcdefghijklmnopqrstuvwx").toMap()
         assertEquals("text/html; charset=utf-8", headers["Content-Type"])
         assertEquals("123", headers["Content-Length"])
         assertEquals("no-store", headers["Cache-Control"])
@@ -47,7 +47,7 @@ class FileHttpHeadersTest {
         assertEquals("no-referrer", headers["Referrer-Policy"])
         assertEquals("DENY", headers["X-Frame-Options"])
         assertEquals(
-            "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            "default-src 'none'; script-src 'nonce-abcdefghijklmnopqrstuvwx'; style-src 'nonce-abcdefghijklmnopqrstuvwx'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             headers["Content-Security-Policy"]
         )
         assertEquals("camera=(), microphone=(), geolocation=()", headers["Permissions-Policy"])
@@ -56,7 +56,7 @@ class FileHttpHeadersTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun receiverPageHeadersRejectNegativeContentLength() {
-        FileHttpHeaders.receiverPageHeaders(-1L)
+        FileHttpHeaders.receiverPageHeaders(-1L, "abcdefghijklmnopqrstuvwx")
     }
 
 
