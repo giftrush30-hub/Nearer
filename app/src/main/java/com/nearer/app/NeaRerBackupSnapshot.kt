@@ -140,6 +140,16 @@ internal object NeaRerBackupSnapshot {
                 val value = all[key]
                 if (value is String) profile.put(key, value)
             }
+            // Older installs may have only the legacy unordered Set. Convert it to
+            // the ordered portable representation so duplicate protection survives.
+            if (!profile.has("nearby_seen_message_ids_ordered")) {
+                val legacySeenIds = all["nearby_seen_message_ids"] as? Set<*>
+                if (!legacySeenIds.isNullOrEmpty()) {
+                    profile.put("nearby_seen_message_ids_ordered", org.json.JSONArray().apply {
+                        legacySeenIds.filterIsInstance<String>().forEach { put(it) }
+                    }.toString())
+                }
+            }
             // The app-private absolute path is device-specific; restore uses the
             // portable profile/profile-photo.jpg location instead.
             val photoPath = prefs.getString("profile_photo_path", null)
