@@ -321,23 +321,23 @@ class FastShareHttpSessionTest {
 
     @Test fun duplicateUploadContentLengthsAreRejected() {
         val (exchange, response) = read(
-            "POST /upload HTTP/1.1\\r\\nX-Filename: first.txt\\r\\nContent-Length: 1\\r\\ncontent-length: 1\\r\\n\\r\\n"
+            "POST /upload HTTP/1.1\r\nX-Filename: first.txt\r\nContent-Length: 1\r\ncontent-length: 1\r\n\r\n"
         )
         assertNull(exchange)
-        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
     @Test fun negativeUploadContentLengthIsRejected() {
         val (exchange, response) = read(
-            "POST /upload HTTP/1.1\\r\\nX-Filename: first.txt\\r\\nContent-Length: -1\\r\\n\\r\\n"
+            "POST /upload HTTP/1.1\r\nX-Filename: first.txt\r\nContent-Length: -1\r\n\r\n"
         )
         assertNull(exchange)
-        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
     @Test fun zeroByteUploadIsAValidRequest() {
         val (exchange, response) = read(
-            "POST /upload HTTP/1.1\\r\\nX-Filename: empty.txt\\r\\nContent-Length: 0\\r\\n\\r\\n"
+            "POST /upload HTTP/1.1\r\nX-Filename: empty.txt\r\nContent-Length: 0\r\n\r\n"
         )
         assertNotNull(exchange)
         assertEquals(0L, exchange!!.contentLength)

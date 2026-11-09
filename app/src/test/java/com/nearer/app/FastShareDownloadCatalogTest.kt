@@ -59,8 +59,8 @@ class FastShareDownloadCatalogTest {
         val page = FastShareDownloadCatalog(
             listOf(FastShareDownloadItem(0, "photo.jpg", "image/jpeg", 1024L))
         ).receiverPage("e".repeat(64))
-        assertTrue(page.contains("id=\\"uploads\\" type=\\"file\\" multiple"))
-        assertTrue(page.contains("fetch(\\"/upload?key=e"))
+        assertTrue(page.contains("id=\"uploads\" type=\"file\" multiple"))
+        assertTrue(page.contains("xhr.open(\"POST\",\"/upload?key=e"))
         assertTrue(page.contains("Send files to NeaRer"))
     }
 
