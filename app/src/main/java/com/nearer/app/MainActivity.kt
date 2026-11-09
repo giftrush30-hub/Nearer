@@ -514,6 +514,7 @@ class MainActivity : ComponentActivity() {
                     hybridPeers = hybridPeers.toMap(),
                     recentlySeenPeers = recentlySeenPeers.toMap(),
                     displayName = displayName,
+                    nearbyIdentityId = nearbyTransport?.localIdentityId().orEmpty(),
                     onSaveDisplayName = ::saveDisplayName,
                     meshRelayEnabled = meshRelayEnabled,
                     onMeshRelayChange = ::updateMeshRelayEnabled,
@@ -2256,6 +2257,7 @@ private fun NeaRerHome(
     hybridPeers: Map<String, String>,
     recentlySeenPeers: Map<String, NearbyPerson>,
     displayName: String,
+    nearbyIdentityId: String,
     onSaveDisplayName: (String) -> Unit,
     meshRelayEnabled: Boolean,
     onMeshRelayChange: (Boolean) -> Unit,
@@ -2517,6 +2519,19 @@ private fun NeaRerHome(
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = BlueAccent)
                         ) { Text("Save my nearby name") }
+                        androidx.compose.foundation.layout.Divider(color = Midnight)
+                        Text("YOUR NEARER ID", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("NR-$nearbyIdentityId", color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                        Text("This is your public nearby identity. Share it so people can recognise the right NeaRer profile.", color = Muted, fontSize = 12.sp)
+                        Button(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("NeaRer ID", "NR-$nearbyIdentityId"))
+                                android.widget.Toast.makeText(context, "NeaRer ID copied", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Gold)
+                        ) { Text("Copy my NeaRer ID") }
                     }
                 }
             }
