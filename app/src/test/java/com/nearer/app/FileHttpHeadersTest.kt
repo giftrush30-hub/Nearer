@@ -61,13 +61,13 @@ class FileHttpHeadersTest {
 
     @Test fun unsatisfiedRangeHeadersArePrivateAndDescribeTheWholeFile() {
         val headers = FileHttpHeaders.unsatisfiedRangeHeaders(987654321L)
-        assertTrue(headers.startsWith("Accept-Ranges: bytes\\r\\n"))
-        assertTrue(headers.contains("Content-Range: bytes */987654321\\r\\n"))
-        assertTrue(headers.contains("Content-Length: 0\\r\\n"))
-        assertTrue(headers.contains("Cache-Control: no-store\\r\\n"))
-        assertTrue(headers.contains("X-Content-Type-Options: nosniff\\r\\n"))
-        assertTrue(headers.contains("Referrer-Policy: no-referrer\\r\\n"))
-        assertTrue(headers.endsWith("Connection: close\\r\\n\\r\\n"))
+        assertTrue(headers.startsWith("Accept-Ranges: bytes\r\n"))
+        assertTrue(headers.contains("Content-Range: bytes */987654321\r\n"))
+        assertTrue(headers.contains("Content-Length: 0\r\n"))
+        assertTrue(headers.contains("Cache-Control: no-store\r\n"))
+        assertTrue(headers.contains("X-Content-Type-Options: nosniff\r\n"))
+        assertTrue(headers.contains("Referrer-Policy: no-referrer\r\n"))
+        assertTrue(headers.endsWith("Connection: close\r\n\r\n"))
     }
 
     @Test(expected = IllegalArgumentException::class)
@@ -78,22 +78,22 @@ class FileHttpHeadersTest {
     @Test fun unicodeFileNamesRemainUtf8EncodedInContentDisposition() {
         val header = FileHttpHeaders.contentDisposition("日本語 résumé 🎬.mp4")
         assertEquals(
-            "Content-Disposition: attachment; filename*=UTF-8''%E6%97%A5%E6%9C%AC%E8%AA%9E%20r%C3%A9sum%C3%A9%20%F0%9F%8E%AC.mp4\\r\\n",
+            "Content-Disposition: attachment; filename*=UTF-8''%E6%97%A5%E6%9C%AC%E8%AA%9E%20r%C3%A9sum%C3%A9%20%F0%9F%8E%AC.mp4\r\n",
             header
         )
-        assertFalse(header.contains("\\n"))
+        assertFalse(header.contains("\n"))
     }
 
     @Test fun emptyAndParameterisedMimeTypesFallBackSafely() {
         assertEquals("application/octet-stream", FileHttpHeaders.contentType(" "))
         assertEquals("application/octet-stream", FileHttpHeaders.contentType("video/mp4; charset=utf-8"))
-        assertEquals("application/octet-stream", FileHttpHeaders.contentType("image/png\\r\\nX-Test: 1"))
+        assertEquals("application/octet-stream", FileHttpHeaders.contentType("image/png\r\nX-Test: 1"))
     }
 
     @Test fun unsatisfiedRangeHeadersEndWithExactlyOneHeaderTerminator() {
         val headers = FileHttpHeaders.unsatisfiedRangeHeaders(0L)
-        assertTrue(headers.endsWith("Connection: close\\r\\n\\r\\n"))
-        assertFalse(headers.contains("\\r\\n\\r\\n\\r\\n"))
+        assertTrue(headers.endsWith("Connection: close\r\n\r\n"))
+        assertFalse(headers.contains("\r\n\r\n\r\n"))
     }
 
 }
