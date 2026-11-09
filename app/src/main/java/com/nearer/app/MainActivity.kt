@@ -21,6 +21,7 @@ import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.Settings
 import android.os.Environment
@@ -34,6 +35,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipFile
 import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.net.InetSocketAddress
@@ -528,6 +530,7 @@ class MainActivity : ComponentActivity() {
                     onGameRematch = ::requestGameRematch,
                     onEndGame = ::endGame,
                     onSendFiles = ::sendFiles,
+                    onSendFolder = ::prepareAndSendFolder,
                     onCancelTransfer = ::cancelOutgoingFileTransfer,
                     outgoingTransferId = outgoingTransferId,
                     outgoingProgress = outgoingProgress,
@@ -1966,6 +1969,84 @@ class MainActivity : ComponentActivity() {
         chatNotice = "Cancelling file transfer and clearing the remaining file queue…"
     }
 
+    private fun prepareAndSendFolder(treeUri: Uri) {
+        try {
+            contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (_: Exception) {
+            // Some document providers grant access only for the current app session.
+        }
+        chatNotice = "Preparing the folder archive. Large folders are streamed to storage; they are not loaded into memory."
+        io.execute {
+            var archive: File? = null
+            try {
+                val rootId = DocumentsContract.getTreeDocumentId(treeUri)
+                val rootUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId)
+                var rootName = "Shared folder"
+                contentResolver.query(rootUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) rootName = cursor.getString(0)?.takeIf { it.isNotBlank() } ?: rootName
+                }
+                fun safeSegment(value: String): String {
+                    val cleaned = value.replace("/", "_").replace(String(charArrayOf(92)), "_").trim().trim('.')
+                    return cleaned.ifBlank { "folder-item" }
+                }
+                val stagingDirectory = File(cacheDir, "nearer-folder-shares").apply { mkdirs() }
+                archive = File.createTempFile("nearer-folder-", ".zip", stagingDirectory)
+                val visited = HashSet<String>()
+                var fileCount = 0
+                ZipOutputStream(FileOutputStream(archive!!).buffered()).use { zip ->
+                    fun addChildren(parentId: String, parentPath: String) {
+                        if (!visited.add(parentId)) return
+                        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
+                        val projection = arrayOf(
+                            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                            DocumentsContract.Document.COLUMN_MIME_TYPE
+                        )
+                        contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                            val idColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                            val nameColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                            val mimeColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                            while (cursor.moveToNext()) {
+                                val childId = cursor.getString(idColumn) ?: continue
+                                val childName = safeSegment(cursor.getString(nameColumn).orEmpty())
+                                val childPath = parentPath + childName
+                                val childMime = cursor.getString(mimeColumn)
+                                if (childMime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                                    zip.putNextEntry(ZipEntry(childPath + "/"))
+                                    zip.closeEntry()
+                                    addChildren(childId, childPath + "/")
+                                } else {
+                                    val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
+                                    val input = contentResolver.openInputStream(childUri)
+                                        ?: throw IllegalStateException("Could not read " + childName)
+                                    zip.putNextEntry(ZipEntry(childPath))
+                                    input.use { it.copyTo(zip, 256 * 1024) }
+                                    zip.closeEntry()
+                                    fileCount += 1
+                                }
+                            }
+                        } ?: throw IllegalStateException("The selected folder could not be listed")
+                    }
+                    val safeRootName = safeSegment(rootName)
+                    zip.putNextEntry(ZipEntry(safeRootName + "/"))
+                    zip.closeEntry()
+                    addChildren(rootId, safeRootName + "/")
+                }
+                if (fileCount == 0) throw IllegalStateException("The selected folder is empty or contains no readable files")
+                val shareUri = FileProvider.getUriForFile(this, packageName + ".files", archive!!)
+                runOnUiThread {
+                    chatNotice = "Folder prepared: " + fileCount + " files. Sending as a ZIP so its folder structure is preserved."
+                    sendFiles(listOf(shareUri))
+                }
+            } catch (error: Exception) {
+                archive?.delete()
+                runOnUiThread {
+                    chatNotice = "Could not prepare this folder: " + (error.localizedMessage ?: "check folder access and try again")
+                }
+            }
+        }
+    }
+
     private fun sendFiles(uris: List<Uri>) {
         val selected = uris.distinct()
         if (selected.isEmpty()) return
@@ -2547,6 +2628,7 @@ private fun NeaRerHome(
     onGameRematch: () -> Unit,
     onEndGame: () -> Unit,
     onSendFiles: (List<Uri>) -> Unit,
+    onSendFolder: (Uri) -> Unit,
     onCancelTransfer: () -> Unit,
     outgoingTransferId: String?,
     outgoingProgress: Float,
@@ -2609,6 +2691,9 @@ private fun NeaRerHome(
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) onSendFiles(uris)
+    }
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) onSendFolder(uri)
     }
     // Native Android sharing allows Bluetooth/Quick Share recipients without NeaRer.
     val anyPhonePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -3056,7 +3141,13 @@ private fun NeaRerHome(
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)
                         ) { Text("Share photos or files") }
-                        Text(if (usingNearbyConnections) "Nearby Connections • no fixed file-size cap" else "Wi-Fi Direct • no fixed file-size cap", color = Muted, fontSize = 10.sp)
+                        Button(
+                            onClick = { folderPicker.launch(null) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263B58), contentColor = Gold)
+                        ) { Text("Share an entire folder") }
+                        Text("Folders are packaged as ZIP archives with their subfolder structure preserved. No fixed file-size cap is added.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                     } else {
                         Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         Button(
