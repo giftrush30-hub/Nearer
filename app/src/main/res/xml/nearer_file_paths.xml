@@ -2,4 +2,5 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <files-path name="received_files" path="received/" />
     <cache-path name="shared_apk" path="nearer-share/" />
+    <cache-path name="folder_shares" path="nearer-folder-shares/" />
 </paths>
