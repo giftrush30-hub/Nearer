@@ -126,7 +126,6 @@ internal class NeaRerChatHistoryDatabase(context: Context) :
                 }
                 writer.flush()
             }
-            FileInputStream(temporary).use { it.channel.force(true) }
             if (!temporary.renameTo(destination)) throw IOException("Could not publish chat archive")
             return exported
         } catch (failure: Exception) {
