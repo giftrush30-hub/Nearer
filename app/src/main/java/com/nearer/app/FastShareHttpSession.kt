@@ -100,12 +100,8 @@ internal object FastShareHttpSession {
         return FastShareHttpExchange(request, if (request.isHeadOnly) null else rangeHeader)
     }
 
-    private fun isValidHostAuthority(value: String): Boolean {
-        if (value.isEmpty()) return false
-        return value.all { character ->
-            character.code in 0x21..0x7e && character !in "/\\?#@"
-        }
-    }
+    private fun isValidHostAuthority(value: String): Boolean =
+        FastShareHostAuthority.isValid(value)
 
     private fun isTokenCharacter(value: Char): Boolean =
         value in 'a'..'z' || value in 'A'..'Z' || value in '0'..'9' ||
