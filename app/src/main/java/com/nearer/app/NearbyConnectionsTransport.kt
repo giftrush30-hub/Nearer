@@ -68,6 +68,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         @Volatile var awaitingResume: Boolean = false
     )
     private val incomingMetadata = ConcurrentHashMap<Long, FileMeta>()
+    // Bind every SDK payload ID to the endpoint that actually delivered it.
+    // Metadata alone must never be able to redirect a payload across peers.
+    private val incomingPayloadEndpoints = ConcurrentHashMap<Long, String>()
     private val incomingPeerIds = ConcurrentHashMap<Long, String>()
     private val incomingPayloads = ConcurrentHashMap<Long, Payload>()
     private val completedPayloads = ConcurrentHashMap<Long, Payload>()
@@ -284,6 +287,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             when (payload.type) {
                 Payload.Type.BYTES -> handleBytes(id, payload.asBytes())
                 Payload.Type.FILE -> {
+                    if (!isPeerVerified(id)) {
+                        try { client.cancelPayload(payload.id) } catch (_: Exception) { }
+                        try { payload.close() } catch (_: Exception) { }
+                        listener.onFileStatus("A file from an unverified nearby device was rejected.")
+                        return
+                    }
+                    incomingPayloadEndpoints[payload.id] = id
                     incomingPayloads[payload.id] = payload
                     incomingPeerIds[payload.id] = synchronized(names) { stableIds[id].orEmpty() }
                     val meta = incomingMetadata[payload.id]
@@ -441,8 +451,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 val name = safeFileName(envelope.optString("name", "shared-file"))
                 val size = envelope.optLong("size", -1L)
                 val sha256 = envelope.optString("sha256", "").lowercase()
-                if (payloadId < 0L || size < 0L || (sha256.isNotEmpty() && !sha256.matches(Regex("[a-f0-9]{64}")))) {
+                if (payloadId < 0L || size < 0L || !sha256.matches(Regex("[a-f0-9]{64}"))) {
                     listener.onFileStatus("A nearby phone sent invalid file information. The transfer was ignored.")
+                    return
+                }
+                val payloadEndpoint = incomingPayloadEndpoints[payloadId]
+                if (payloadEndpoint != null && payloadEndpoint != endpointId) {
+                    listener.onFileStatus("File information did not match the phone that sent the file payload.")
                     return
                 }
                 incomingMetadata[payloadId] = FileMeta(endpointId, name, size, sha256)
@@ -537,6 +552,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val payload = completedPayloads[payloadId] ?: return
         val meta = incomingMetadata[payloadId] ?: return
         if (!completedPayloads.remove(payloadId, payload)) return
+        val payloadEndpoint = incomingPayloadEndpoints.remove(payloadId)
+        if (payloadEndpoint != null && payloadEndpoint != meta.endpointId) {
+            incomingPayloads.remove(payloadId)
+            incomingMetadata.remove(payloadId)
+            incomingPayloadEndpoints.remove(payloadId)
+            incomingPeerIds.remove(payloadId)
+            try { payload.close() } catch (_: Exception) { }
+            listener.onFileStatus("NeaRer rejected a file whose sender did not match its authenticated metadata.")
+            return
+        }
         incomingPayloads.remove(payloadId)
         incomingMetadata.remove(payloadId)
         incomingPeerIds.remove(payloadId)
