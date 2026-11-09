@@ -180,8 +180,7 @@ class FastShareController(private val context: Context) {
                 pendingUris = emptyList()
                 details = null
                 transferLedger.clear()
-                transferLedger.clear()
-        activeTransfers = emptyList()
+                activeTransfers = emptyList()
                 callback = null
                 status = "The temporary Wi-Fi connection stopped."
             }
@@ -216,6 +215,7 @@ class FastShareController(private val context: Context) {
         server?.stop()
         server = null
         details = null
+        transferLedger.clear()
         activeTransfers = emptyList()
         pendingUris = emptyList()
         try { reservation?.close() } catch (_: Exception) {}
