@@ -28,8 +28,9 @@ internal object NeaRerBackupManager {
     ): CreatedBackup {
         var snapshot: File? = null
         try {
-            snapshot = newPrivateWorkDirectory(context, "nearer-backup-")
-            val summary = NeaRerBackupSnapshot.create(context, chatDatabase, snapshot)
+            val workDirectory = newPrivateWorkDirectory(context, "nearer-backup-")
+            snapshot = workDirectory
+            val summary = NeaRerBackupSnapshot.create(context, chatDatabase, workDirectory)
             NeaRerBackupArchive.createEncryptedBackup(snapshot, destination, password)
             return CreatedBackup(
                 summary.chatMessages,
