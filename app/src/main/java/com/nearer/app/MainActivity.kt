@@ -2961,7 +2961,7 @@ private fun PremiumChatsScreen(
                                 Text(thread.lastMessage.body, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(thread.lastMessage.timestamp)), color = Muted, fontSize = 9.sp)
+                                Text(if (thread.lastMessage.timestamp > 0L) java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(thread.lastMessage.timestamp)) else "Earlier", color = Muted, fontSize = 9.sp)
                                 Text("${thread.messageCount}", color = BlueAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
                         }

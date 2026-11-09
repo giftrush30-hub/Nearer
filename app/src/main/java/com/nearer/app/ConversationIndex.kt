@@ -19,7 +19,7 @@ internal object ConversationIndex {
                 val latest = thread.maxByOrNull { it.timestamp }!!
                 ConversationSummary(
                     conversationId = id,
-                    displayName = latest.conversationName.ifBlank { "Nearby person" },
+                    displayName = latest.conversationName.ifBlank { if (latest.conversationId.isBlank()) "Unlinked history" else "Nearby person" },
                     lastMessage = latest,
                     messageCount = thread.size
                 )
