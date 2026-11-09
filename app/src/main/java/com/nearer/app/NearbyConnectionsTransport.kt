@@ -99,13 +99,40 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
     private fun restorePendingOutbox() {
         try {
-            val raw = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("nearby_outbox", "[]") ?: "[]"
+            val raw = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .getString("nearby_outbox", "[]") ?: "[]"
             val array = org.json.JSONArray(raw)
+            var skipped = false
             for (i in 0 until array.length()) {
-                val item = array.getJSONObject(i); val id = item.optString("id"); val peer = item.optString("peer"); val payload = item.optString("payload")
-                if (id.isNotBlank() && peer.isNotBlank() && payload.isNotBlank() && payload.length <= 12000) pendingOutgoingMessages[id] = PendingOutgoingMessage("", peer, payload.toByteArray(Charsets.UTF_8))
+                try {
+                    val item = array.optJSONObject(i) ?: run { skipped = true; continue }
+                    val id = item.optString("id")
+                    val peer = item.optString("peer")
+                    val payload = item.optString("payload")
+                    if (id.isBlank() || id.length > 80 || peer.isBlank() || peer.length > 64 ||
+                        payload.isBlank() || payload.length > 12000) {
+                        skipped = true
+                        continue
+                    }
+                    val envelope = JSONObject(payload)
+                    if (envelope.optString("kind") != "message" ||
+                        envelope.optString("id") != id ||
+                        envelope.optString("body").isBlank() ||
+                        envelope.optString("body").length > 4000) {
+                        skipped = true
+                        continue
+                    }
+                    pendingOutgoingMessages[id] = PendingOutgoingMessage(
+                        "", peer, payload.toByteArray(Charsets.UTF_8)
+                    )
+                } catch (_: Exception) {
+                    skipped = true
+                }
             }
-        } catch (_: Exception) { listener.onStatus("Some queued messages could not be restored.") }
+            if (skipped) listener.onStatus("Some damaged queued messages were skipped. Other saved messages are still available.")
+        } catch (_: Exception) {
+            listener.onStatus("The saved pending-message queue could not be read.")
+        }
     }
     fun pendingMessageIds(): Set<String> = pendingOutgoingMessages.keys.toSet()
 
