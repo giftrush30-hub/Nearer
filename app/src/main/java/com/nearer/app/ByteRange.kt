@@ -31,8 +31,9 @@ internal object ByteRange {
 
         val firstText = bounds[0].trim()
         val lastText = bounds[1].trim()
-        val first = firstText.takeIf { it.isNotEmpty() }?.toLongOrNull()
-        val last = lastText.takeIf { it.isNotEmpty() }?.toLongOrNull()
+        // HTTP byte-range positions are ASCII decimal digits, not signed or Unicode integers.
+        val first = firstText.takeIf { it.isNotEmpty() && it.all { digit -> digit in '0'..'9' } }?.toLongOrNull()
+        val last = lastText.takeIf { it.isNotEmpty() && it.all { digit -> digit in '0'..'9' } }?.toLongOrNull()
         if ((firstText.isNotEmpty() && first == null) ||
             (lastText.isNotEmpty() && last == null) ||
             (first == null && last == null)
