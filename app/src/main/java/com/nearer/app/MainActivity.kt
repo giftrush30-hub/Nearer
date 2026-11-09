@@ -149,6 +149,8 @@ class MainActivity : ComponentActivity() {
     private val io = Executors.newCachedThreadPool()
     private val approvalDecision = LinkedBlockingQueue<Boolean>()
     private val chatMessages = mutableStateListOf<ChatMessage>()
+    private val chatHistoryDatabase by lazy { NeaRerChatHistoryDatabase(applicationContext) }
+    private var hasOlderChatMessages by mutableStateOf(false)
     private val communityGroups = mutableStateListOf<CommunityGroup>()
     private val communityMessages = mutableStateListOf<CommunityChatMessage>()
     private var selectedCommunityCode by mutableStateOf<String?>(null)
@@ -500,6 +502,8 @@ class MainActivity : ComponentActivity() {
                     chatReady = chatReady,
                     usingNearbyConnections = hybridConnected,
                     messages = chatMessages,
+                    hasOlderChatMessages = hasOlderChatMessages,
+                    onLoadOlderMessages = ::loadOlderChatMessages,
                     chatNotice = chatNotice,
                     receivedFiles = receivedFiles,
                     transferHistory = nearbyTransferHistory.toList(),
@@ -1122,30 +1126,39 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun restoreLocalData() {
-        val stored = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-            .getString("messages", null)
-        if (!stored.isNullOrBlank()) {
-            try {
-                val array = JSONArray(stored)
-                for (i in 0 until array.length()) {
-                    val item = array.getJSONObject(i)
-                    val message = ChatMessage(
-                        id = item.getString("id"),
-                        body = item.getString("body"),
-                        outgoing = item.getBoolean("outgoing"),
-                        delivery = item.optString("delivery", "Sent"),
-                        timestamp = item.optLong("timestamp", System.currentTimeMillis()),
-                        conversationId = item.optString("conversationId", ""),
-                        conversationName = item.optString("conversationName", "")
-                    )
-                    chatMessages.add(message)
-                    if (!message.outgoing) receivedMessageIds.add(message.id)
+        val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("message_database_migrated", false)) {
+            val stored = prefs.getString("messages", null)
+            if (!stored.isNullOrBlank()) {
+                try {
+                    val array = JSONArray(stored)
+                    val legacyMessages = mutableListOf<ChatMessage>()
+                    for (i in 0 until array.length()) {
+                        val item = array.getJSONObject(i)
+                        legacyMessages.add(ChatMessage(
+                            id = item.getString("id"),
+                            body = item.getString("body"),
+                            outgoing = item.getBoolean("outgoing"),
+                            delivery = item.optString("delivery", "Sent"),
+                            timestamp = item.optLong("timestamp", System.currentTimeMillis()),
+                            conversationId = item.optString("conversationId", ""),
+                            conversationName = item.optString("conversationName", "")
+                        ))
+                    }
+                    if (!chatHistoryDatabase.upsert(legacyMessages)) throw IllegalStateException("Could not migrate old chat history")
+                } catch (_: Exception) {
+                    statusMessage = "NeaRer could not finish moving your old chats into its safer local archive. Your original chat data has been kept."
                 }
-            } catch (_: Exception) {
-                chatMessages.clear()
+            }
+            // Only mark migration complete after the SQLite archive is safely written.
+            if (stored.isNullOrBlank() || chatHistoryDatabase.count() > 0L || prefs.getString("messages", null).isNullOrBlank()) {
+                prefs.edit().putBoolean("message_database_migrated", true).commit()
             }
         }
-        trimChatMessages()
+        chatMessages.clear()
+        chatMessages.addAll(chatHistoryDatabase.loadLatest())
+        chatMessages.filterNot { it.outgoing }.forEach { receivedMessageIds.add(it.id) }
+        hasOlderChatMessages = chatMessages.firstOrNull()?.let { chatHistoryDatabase.hasBefore(it.timestamp) } ?: false
         val folder = File(filesDir, "received")
         if (folder.exists()) {
             folder.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }?.forEach {
@@ -1188,25 +1201,18 @@ class MainActivity : ComponentActivity() {
 
     private fun trimChatMessages() { ChatHistoryPolicy.trim(chatMessages) }
 
-    private fun persistMessages(): Boolean {
-        return try {
-            val array = JSONArray()
-            chatMessages.takeLast(500).forEach { message ->
-                array.put(JSONObject()
-                    .put("id", message.id)
-                    .put("body", message.body)
-                    .put("outgoing", message.outgoing)
-                    .put("delivery", message.delivery)
-                    .put("timestamp", message.timestamp)
-                    .put("conversationId", message.conversationId)
-                    .put("conversationName", message.conversationName))
-            }
-            // commit() is intentional here: a delivery receipt must follow the disk write,
-            // not just an in-memory SharedPreferences update queued by apply().
-            getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-                .edit().putString("messages", array.toString()).commit()
-        } catch (_: Exception) { false }
+    private fun loadOlderChatMessages() {
+        val oldestLoaded = chatMessages.firstOrNull()?.timestamp ?: return
+        val older = chatHistoryDatabase.loadBefore(oldestLoaded)
+        if (older.isEmpty()) {
+            hasOlderChatMessages = false
+            return
+        }
+        chatMessages.addAll(0, older)
+        hasOlderChatMessages = chatHistoryDatabase.hasBefore(older.first().timestamp)
     }
+
+    private fun persistMessages(): Boolean = chatHistoryDatabase.upsert(chatMessages.toList())
 
     private fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -2339,6 +2345,8 @@ private fun NeaRerHome(
     chatReady: Boolean,
     usingNearbyConnections: Boolean,
     messages: List<ChatMessage>,
+    hasOlderChatMessages: Boolean,
+    onLoadOlderMessages: () -> Unit,
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
     transferHistory: List<NearbyTransferRecord>,
