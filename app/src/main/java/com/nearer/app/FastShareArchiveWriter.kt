@@ -1,6 +1,5 @@
 package com.nearer.app
 
-import java.io.ByteArrayOutputStream
 import java.io.InterruptedIOException
 import java.io.InputStream
 import java.io.OutputStream
