@@ -619,6 +619,8 @@ private class FastShareHttpServer(
                 "Connection" to "close"
             )))
             output.write(body)
+        } catch (_: SocketTimeoutException) {
+            if (!published) output.write(FastShareHttpErrors.requestTimeout())
         } catch (_: Exception) {
             if (!published) output.write(FastShareHttpErrors.uploadFailed())
         } finally {

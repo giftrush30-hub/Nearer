@@ -6,7 +6,7 @@
 - The gate reserves each declared Content-Length against the free space observed in the private upload directory. This prevents concurrent requests from independently spending the same free-space estimate.
 - Admission failures are distinguished: invalid length returns 400, saturated upload slots return a retryable 429, and insufficient reserved storage returns 507.
 - Upload bodies are streamed in 64 KiB blocks to a temporary file; no whole-file in-memory copy is created.
-- The upload body has a size-aware overall deadline (two-minute grace plus an allowance based on a conservative minimum transfer rate, capped at 24 hours), in addition to the per-read idle timeout. This prevents slow-trickle clients from holding upload slots indefinitely without imposing a per-file byte ceiling.
+- The upload body has a size-aware overall deadline (two-minute grace plus an allowance based on a conservative minimum transfer rate, capped at 24 hours), in addition to the per-read idle timeout. This prevents slow-trickle clients from holding upload slots indefinitely without imposing a per-file byte ceiling. An idle body read timeout returns HTTP 408 with `Retry-After: 2` when the connection is still writable; the incomplete staging file is discarded.
 - The temporary file is synced before publication and is renamed into the private upload directory only after the declared body has been received completely.
 - A SHA-256 digest is computed while streaming. The 201 response includes X-Content-SHA256 and X-Received-Bytes so the browser can validate the server receipt.
 - Duplicate filenames are kept distinct by adding a numeric suffix under a publication lock.
