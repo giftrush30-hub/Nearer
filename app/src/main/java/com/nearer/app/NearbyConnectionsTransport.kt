@@ -104,6 +104,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         try {
             val raw = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("nearby_outbox", "[]") ?: "[]"
             val array = org.json.JSONArray(raw)
+            var migratedLegacyPayload = false
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
                 val id = item.optString("id")
@@ -114,6 +115,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     LocalDataCipher.decrypt(appContext, storedPayload)
                 } else {
                     // One-time migration: older releases stored queued message bodies as plain text.
+                    migratedLegacyPayload = true
                     storedPayload.toByteArray(Charsets.UTF_8)
                 }
                 if (payload != null && payload.isNotEmpty()) {
@@ -122,6 +124,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     listener.onStatus("A saved message could not be unlocked and was left out of the retry queue.")
                 }
             }
+            if (migratedLegacyPayload) persistPendingOutbox()
         } catch (_: Exception) { listener.onStatus("Some queued messages could not be restored.") }
     }
     fun pendingMessageIds(): Set<String> = pendingOutgoingMessages.keys.toSet()
