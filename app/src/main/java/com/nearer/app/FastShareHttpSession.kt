@@ -39,6 +39,7 @@ internal object FastShareHttpSession {
         }
 
         var rangeHeader: String? = null
+        var sawRangeHeader = false
         var headerBytes = 0
         var headerCount = 0
         while (true) {
@@ -61,7 +62,8 @@ internal object FastShareHttpSession {
                 return rejectBadRequest(output)
             }
             if (name.equals("Range", ignoreCase = true)) {
-                if (rangeHeader != null) return rejectBadRequest(output)
+                if (sawRangeHeader) return rejectBadRequest(output)
+                sawRangeHeader = true
                 rangeHeader = headerValue.trim()
             }
         }
