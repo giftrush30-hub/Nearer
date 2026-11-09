@@ -3019,11 +3019,14 @@ private fun PremiumChatsScreen(
         }
         val canSendInSelectedThread = chatReady && effectiveConversationId.isNotBlank() &&
             effectiveConversationId == currentConversationId
-        val visibleThreads = remember(inboxThreads, inboxQuery, contactAliases.toMap(), pinnedContacts.toList()) {
-            val filtered = if (inboxQuery.isBlank()) inboxThreads else inboxThreads.filter {
-                it.displayName.contains(inboxQuery, ignoreCase = true) ||
-                    contactAliases[it.conversationId].orEmpty().contains(inboxQuery, ignoreCase = true) ||
-                    it.lastMessage.body.contains(inboxQuery, ignoreCase = true)
+        val visibleThreads = remember(inboxThreads, inboxQuery, showSavedContactsOnly, contactAliases.toMap(), pinnedContacts.toList()) {
+            val filtered = inboxThreads.filter { thread ->
+                (!showSavedContactsOnly || contactAliases.containsKey(thread.conversationId)) &&
+                    (inboxQuery.isBlank() ||
+                        thread.displayName.contains(inboxQuery, ignoreCase = true) ||
+                        contactAliases[thread.conversationId].orEmpty().contains(inboxQuery, ignoreCase = true) ||
+                        thread.lastMessage.body.contains(inboxQuery, ignoreCase = true) ||
+                        thread.conversationId.removePrefix("nearer:").contains(inboxQuery, ignoreCase = true))
             }
             filtered.sortedWith(
                 compareByDescending<ConversationSummary> { it.conversationId in pinnedContacts }
@@ -3076,7 +3079,7 @@ private fun PremiumChatsScreen(
                                         Text("PINNED", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                                     }
                                     Text(
-                                        stablePeerId?.let { "NeaRer ID · " + it.take(12) + "..." }
+                                        stablePeerId?.let { "Nearby device code · " + it + " · unverified" }
                                             ?: if (thread.conversationId.startsWith("nearby-name:")) "Name-based link · identity not verified" else "Older local history",
                                         color = if (stablePeerId != null) Color(0xFF9BD8FF) else Muted,
                                         fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
