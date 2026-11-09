@@ -266,7 +266,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     if (verified && hybridConnectedEndpoint == id) {
                         chatReady = true
-                        chatNotice = "Secure nearby identity confirmed. Private offline chat is ready."
+                        chatNotice = "Peer identity checked. Direct offline chat is ready; messages are not end-to-end encrypted yet."
                     }
                     if (stableId.isNotBlank()) {
                         nearbyPeerPublicIds[stableId] = publicId
@@ -303,7 +303,7 @@ class MainActivity : ComponentActivity() {
                     chatReady = nearbyTransport?.isPeerVerified(id) == true
                     if (!chatReady) chatNotice = "Connection approved. Checking the other phone's cryptographic identity before enabling private chat."
                     resumeLudoAfterReconnect(name)
-                    connectionMessage = "Secure nearby connection active"
+                    connectionMessage = "Nearby connection active • checking peer identity"
                     approvalMessage = "Connection approved"
                     chatNotice = when {
                         requestedIncomingResume -> "Connection restored. Requesting the saved receive position…"
@@ -829,7 +829,7 @@ class MainActivity : ComponentActivity() {
             connectionMessage = if (info.isGroupOwner) {
                 "Connected • this phone hosts the local link"
             } else {
-                "Connected • secure local link established"
+                "Connected • local Wi-Fi Direct link formed"
             }
             statusMessage = "Direct link formed. Checking whether the other phone has NeaRer…"
             if (!transportStarted) {
@@ -888,10 +888,10 @@ class MainActivity : ComponentActivity() {
                         chatNotice = "Secure nearby identity confirmed for $authenticatedPeerId."
                         resumeLudoAfterReconnect(name)
                         incomingRequesterName = null
-                        approvalMessage = "Connection approved. Private chat can now be opened."
+                        approvalMessage = "Connection approved. Checking the other phone's identity…"
                         connectionMessage = "NeaRer connection approved"
                         chatNotice = "Connected directly to $name. Say hello."
-                        statusMessage = "You approved $name. Private chat is ready."
+                        statusMessage = "You approved $name. Checking the other phone's identity…"
                     }
                     startMessageReader(socket)
                 } else {
@@ -956,7 +956,7 @@ class MainActivity : ComponentActivity() {
                             approvalMessage = "Your connection request was approved."
                             connectionMessage = "NeaRer connection approved"
                             chatNotice = "Connected directly to the other phone. Say hello."
-                            statusMessage = "Connection approved. Private chat is ready."
+                            statusMessage = "Connection approved. Checking the other phone's identity…"
                         }
                         startMessageReader(socket)
                     }
