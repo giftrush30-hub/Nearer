@@ -98,7 +98,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private data class PendingOutgoingMessage(@field:Volatile var endpointId: String, val stablePeerId: String, val payload: ByteArray, var attempts: Int = 0, var retryTask: Runnable? = null)
     private val pendingOutgoingMessages = ConcurrentHashMap<String, PendingOutgoingMessage>()
     private val deliveryHandler = Handler(Looper.getMainLooper())
-    private val maxMessageAttempts = 3
+    private val maxMessageAttempts = MessageRetryPolicy.MAX_ATTEMPTS
     init { restorePendingOutbox() }
     private fun persistPendingOutbox(): Boolean {
         return try {
@@ -168,7 +168,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         if (pending.endpointId.isBlank()) return
         pending.attempts += 1
         if (synchronized(activeEndpoints) { !activeEndpoints.contains(pending.endpointId) }) {
-            scheduleMessageRetry(messageId, 1800L)
+            scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1800L))
             return
         }
         val timeout = Runnable { scheduleMessageRetry(messageId, 1800L) }
@@ -177,7 +177,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         deliveryHandler.postDelayed(timeout, 5000L)
         try {
             client.sendPayload(pending.endpointId, Payload.fromBytes(pending.payload))
-                .addOnFailureListener { scheduleMessageRetry(messageId, 1200L) }
+                .addOnFailureListener { scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1200L)) }
         } catch (_: Exception) {
             scheduleMessageRetry(messageId, 1200L)
         }
