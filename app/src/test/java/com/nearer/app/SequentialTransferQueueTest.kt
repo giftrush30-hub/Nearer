@@ -38,7 +38,7 @@ class SequentialTransferQueueTest {
         queue.enqueue(listOf(10, 20))
 
         assertEquals(10, queue.currentOrNext())
-        assertFalse(queue.completeCurrent().not())
+        assertTrue(queue.completeCurrent())
         assertEquals(20, queue.currentOrNext())
         assertEquals(1, queue.completed)
     }
