@@ -67,7 +67,7 @@ internal object FastShareHttpSession {
                 // Reject duplicates and empty/whitespace-only authorities so
                 // different HTTP components cannot disagree about the target host.
                 val host = headerValue.trim()
-                if (sawHostHeader || host.isEmpty() || host.any { it.isWhitespace() }) {
+                if (sawHostHeader || host.isEmpty() || host.any { it.isWhitespace() || it == ',' }) {
                     return rejectBadRequest(output)
                 }
                 sawHostHeader = true
