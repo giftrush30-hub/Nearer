@@ -28,6 +28,8 @@ import java.util.concurrent.TimeUnit
  * it is never loaded into memory, so large videos do not require a second full copy.
  */
 class FastShareController(private val context: Context) {
+    /** Called on the main thread when a browser uploads a file into this phone. */
+    var onFileReceived: (fileName: String, file: java.io.File) -> Unit = { _, _ -> }
     var status by androidx.compose.runtime.mutableStateOf("Choose a video or file to start Fast Share")
         private set
     var details by androidx.compose.runtime.mutableStateOf<FastShareDetails?>(null)
@@ -340,7 +342,7 @@ class FastShareController(private val context: Context) {
 }
 
 data class FastShareDetails(val ssid: String, val password: String, val url: String)
-data class FastShareActiveTransfer(val id: String, val fileName: String, val bytesSent: Long, val totalBytes: Long, val bytesPerSecond: Long, val startedAtMillis: Long, val isQueued: Boolean = false)
+data class FastShareActiveTransfer(val id: String, val fileName: String, val bytesSent: Long, val totalBytes: Long, val bytesPerSecond: Long, val startedAtMillis: Long, val isQueued: Boolean = false, val isReceiving: Boolean = false)
 
 data class FastShareHistoryEntry(val fileName: String, val bytesTransferred: Long, val result: String, val timestampMillis: Long)
 
@@ -351,6 +353,9 @@ private class FastShareHttpServer(
     private val catalog: FastShareDownloadCatalog,
     private val accessKey: String,
     private val onTransferQueued: (transferId: String, fileName: String) -> Unit,
+    private val onUploadQueued: (transferId: String, fileName: String, totalBytes: Long) -> Unit,
+    private val onUploadProgress: (transferId: String, fileName: String, receivedBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean) -> Unit,
+    private val onFileReceived: (fileName: String, file: java.io.File) -> Unit,
     private val onTransferDiscarded: (transferId: String) -> Unit,
     private val onTransferUpdate: (transferId: String, fileName: String, sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean, partialResponse: Boolean) -> Unit
 ) {
