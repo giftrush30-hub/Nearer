@@ -1,28 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Bold, unmistakable N monogram with a gold-to-blue orbital identity. -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#F6B92F"
-        android:strokeWidth="5.2"
-        android:strokeLineCap="round"
-        android:pathData="M12,61 C24,12 80,7 96,42 C108,68 83,98 49,96 C32,95 20,86 13,75" />
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#36B9FF"
-        android:strokeWidth="2.2"
-        android:strokeLineCap="round"
-        android:pathData="M14,67 C27,25 75,18 91,45" />
-    <path
-        android:fillColor="#F7C64A"
-        android:pathData="M25,77 L25,32 Q25,25 32,25 L38,25 Q42,25 45,30 L66,61 L66,32 Q66,25 73,25 L78,25 Q85,25 85,32 L85,76 Q85,83 78,83 L72,83 Q68,83 65,78 L44,48 L44,76 Q44,83 37,83 L32,83 Q25,83 25,77 Z" />
-    <path
-        android:fillColor="#1C8FE8"
-        android:pathData="M44,48 L66,61 L66,69 L44,56 Z" />
-    <path android:fillColor="#FFE38A" android:pathData="M18,34 A4,4 0,1 0,18 42 A4,4 0,1 0,18 34" />
-    <path android:fillColor="#36B9FF" android:pathData="M91,40 A4,4 0,1 0,91 48 A4,4 0,1 0,91 40" />
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M20,27 L34,27 L34,82 L20,82 Z M73,27 L87,27 L87,82 L73,82 Z"/>
+    <path android:fillColor="#00000000" android:strokeColor="#FFD21F" android:strokeWidth="5.2"
+        android:strokeLineCap="round" android:pathData="M12,23 C35,17 70,28 90,78"/>
+    <path android:fillColor="#00000000" android:strokeColor="#FFC928" android:strokeWidth="4.4"
+        android:strokeLineCap="round" android:pathData="M10,31 C34,25 65,37 82,88"/>
 </vector>
