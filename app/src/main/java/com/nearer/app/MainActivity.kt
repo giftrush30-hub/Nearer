@@ -1765,13 +1765,19 @@ class MainActivity : ComponentActivity() {
                 val extension = item.file.extension.lowercase()
                 val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "application/octet-stream"
                 val safeName = item.displayName.replace(Regex("[\\\\/:*?\\\"<>|]"), "_").ifBlank { "received-file" }
+                val (collection, relativeFolder) = when {
+                    mime.startsWith("image/") -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI to (Environment.DIRECTORY_PICTURES + "/NeaRer")
+                    mime.startsWith("video/") -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI to (Environment.DIRECTORY_MOVIES + "/NeaRer")
+                    mime.startsWith("audio/") -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI to (Environment.DIRECTORY_MUSIC + "/NeaRer")
+                    else -> MediaStore.Downloads.EXTERNAL_CONTENT_URI to (Environment.DIRECTORY_DOWNLOADS + "/NeaRer")
+                }
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
                     put(MediaStore.MediaColumns.MIME_TYPE, mime)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/NeaRer")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, relativeFolder)
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
-                destination = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                destination = contentResolver.insert(collection, values)
                     ?: throw IllegalStateException("Android could not create a Downloads entry")
                 contentResolver.openOutputStream(destination!!, "w")?.use { output ->
                     item.file.inputStream().use { input ->
@@ -1788,7 +1794,7 @@ class MainActivity : ComponentActivity() {
                 if (contentResolver.update(destination!!, ready, null, null) <= 0) {
                     throw IllegalStateException("Android could not finish saving the Downloads file")
                 }
-                runOnUiThread { chatNotice = "Saved ${item.displayName} to Downloads/NeaRer." }
+                runOnUiThread { chatNotice = "Saved ${item.displayName} to ${relativeFolder.replace("/", " ")}." }
             } catch (error: Exception) {
                 destination?.let { runCatching { contentResolver.delete(it, null, null) } }
                 runOnUiThread { chatNotice = "Could not save ${item.displayName} to Downloads: ${error.localizedMessage ?: "please try again"}" }
@@ -2818,7 +2824,7 @@ private fun NeaRerHome(
                                         modifier = Modifier.weight(1f),
                                         shape = RoundedCornerShape(12.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
-                                    ) { Text("Save to Downloads", maxLines = 1) }
+                                    ) { Text("Save to device", maxLines = 1) }
                                 }
                             }
                         }
