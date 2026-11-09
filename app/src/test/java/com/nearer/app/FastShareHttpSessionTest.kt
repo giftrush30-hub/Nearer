@@ -17,9 +17,9 @@ class FastShareHttpSessionTest {
 
     @Test fun overloadResponseClearlyAsksReceiverToRetry() {
         val response = FastShareHttpErrors.tooManyRequests().toString(Charsets.UTF_8)
-        assertTrue(response.startsWith("HTTP/1.1 429 Too Many Requests\\r\\n"))
-        assertTrue(response.contains("Retry-After: 2\\r\\n"))
-        assertTrue(response.contains("Connection: close\\r\\n"))
+        assertTrue(response.startsWith("HTTP/1.1 429 Too Many Requests\r\n"))
+        assertTrue(response.contains("Retry-After: 2\r\n"))
+        assertTrue(response.contains("Connection: close\r\n"))
     }
 
     @Test fun getRequestReadsRangeHeaderCaseInsensitively() {
