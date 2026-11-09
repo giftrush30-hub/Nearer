@@ -22,9 +22,10 @@ internal class NeaRerChatHistoryDatabase(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "nearer_chat_history.db", null, 1) {
 
     companion object {
-        private const val MAX_BACKUP_MESSAGES = 1_000_000
-        private const val MAX_BACKUP_RECORD_CHARS = 8 * 1024 * 1024
-        private const val MAX_BACKUP_BODY_CHARS = 4 * 1024 * 1024
+        private const val MAX_BACKUP_MESSAGES = 200_000
+        private const val MAX_BACKUP_RECORD_CHARS = 2 * 1024 * 1024
+        private const val MAX_BACKUP_BODY_CHARS = 1 * 1024 * 1024
+        private const val MAX_BACKUP_ARCHIVE_BYTES = 64L * 1024L * 1024L
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -132,6 +133,7 @@ internal class NeaRerChatHistoryDatabase(context: Context) :
                 }
                 writer.flush()
             }
+            if (temporary.length() > MAX_BACKUP_ARCHIVE_BYTES) throw IOException("Chat history is too large for the current backup format")
             if (!temporary.renameTo(destination)) throw IOException("Could not publish chat archive")
             return exported
         } catch (failure: Exception) {
@@ -148,6 +150,7 @@ internal class NeaRerChatHistoryDatabase(context: Context) :
     @Throws(IOException::class)
     fun mergePortableArchive(source: File): Long {
         if (!source.isFile || !source.canRead()) throw IOException("Chat archive is not readable")
+        if (source.length() > MAX_BACKUP_ARCHIVE_BYTES) throw IOException("Chat archive exceeds the supported size")
         val records = mutableListOf<ChatMessage>()
         val seenIds = HashSet<String>()
         try {
