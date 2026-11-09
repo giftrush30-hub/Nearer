@@ -641,6 +641,7 @@ private class FastShareHttpServer(
                         }
                     }
                 }
+                FastShareHttpRequest.Route.UPLOAD -> receiveUpload(input, output, exchange, writeGuard)
                 FastShareHttpRequest.Route.NOT_FOUND -> output.write(FastShareHttpErrors.notFound())
             }
             output.flush()
@@ -650,6 +651,86 @@ private class FastShareHttpServer(
         }
     }
 
+    /** Receives a browser PUT body directly into a private file using a fixed buffer. */
+    private fun receiveUpload(
+        input: BufferedInputStream,
+        output: BufferedOutputStream,
+        exchange: FastShareHttpExchange,
+        writeGuard: SocketWriteStallGuard
+    ) {
+        val rawName = exchange.request.queryParameter("name")
+        if (rawName.isNullOrBlank()) {
+            output.write(FastShareHttpErrors.badRequest())
+            return
+        }
+        val fileName = TransferFileNamePolicy.safeName(rawName)
+        val transferId = java.util.UUID.randomUUID().toString()
+        val totalBytes = exchange.contentLength
+        onUploadQueued(transferId, fileName, totalBytes)
+        val acquired = try {
+            downloadGate.tryAcquire(120, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
+        if (!acquired) {
+            onUploadProgress(transferId, fileName, 0L, totalBytes, false, true)
+            output.write(FastShareHttpErrors.tooManyRequests())
+            return
+        }
+
+        var temporaryFile: java.io.File? = null
+        var savedFile: java.io.File? = null
+        var receivedBytes = 0L
+        var lastReportedBytes = 0L
+        try {
+            if (!running) throw java.io.InterruptedIOException("Fast Share is stopping.")
+            val folder = java.io.File(context.filesDir, "received")
+            if (!folder.exists() && !folder.mkdirs()) throw java.io.IOException("Could not create the received-files folder.")
+            temporaryFile = java.io.File.createTempFile("nearer-upload-", ".part", folder)
+            onUploadProgress(transferId, fileName, 0L, totalBytes, false, false)
+            java.io.FileOutputStream(temporaryFile).use { destination ->
+                receivedBytes = FastShareUploadReceiver.copy(
+                    input = input,
+                    output = destination,
+                    expectedBytes = totalBytes,
+                    shouldContinue = { running },
+                    onBytesCopied = { copied ->
+                        receivedBytes = copied
+                        if (copied - lastReportedBytes >= 1024L * 1024L || copied == totalBytes) {
+                            lastReportedBytes = copied
+                            onUploadProgress(transferId, fileName, copied, totalBytes, false, false)
+                        }
+                    }
+                )
+                destination.fd.sync()
+            }
+            if (temporaryFile.length() != totalBytes) throw java.io.IOException("The received file length did not match its HTTP request.")
+            val finalFile = java.io.File(folder, System.currentTimeMillis().toString() + "-" + java.util.UUID.randomUUID() + "-" + fileName)
+            if (!temporaryFile.renameTo(finalFile)) throw java.io.IOException("Could not move the completed upload into received files.")
+            temporaryFile = null
+            savedFile = finalFile
+            runCatching { onFileReceived(fileName, finalFile) }
+            onUploadProgress(transferId, fileName, receivedBytes, totalBytes, true, false)
+            val body = ("Received " + fileName + "\\n").toByteArray(Charsets.UTF_8)
+            writeGuard.arm()
+            output.write(FastShareHttpWire.responseHead("HTTP/1.1 201 Created", FileHttpHeaders.uploadCreatedHeaders(body.size.toLong())))
+            output.write(body)
+        } catch (error: Exception) {
+            temporaryFile?.let { runCatching { it.delete() } }
+            if (savedFile == null) {
+                onUploadProgress(transferId, fileName, receivedBytes, totalBytes, false, true)
+                if (running) runCatching {
+                    writeGuard.arm()
+                    output.write(FastShareHttpErrors.uploadFailed())
+                    output.flush()
+                }
+            }
+        } finally {
+            writeGuard.disarm()
+            downloadGate.release()
+        }
+    }
     private fun knownArchiveSize(): Long {
         var total = 0L
         for (item in catalog.items) {
