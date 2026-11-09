@@ -8,7 +8,7 @@ import org.junit.Test
 import java.security.SecureRandom
 
 class NeaRerIdentityTest {
-    @Test fun generatesTenCharacterUnambiguousIds() {
+    @Test fun generatesTwelveCharacterUnambiguousIds() {
         repeat(100) {
             val id = NeaRerIdentity.generate()
             assertEquals(12, id.length)
