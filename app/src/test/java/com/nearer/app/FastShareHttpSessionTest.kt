@@ -96,6 +96,11 @@ class FastShareHttpSessionTest {
         assertTrue(duplicate.second.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
+    @Test fun wrongMethodOnUploadRouteAdvertisesPutOnly() {
+        val (exchange, response) = read("GET /upload HTTP/1.1\r\n\r\n")
+        assertNull(exchange)
+        assertTrue(response.contains("Allow: PUT\r\n"))
+    }
     @Test fun getWithPositiveContentLengthRemainsRejected() {
         val (_, response) = read("GET /download HTTP/1.1\r\nContent-Length: 1\r\n\r\n")
         assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
