@@ -327,7 +327,11 @@ class MainActivity : ComponentActivity() {
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
-                        chatMessages.add(ChatMessage(messageId, body, outgoing = false, delivery = "Received"))
+                        chatMessages.add(ChatMessage(
+                            messageId, body, outgoing = false, delivery = "Received",
+                            conversationId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty(),
+                            conversationName = senderName
+                        ))
                         safelyStored = persistMessages()
                         if (safelyStored) chatNotice = "New offline message received from $senderName."
                         else {
@@ -1136,7 +1140,11 @@ class MainActivity : ComponentActivity() {
                 return
             }
             // Add the pending bubble before dispatch so a very fast receipt cannot race the UI.
-            chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…"))
+            chatMessages.add(ChatMessage(
+                id, body, outgoing = true, delivery = "Sending…",
+                conversationId = nearbyTransport?.stableIdentityForEndpoint(targetEndpoint).orEmpty(),
+                conversationName = nearbyTransport?.displayNameForEndpoint(targetEndpoint).orEmpty()
+            ))
             persistMessages()
             if (nearbyTransport?.send(body, id, targetEndpoint) != true) {
                 val index = chatMessages.indexOfFirst { it.id == id }
