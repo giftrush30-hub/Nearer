@@ -2361,7 +2361,6 @@ private fun NeaRerHome(
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val profileBitmap = remember(profilePhotoPath) { profilePhotoPath?.let { path -> runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull() } }
-    val profileGlyph = when (profileAvatarId) { "aurora" -> "✦"; "spark" -> "✧"; "wave" -> "≈"; "sun" -> "☼"; "bloom" -> "❋"; "leaf" -> "❧"; "star" -> "✴"; else -> "◉" }
     val fastShare = remember(context) { FastShareController(context) }
     val unifiedTransferHistory = remember(transferHistory, fastShare.history) {
         (transferHistory.map { UnifiedTransferHistoryEntry(it.direction, it.fileName, it.bytes, it.status, it.timestamp, "Nearby") } +
@@ -2947,9 +2946,7 @@ private fun NeaRerHome(
                         if (profileBitmap != null) {
                             androidx.compose.foundation.Image(profileBitmap, contentDescription = "Your profile photo", modifier = Modifier.size(66.dp).clip(CircleShape))
                         } else {
-                            Surface(modifier = Modifier.size(66.dp), shape = CircleShape, color = BlueAccent.copy(alpha = 0.2f)) {
-                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(profileGlyph, color = Gold, fontSize = 30.sp) }
-                            }
+                            NeaRerAvatarBadge(profileAvatarId, Modifier.size(66.dp))
                         }
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("YOUR NEARER PROFILE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
