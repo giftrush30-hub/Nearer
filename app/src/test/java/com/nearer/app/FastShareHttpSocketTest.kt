@@ -103,6 +103,29 @@ class FastShareHttpSocketTest {
         assertTrue(response.endsWith("\r\n\r\n"))
     }
 
+
+    @Test fun nonzeroContentLengthIsRejectedOverTcp() {
+        val response = exchange(
+            "GET /download HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1\r\n\r\nx"
+        )
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun transferEncodingIsRejectedOverTcp() {
+        val response = exchange(
+            "GET /download HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n"
+        )
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun zeroContentLengthIsAcceptedOverTcp() {
+        val response = exchange(
+            "GET /download HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n"
+        )
+        assertTrue(response.startsWith("HTTP/1.1 200 OK\r\n"))
+        assertTrue(response.endsWith("\r\n\r\n0123456789"))
+    }
+
     @Test fun headRequestReturnsMetadataWithoutFileBody() {
         val response = exchange("HEAD /download HTTP/1.1\r\nHost: localhost\r\n\r\n")
         assertTrue(response.startsWith("HTTP/1.1 200 OK\r\n"))
