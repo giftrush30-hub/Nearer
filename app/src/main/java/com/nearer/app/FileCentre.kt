@@ -67,7 +67,7 @@ import java.util.zip.ZipOutputStream
 
 internal enum class FileCentreCategory(val label: String) {
     PICTURES("Pictures"), VIDEOS("Videos"), MUSIC("Music"), APPS("Apps"),
-    DOCUMENTS("Documents"), DOWNLOADS("Downloads"), OTHER("Other files"), FAVOURITES("Favourites"), RECENT("Recent files")
+    DOCUMENTS("Documents"), DOWNLOADS("Downloads"), OTHER("Other files"), CONTACTS("Contacts"), FAVOURITES("Favourites"), RECENT("Recent files")
 }
 
 internal data class FileCentreItem(
@@ -78,7 +78,8 @@ internal data class FileCentreItem(
     val sizeBytes: Long = 0L,
     val modifiedSeconds: Long = 0L,
     val mimeType: String? = null,
-    val packageName: String? = null
+    val packageName: String? = null,
+    val contactId: String? = null
 )
 
 internal object AndroidFileCatalog {
@@ -98,7 +99,7 @@ internal object AndroidFileCatalog {
     }
 
     fun hasMediaAccess(context: Context, category: FileCentreCategory): Boolean {
-        if (category == FileCentreCategory.APPS || category == FileCentreCategory.DOCUMENTS || category == FileCentreCategory.DOWNLOADS || category == FileCentreCategory.OTHER) return true
+        if (category == FileCentreCategory.APPS || category == FileCentreCategory.DOCUMENTS || category == FileCentreCategory.DOWNLOADS || category == FileCentreCategory.OTHER || category == FileCentreCategory.CONTACTS) return true
         if (Build.VERSION.SDK_INT < 33) {
             return context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
         }
@@ -248,6 +249,74 @@ internal object AndroidFileCatalog {
         }
     }
 
+    fun scanContacts(context: Context): List<FileCentreItem> {
+        val resolver = context.contentResolver
+        val results = ArrayList<FileCentreItem>()
+        val projection = arrayOf(android.provider.ContactsContract.Contacts._ID, android.provider.ContactsContract.Contacts.DISPLAY_NAME)
+        resolver.query(android.provider.ContactsContract.Contacts.CONTENT_URI, projection, null, null,
+            android.provider.ContactsContract.Contacts.DISPLAY_NAME + " COLLATE NOCASE ASC"
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(android.provider.ContactsContract.Contacts._ID)
+            val nameColumn = cursor.getColumnIndexOrThrow(android.provider.ContactsContract.Contacts.DISPLAY_NAME)
+            while (cursor.moveToNext()) {
+                val id = cursor.getString(idColumn) ?: continue
+                val name = cursor.getString(nameColumn)?.takeIf { it.isNotBlank() } ?: "Unnamed contact"
+                results.add(FileCentreItem(id = "contact:" + id, name = name, category = FileCentreCategory.CONTACTS,
+                    mimeType = "text/vcard", contactId = id))
+            }
+        }
+        return results
+    }
+
+    fun exportContactsBundle(context: Context, contacts: List<FileCentreItem>): FileCentreItem {
+        require(contacts.isNotEmpty()) { "Select at least one contact." }
+        val resolver = context.contentResolver
+        val outputDir = java.io.File(context.cacheDir, "nearer-share").apply { mkdirs() }
+        val output = java.io.File.createTempFile("nearer-contacts-", ".vcf", outputDir)
+        output.bufferedWriter(Charsets.UTF_8).use { writer ->
+            contacts.forEach { item ->
+                val id = requireNotNull(item.contactId) { "A selected contact is unavailable." }
+                val phoneNumbers = ArrayList<String>()
+                resolver.query(
+                    android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    arrayOf(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER),
+                    android.provider.ContactsContract.CommonDataKinds.Phone.CONTACT_ID + "=?",
+                    arrayOf(id),
+                    null
+                )?.use { cursor ->
+                    val column = cursor.getColumnIndexOrThrow(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
+                    while (cursor.moveToNext()) {
+                        cursor.getString(column)?.takeIf { it.isNotBlank() }?.let { phoneNumbers.add(it) }
+                    }
+                }
+                val emailAddresses = ArrayList<String>()
+                resolver.query(
+                    android.provider.ContactsContract.CommonDataKinds.Email.CONTENT_URI,
+                    arrayOf(android.provider.ContactsContract.CommonDataKinds.Email.ADDRESS),
+                    android.provider.ContactsContract.CommonDataKinds.Email.CONTACT_ID + "=?",
+                    arrayOf(id),
+                    null
+                )?.use { cursor ->
+                    val column = cursor.getColumnIndexOrThrow(android.provider.ContactsContract.CommonDataKinds.Email.ADDRESS)
+                    while (cursor.moveToNext()) {
+                        cursor.getString(column)?.takeIf { it.isNotBlank() }?.let { emailAddresses.add(it) }
+                    }
+                }
+                writer.append(VCardFormatPolicy.create(item.name, phoneNumbers, emailAddresses))
+            }
+        }
+        val uri = FileProvider.getUriForFile(context, context.packageName + ".files", output)
+        return FileCentreItem(
+            id = uri.toString(),
+            name = if (contacts.size == 1) contacts.first().name + ".vcf" else contacts.size.toString() + " contacts.vcf",
+            category = FileCentreCategory.CONTACTS,
+            uri = uri,
+            sizeBytes = output.length(),
+            modifiedSeconds = System.currentTimeMillis() / 1000L,
+            mimeType = "text/vcard"
+        )
+    }
+
     fun appIcon(context: Context, packageName: String): Drawable? =
         runCatching { context.packageManager.getApplicationIcon(packageName) }.getOrNull()
 
@@ -339,6 +408,7 @@ internal object AndroidFileCatalog {
             FileCentreCategory.VIDEOS -> "VIDEO"
             FileCentreCategory.MUSIC -> "AUDIO"
             FileCentreCategory.APPS -> "APP"
+            FileCentreCategory.CONTACTS -> "CONTACT"
             FileCentreCategory.DOCUMENTS -> "DOCUMENT"
             FileCentreCategory.DOWNLOADS -> "DOWNLOAD"
             FileCentreCategory.OTHER -> "FILE"
@@ -459,6 +529,21 @@ internal fun FileCentreScreen(
         if (id in favouriteIds) favouriteIds.remove(id) else favouriteIds.add(id)
         context.getSharedPreferences("nearer_file_centre", Context.MODE_PRIVATE)
             .edit().putStringSet("favourites", favouriteIds.toSet()).apply()
+    }
+
+    val contactPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            loading = true
+            scope.launch {
+                val contacts = withContext(Dispatchers.IO) { runCatching { AndroidFileCatalog.scanContacts(context) }.getOrDefault(emptyList()) }
+                items.removeAll { it.category == FileCentreCategory.CONTACTS }
+                items.addAll(contacts)
+                loading = false
+                notice = "Loaded " + contacts.size + " contacts. Select the people you want to share."
+            }
+        } else notice = "Contacts permission was not granted. Your contacts remain private."
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -601,7 +686,6 @@ internal fun FileCentreScreen(
         }
     }
     val selectedItems = items.filter { it.id in selected }
-    val selectedUris = selectedItems.mapNotNull { it.uri }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -631,7 +715,21 @@ internal fun FileCentreScreen(
             FileCentreCategory.entries.forEach { entry ->
                 FilterChip(
                     selected = category == entry,
-                    onClick = { category = entry },
+                    onClick = {
+                        category = entry
+                        if (entry == FileCentreCategory.CONTACTS) {
+                            if (context.checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+                                loading = true
+                                scope.launch {
+                                    val contacts = withContext(Dispatchers.IO) { runCatching { AndroidFileCatalog.scanContacts(context) }.getOrDefault(emptyList()) }
+                                    items.removeAll { it.category == FileCentreCategory.CONTACTS }
+                                    items.addAll(contacts)
+                                    loading = false
+                                    notice = "Loaded " + contacts.size + " contacts. Select the people you want to share."
+                                }
+                            } else notice = "Allow contacts access only if you want to share contacts. NeaRer will not upload them."
+                        }
+                    },
                     label = { Text(entry.label, fontSize = 10.sp) }
                 )
             }
@@ -642,7 +740,7 @@ internal fun FileCentreScreen(
                 FilterChip(selected = sortMode == mode, onClick = { sortMode = mode }, label = { Text(mode, fontSize = 10.sp) })
             }
         }
-        val selectableVisibleIds = visible.filter { it.uri != null || it.packageName != null }.map { it.id }
+        val selectableVisibleIds = visible.filter { it.uri != null || it.packageName != null || it.contactId != null }.map { it.id }
         val allVisibleSelected = selectableVisibleIds.isNotEmpty() && selectableVisibleIds.all { it in selected }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("${selectableVisibleIds.size} shareable items in view", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
@@ -689,6 +787,19 @@ internal fun FileCentreScreen(
         if (category == FileCentreCategory.APPS) {
             Text("Tap an app to package its base APK and any split APK parts into one shareable bundle. Private app data and accounts are not included.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
         }
+        if (category == FileCentreCategory.CONTACTS &&
+            context.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+            Surface(color = Panel, shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Share contacts privately", color = White, fontWeight = FontWeight.Bold)
+                    Text("Android asks permission before NeaRer lists contacts. Only people you select are included in the vCard.", color = Muted, fontSize = 12.sp)
+                    Button(onClick = { contactPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
+                        colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)) {
+                        Text("Allow contacts access")
+                    }
+                }
+            }
+        }
         Text(notice, color = Muted, fontSize = 10.sp)
         if (visible.isEmpty() && !loading && (category == FileCentreCategory.APPS || hasAccess)) {
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
@@ -726,7 +837,7 @@ internal fun FileCentreScreen(
                                             }
                                     }
                                 }
-                            } else if (item.uri != null) {
+                            } else if (item.uri != null || item.contactId != null) {
                                 markRecent(item.id)
                                 if (item.id in selected) selected.remove(item.id) else selected.add(item.id)
                             }
@@ -764,7 +875,7 @@ internal fun FileCentreScreen(
                                             }
                                     }
                                 }
-                            } else if (item.uri != null) {
+                            } else if (item.uri != null || item.contactId != null) {
                                 markRecent(item.id)
                                 if (item.id in selected) selected.remove(item.id) else selected.add(item.id)
                             }
@@ -813,22 +924,25 @@ internal fun FileCentreScreen(
                             onClick = {
                                 if (!connected) notice = "Connect to a nearby NeaRer phone before sending."
                                 else if (selectedItems.isNotEmpty()) {
-                                    notice = "Preparing selected files and app bundles…"
+                                    notice = "Preparing selected files, app bundles and contacts…"
                                     scope.launch {
                                         val prepared = withContext(Dispatchers.IO) {
-                                            selectedItems.mapNotNull { item ->
+                                            val contactItems = selectedItems.filter { it.contactId != null }
+                                            val fileItems = selectedItems.filter { it.contactId == null }
+                                            val preparedFiles = fileItems.mapNotNull { item ->
                                                 if (item.packageName == null || item.uri != null) item
                                                 else runCatching { AndroidFileCatalog.exportAppBundle(context, item) }.getOrNull()
                                             }
+                                            val contactBundle = if (contactItems.isNotEmpty()) runCatching {
+                                                AndroidFileCatalog.exportContactsBundle(context, contactItems)
+                                            }.getOrNull() else null
+                                            preparedFiles + listOfNotNull(contactBundle)
                                         }
                                         val uris = prepared.mapNotNull { it.uri }.distinct()
                                         if (uris.isNotEmpty()) {
                                             onSendFiles(uris)
-                                            // Keep the basket intact until the user clears it.
                                             notice = "Send request handed to NeaRer. Check the transfer status before clearing your basket."
-                                        } else {
-                                            notice = "NeaRer could not prepare the selected items. Check app availability and try again."
-                                        }
+                                        } else notice = "NeaRer could not prepare the selected items. Check access and try again."
                                     }
                                 }
                             },
