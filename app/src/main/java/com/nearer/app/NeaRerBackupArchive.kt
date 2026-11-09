@@ -43,6 +43,7 @@ internal object NeaRerBackupArchive {
             NeaRerBackupCrypto.encryptFile(zipFile, destination, password)
         } finally {
             zipFile.delete()
+            password.fill('\\u0000')
         }
     }
 
@@ -85,8 +86,12 @@ internal object NeaRerBackupArchive {
         val records = mutableListOf<EntryRecord>()
         var total = 0L
         files.forEach { file ->
+            val canonical = file.canonicalFile
             val path = file.relativeTo(root).invariantSeparatorsPath
             validatePath(path)
+            if (!canonical.path.startsWith(root.path + File.separator)) {
+                throw IOException("Snapshot contains a file outside its folder")
+            }
             val size = file.length()
             if (size > MAX_ENTRY_BYTES) throw IOException("A backup file is too large")
             total += size
@@ -103,15 +108,17 @@ internal object NeaRerBackupArchive {
                 }
             })
         ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zip ->
+            // Put the manifest first so extraction knows the exact allow-list and
+            // expected sizes before writing any payload bytes to disk.
+            zip.putNextEntry(ZipEntry(MANIFEST))
+            zip.write(manifest.toString().toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
             files.forEach { file ->
                 val path = file.relativeTo(root).invariantSeparatorsPath
                 zip.putNextEntry(ZipEntry(path))
                 FileInputStream(file).use { input -> input.copyTo(zip, BUFFER_BYTES) }
                 zip.closeEntry()
             }
-            zip.putNextEntry(ZipEntry(MANIFEST))
-            zip.write(manifest.toString().toByteArray(Charsets.UTF_8))
-            zip.closeEntry()
         }
     }
 
