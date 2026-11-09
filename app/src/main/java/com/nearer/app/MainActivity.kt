@@ -1201,7 +1201,10 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) { nearbyTransferHistory.clear() }
     }
 
-    private fun trimChatMessages() { ChatHistoryPolicy.trim(chatMessages) }
+    private fun trimChatMessages() {
+        ChatHistoryPolicy.trim(chatMessages)
+        hasOlderChatMessages = chatMessages.firstOrNull()?.let { chatHistoryDatabase.hasBefore(it) } ?: false
+    }
 
     private fun loadOlderChatMessages() {
         val oldestLoaded = chatMessages.firstOrNull() ?: return
