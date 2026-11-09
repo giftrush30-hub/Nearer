@@ -56,3 +56,15 @@ operation across SQLite chats, SharedPreferences, profile photo and received fil
 the transport must also reload restored pending outbox state safely. Until that
 exists, restore remains preview-only. No contacts database exists in the current
 app; recently-seen peers are a short-lived discovery history, not an address book.
+
+
+## Restore safety groundwork (2026-11-10)
+
+The chat database now exposes two distinct import modes:
+
+- `mergePortableArchive` validates the entire JSON-lines archive and merges by message ID, preserving unrelated local chats. This remains the safe default for importing chat history.
+- `replacePortableArchive` validates the entire archive before opening a SQLite transaction, then replaces the chat table in one transaction. It is intended only for a clearly confirmed full-device restore. If an insert fails, SQLite rolls back the table replacement.
+
+The restore coordinator is still preview-only. The full-device restore must not call the replacement method until a coordinated rollback strategy exists for SharedPreferences, the profile photo and the received-files directory, and until the app can refresh its in-memory profile/community/transport state or restart cleanly. Pending file-send selections are deliberately not restored because their Android URI grants are device-specific. The transfer history and offline message outbox are portable JSON preference values and are retained in the encrypted snapshot.
+
+Validation also parses the JSON-backed preference payloads before preview, so malformed onboarding/community/history/outbox data is rejected before any app data can be touched.
