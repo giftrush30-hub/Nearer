@@ -1039,7 +1039,10 @@ class MainActivity : ComponentActivity() {
                         id = item.getString("id"),
                         body = item.getString("body"),
                         outgoing = item.getBoolean("outgoing"),
-                        delivery = item.optString("delivery", "Sent")
+                        delivery = item.optString("delivery", "Sent"),
+                        timestamp = item.optLong("timestamp", System.currentTimeMillis()),
+                        conversationId = item.optString("conversationId", ""),
+                        conversationName = item.optString("conversationName", "")
                     )
                     chatMessages.add(message)
                     if (!message.outgoing) receivedMessageIds.add(message.id)
@@ -1096,7 +1099,10 @@ class MainActivity : ComponentActivity() {
                     .put("id", message.id)
                     .put("body", message.body)
                     .put("outgoing", message.outgoing)
-                    .put("delivery", message.delivery))
+                    .put("delivery", message.delivery)
+                    .put("timestamp", message.timestamp)
+                    .put("conversationId", message.conversationId)
+                    .put("conversationName", message.conversationName))
             }
             // commit() is intentional here: a delivery receipt must follow the disk write,
             // not just an in-memory SharedPreferences update queued by apply().
