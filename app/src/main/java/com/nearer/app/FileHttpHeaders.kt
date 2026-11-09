@@ -1,6 +1,5 @@
 package com.nearer.app
 
-import java.net.URLEncoder
 
 /** Builds safe HTTP header values for metadata supplied by Android file providers. */
 internal object FileHttpHeaders {
