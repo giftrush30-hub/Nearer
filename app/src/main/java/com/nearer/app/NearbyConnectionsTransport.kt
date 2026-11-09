@@ -87,7 +87,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 preferences.getStringSet("nearby_seen_message_ids", HashSet<String>()).orEmpty().forEach { add(it) }
             }
         } else {
-            preferences.getStringSet("nearby_seen_message_ids", emptySet()).orEmpty().forEach { add(it) }
+            preferences.getStringSet("nearby_seen_message_ids", HashSet<String>()).orEmpty().forEach { add(it) }
         }
         MessageIdHistoryPolicy.trimOldest(this)
     }
