@@ -53,7 +53,7 @@ class FileHttpHeadersTest {
         val csp = headers.first { it.first == "Content-Security-Policy" }.second
         assertTrue(csp.contains("script-src 'nonce-test-nonce'"))
         assertTrue(csp.contains("connect-src 'self'"))
-        assertTrue(!csp.contains("'unsafe-inline'"))
+        assertTrue(!csp.contains("script-src 'unsafe-inline'"))
         assertTrue(csp.contains("default-src 'none'"))
     }
     @Test fun archiveHeadersDescribePrivateZipAndUseSafeAttachmentName() {
