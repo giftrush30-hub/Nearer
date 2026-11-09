@@ -505,7 +505,7 @@ private class FastShareHttpServer(
                 StreamRangeCopy.skipFully(stream, start)
             } catch (_: Exception) {
                 stream.close()
-                writeFileUnavailable(output, item)
+                writeFileUnavailable(output, item, transferId)
                 return
             }
         }
@@ -552,7 +552,7 @@ private class FastShareHttpServer(
             null
         }
         if (!headOnly && stream == null) {
-            writeFileUnavailable(output, item)
+            writeFileUnavailable(output, item, transferId)
             return
         }
         // Start the throughput clock before the first chunk is read or written.
