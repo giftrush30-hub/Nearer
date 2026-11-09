@@ -4,10 +4,13 @@ import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.Context
+import android.app.AlertDialog
+import android.app.PendingIntent
 import android.content.ContentValues
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.pm.PackageInstaller
 import android.net.wifi.WpsInfo
 import android.bluetooth.BluetoothManager
 import android.net.wifi.WifiManager
@@ -19,6 +22,7 @@ import android.net.wifi.p2p.WifiP2pManager
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.provider.MediaStore
+import android.provider.Settings
 import android.os.Environment
 import android.webkit.MimeTypeMap
 import android.os.Build
@@ -28,6 +32,8 @@ import android.os.Handler
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
+import java.util.zip.ZipFile
+import java.util.zip.ZipEntry
 import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.net.InetSocketAddress
@@ -406,12 +412,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
             override fun onFileReceived(id: String, name: String, file: File) {
+                val isAppBundle = isNeaRerAppBundle(file)
                 runOnUiThread {
                     incomingTransferName = null
                     incomingProgress = 0f
-                    receivedFiles.add(0, ReceivedFile(name, file))
+                    receivedFiles.add(0, ReceivedFile(name, file, isAppBundle))
                     recordNearbyTransfer("Received", name, file.length(), "Complete")
-                    chatNotice = "Received and saved: $name. Tap it below to open."
+                    chatNotice = if (isAppBundle) {
+                        "Received an app bundle: $name. Review it and tap Install when ready."
+                    } else "Received and saved: $name. Tap it below to open."
                 }
             }
             override fun onFileStatus(message: String) {
@@ -522,6 +531,7 @@ class MainActivity : ComponentActivity() {
                     onOpenFile = ::openReceivedFile,
                     onForwardReceivedFile = ::forwardReceivedFile,
                     onSaveReceivedFile = ::saveReceivedFileToDownloads,
+                    onInstallAppBundle = ::installReceivedAppBundle,
                     onDisconnect = ::disconnectFromPeer,
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
@@ -1739,6 +1749,89 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun installReceivedAppBundle(item: ReceivedFile) {
+        if (!item.isAppBundle) {
+            chatNotice = "This received ZIP is not a NeaRer app bundle."
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            chatNotice = "Allow NeaRer to install apps in Android settings, then tap Install again."
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + packageName)))
+            } catch (_: Exception) {
+                chatNotice = "Open Android Settings and allow NeaRer to install unknown apps, then try again."
+            }
+            return
+        }
+        chatNotice = "Preparing the app bundle for Android's installer…"
+        io.execute {
+            var sessionId = -1
+            try {
+                ZipFile(item.file).use { archive ->
+                    if (archive.getEntry("INSTALLATION.txt") == null) {
+                        throw IllegalArgumentException("The app bundle installation guide is missing.")
+                    }
+                    val apkEntries = ArrayList<ZipEntry>()
+                    val sessionNames = HashSet<String>()
+                    val entries = archive.entries()
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+                        if (!AppBundleEntryPolicy.isAllowedApkEntry(entry.name)) continue
+                        if (entry.isDirectory || entry.size <= 0L) {
+                            throw IllegalArgumentException("The app bundle contains an invalid APK entry.")
+                        }
+                        val sessionName = AppBundleEntryPolicy.sessionName(entry.name)
+                        if (!sessionNames.add(sessionName)) {
+                            throw IllegalArgumentException("The app bundle contains duplicate APK parts.")
+                        }
+                        apkEntries.add(entry)
+                    }
+                    if (apkEntries.none { it.name == "base.apk" }) {
+                        throw IllegalArgumentException("The app bundle does not contain base.apk.")
+                    }
+                    if (apkEntries.size > 128) {
+                        throw IllegalArgumentException("The app bundle contains too many APK parts.")
+                    }
+                    val totalBytes = apkEntries.fold(0L) { total, entry ->
+                        Math.addExact(total, entry.size)
+                    }
+                    // NeaRer writes APK entries without compression. Reject suspicious
+                    // archives whose expanded APK data is wildly larger than the received ZIP.
+                    val archiveAllowance = Math.addExact(item.file.length(), apkEntries.size.toLong() * 1_048_576L)
+                    if (totalBytes > archiveAllowance) {
+                        throw IllegalArgumentException("The app bundle expands beyond its received archive size.")
+                    }
+                    val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+                    if (totalBytes > 0L) params.setSize(totalBytes)
+                    sessionId = packageManager.packageInstaller.createSession(params)
+                    packageManager.packageInstaller.openSession(sessionId).use { session ->
+                        apkEntries.forEach { entry ->
+                            val sessionName = AppBundleEntryPolicy.sessionName(entry.name)
+                            session.openWrite(sessionName, 0L, entry.size).use { output ->
+                                archive.getInputStream(entry).use { input ->
+                                    input.copyTo(output, 256 * 1024)
+                                }
+                                session.fsync(output)
+                            }
+                        }
+                        val resultIntent = Intent(this, AppInstallResultActivity::class.java)
+                            .putExtra("received_app_name", item.displayName)
+                        val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
+                        val callback = PendingIntent.getActivity(this, sessionId, resultIntent, pendingFlags)
+                        session.commit(callback.intentSender)
+                    }
+                }
+                runOnUiThread { chatNotice = "App bundle prepared. Android will ask you to confirm installation." }
+            } catch (error: Exception) {
+                if (sessionId >= 0) runCatching { packageManager.packageInstaller.abandonSession(sessionId) }
+                runOnUiThread {
+                    chatNotice = "Could not prepare this app for installation: " +
+                        (error.localizedMessage ?: "invalid app bundle")
+                }
+            }
+        }
+    }
+
     private fun openReceivedFile(item: ReceivedFile) {
         try {
             val uri = FileProvider.getUriForFile(this, "${packageName}.files", item.file)
@@ -2423,6 +2516,7 @@ private fun NeaRerHome(
     onOpenFile: (ReceivedFile) -> Unit,
     onForwardReceivedFile: (ReceivedFile) -> Unit,
     onSaveReceivedFile: (ReceivedFile) -> Unit,
+    onInstallAppBundle: (ReceivedFile) -> Unit,
     onDisconnect: () -> Unit,
     onAccept: () -> Unit,
     onReject: () -> Unit,
@@ -2860,6 +2954,14 @@ private fun NeaRerHome(
                                         shape = RoundedCornerShape(12.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
                                     ) { Text("Save to device", maxLines = 1) }
+                                    if (fileItem.isAppBundle) {
+                                        Button(
+                                            onClick = { onInstallAppBundle(fileItem) },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                                        ) { Text("Install", maxLines = 1) }
+                                    }
                                     Button(
                                         onClick = { onForwardReceivedFile(fileItem) },
                                         modifier = Modifier.weight(1f),
@@ -3263,7 +3365,16 @@ internal data class ChatMessage(
     val conversationName: String = ""
 )
 
-private data class ReceivedFile(val displayName: String, val file: File)
+private fun isNeaRerAppBundle(file: File): Boolean {
+    if (!file.isFile || !file.extension.equals("zip", ignoreCase = true)) return false
+    return runCatching {
+        ZipFile(file).use { archive ->
+            archive.getEntry("INSTALLATION.txt") != null && archive.getEntry("base.apk") != null
+        }
+    }.getOrDefault(false)
+}
+
+private data class ReceivedFile(val displayName: String, val file: File, val isAppBundle: Boolean = false)
 
 private data class UnifiedTransferHistoryEntry(
     val direction: String,
@@ -3302,6 +3413,37 @@ private data class IncomingTransfer(
 ) {
     fun close() {
         try { output.flush(); output.close() } catch (_: Exception) { }
+    }
+}
+
+internal class AppInstallResultActivity : android.app.Activity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            val confirmation = if (Build.VERSION.SDK_INT >= 33) {
+                intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(Intent.EXTRA_INTENT) as? Intent
+            }
+            if (confirmation != null) startActivity(confirmation)
+            finish()
+            return
+        }
+        val success = status == PackageInstaller.STATUS_SUCCESS
+        val detail = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE).orEmpty()
+        val message = if (success) {
+            "Android reports that the app was installed successfully."
+        } else {
+            "Android did not complete the installation." + if (detail.isBlank()) "" else "\n\n" + detail
+        }
+        AlertDialog.Builder(this)
+            .setTitle(if (success) "App installed" else "Installation not completed")
+            .setMessage(message)
+            .setPositiveButton("OK") { _, _ -> finish() }
+            .setOnCancelListener { finish() }
+            .show()
     }
 }
 
