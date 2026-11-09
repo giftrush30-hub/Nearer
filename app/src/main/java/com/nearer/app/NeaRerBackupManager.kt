@@ -74,6 +74,11 @@ internal object NeaRerBackupManager {
     ): PreparedRestore {
         val restored = newNonexistentWorkPath(context, "nearer-restore-stage-")
         try {
+            if (!NeaRerBackupPathSafety.isDirectChild(context.cacheDir, restored) ||
+                restored.exists()
+            ) {
+                throw IOException("Restore staging path is not a fresh private cache child")
+            }
             NeaRerBackupArchive.restoreEncryptedBackup(encryptedBackup, restored, password)
             val preview = NeaRerBackupSnapshot.inspect(restored)
             return PreparedRestore(restored, preview)
