@@ -4,7 +4,7 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 
-/** One parsed HTTP request and the range header relevant to file downloads. */
+/** One parsed HTTP request with optional download-range or upload-body metadata. */
 internal data class FastShareHttpExchange(
     val request: FastShareHttpRequest,
     val rangeHeader: String?,
@@ -71,11 +71,11 @@ internal object FastShareHttpSession {
                 sawHostHeader = true
             }
             if (name.equals("Transfer-Encoding", ignoreCase = true)) {
-                // This receiver never consumes request bodies or chunk framing.
+                // Chunked request bodies are unsupported; uploads must use one exact Content-Length.
                 return rejectBadRequest(output)
             }
             if (name.equals("Content-Length", ignoreCase = true)) {
-                // GET/HEAD requests have no body in this protocol. Accept zero only.
+                // GET/HEAD requests must be bodyless; PUT uploads declare their exact body length.
                 if (sawContentLengthHeader) return rejectBadRequest(output)
                 sawContentLengthHeader = true
                 val length = headerValue.trim()
