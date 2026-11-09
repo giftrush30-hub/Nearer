@@ -88,6 +88,14 @@ internal object FileHttpHeaders {
         )
     }
 
+    /** Headers for a streaming ZIP archive of the selected files. */
+    fun archiveHeaders(fileName: String): String =
+        "Content-Type: application/zip\r\n" +
+            contentDisposition(fileName) +
+            "Cache-Control: no-store\r\n" +
+            "X-Content-Type-Options: nosniff\r\n" +
+            "Referrer-Policy: no-referrer\r\n" +
+            "Connection: close\r\n\r\n"
     /**
      * Prevent browsers and intermediary caches from retaining private local-share
      * content, and prevent MIME sniffing of provider-supplied file types.

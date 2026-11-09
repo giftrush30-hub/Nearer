@@ -35,6 +35,23 @@ class FastShareDownloadCatalogTest {
         assertTrue(page.contains("Size unavailable"))
     }
 
+    @Test fun receiverPageDoesNotOfferArchiveForSingleFile() {
+        val page = FastShareDownloadCatalog(
+            listOf(FastShareDownloadItem(0, "photo.jpg", "image/jpeg", 12L))
+        ).receiverPage("g".repeat(64))
+        assertTrue(!page.contains("/download-all?"))
+    }
+    @Test fun receiverPageOffersOneClickArchiveForMultiFileSessions() {
+        val key = "f".repeat(64)
+        val page = FastShareDownloadCatalog(
+            listOf(
+                FastShareDownloadItem(0, "photo.jpg", "image/jpeg", 12L),
+                FastShareDownloadItem(1, "video.mp4", "video/mp4", 34L)
+            )
+        ).receiverPage(key)
+        assertTrue(page.contains("href=\"/download-all?key=$key\""))
+        assertTrue(page.contains("Download all files · ZIP"))
+    }
     @Test fun receiverPageEscapesUntrustedFileNames() {
         val page = FastShareDownloadCatalog(
             listOf(FastShareDownloadItem(0, "<script>alert('x')</script>.txt", "text/plain", 1L))

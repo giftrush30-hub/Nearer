@@ -48,6 +48,14 @@ class FileHttpHeadersTest {
         assertFalse(withoutValidator.contains("Last-Modified:"))
     }
 
+    @Test fun archiveHeadersDescribePrivateZipAndUseSafeAttachmentName() {
+        val headers = FileHttpHeaders.archiveHeaders("NeaRer-Files.zip")
+        assertTrue(headers.startsWith("Content-Type: application/zip\r\n"))
+        assertTrue(headers.contains("filename*=UTF-8''NeaRer-Files.zip\r\n"))
+        assertTrue(headers.contains("Cache-Control: no-store\r\n"))
+        assertTrue(headers.contains("X-Content-Type-Options: nosniff\r\n"))
+        assertTrue(headers.endsWith("Connection: close\r\n\r\n"))
+    }
     @Test fun receiverPageHeadersPreventCachingFramingSniffingAndExternalExecution() {
         val headers = FileHttpHeaders.receiverPageHeaders(123L).toMap()
         assertEquals("text/html; charset=utf-8", headers["Content-Type"])
