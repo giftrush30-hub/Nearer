@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import java.io.OutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.ServerSocket
@@ -17,6 +18,7 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.Collections
 import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -329,6 +331,9 @@ private class FastShareHttpServer(
     @Volatile private var running = true
     private val downloadGate = FastShareDownloadGate()
     private val clients = FastShareSocketRegistry()
+    private val writeWatchdog = Executors.newSingleThreadScheduledExecutor { task ->
+        Thread(task, "NeaRer-FastShare-WriteWatchdog").apply { isDaemon = true }
+    }
     private var socket: ServerSocket? = null
     private var acceptThread: Thread? = null
 
@@ -386,6 +391,7 @@ private class FastShareHttpServer(
         // accepted or waiting in the executor queue.
         clients.closeAll()
         executor.shutdownNow()
+        writeWatchdog.shutdownNow()
     }
 
     private fun findHotspotAddress(): String {
@@ -435,8 +441,10 @@ private class FastShareHttpServer(
     private fun handleConnection(client: Socket) {
         client.use { connection ->
             connection.soTimeout = 15000
+            val writeGuard = SocketWriteStallGuard(connection, writeWatchdog, 30_000L)
+            try {
             val input = BufferedInputStream(connection.getInputStream())
-            val output = BufferedOutputStream(connection.getOutputStream())
+            val output = BufferedOutputStream(writeGuard.wrap(connection.getOutputStream()))
             val exchange = FastShareHttpSession.readRequest(input, output) ?: return
             val request = exchange.request
             val headOnly = request.isHeadOnly
@@ -478,6 +486,7 @@ private class FastShareHttpServer(
                         } else {
                             try {
                                 if (running) {
+                                    writeGuard.arm()
                                     try {
                                         streamFile(output, uri, item, rangeHeader, false, transferId)
                                     } catch (error: Exception) {
@@ -491,6 +500,7 @@ private class FastShareHttpServer(
                                     onTransferDiscarded(transferId)
                                 }
                             } finally {
+                                writeGuard.disarm()
                                 downloadGate.release()
                             }
                         }
@@ -499,6 +509,9 @@ private class FastShareHttpServer(
                 FastShareHttpRequest.Route.NOT_FOUND -> output.write(FastShareHttpErrors.notFound())
             }
             output.flush()
+            } finally {
+                writeGuard.close()
+            }
         }
     }
 
