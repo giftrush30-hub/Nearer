@@ -25,6 +25,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onDisconnected(id: String, stableId: String, name: String)
         fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit)
         fun onMessageStatus(messageId: String, status: String)
+        fun onProfile(id: String, name: String, avatarId: String)
         fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
@@ -239,6 +240,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
     private var started = false
     @Volatile private var localName = "NeaRer User"
+    @Volatile private var localAvatarId = "orbit"
 
     private val discovery = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(id: String, info: DiscoveredEndpointInfo) {
@@ -363,6 +365,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 return
             }
             val kind = envelope.optString("kind", "message")
+            if (kind == "profile") {
+                val stableId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                if (stableId.isBlank() || !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) return
+                val profileName = envelope.optString("name").trim().replace("|", " ").take(23)
+                val avatarId = envelope.optString("avatarId", "orbit")
+                val allowedAvatars = setOf("aurora", "spark", "wave", "sun", "orbit", "bloom", "leaf", "star")
+                if (profileName.isNotBlank() && avatarId in allowedAvatars) listener.onProfile(endpointId, profileName, avatarId)
+                return
+            }
             if (kind == "ack") {
                 val acknowledgedId = envelope.optString("id")
                 // Only the peer we actually sent this message to may confirm it.
@@ -496,11 +507,25 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     fun displayNameForEndpoint(endpointId: String): String =
         synchronized(names) { names[endpointId].orEmpty() }
 
-    fun setDisplayName(name: String) {
+    fun setDisplayName(name: String, avatarId: String = localAvatarId) {
         val clean = name.trim().replace("|", " ").take(23).ifBlank { "NeaRer User" }
-        if (clean == localName) return
+        val allowedAvatars = setOf("aurora", "spark", "wave", "sun", "orbit", "bloom", "leaf", "star")
+        val cleanAvatar = avatarId.takeIf { it in allowedAvatars } ?: "orbit"
+        val nameChanged = clean != localName
         localName = clean
-        if (started) { client.stopAdvertising(); startAdvertising() }
+        localAvatarId = cleanAvatar
+        if (nameChanged && started) { client.stopAdvertising(); startAdvertising() }
+        val profile = JSONObject().put("kind", "profile").put("version", 1)
+            .put("name", localName).put("avatarId", localAvatarId).toString()
+        broadcast(profile, null)
+    }
+
+    fun sendProfile(endpointId: String) {
+        if (!synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) return
+        val profile = JSONObject().put("kind", "profile").put("version", 1)
+            .put("name", localName).put("avatarId", localAvatarId).toString()
+        client.sendPayload(endpointId, Payload.fromBytes(profile.toByteArray(Charsets.UTF_8)))
+            .addOnFailureListener { listener.onStatus("Your profile could not be shared with this nearby person yet.") }
     }
 
     fun start() {
