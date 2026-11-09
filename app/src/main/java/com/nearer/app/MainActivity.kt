@@ -1795,6 +1795,12 @@ class MainActivity : ComponentActivity() {
                     val totalBytes = apkEntries.fold(0L) { total, entry ->
                         Math.addExact(total, entry.size)
                     }
+                    // NeaRer writes APK entries without compression. Reject suspicious
+                    // archives whose expanded APK data is wildly larger than the received ZIP.
+                    val archiveAllowance = Math.addExact(item.file.length(), apkEntries.size.toLong() * 1_048_576L)
+                    if (totalBytes > archiveAllowance) {
+                        throw IllegalArgumentException("The app bundle expands beyond its received archive size.")
+                    }
                     val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
                     if (totalBytes > 0L) params.setSize(totalBytes)
                     sessionId = packageManager.packageInstaller.createSession(params)
