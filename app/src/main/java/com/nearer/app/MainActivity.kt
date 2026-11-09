@@ -1168,7 +1168,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
-        chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…"))
+        chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…", conversationId = conversationIdFor(connectedDeviceName), conversationName = connectedDeviceName.orEmpty()))
         persistMessages()
         if (!sendWireLine("MSG|$id|$encoded")) {
             val index = chatMessages.indexOfFirst { it.id == id }
@@ -2606,6 +2606,7 @@ private fun NeaRerHome(
                 PremiumChatsScreen(
                     chatReady = chatReady,
                     nearerId = nearerId,
+                    currentConversationId = conversationIdFor(connectedDeviceName),
                     connectedDeviceName = connectedDeviceName,
                     connectionMessage = connectionMessage,
                     usingNearbyConnections = usingNearbyConnections,
@@ -2889,6 +2890,7 @@ private fun NeaRerHome(
 private fun PremiumChatsScreen(
     chatReady: Boolean,
     nearerId: String,
+    currentConversationId: String,
     connectedDeviceName: String?,
     connectionMessage: String,
     usingNearbyConnections: Boolean,
@@ -2927,7 +2929,16 @@ private fun PremiumChatsScreen(
 
         // Real inbox: summaries are derived from saved messages, never demo contacts.
         var inboxQuery by remember { mutableStateOf("") }
+        var selectedConversationId by remember { mutableStateOf<String?>(null) }
         val inboxThreads = remember(messages) { ConversationIndex.build(messages) }
+        val selectedThread = inboxThreads.firstOrNull { it.conversationId == selectedConversationId }
+        val effectiveConversationId = selectedConversationId ?: currentConversationId
+        val visibleMessages = remember(messages, effectiveConversationId) {
+            if (effectiveConversationId.isBlank()) emptyList()
+            else ConversationIndex.messagesFor(messages, effectiveConversationId)
+        }
+        val canSendInSelectedThread = chatReady && effectiveConversationId.isNotBlank() &&
+            effectiveConversationId == currentConversationId
         val visibleThreads = remember(inboxThreads, inboxQuery) {
             if (inboxQuery.isBlank()) inboxThreads else inboxThreads.filter {
                 it.displayName.contains(inboxQuery, ignoreCase = true) ||
@@ -2955,7 +2966,10 @@ private fun PremiumChatsScreen(
                 } else {
                     visibleThreads.take(8).forEach { thread ->
                         Row(
-                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(Color(0xFF1A2B43)).padding(11.dp),
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
+                                .background(if (selectedConversationId == thread.conversationId) Color(0xFF29486B) else Color(0xFF1A2B43))
+                                .clickable { selectedConversationId = thread.conversationId }
+                                .padding(11.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
@@ -2976,6 +2990,14 @@ private fun PremiumChatsScreen(
                     }
                     if (visibleThreads.size > 8) Text("Showing 8 recent chats. Search to find older conversations.", color = Muted, fontSize = 9.sp)
                 }
+            }
+        }
+
+        if (selectedThread != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("‹ Inbox", color = BlueAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { selectedConversationId = null }.padding(horizontal = 10.dp, vertical = 8.dp))
+                Text(selectedThread.displayName, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
 
@@ -3065,8 +3087,8 @@ private fun PremiumChatsScreen(
                     }
                 }
 
-                if (chatReady) {
-                    if (messages.isEmpty()) {
+                if (chatReady || selectedConversationId != null) {
+                    if (visibleMessages.isEmpty()) {
                         Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFF142238)) {
                             Column(
                                 modifier = Modifier.fillMaxWidth().padding(18.dp),
@@ -3083,7 +3105,7 @@ private fun PremiumChatsScreen(
                             modifier = Modifier.fillMaxWidth().height(230.dp).verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(9.dp)
                         ) {
-                            messages.forEach { message ->
+                            visibleMessages.forEach { message ->
                                 Column(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
@@ -3112,43 +3134,50 @@ private fun PremiumChatsScreen(
                         Text(chatNotice, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = draft,
-                            onValueChange = onDraftChange,
-                            modifier = Modifier.weight(1f),
-                            placeholder = { Text("Write a message…", color = Muted, fontSize = 13.sp) },
-                            shape = RoundedCornerShape(18.dp),
-                            singleLine = true
-                        )
-                        Button(
-                            onClick = { if (draft.isNotBlank()) onSendMessage(draft) },
-                            enabled = draft.isNotBlank(),
-                            modifier = Modifier.height(54.dp),
-                            shape = RoundedCornerShape(17.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
-                        ) { Text("Send", fontWeight = FontWeight.Bold) }
-                    }
+                    if (canSendInSelectedThread) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = draft,
+                                onValueChange = onDraftChange,
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text("Write a message…", color = Muted, fontSize = 13.sp) },
+                                shape = RoundedCornerShape(18.dp),
+                                singleLine = true
+                            )
+                            Button(
+                                onClick = { if (draft.isNotBlank()) onSendMessage(draft) },
+                                enabled = draft.isNotBlank(),
+                                modifier = Modifier.height(54.dp),
+                                shape = RoundedCornerShape(17.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                            ) { Text("Send", fontWeight = FontWeight.Bold) }
+                        }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(9.dp)
-                    ) {
-                        Button(
-                            onClick = onChooseFiles,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263B59), contentColor = White)
-                        ) { Text("＋  Share files", fontSize = 12.sp) }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(9.dp)
+                        ) {
+                            Button(
+                                onClick = onChooseFiles,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263B59), contentColor = White)
+                            ) { Text("＋  Share files", fontSize = 12.sp) }
+                            Text(
+                                if (usingNearbyConnections) "Nearby link" else "Wi-Fi Direct link",
+                                color = Muted,
+                                fontSize = 10.sp,
+                                modifier = Modifier.align(Alignment.CenterVertically)
+                            )
+                        }
+                    } else {
                         Text(
-                            if (usingNearbyConnections) "Nearby link" else "Wi-Fi Direct link",
-                            color = Muted,
-                            fontSize = 10.sp,
-                            modifier = Modifier.align(Alignment.CenterVertically)
+                            "History only · reconnect to this person to reply. NeaRer won't send this message to a different connected phone.",
+                            color = Gold, fontSize = 10.sp, lineHeight = 15.sp
                         )
                     }
 
