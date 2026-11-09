@@ -262,8 +262,12 @@ class MainActivity : ComponentActivity() {
                     statusMessage = "$name is requesting a nearby connection."
                 }
             }
-            override fun onPeerIdentity(id: String, stableId: String, publicId: String) {
+            override fun onPeerIdentity(id: String, stableId: String, publicId: String, verified: Boolean) {
                 runOnUiThread {
+                    if (verified && hybridConnectedEndpoint == id) {
+                        chatReady = true
+                        chatNotice = "Secure nearby identity confirmed. Private offline chat is ready."
+                    }
                     if (stableId.isNotBlank()) {
                         nearbyPeerPublicIds[stableId] = publicId
                         val saved = org.json.JSONObject()
@@ -296,7 +300,8 @@ class MainActivity : ComponentActivity() {
                     pendingHybridEndpoint = null
                     incomingRequesterName = null
                     connectedDeviceName = name
-                    chatReady = true
+                    chatReady = nearbyTransport?.isPeerVerified(id) == true
+                    if (!chatReady) chatNotice = "Connection approved. Checking the other phone's cryptographic identity before enabling private chat."
                     resumeLudoAfterReconnect(name)
                     connectionMessage = "Secure nearby connection active"
                     approvalMessage = "Connection approved"

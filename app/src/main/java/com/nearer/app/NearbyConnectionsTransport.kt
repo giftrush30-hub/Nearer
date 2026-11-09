@@ -22,7 +22,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         fun onLost(id: String, stableId: String)
         fun onRequest(id: String, name: String, token: String)
         fun onConnected(id: String, name: String, stableId: String)
-        fun onPeerIdentity(id: String, stableId: String, publicId: String)
+        fun onPeerIdentity(id: String, stableId: String, publicId: String, verified: Boolean)
         fun onDisconnected(id: String, stableId: String, name: String)
         fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit)
         fun onMessageStatus(messageId: String, status: String)
@@ -83,8 +83,20 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     // An ID becomes "seen" only after the UI confirms local persistence.
     private val pendingIncomingMessageIds = ConcurrentHashMap.newKeySet<String>()
     private val outgoingMessageTargets = ConcurrentHashMap<String, String>()
-    private data class PendingOutgoingMessage(@field:Volatile var endpointId: String, val stablePeerId: String, val payload: ByteArray, var attempts: Int = 0, var retryTask: Runnable? = null)
+    private data class PendingOutgoingMessage(@field:Volatile var endpointId: String, val stablePeerId: String, val publicPeerId: String, val payload: ByteArray, var attempts: Int = 0, var retryTask: Runnable? = null)
     private val pendingOutgoingMessages = ConcurrentHashMap<String, PendingOutgoingMessage>()
+    private val verifiedPeerPublicIds = ConcurrentHashMap<String, String>().apply {
+        try {
+            val raw = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .getString("nearby_verified_peer_public_ids", "{}") ?: "{}"
+            val saved = JSONObject(raw)
+            for (i in 0 until saved.length()) {
+                val key = saved.names()?.optString(i).orEmpty()
+                val value = saved.optString(key).uppercase()
+                if (key.isNotBlank() && NeaRerIdentity.isValid(value)) put(key, value)
+            }
+        } catch (_: Exception) { }
+    }
     private val deliveryHandler = Handler(Looper.getMainLooper())
     private val maxMessageAttempts = 3
     init { restorePendingOutbox() }
@@ -93,7 +105,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val array = org.json.JSONArray()
             pendingOutgoingMessages.forEach { (id, p) ->
                 val encryptedPayload = LocalDataCipher.encrypt(appContext, p.payload)
-                array.put(JSONObject().put("id", id).put("peer", p.stablePeerId).put("payload", encryptedPayload))
+                array.put(JSONObject().put("id", id).put("peer", p.stablePeerId)
+                    .put("publicId", p.publicPeerId).put("payload", encryptedPayload))
             }
             val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("nearby_outbox", array.toString()).commit()
             if (!saved) listener.onStatus("NeaRer could not save its pending-message queue.")
@@ -122,7 +135,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     storedPayload.toByteArray(Charsets.UTF_8)
                 }
                 if (payload != null && payload.isNotEmpty()) {
-                    pendingOutgoingMessages[id] = PendingOutgoingMessage("", peer, payload)
+                    val publicPeerId = item.optString("publicId").uppercase()
+                    pendingOutgoingMessages[id] = PendingOutgoingMessage("", peer, publicPeerId, payload)
                 } else {
                     listener.onStatus("A saved message could not be unlocked and was left out of the retry queue.")
                 }
@@ -132,9 +146,33 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
     fun pendingMessageIds(): Set<String> = pendingOutgoingMessages.keys.toSet()
 
-    private fun retryQueuedMessagesForPeer(peerId: String, endpointId: String) {
-        if (peerId.isBlank()) return
-        pendingOutgoingMessages.forEach { (id, p) -> if (p.stablePeerId == peerId) { p.retryTask?.let(deliveryHandler::removeCallbacks); p.endpointId = endpointId; p.attempts = 0; outgoingMessageTargets[id] = endpointId; persistPendingOutbox(); attemptOutgoingMessage(id) } }
+    private fun retryQueuedMessagesForPeer(peerId: String, endpointId: String, publicId: String) {
+        if (peerId.isBlank() || !NeaRerIdentity.isValid(publicId)) return
+        pendingOutgoingMessages.forEach { (id, p) ->
+            // Never release an older queued message based only on the spoofable six-character transport code.
+            if (p.stablePeerId == peerId && p.publicPeerId == publicId) {
+                p.retryTask?.let(deliveryHandler::removeCallbacks)
+                p.endpointId = endpointId
+                p.attempts = 0
+                outgoingMessageTargets[id] = endpointId
+                persistPendingOutbox()
+                attemptOutgoingMessage(id)
+            }
+        }
+    }
+
+    fun isPeerVerified(endpointId: String): Boolean {
+        val stableId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        return stableId.isNotBlank() && NeaRerIdentity.isValid(verifiedPeerPublicIds[stableId].orEmpty())
+    }
+
+    private fun rememberVerifiedPeer(stableId: String, publicId: String) {
+        if (stableId.isBlank() || !NeaRerIdentity.isValid(publicId)) return
+        verifiedPeerPublicIds[stableId] = publicId
+        val json = JSONObject()
+        verifiedPeerPublicIds.forEach { (key, value) -> json.put(key, value) }
+        appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            .edit().putString("nearby_verified_peer_public_ids", json.toString()).commit()
     }
 
     private fun attemptOutgoingMessage(messageId: String) {
@@ -216,7 +254,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (result.status.isSuccess) {
                 synchronized(activeEndpoints) { activeEndpoints.add(id) }
                 val details = synchronized(names) { (names[id] ?: "Nearby NeaRer user") to stableIds[id].orEmpty() }
-                retryQueuedMessagesForPeer(details.second, id)
+                // Do not release queued private messages until identity proof and key pinning succeed.
                 sendIdentityHello(id)
                 listener.onConnected(id, details.first, details.second)
             } else listener.onStatus("Nearby connection was not approved. Try again.")
@@ -346,9 +384,15 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                         when (TrustedPeerKeyStore.checkAndPin(appContext, publicId, publicKey)) {
                             TrustedPeerKeyStore.Result.FIRST_SEEN -> {
                                 listener.onStatus("First-seen security key saved for $publicId on this phone. This is not proof of a person's identity.")
-                                listener.onPeerIdentity(endpointId, stableId, publicId)
+                                rememberVerifiedPeer(stableId, publicId)
+                                listener.onPeerIdentity(endpointId, stableId, publicId, true)
+                                retryQueuedMessagesForPeer(stableId, endpointId, publicId)
                             }
-                            TrustedPeerKeyStore.Result.MATCH -> listener.onPeerIdentity(endpointId, stableId, publicId)
+                            TrustedPeerKeyStore.Result.MATCH -> {
+                                rememberVerifiedPeer(stableId, publicId)
+                                listener.onPeerIdentity(endpointId, stableId, publicId, true)
+                                retryQueuedMessagesForPeer(stableId, endpointId, publicId)
+                            }
                             TrustedPeerKeyStore.Result.KEY_CHANGED -> {
                                 peerIdentityKeys.remove(endpointId)
                                 peerIdentityIds.remove(endpointId)
@@ -372,7 +416,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     val publicId = envelope.optString("publicId").uppercase()
                     val stableId = synchronized(names) { stableIds[endpointId].orEmpty() }
                     if (NeaRerIdentity.isValid(publicId) && stableId.isNotBlank()) {
-                        listener.onPeerIdentity(endpointId, stableId, publicId)
+                        listener.onPeerIdentity(endpointId, stableId, publicId, false)
                     }
                     return
                 }
@@ -605,9 +649,13 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             return try {
                 val payload = envelope.toByteArray(Charsets.UTF_8)
                 val stablePeerId = synchronized(names) { stableIds[targetEndpointId].orEmpty() }
-                if (stablePeerId.isBlank()) return false
+                val publicPeerId = verifiedPeerPublicIds[stablePeerId].orEmpty()
+                if (stablePeerId.isBlank() || !NeaRerIdentity.isValid(publicPeerId)) {
+                    listener.onStatus("Private messaging is waiting for verified peer identity. Reconnect and compare the security code.")
+                    return false
+                }
                 outgoingMessageTargets[messageId] = targetEndpointId
-                pendingOutgoingMessages[messageId] = PendingOutgoingMessage(targetEndpointId, stablePeerId, payload)
+                pendingOutgoingMessages[messageId] = PendingOutgoingMessage(targetEndpointId, stablePeerId, publicPeerId, payload)
                 if (!persistPendingOutbox()) {
                     pendingOutgoingMessages.remove(messageId)
                     outgoingMessageTargets.remove(messageId)
