@@ -38,6 +38,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val stableIds = mutableMapOf<String, String>()
     private val activeEndpoints = mutableSetOf<String>()
     @Volatile private var localPublicId: String = ""
+    private val identityChallenges = ConcurrentHashMap<String, ByteArray>()
+    private val peerIdentityKeys = ConcurrentHashMap<String, ByteArray>()
+    private val peerIdentityIds = ConcurrentHashMap<String, String>()
     private val localStableId = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         .let { prefs ->
             prefs.getString("nearer_stable_id", null) ?: UUID.randomUUID().toString().replace("-", "").take(6).uppercase().also {
@@ -214,13 +217,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 synchronized(activeEndpoints) { activeEndpoints.add(id) }
                 val details = synchronized(names) { (names[id] ?: "Nearby NeaRer user") to stableIds[id].orEmpty() }
                 retryQueuedMessagesForPeer(details.second, id)
-                sendIdentity(id)
+                sendIdentityHello(id)
                 listener.onConnected(id, details.first, details.second)
             } else listener.onStatus("Nearby connection was not approved. Try again.")
         }
         override fun onDisconnected(id: String) {
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
             pauseOutgoingFilesForEndpoint(id)
+            identityChallenges.remove(id)
+            peerIdentityKeys.remove(id)
+            peerIdentityIds.remove(id)
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
             if (empty) listener.onDisconnected(id, details.first, details.second)
             else {
@@ -286,13 +292,61 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private fun handleBytes(endpointId: String, bytes: ByteArray?) {
         try {
             val envelope = JSONObject(bytes?.toString(Charsets.UTF_8).orEmpty())
-            if (envelope.optString("kind") == "identity") {
-                val publicId = envelope.optString("publicId").uppercase()
-                val stableId = synchronized(names) { stableIds[endpointId].orEmpty() }
-                if (Regex("^NR-[0-9A-F]{32}$").matches(publicId) && stableId.isNotBlank()) {
-                    listener.onPeerIdentity(endpointId, stableId, publicId)
+            when (envelope.optString("kind")) {
+                "identity_hello" -> {
+                    val publicId = envelope.optString("publicId").uppercase()
+                    val keyText = envelope.optString("publicKey")
+                    val challengeText = envelope.optString("challenge")
+                    val stableId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                    if (!NeaRerIdentity.isValid(publicId) || stableId.isBlank() ||
+                        keyText.length > 2048 || challengeText.length > 128) return
+                    val publicKey = try { android.util.Base64.decode(keyText, android.util.Base64.NO_WRAP) } catch (_: Exception) { return }
+                    val challenge = try { android.util.Base64.decode(challengeText, android.util.Base64.NO_WRAP) } catch (_: Exception) { return }
+                    if (challenge.size != 32 || !SecurePeerIdentity.isValidPublicKey(publicKey)) return
+                    peerIdentityKeys[endpointId] = publicKey
+                    peerIdentityIds[endpointId] = publicId
+                    val proof = try {
+                        SecurePeerIdentity.signChallenge(publicId, publicKey, challenge)
+                    } catch (_: Exception) {
+                        listener.onStatus("NeaRer could not complete secure identity verification on this phone.")
+                        return
+                    }
+                    val response = JSONObject().put("kind", "identity_proof").put("version", 2)
+                        .put("signature", android.util.Base64.encodeToString(proof, android.util.Base64.NO_WRAP))
+                    try {
+                        client.sendPayload(endpointId, Payload.fromBytes(response.toString().toByteArray(Charsets.UTF_8)))
+                    } catch (_: Exception) {
+                        listener.onStatus("Secure identity verification is waiting for a stable connection.")
+                    }
+                    return
                 }
-                return
+                "identity_proof" -> {
+                    val challenge = identityChallenges.remove(endpointId) ?: return
+                    val publicKey = peerIdentityKeys[endpointId] ?: return
+                    val publicId = peerIdentityIds[endpointId] ?: return
+                    val stableId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                    val signature = try {
+                        android.util.Base64.decode(envelope.optString("signature"), android.util.Base64.NO_WRAP)
+                    } catch (_: Exception) { return }
+                    if (stableId.isNotBlank() &&
+                        SecurePeerIdentity.verifyChallenge(publicId, publicKey, challenge, signature)) {
+                        listener.onPeerIdentity(endpointId, stableId, publicId)
+                    } else {
+                        peerIdentityKeys.remove(endpointId)
+                        peerIdentityIds.remove(endpointId)
+                        listener.onStatus("A nearby device failed its cryptographic identity proof. Its ID was not trusted.")
+                    }
+                    return
+                }
+                "identity" -> {
+                    // Compatibility with earlier builds: display as self-reported only.
+                    val publicId = envelope.optString("publicId").uppercase()
+                    val stableId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                    if (NeaRerIdentity.isValid(publicId) && stableId.isNotBlank()) {
+                        listener.onPeerIdentity(endpointId, stableId, publicId)
+                    }
+                    return
+                }
             }
             if (envelope.optString("kind") == "file_meta") {
                 val payloadId = envelope.optLong("payloadId", -1L)
@@ -449,25 +503,34 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
 
     fun setLocalIdentity(publicId: String) {
         val clean = publicId.trim().uppercase()
-        if (!Regex("^NR-[0-9A-F]{32}$").matches(clean)) return
+        if (!NeaRerIdentity.isValid(clean)) return
         localPublicId = clean
         val endpoints = synchronized(activeEndpoints) { activeEndpoints.toList() }
-        endpoints.forEach(::sendIdentity)
+        endpoints.forEach(::sendIdentityHello)
     }
 
-    private fun sendIdentity(endpointId: String) {
+    private fun sendIdentityHello(endpointId: String) {
         val publicId = localPublicId
-        if (publicId.isBlank() || synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) return
-        val envelope = JSONObject()
-            .put("kind", "identity")
-            .put("version", 1)
-            .put("publicId", publicId)
-            .toString()
+        if (publicId.isBlank() || !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) return
         try {
+            val challenge = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+            val publicKey = SecurePeerIdentity.publicKeyEncoded()
+            identityChallenges[endpointId] = challenge
+            val envelope = JSONObject()
+                .put("kind", "identity_hello")
+                .put("version", 2)
+                .put("publicId", publicId)
+                .put("publicKey", android.util.Base64.encodeToString(publicKey, android.util.Base64.NO_WRAP))
+                .put("challenge", android.util.Base64.encodeToString(challenge, android.util.Base64.NO_WRAP))
+                .toString()
             client.sendPayload(endpointId, Payload.fromBytes(envelope.toByteArray(Charsets.UTF_8)))
-                .addOnFailureListener { listener.onStatus("Your NeaRer ID could not be exchanged yet. It will retry after reconnecting.") }
+                .addOnFailureListener {
+                    identityChallenges.remove(endpointId)
+                    listener.onStatus("Secure identity verification will retry after reconnecting.")
+                }
         } catch (_: Exception) {
-            listener.onStatus("Your NeaRer ID could not be exchanged yet. It will retry after reconnecting.")
+            identityChallenges.remove(endpointId)
+            listener.onStatus("This phone could not start secure identity verification. Nearby messaging remains unverified.")
         }
     }
 
