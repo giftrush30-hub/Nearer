@@ -18,3 +18,8 @@
 - The checksum response is an integrity receipt, not transport encryption or authentication of the browser client.
 - JVM unit tests were added for upload admission and the distinct retry response. They have not been executed in this source-only workflow.
 - No Gradle build, APK build, or physical-device test has been run.
+
+## Pure helper coverage
+
+- Filename decoding and sanitization now live in a small pure helper, with JVM tests for URL-encoded spaces, path traversal separators, unsupported/control-like characters, empty names and length bounds.
+- Upload SHA-256 is computed incrementally in fixed-size chunks through a dedicated helper. JVM tests check the standard SHA-256 digest for "abc" and verify chunked updates produce the same digest as one update.

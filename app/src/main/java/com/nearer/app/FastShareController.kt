@@ -563,14 +563,12 @@ private class FastShareHttpServer(
         exchange: FastShareHttpExchange,
         directory: File
     ) {
-        val rawName = runCatching { URLDecoder.decode(exchange.uploadFileName.orEmpty(), Charsets.UTF_8.name()) }.getOrDefault("")
-        val safeName = rawName.map { c -> if (c.isLetterOrDigit() || c in " ._-()[]") c else '_' }
-            .joinToString("").trim().trim('.').take(180).ifBlank { "Received file" }
+        val safeName = FastShareFileName.sanitize(exchange.uploadFileName.orEmpty())
         val temporary = runCatching { File.createTempFile(".nearer-upload-", ".part", directory) }.getOrNull()
         if (temporary == null) { output.write(FastShareHttpErrors.uploadFailed()); return }
         var published = false
         try {
-            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            val digest = FastShareSha256()
             FileOutputStream(temporary).use { sink ->
                 val buffer = ByteArray(64 * 1024)
                 var remaining = exchange.contentLength
@@ -586,7 +584,7 @@ private class FastShareHttpServer(
                 }
                 sink.fd.sync()
             }
-            val sha256 = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            val sha256 = digest.finishHex()
             synchronized(uploadPublishLock) {
                 var destination = File(directory, safeName)
                 var suffix = 2
