@@ -433,6 +433,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 }
             }
             if (envelope.optString("kind") == "file_meta") {
+                if (!isPeerVerified(endpointId)) {
+                    listener.onFileStatus("File information from an unverified nearby device was ignored.")
+                    return
+                }
                 val payloadId = envelope.optLong("payloadId", -1L)
                 val name = safeFileName(envelope.optString("name", "shared-file"))
                 val size = envelope.optLong("size", -1L)
@@ -448,6 +452,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                 return
             }
             if (envelope.optString("kind") == "file_resume_request") {
+                if (!isPeerVerified(endpointId)) {
+                    listener.onFileStatus("A file-resume request from an unverified nearby device was ignored.")
+                    return
+                }
                 val payloadId = envelope.optLong("payloadId", -1L)
                 val offset = envelope.optLong("offset", -1L)
                 val outgoing = outgoingFiles[payloadId] ?: return
@@ -715,7 +723,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         if (body.isBlank() || targetNames.isEmpty()) return false
         val targets = synchronized(activeEndpoints) {
             activeEndpoints.filter { endpoint ->
-                synchronized(names) { names[endpoint]?.let { it in targetNames } == true }
+                isPeerVerified(endpoint) &&
+                    synchronized(names) { names[endpoint]?.let { it in targetNames } == true }
             }
         }
         if (targets.isEmpty()) return false
@@ -740,6 +749,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     }
 
     fun sendFile(endpointId: String, uri: Uri, displayName: String): Long? {
+        if (!isPeerVerified(endpointId)) {
+            listener.onFileStatus("Verify this nearby NeaRer identity before sending files.")
+            return null
+        }
         if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
             listener.onFileStatus("The nearby connection is no longer active.")
             return null

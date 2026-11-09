@@ -48,3 +48,11 @@ The UI must therefore continue to describe the ID as self-reported. Do not call 
 - Incoming direct chat messages and delivery acknowledgements are now accepted only after the current Nearby Connections endpoint has completed the v2 challenge-response and local key/ID continuity checks.
 - A successful connection approval or a legacy v1 self-reported ID alone is not sufficient to inject chat or mark a message Delivered.
 - This is an authentication gate, not end-to-end encryption: message bodies are still not encrypted in transit.
+
+
+## File-control and group-session gates
+
+- Nearby file metadata and file-resume requests are ignored unless the endpoint completed the v2 identity proof and key-continuity checks for its current session.
+- Outgoing Nearby file transfers require a verified endpoint session.
+- Group-name fan-out includes only endpoints with a verified session; unverified nearby devices are not sent group chat payloads.
+- These checks authenticate the session's possession of a pinned key. They do not encrypt file bytes or message bodies in transit.
