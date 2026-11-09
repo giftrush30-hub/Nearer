@@ -47,7 +47,7 @@ class FileHttpHeadersTest {
         assertEquals("no-referrer", headers["Referrer-Policy"])
         assertEquals("DENY", headers["X-Frame-Options"])
         assertEquals(
-            "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             headers["Content-Security-Policy"]
         )
         assertEquals("camera=(), microphone=(), geolocation=()", headers["Permissions-Policy"])
