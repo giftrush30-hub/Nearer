@@ -2595,14 +2595,14 @@ private fun NeaRerHome(
                                 modifier = Modifier.fillMaxWidth().background(Midnight, RoundedCornerShape(16.dp)).padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Text("LIVE DOWNLOADS · ${fastShare.activeTransfers.count { !it.isQueued }}/5 · ${fastShare.activeTransfers.count { it.isQueued }} waiting", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("LIVE TRANSFERS · ${fastShare.activeTransfers.count { !it.isQueued }}/5 · ${fastShare.activeTransfers.count { it.isQueued }} waiting", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 fastShare.activeTransfers.forEach { transfer ->
                                     val percent = if (transfer.totalBytes > 0L) ((transfer.bytesSent.toDouble() / transfer.totalBytes.toDouble()) * 100.0).toInt().coerceIn(0, 100) else -1
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text((if (transfer.isReceiving) "Receiving · " else "Sending · ") + transfer.fileName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                             Text(
-                                                if (transfer.isQueued) "Waiting for a download slot…"
+                                                if (transfer.isQueued) "Waiting for a transfer slot…"
                                                 else if (percent >= 0) "${formatTransferBytes(transfer.bytesSent)} / ${formatTransferBytes(transfer.totalBytes)} · $percent%"
                                                 else if (transfer.isReceiving) "${formatTransferBytes(transfer.bytesSent)} received · size unknown" else "${formatTransferBytes(transfer.bytesSent)} sent · size unknown",
                                                 color = Muted, fontSize = 10.sp
