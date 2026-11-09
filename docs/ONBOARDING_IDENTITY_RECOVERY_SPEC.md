@@ -1,6 +1,6 @@
 # NeaRer onboarding, identity and recovery specification
 
-Status: product decisions approved. First-run onboarding, local profile persistence, profile editing and the More-tab profile preview are implemented on the `feature/premium-onboarding-identity` branch. Peer-to-peer profile propagation, recovery and cross-device migration remain separate implementation milestones.
+Status: product decisions approved. First-run onboarding, local profile persistence, profile editing, the More-tab profile preview and nearby avatar metadata exchange are implemented on the `feature/premium-onboarding-identity` branch. Profile-photo exchange, recovery and cross-device migration remain separate implementation milestones.
 
 ## Product promise
 
@@ -30,7 +30,8 @@ The public NeaRer ID is an identifier, not a password, secret, recovery key or p
 - Store display name, selected avatar ID, onboarding completion, optional personalisation answers and local profile-photo path in app-private storage/preferences.
 - Copy picked photos into app-private storage rather than relying on a temporary gallery URI.
 - Resize/compress profile photos for nearby transfer and cached display; preserve a user-selected original only if they explicitly opt in.
-- When profile data is shared with a nearby peer, send only the public profile fields needed for the interaction. Do not send personalisation answers.
+- Nearby connections exchange only the public display name and selected avatar ID after connection approval; avatar updates are broadcast to active peers. Do not send personalisation answers.
+- Profile photos remain local for now. Add an explicit photo-sharing setting and size-limited, integrity-checked photo transfer before sending photos to peers.
 - Provide clear controls for photo visibility and profile reset in a later profile-settings milestone.
 
 ## Phone change and recovery
@@ -89,7 +90,7 @@ If a phone is lost or destroyed, no backup exists, and the old phone cannot be a
 ## Implementation sequence
 
 1. First-run onboarding, name, optional answers, avatar/photo choice, ID reveal and local persistence — implemented.
-2. Local profile editor and profile preview in More — implemented; peer profile propagation and rendering across discovery, chats and groups remain pending.
+2. Local profile editor and profile preview in More — implemented. Nearby display-name/avatar metadata exchange and avatar rendering in discovery/connection lists — implemented. Profile-photo sharing and avatar rendering in chat/contact surfaces remain pending.
 3. Recovery Kit generation and secure key storage.
 4. Encrypted local backup/export and restore, including verification tests.
 5. Old-to-new phone migration with pairing, integrity checks and rollback-safe completion.
