@@ -419,7 +419,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             var destination: File? = null
             try {
                 val folder = File(appContext.filesDir, "received").apply { mkdirs() }
-                val target = File(folder, "${System.currentTimeMillis()}-${meta.name}")
+                val safeName = TransferFileNamePolicy.safeName(meta.name)
+                val target = File(folder, "${System.currentTimeMillis()}-${safeName}")
                 destination = target
                 val receivedFile = payload.asFile() ?: throw IllegalStateException("Nearby file content is unavailable")
                 val sourceFile = receivedFile.asJavaFile()
@@ -477,9 +478,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
-    private fun safeFileName(raw: String): String =
-        raw.substringAfterLast('/').substringAfterLast('\\')
-            .replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100).ifBlank { "shared-file" }
+    private fun safeFileName(raw: String): String = TransferFileNamePolicy.safeName(raw)
 
     private fun startAdvertising() {
         val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
