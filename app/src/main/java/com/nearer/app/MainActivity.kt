@@ -1129,6 +1129,7 @@ class MainActivity : ComponentActivity() {
         val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("message_database_migrated", false)) {
             val stored = prefs.getString("messages", null)
+            var migrationSucceeded = stored.isNullOrBlank()
             if (!stored.isNullOrBlank()) {
                 try {
                     val array = JSONArray(stored)
@@ -1145,14 +1146,15 @@ class MainActivity : ComponentActivity() {
                             conversationName = item.optString("conversationName", "")
                         ))
                     }
-                    if (!chatHistoryDatabase.upsert(legacyMessages)) throw IllegalStateException("Could not migrate old chat history")
+                    migrationSucceeded = chatHistoryDatabase.upsert(legacyMessages)
                 } catch (_: Exception) {
-                    statusMessage = "NeaRer could not finish moving your old chats into its safer local archive. Your original chat data has been kept."
+                    migrationSucceeded = false
                 }
             }
-            // Only mark migration complete after the SQLite archive is safely written.
-            if (stored.isNullOrBlank() || chatHistoryDatabase.count() > 0L || prefs.getString("messages", null).isNullOrBlank()) {
+            if (migrationSucceeded) {
                 prefs.edit().putBoolean("message_database_migrated", true).commit()
+            } else {
+                statusMessage = "NeaRer could not finish moving your old chats into its safer local archive. Your original chat data has been kept."
             }
         }
         chatMessages.clear()
@@ -1202,14 +1204,14 @@ class MainActivity : ComponentActivity() {
     private fun trimChatMessages() { ChatHistoryPolicy.trim(chatMessages) }
 
     private fun loadOlderChatMessages() {
-        val oldestLoaded = chatMessages.firstOrNull()?.timestamp ?: return
+        val oldestLoaded = chatMessages.firstOrNull() ?: return
         val older = chatHistoryDatabase.loadBefore(oldestLoaded)
         if (older.isEmpty()) {
             hasOlderChatMessages = false
             return
         }
         chatMessages.addAll(0, older)
-        hasOlderChatMessages = chatHistoryDatabase.hasBefore(older.first().timestamp)
+        hasOlderChatMessages = chatHistoryDatabase.hasBefore(older.first())
     }
 
     private fun persistMessages(): Boolean = chatHistoryDatabase.upsert(chatMessages.toList())
