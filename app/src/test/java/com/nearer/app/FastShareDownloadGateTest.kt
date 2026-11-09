@@ -84,6 +84,7 @@ class FastShareDownloadGateTest {
         assertTrue(gate.tryAcquire(0, TimeUnit.MILLISECONDS))
         repeat(5) { gate.release() }
     }
+
     @Test fun concurrentCallersNeverExceedFiveActivePermitsAndAllComplete() {
         val gate = FastShareDownloadGate()
         val callers = 12
@@ -120,6 +121,51 @@ class FastShareDownloadGateTest {
             assertEquals(callers, completed.get())
             assertEquals("The five available slots should all be used", 5, peak.get())
             assertEquals(0, active.get())
+        } finally {
+            start.countDown()
+            pool.shutdownNow()
+        }
+    }
+
+    @Test fun fortyConcurrentRequestsNeverExceedFiveActiveStreamsAndDoNotLeakPermits() {
+        val gate = FastShareDownloadGate()
+        val callers = 40
+        val ready = CountDownLatch(callers)
+        val start = CountDownLatch(1)
+        val active = AtomicInteger(0)
+        val peak = AtomicInteger(0)
+        val completed = AtomicInteger(0)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(callers)
+
+        try {
+            val tasks = (1..callers).map {
+                pool.submit<Boolean> {
+                    ready.countDown()
+                    if (!start.await(3, TimeUnit.SECONDS)) return@submit false
+                    if (!gate.tryAcquire(12, TimeUnit.SECONDS)) return@submit false
+                    try {
+                        val nowActive = active.incrementAndGet()
+                        peak.updateAndGet { previous -> maxOf(previous, nowActive) }
+                        Thread.sleep(25)
+                        completed.incrementAndGet()
+                        true
+                    } finally {
+                        active.decrementAndGet()
+                        gate.release()
+                    }
+                }
+            }
+
+            assertTrue("All 40 simulated receivers should reach the start line", ready.await(3, TimeUnit.SECONDS))
+            start.countDown()
+            assertTrue("All 40 requests should complete within the bounded wait", tasks.all { it.get(15, TimeUnit.SECONDS) })
+            assertEquals(40, completed.get())
+            assertEquals("The concurrency ceiling must remain exactly five", 5, peak.get())
+            assertEquals(0, active.get())
+
+            repeat(5) { assertTrue("Every permit must be returned after the stress run", gate.tryAcquire(0, TimeUnit.MILLISECONDS)) }
+            assertFalse("No sixth permit may appear after the stress run", gate.tryAcquire(0, TimeUnit.MILLISECONDS))
+            repeat(5) { gate.release() }
         } finally {
             start.countDown()
             pool.shutdownNow()
