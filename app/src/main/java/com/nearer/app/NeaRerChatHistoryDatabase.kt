@@ -149,6 +149,47 @@ internal class NeaRerChatHistoryDatabase(context: Context) :
      */
     @Throws(IOException::class)
     fun mergePortableArchive(source: File): Long {
+        val records = readPortableArchive(source)
+        if (records.isEmpty()) return 0L
+        if (!upsert(records)) throw IOException("Could not import chat archive")
+        return records.size.toLong()
+    }
+
+    /**
+     * Replaces the complete archive in one SQLite transaction. This is reserved for
+     * an explicitly confirmed full-device restore; ordinary imports should merge.
+     */
+    @Throws(IOException::class)
+    fun replacePortableArchive(source: File): Long {
+        val records = readPortableArchive(source)
+        val db = writableDatabase
+        try {
+            db.beginTransaction()
+            db.delete("messages", null, null)
+            records.forEach { message ->
+                val values = ContentValues().apply {
+                    put("id", message.id)
+                    put("body", message.body)
+                    put("outgoing", if (message.outgoing) 1 else 0)
+                    put("delivery", message.delivery)
+                    put("timestamp", message.timestamp)
+                    put("conversation_id", message.conversationId)
+                    put("conversation_name", message.conversationName)
+                }
+                if (db.insert("messages", null, values) == -1L) {
+                    throw IllegalStateException("Could not restore a chat message")
+                }
+            }
+            db.setTransactionSuccessful()
+            return records.size.toLong()
+        } catch (failure: Exception) {
+            throw IOException("Could not replace chat history", failure)
+        } finally {
+            if (db.inTransaction()) db.endTransaction()
+        }
+    }
+
+    private fun readPortableArchive(source: File): List<ChatMessage> {
         if (!source.isFile || !source.canRead()) throw IOException("Chat archive is not readable")
         if (source.length() > MAX_BACKUP_ARCHIVE_BYTES) throw IOException("Chat archive exceeds the supported size")
         val records = mutableListOf<ChatMessage>()
@@ -173,15 +214,15 @@ internal class NeaRerChatHistoryDatabase(context: Context) :
                     if (id.isBlank() || id.length > 160 || !seenIds.add(id) ||
                         body.length > MAX_BACKUP_BODY_CHARS || delivery.length > 40 ||
                         conversationId.length > 200 || conversationName.length > 160 ||
-                        !json.has("timestamp") || !json.has("outgoing")
+                        json.opt("timestamp") !is Number || json.opt("outgoing") !is Boolean
                     ) throw IOException("Chat archive record $lineNumber has invalid fields")
                     records.add(
                         ChatMessage(
                             id = id,
                             body = body,
-                            outgoing = json.optBoolean("outgoing"),
+                            outgoing = json.getBoolean("outgoing"),
                             delivery = delivery,
-                            timestamp = json.optLong("timestamp"),
+                            timestamp = json.getLong("timestamp"),
                             conversationId = conversationId,
                             conversationName = conversationName
                         )
@@ -194,10 +235,7 @@ internal class NeaRerChatHistoryDatabase(context: Context) :
         } catch (failure: Exception) {
             throw IOException("Could not read chat archive", failure)
         }
-
-        if (records.isEmpty()) return 0L
-        if (!upsert(records)) throw IOException("Could not import chat archive")
-        return records.size.toLong()
+        return records
     }
 
     private fun query(sql: String, args: Array<String>): List<ChatMessage> {
