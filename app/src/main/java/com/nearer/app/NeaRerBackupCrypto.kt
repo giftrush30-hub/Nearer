@@ -45,7 +45,7 @@ internal object NeaRerBackupCrypto {
             val salt = ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes)
             val nonce = ByteArray(NONCE_BYTES).also(SecureRandom()::nextBytes)
             val header = makeHeader(ITERATIONS, salt, nonce)
-            val cipher = cipher(Cipher.ENCRYPT_MODE, password, salt, nonce, header)
+            val cipher = cipher(Cipher.ENCRYPT_MODE, password, ITERATIONS, salt, nonce, header)
             FileOutputStream(temporary).use { output ->
                 output.write(header)
                 FileInputStream(source).use { input ->
@@ -80,7 +80,7 @@ internal object NeaRerBackupCrypto {
                 val header = ByteArray(HEADER_BYTES)
                 DataInputStream(input).readFully(header)
                 val parsed = parseHeader(header)
-                val cipher = cipher(Cipher.DECRYPT_MODE, password, parsed.first, parsed.second, header)
+                val cipher = cipher(Cipher.DECRYPT_MODE, password, parsed.iterations, parsed.salt, parsed.nonce, header)
                 FileOutputStream(temporary).use { output ->
                     val buffer = ByteArray(BUFFER_BYTES)
                     while (true) {
@@ -118,7 +118,9 @@ internal object NeaRerBackupCrypto {
         return header.toByteArray()
     }
 
-    private fun parseHeader(header: ByteArray): Pair<ByteArray, ByteArray> {
+    private data class ParsedHeader(val iterations: Int, val salt: ByteArray, val nonce: ByteArray)
+
+    private fun parseHeader(header: ByteArray): ParsedHeader {
         val input = DataInputStream(header.inputStream())
         val actualMagic = ByteArray(magic.size).also(input::readFully)
         if (!actualMagic.contentEquals(magic)) throw IOException("This is not a NeaRer backup")
@@ -128,17 +130,18 @@ internal object NeaRerBackupCrypto {
         if (iterations !in MIN_ITERATIONS..MAX_ITERATIONS) throw IOException("Backup security settings are invalid")
         val salt = ByteArray(SALT_BYTES).also(input::readFully)
         val nonce = ByteArray(NONCE_BYTES).also(input::readFully)
-        return salt to nonce
+        return ParsedHeader(iterations, salt, nonce)
     }
 
     private fun cipher(
         mode: Int,
         password: CharArray,
+        iterations: Int,
         salt: ByteArray,
         nonce: ByteArray,
         header: ByteArray
     ): Cipher {
-        val spec = PBEKeySpec(password, salt, ITERATIONS, KEY_BITS)
+        val spec = PBEKeySpec(password, salt, iterations, KEY_BITS)
         val keyBytes = try {
             SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
         } finally {
