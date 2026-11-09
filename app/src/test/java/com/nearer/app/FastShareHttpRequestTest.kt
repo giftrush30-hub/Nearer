@@ -41,6 +41,13 @@ class FastShareHttpRequestTest {
         assertEquals(FastShareHttpRequest.Route.DOWNLOAD, request.route)
     }
 
+    @Test fun downloadAllRouteIsRecognizedForGetAndHead() {
+        val get = FastShareHttpRequest.parse("GET /download-all?key=secret HTTP/1.1")!!
+        val head = FastShareHttpRequest.parse("HEAD /download-all HTTP/1.1")!!
+        assertEquals(FastShareHttpRequest.Route.DOWNLOAD_ALL, get.route)
+        assertEquals(FastShareHttpRequest.Route.DOWNLOAD_ALL, head.route)
+        assertTrue(head.isHeadOnly)
+    }
     @Test fun unknownPathSelectsNotFoundRoute() {
         assertEquals(
             FastShareHttpRequest.Route.NOT_FOUND,
