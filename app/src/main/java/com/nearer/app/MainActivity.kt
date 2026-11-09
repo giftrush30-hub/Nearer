@@ -2453,7 +2453,7 @@ private fun NeaRerHome(
     fastShare.onFileReceived = onReceiveFile
     val unifiedTransferHistory = remember(transferHistory, fastShare.history) {
         (transferHistory.map { UnifiedTransferHistoryEntry(it.direction, it.fileName, it.bytes, it.status, it.timestamp, "Nearby") } +
-            fastShare.history.map { UnifiedTransferHistoryEntry(if (it.result == "Received") "Received" else "Sent", it.fileName, it.bytesTransferred, it.result, it.timestampMillis, "Fast Share") })
+            fastShare.history.map { UnifiedTransferHistoryEntry(it.direction, it.fileName, it.bytesTransferred, it.result, it.timestampMillis, "Fast Share") })
             .sortedByDescending { it.timestamp }
     }
     var pendingFastShareUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
