@@ -140,6 +140,10 @@ class MainActivity : ComponentActivity() {
     private var serverSocket: ServerSocket? = null
     private var peerSocket: Socket? = null
     private var peerWriter: PrintWriter? = null
+    private var wifiDirectPeerPublicId by mutableStateOf<String?>(null)
+    private val directChatOutbox by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        DirectChatOutbox(applicationContext)
+    }
     private val writerLock = Any()
     private val receivedMessageIds = ConcurrentHashMap.newKeySet<String>()
     private val io = Executors.newCachedThreadPool()
@@ -894,6 +898,7 @@ class MainActivity : ComponentActivity() {
                 if (accepted) {
                     val authenticatedPeerId = performWifiDirectIdentityHandshake(reader, writer)
                     runOnUiThread {
+                        wifiDirectPeerPublicId = authenticatedPeerId
                         chatReady = true
                         chatNotice = "Secure nearby identity confirmed for $authenticatedPeerId."
                         resumeLudoAfterReconnect(name)
@@ -901,6 +906,7 @@ class MainActivity : ComponentActivity() {
                         approvalMessage = "Connection approved. Checking the other phone's identity…"
                         connectionMessage = "NeaRer connection approved"
                         chatNotice = "Connected directly to $name. Say hello."
+                        flushDirectChatOutbox(authenticatedPeerId)
                         statusMessage = "You approved $name. Checking the other phone's identity…"
                     }
                     startMessageReader(socket)
@@ -960,12 +966,14 @@ class MainActivity : ComponentActivity() {
                     "ACCEPT" -> {
                         val authenticatedPeerId = performWifiDirectIdentityHandshake(reader, writer)
                         runOnUiThread {
+                            wifiDirectPeerPublicId = authenticatedPeerId
                             chatReady = true
                             chatNotice = "Secure nearby identity confirmed for $authenticatedPeerId."
                             resumeLudoAfterReconnect(connectedDeviceName ?: "Nearby device")
                             approvalMessage = "Your connection request was approved."
                             connectionMessage = "NeaRer connection approved"
                             chatNotice = "Connected directly to the other phone. Say hello."
+                            flushDirectChatOutbox(authenticatedPeerId)
                             statusMessage = "Connection approved. Checking the other phone's identity…"
                         }
                         startMessageReader(socket)
@@ -1055,6 +1063,7 @@ class MainActivity : ComponentActivity() {
         peerSocket = null
         peerWriter = null
         serverSocket = null
+        wifiDirectPeerPublicId = null
         incomingTransfers.values.forEach {
             it.close()
             it.file.delete()
@@ -1201,6 +1210,17 @@ class MainActivity : ComponentActivity() {
     }
 
 
+    private fun flushDirectChatOutbox(peerId: String) {
+        if (!NeaRerIdentity.isValid(peerId) || wifiDirectPeerPublicId != peerId || !chatReady) return
+        directChatOutbox.forPeer(peerId).forEach { entry ->
+            val encoded = Base64.getEncoder().encodeToString(entry.body.toByteArray(Charsets.UTF_8))
+            if (!sendWireLine("MSG|${entry.id}|$encoded")) {
+                chatNotice = "Some messages are saved and waiting for the direct connection to recover."
+                return
+            }
+        }
+    }
+
     private fun sendChatMessage(rawText: String) {
         val body = rawText.trim()
         if (body.isEmpty() || !chatReady) return
@@ -1238,12 +1258,27 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        val peerId = wifiDirectPeerPublicId
+        if (!NeaRerIdentity.isValid(peerId.orEmpty())) {
+            val index = chatMessages.indexOfFirst { it.id == id }
+            if (index >= 0) chatMessages.removeAt(index)
+            persistMessages()
+            chatNotice = "Private direct chat is waiting for the other phone's verified identity."
+            return
+        }
+        if (!directChatOutbox.enqueue(id, peerId!!, body)) {
+            val index = chatMessages.indexOfFirst { it.id == id }
+            if (index >= 0) chatMessages.removeAt(index)
+            persistMessages()
+            chatNotice = "NeaRer could not securely save this message for delivery."
+            return
+        }
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
         if (!sendWireLine("MSG|$id|$encoded")) {
             val index = chatMessages.indexOfFirst { it.id == id }
-            if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
+            if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Queued")
             persistMessages()
-            chatNotice = "Message could not be sent. Check the nearby connection."
+            chatNotice = "Message saved securely and queued. NeaRer will retry when this person reconnects."
             return
         }
         chatNotice = "Sent directly • waiting for the recipient app to save and acknowledge it."
@@ -2197,14 +2232,22 @@ class MainActivity : ComponentActivity() {
                         }
                         line.startsWith("ACK|") -> {
                             val id = line.substringAfter("ACK|")
-                            runOnUiThread {
-                                val index = chatMessages.indexOfFirst { it.id == id && it.outgoing }
-                                if (index >= 0) {
-                                    val previous = chatMessages[index]
-                                    chatMessages[index] = previous.copy(delivery = "Delivered")
-                                    if (!persistMessages()) {
-                                        chatMessages[index] = previous.copy(delivery = "Queued")
-                                        chatNotice = "The other phone received your message, but NeaRer could not save the delivery receipt. It remains unconfirmed here."
+                            if (id.isNotBlank() && id.length <= 80 && id.matches(Regex("[A-Za-z0-9._:-]+"))) {
+                                runOnUiThread {
+                                    val queued = directChatOutbox.find(id)
+                                    if (queued != null && queued.peerId == wifiDirectPeerPublicId) {
+                                        val index = chatMessages.indexOfFirst { it.id == id && it.outgoing }
+                                        if (index >= 0 && chatMessages[index].delivery != "Delivered") {
+                                            val previous = chatMessages[index]
+                                            chatMessages[index] = previous.copy(delivery = "Delivered")
+                                            if (persistMessages()) {
+                                                directChatOutbox.remove(id)
+                                                chatNotice = "Your message was received by the other NeaRer phone."
+                                            } else {
+                                                chatMessages[index] = previous.copy(delivery = "Queued")
+                                                chatNotice = "The other phone acknowledged your message, but NeaRer could not save the receipt. It remains queued."
+                                            }
+                                        }
                                     }
                                 }
                             }
