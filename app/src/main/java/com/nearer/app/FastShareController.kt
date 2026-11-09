@@ -476,7 +476,7 @@ private class FastShareHttpServer(
                     output.write(FastShareHttpWire.responseHead("HTTP/1.1 200 OK", FileHttpHeaders.receiverPageHeaders(bytes.size.toLong())))
                     if (!headOnly) output.write(bytes)
                 }
-                FastShareHttpRequest.Route.UPLOAD -> { handleBrowserUpload(input, output, exchange) }
+                FastShareHttpRequest.Route.UPLOAD -> { handleBrowserUpload(connection, input, output, exchange) }
                 FastShareHttpRequest.Route.DOWNLOAD -> {
                     val index = request.downloadIndex
                     val item = index?.let { catalog.itemAt(it) }
@@ -532,7 +532,7 @@ private class FastShareHttpServer(
         }
     }
 
-    private fun handleBrowserUpload(input: BufferedInputStream, output: BufferedOutputStream, exchange: FastShareHttpExchange) {
+    private fun handleBrowserUpload(connection: Socket, input: BufferedInputStream, output: BufferedOutputStream, exchange: FastShareHttpExchange) {
         val directory = File(context.filesDir, "nearer-pc-uploads")
         if (!directory.exists() && !directory.mkdirs()) {
             output.write(FastShareHttpErrors.uploadFailed())
@@ -554,9 +554,17 @@ private class FastShareHttpServer(
                 return
             }
         }
+        // Bound the complete body phase as well as each idle socket read.
+        // The allowance scales with file size, so this is not a fixed transfer-size cap.
+        val bodyDeadline = SocketReadDeadline(
+            connection,
+            writeWatchdog,
+            FastShareUploadDeadline.timeoutMillis(exchange.contentLength)
+        )
         try {
             saveBrowserUpload(input, output, exchange, directory)
         } finally {
+            bodyDeadline.close()
             uploadGate.release(exchange.contentLength)
         }
     }
