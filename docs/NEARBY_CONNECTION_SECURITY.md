@@ -22,7 +22,8 @@ The UI must therefore continue to describe the ID as self-reported. Do not call 
 
 - Wi-Fi Direct fallback has not been given this challenge-response protocol.
 - Chat and file payload encryption in transit has not been added by this change.
-- Existing chat history and received files are not encrypted at rest by this change.
+- The local chat-history JSON store is now encrypted at rest with the same Android Keystore AES-256-GCM key used for the pending outbox; older plaintext chat history is migrated on successful load/save.
+- Received files are still stored in the app's private received folder without application-level file encryption.
 - No cross-phone identity recovery or user-managed trusted-contact/key-change approval flow exists. A changed key is blocked, but this version has no safe in-app recovery/rotation flow.
 - No Gradle compilation, automated Android instrumentation test, or physical-device interoperability test has been run for this change.
 

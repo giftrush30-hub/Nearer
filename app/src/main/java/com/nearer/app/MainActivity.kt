@@ -1057,7 +1057,14 @@ class MainActivity : ComponentActivity() {
             .getString("messages", null)
         if (!stored.isNullOrBlank()) {
             try {
-                val array = JSONArray(stored)
+                val json = if (stored.startsWith("v1:")) {
+                    LocalDataCipher.decrypt(this, stored)?.toString(Charsets.UTF_8)
+                        ?: throw IllegalStateException("Saved chat history could not be unlocked.")
+                } else {
+                    // One-time migration from the earlier plaintext conversation store.
+                    stored
+                }
+                val array = JSONArray(json)
                 for (i in 0 until array.length()) {
                     val item = array.getJSONObject(i)
                     val message = ChatMessage(
@@ -1074,8 +1081,12 @@ class MainActivity : ComponentActivity() {
                     chatMessages.add(message)
                     if (!message.outgoing) receivedMessageIds.add(message.id)
                 }
+                if (!stored.startsWith("v1:") && chatMessages.isNotEmpty()) {
+                    if (!persistMessages()) chatNotice = "Your chat history loaded, but NeaRer could not finish encrypting the older saved copy."
+                }
             } catch (_: Exception) {
                 chatMessages.clear()
+                chatNotice = "Saved chat history could not be unlocked or read. NeaRer did not overwrite the saved copy."
             }
         }
         val folder = File(filesDir, "received")
@@ -1131,11 +1142,15 @@ class MainActivity : ComponentActivity() {
                     .put("conversationId", message.conversationId)
                     .put("conversationName", message.conversationName))
             }
-            // commit() is intentional here: a delivery receipt must follow the disk write,
-            // not just an in-memory SharedPreferences update queued by apply().
+            // Encrypt the complete local conversation store before writing it.
+            // commit() is intentional: incoming receipts must follow durable storage.
+            val encrypted = LocalDataCipher.encrypt(this, array.toString().toByteArray(Charsets.UTF_8))
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-                .edit().putString("messages", array.toString()).commit()
-        } catch (_: Exception) { false }
+                .edit().putString("messages", encrypted).commit()
+        } catch (_: Exception) {
+            chatNotice = "NeaRer could not securely save chat history. Delivery will not be confirmed."
+            false
+        }
     }
 
     private fun sha256(file: File): String {
