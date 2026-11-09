@@ -18,8 +18,11 @@ internal object FastShareHttpErrors {
     fun badRequest(): ByteArray =
         response("400 Bad Request")
 
-    fun methodNotAllowed(): ByteArray =
-        response("405 Method Not Allowed", "Allow: GET, HEAD\r\n")
+    fun methodNotAllowed(allow: String = "GET, HEAD"): ByteArray =
+        response("405 Method Not Allowed", "Allow: $allow\r\n")
+
+    fun lengthRequired(): ByteArray =
+        response("411 Length Required", "Content-Type: text/plain; charset=utf-8\r\n", "Upload requires a valid Content-Length header.\n")
 
     fun tooManyRequests(): ByteArray =
         response(
