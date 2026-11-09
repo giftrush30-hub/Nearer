@@ -24,14 +24,8 @@ class FastShareHttpRequestTest {
     }
 
     @Test fun receiverPageAndIndexAliasAreRecognized() {
-        assertEquals(
-            FastShareHttpRequest.Route.RECEIVER_PAGE,
-            FastShareHttpRequest.parse("GET / HTTP/1.1")!!.route
-        )
-        assertEquals(
-            FastShareHttpRequest.Route.RECEIVER_PAGE,
-            FastShareHttpRequest.parse("GET /index.html HTTP/1.0")!!.route
-        )
+        assertEquals(FastShareHttpRequest.Route.RECEIVER_PAGE, FastShareHttpRequest.parse("GET / HTTP/1.1")!!.route)
+        assertEquals(FastShareHttpRequest.Route.RECEIVER_PAGE, FastShareHttpRequest.parse("GET /index.html HTTP/1.0")!!.route)
     }
 
     @Test fun unsupportedMethodIsParsedButNotAccepted() {
@@ -42,22 +36,28 @@ class FastShareHttpRequestTest {
     }
 
     @Test fun unknownPathSelectsNotFoundRoute() {
-        assertEquals(
-            FastShareHttpRequest.Route.NOT_FOUND,
-            FastShareHttpRequest.parse("GET /missing HTTP/1.1")!!.route
-        )
+        assertEquals(FastShareHttpRequest.Route.NOT_FOUND, FastShareHttpRequest.parse("GET /missing HTTP/1.1")!!.route)
     }
 
     @Test fun malformedRequestLinesAreRejected() {
-        assertNull(FastShareHttpRequest.parse("GET /download"))
-        assertNull(FastShareHttpRequest.parse("GET /download HTTP/2.0"))
-        assertNull(FastShareHttpRequest.parse("GET download HTTP/1.1"))
-        assertNull(FastShareHttpRequest.parse("GET  /download HTTP/1.1 extra"))
+        listOf(
+            "GET /download",
+            "GET /download HTTP/2.0",
+            "GET download HTTP/1.1",
+            "GET  /download HTTP/1.1 extra",
+            " GET /download HTTP/1.1",
+            "GET /download HTTP/1.1 ",
+            "GET\t/download HTTP/1.1",
+            "GET /download\tHTTP/1.1",
+            "GET  /download HTTP/1.1",
+            "GET /download  HTTP/1.1"
+        ).forEach { assertNull("Should reject: " + it, FastShareHttpRequest.parse(it)) }
     }
 
     @Test fun methodMatchingIsCaseInsensitive() {
         assertEquals("GET", FastShareHttpRequest.parse("get /download HTTP/1.1")!!.method)
     }
+
     @Test fun indexedDownloadRoutesExposeZeroBasedIndex() {
         val first = FastShareHttpRequest.parse("GET /download/0 HTTP/1.1")!!
         val third = FastShareHttpRequest.parse("HEAD /download/2?name=clip HTTP/1.1")!!
@@ -74,7 +74,6 @@ class FastShareHttpRequestTest {
             assertEquals(FastShareHttpRequest.Route.NOT_FOUND, request.route)
         }
     }
-
 
     @Test fun indexedDownloadQueryDoesNotChangeSelectedFileIndex() {
         val request = FastShareHttpRequest.parse("GET /download/12?name=holiday.mp4 HTTP/1.1")!!
@@ -133,5 +132,4 @@ class FastShareHttpRequestTest {
             assertFalse("Query should not authenticate: " + query, request.hasAccessKey(key))
         }
     }
-
 }
