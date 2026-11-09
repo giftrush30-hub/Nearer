@@ -20,7 +20,6 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Temporary, local-only hotspot sharing. The file is streamed from ContentResolver;
@@ -291,7 +290,7 @@ private class FastShareHttpServer(
         ArrayBlockingQueue(8)
     )
     @Volatile private var running = true
-    private val transferActive = AtomicBoolean(false)
+    private val downloadGate = FastShareDownloadGate()
     private var socket: ServerSocket? = null
 
     fun start(): String {
@@ -385,13 +384,24 @@ private class FastShareHttpServer(
                         output.write(FastShareHttpErrors.notFound())
                     } else if (headOnly) {
                         streamFile(output, uri, item, rangeHeader, true)
-                    } else if (!transferActive.compareAndSet(false, true)) {
-                        output.write(FastShareHttpErrors.tooManyRequests())
                     } else {
-                        try {
-                            streamFile(output, uri, item, rangeHeader, false)
-                        } finally {
-                            transferActive.set(false)
+                        // Keep one active file stream for stable progress and low-memory
+                        // devices, but queue a few receivers fairly instead of rejecting
+                        // every simultaneous request. The wait is bounded.
+                        val acquired = try {
+                            downloadGate.tryAcquire(120, TimeUnit.SECONDS)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            false
+                        }
+                        if (!acquired) {
+                            output.write(FastShareHttpErrors.tooManyRequests())
+                        } else {
+                            try {
+                                if (running) streamFile(output, uri, item, rangeHeader, false)
+                            } finally {
+                                downloadGate.release()
+                            }
                         }
                     }
                 }
