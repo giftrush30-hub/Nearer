@@ -44,10 +44,13 @@ internal object FileHttpHeaders {
             }
         }
         val fallback = buildString {
-            fileName.forEach { character ->
+            var index = 0
+            while (index < fileName.length) {
+                val codePoint = fileName.codePointAt(index)
+                index += Character.charCount(codePoint)
                 when {
-                    character.code in 0x20..0x7e && character != '"' && character != '\\' -> append(character)
-                    character == '"' || character == '\\' -> { append('\\'); append(character) }
+                    codePoint in 0x20..0x7e && codePoint != 34 && codePoint != 92 -> append(codePoint.toChar())
+                    codePoint == 34 || codePoint == 92 -> { append('\\\\'); append(codePoint.toChar()) }
                     else -> append('_')
                 }
             }
