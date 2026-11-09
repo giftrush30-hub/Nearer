@@ -874,7 +874,7 @@ class MainActivity : ComponentActivity() {
                 val socket = server.accept()
                 peerSocket = socket
                 socket.soTimeout = 60_000
-                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+                val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 peerWriter = writer
                 val hello = reader.readLine().orEmpty()
@@ -909,7 +909,7 @@ class MainActivity : ComponentActivity() {
                         flushDirectChatOutbox(authenticatedPeerId)
                         statusMessage = "You approved $name. Checking the other phone's identity…"
                     }
-                    startMessageReader(socket)
+                    startMessageReader(socket, reader)
                 } else {
                     runOnUiThread {
                         incomingRequesterName = null
@@ -976,7 +976,7 @@ class MainActivity : ComponentActivity() {
                             flushDirectChatOutbox(authenticatedPeerId)
                             statusMessage = "Connection approved. Checking the other phone's identity…"
                         }
-                        startMessageReader(socket)
+                        startMessageReader(socket, reader)
                     }
                     else -> {
                         runOnUiThread {
@@ -2191,11 +2191,10 @@ class MainActivity : ComponentActivity() {
         return remoteId
     }
 
-    private fun startMessageReader(socket: Socket) {
+    private fun startMessageReader(socket: Socket, reader: BufferedReader) {
         io.execute {
             try {
                 socket.soTimeout = 0
-                val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
                 while (!socket.isClosed) {
                     val line = reader.readLine() ?: break
                     if (line.length > 24 * 1024) throw IllegalStateException("NeaRer message frame exceeded the allowed size")
