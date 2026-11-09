@@ -271,36 +271,23 @@ internal object AndroidFileCatalog {
     fun exportContactsBundle(context: Context, contacts: List<FileCentreItem>): FileCentreItem {
         require(contacts.isNotEmpty()) { "Select at least one contact." }
         val resolver = context.contentResolver
-        fun escapeVCard(value: String): String = value.replace("\\", "\\\\").replace(";", "\\;")
-            .replace(",", "\\,").replace("\r", "").replace("\n", "\\n")
-        val outputDir = java.io.File(context.cacheDir, "nearer-share").apply { mkdirs() }
-        val output = java.io.File.createTempFile("nearer-contacts-", ".vcf", outputDir)
-        output.bufferedWriter(Charsets.UTF_8).use { writer ->
-            contacts.forEach { item ->
-                val id = requireNotNull(item.contactId) { "A selected contact is unavailable." }
-                writer.appendLine("BEGIN:VCARD")
-                writer.appendLine("VERSION:3.0")
-                writer.appendLine("N:;" + escapeVCard(item.name) + ";;;")
-                writer.appendLine("FN:" + escapeVCard(item.name))
+                val phoneNumbers = ArrayList<String>()
                 resolver.query(android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
                     arrayOf(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER),
                     android.provider.ContactsContract.CommonDataKinds.Phone.CONTACT_ID + "=?", arrayOf(id), null
                 )?.use { cursor ->
                     val col = cursor.getColumnIndexOrThrow(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
-                    while (cursor.moveToNext()) cursor.getString(col)?.takeIf { it.isNotBlank() }?.let {
-                        writer.appendLine("TEL;TYPE=CELL:" + escapeVCard(it))
-                    }
+                    while (cursor.moveToNext()) cursor.getString(col)?.takeIf { it.isNotBlank() }?.let { phoneNumbers.add(it) }
                 }
+                val emailAddresses = ArrayList<String>()
                 resolver.query(android.provider.ContactsContract.CommonDataKinds.Email.CONTENT_URI,
                     arrayOf(android.provider.ContactsContract.CommonDataKinds.Email.ADDRESS),
                     android.provider.ContactsContract.CommonDataKinds.Email.CONTACT_ID + "=?", arrayOf(id), null
                 )?.use { cursor ->
                     val col = cursor.getColumnIndexOrThrow(android.provider.ContactsContract.CommonDataKinds.Email.ADDRESS)
-                    while (cursor.moveToNext()) cursor.getString(col)?.takeIf { it.isNotBlank() }?.let {
-                        writer.appendLine("EMAIL;TYPE=INTERNET:" + escapeVCard(it))
-                    }
+                    while (cursor.moveToNext()) cursor.getString(col)?.takeIf { it.isNotBlank() }?.let { emailAddresses.add(it) }
                 }
-                writer.appendLine("END:VCARD")
+                writer.append(VCardFormatPolicy.create(item.name, phoneNumbers, emailAddresses))
             }
         }
         val uri = FileProvider.getUriForFile(context, context.packageName + ".files", output)
