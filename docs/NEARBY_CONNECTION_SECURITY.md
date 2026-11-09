@@ -14,6 +14,9 @@
 - Wi-Fi Direct peers use the same local first-seen key pin store as Nearby Connections. A changed key blocks the session; the previous pin is not silently replaced.
 - Nearby Connections chat is now held closed until the current endpoint completes v2 identity proof and its key/ID continuity checks pass. Queued messages are released only after that proof; the queue is bound to both the nearby transport code and the previously verified NeaRer ID. A remembered transport code alone cannot authenticate a fresh connection.
 - Older queued messages that lack a verified NeaRer ID binding are deliberately not auto-delivered. The user may need to resend them after a verified connection.
+- The Wi-Fi Direct socket fallback now has its own AES-GCM-encrypted local outbox. Each queued message is bound to the NeaRer ID authenticated during that direct session, is sent again after that same ID reconnects, and is removed only after the sender durably saves the recipient acknowledgement.
+- The direct fallback outbox is capped at 500 pending messages. If its encrypted data cannot be unlocked, the implementation refuses new writes rather than overwriting the unreadable queue.
+- The Wi-Fi Direct message frames themselves are still not end-to-end encrypted in transit; the outbox encryption protects only the sender's local stored copy.
 - The Wi-Fi Direct handshake authenticates possession of a key, not a person's real-world identity. The displayed NeaRer ID remains self-reported, and the six-digit comparison remains a separate human connection-approval step.
 - Older version-1 identity messages remain displayable as self-reported metadata for compatibility.
 
