@@ -56,6 +56,25 @@ class StreamRangeCopyTest {
         assertEquals(40, source.read())
     }
 
+    @Test fun usesBufferedReadsWhenProviderStreamCannotSkip() {
+        val bytes = ByteArray(100_000) { (it % 251).toByte() }
+        var bulkReads = 0
+        val source = object : InputStream() {
+            private val delegate = ByteArrayInputStream(bytes)
+            override fun read(): Int = delegate.read()
+            override fun skip(n: Long): Long = 0L
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                bulkReads++
+                return delegate.read(buffer, offset, length)
+            }
+        }
+
+        StreamRangeCopy.skipFully(source, 90_000L)
+
+        assertEquals(bytes[90_000].toInt() and 0xff, source.read())
+        assertTrue("Expected buffered reads, got $bulkReads", bulkReads in 1..4)
+    }
+
     @Test fun rejectsNegativeOffsets() {
         assertThrows(IllegalArgumentException::class.java) {
             StreamRangeCopy.skipFully(ByteArrayInputStream(byteArrayOf(1)), -1)
