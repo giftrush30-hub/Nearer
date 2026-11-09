@@ -287,24 +287,26 @@ class FastShareHttpSessionTest {
         assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
-    @Test fun ifRangeWithoutAValidatorForcesAFullRepresentation() {
-        val (exchange, response) = read(
-            "GET /download HTTP/1.1\r\nHost: test.local\r\nRange: bytes=10-19\r\nIf-Range: \"stale-validator\"\r\n\r\n"
-        )
-
-        assertTrue(response.isEmpty())
-        assertNotNull(exchange)
-        assertNull(exchange!!.rangeHeader)
-    }
-
-    @Test fun ifRangeDateAlsoForcesAFullRepresentationWhenNoLastModifiedIsSent() {
+    @Test fun ifRangeIsPreservedForSourceAwareValidation() {
         val (exchange, response) = read(
             "GET /download HTTP/1.1\r\nHost: test.local\r\nRange: bytes=10-19\r\nIf-Range: Wed, 21 Oct 2015 07:28:00 GMT\r\n\r\n"
         )
 
         assertTrue(response.isEmpty())
         assertNotNull(exchange)
-        assertNull(exchange!!.rangeHeader)
+        assertEquals("bytes=10-19", exchange!!.rangeHeader)
+        assertEquals("Wed, 21 Oct 2015 07:28:00 GMT", exchange.ifRangeHeader)
+    }
+
+    @Test fun ifRangeWithoutAValidatorIsNotSilentlyConvertedIntoAParserDecision() {
+        val (exchange, response) = read(
+            "GET /download HTTP/1.1\r\nHost: test.local\r\nRange: bytes=10-19\r\nIf-Range: \"stale-validator\"\r\n\r\n"
+        )
+
+        assertTrue(response.isEmpty())
+        assertNotNull(exchange)
+        assertEquals("bytes=10-19", exchange!!.rangeHeader)
+        assertEquals("\"stale-validator\"", exchange.ifRangeHeader)
     }
 
     @Test fun duplicateIfRangeHeadersAreRejectedAsAmbiguous() {
