@@ -155,6 +155,8 @@ class MainActivity : ComponentActivity() {
     private var activeOutgoingFileName = "shared-file"
     private var activeOutgoingFileBytes = 0L
     private val pendingDirectOutgoing = ConcurrentHashMap<String, DirectOutgoingTransfer>()
+    // Legacy Wi-Fi Direct sends multi-select baskets sequentially to bound memory and receiver load.
+    private val directFileQueue = SequentialTransferQueue<Uri>()
     private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
     private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
     private var outgoingTransferId by mutableStateOf<String?>(null)
@@ -861,6 +863,7 @@ class MainActivity : ComponentActivity() {
                 if (accepted) {
                     runOnUiThread {
                         chatReady = true
+                        if (directFileQueue.hasPending) startNextDirectQueuedFile()
                         resumeLudoAfterReconnect(name)
                         incomingRequesterName = null
                         approvalMessage = "Connection approved. Private chat can now be opened."
@@ -925,6 +928,7 @@ class MainActivity : ComponentActivity() {
                     "ACCEPT" -> {
                         runOnUiThread {
                             chatReady = true
+                            if (directFileQueue.hasPending) startNextDirectQueuedFile()
                             resumeLudoAfterReconnect(connectedDeviceName ?: "Nearby device")
                             approvalMessage = "Your connection request was approved."
                             connectionMessage = "NeaRer connection approved"
@@ -1765,15 +1769,44 @@ class MainActivity : ComponentActivity() {
         }
         cancelledOutgoingTransfers.add(id)
         sendWireLine("FILE_CANCEL|$id")
-        chatNotice = "Cancelling file transfer…"
+        directFileQueue.clear()
+        chatNotice = "Cancelling file transfer and clearing the remaining file queue…"
     }
 
     private fun sendFiles(uris: List<Uri>) {
         val selected = uris.distinct()
         if (selected.isEmpty()) return
         if (!hybridConnected) {
-            if (selected.size == 1) sendFile(selected.first())
-            else chatNotice = "Connect with Nearby Connections to send several files together. For this connection, select one file at a time."
+            if (!chatReady) {
+                chatNotice = "Connect to the other phone before sending files."
+                return
+            }
+            if (outgoingTransferId != null || directFileQueue.hasPending) {
+                chatNotice = "Finish or cancel the current transfer job first."
+                return
+            }
+            val readable = selected.filter { uri ->
+                try {
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } catch (_: Exception) {
+                    // Temporary picker grants remain valid for this foreground session.
+                }
+                try {
+                    contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            if (readable.isEmpty()) {
+                chatNotice = "NeaRer could not access the selected files. Choose them again from a shareable location."
+                return
+            }
+            directFileQueue.enqueue(readable)
+            chatNotice = readable.size.toString() + " files queued for direct Wi-Fi sharing."
+            if (readable.size != selected.size) {
+                chatNotice += " " + (selected.size - readable.size) + " unavailable file(s) were skipped."
+            }
+            startNextDirectQueuedFile()
             return
         }
         if (outgoingTransferId != null || pendingNearbyFileQueue.isNotEmpty()) {
@@ -1922,6 +1955,47 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Sends a legacy Wi-Fi Direct multi-select basket one file at a time. */
+    private fun startNextDirectQueuedFile() {
+        if (outgoingTransferId != null || !chatReady) return
+        val uri = directFileQueue.currentOrNext()
+        if (uri == null) {
+            val total = directFileQueue.total
+            val completed = directFileQueue.completed
+            directFileQueue.clear()
+            if (total > 0) chatNotice = "Transfer job finished: " + completed + " of " + total + " files delivered and verified."
+            return
+        }
+        var fileName = "shared-file"
+        runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (index >= 0) fileName = cursor.getString(index) ?: fileName
+                }
+            }
+        }
+        chatNotice = "Sending file " + (directFileQueue.completed + 1) + " of " + directFileQueue.total + ": " + fileName + "…"
+        sendFile(uri)
+    }
+
+    /** Advance only after the receiver confirms exact size and SHA-256. */
+    private fun completeDirectQueuedFile(success: Boolean) {
+        if (!directFileQueue.hasPending) return
+        if (!success) {
+            chatNotice = "The receiver could not verify this file. It remains queued; reconnect and retry."
+            return
+        }
+        directFileQueue.completeCurrent()
+        if (directFileQueue.hasPending) {
+            startNextDirectQueuedFile()
+        } else {
+            val total = directFileQueue.total
+            val completed = directFileQueue.completed
+            directFileQueue.clear()
+            chatNotice = "Transfer job finished: " + completed + " of " + total + " files delivered and verified."
+        }
+    }
     private fun sendFile(uri: Uri) {
         if (hybridConnected) {
             val endpoint = hybridConnectedEndpoint
@@ -2178,7 +2252,9 @@ class MainActivity : ComponentActivity() {
                                     outgoingTransferId = null
                                     outgoingProgress = 0f
                                 }
-                                chatNotice = if (ok) "File delivered and verified by the nearby phone." else "The other phone could not verify the file."
+                                val completesDirectQueueItem = completed != null && outgoingTransferId == transferId && directFileQueue.hasPending
+                                if (completesDirectQueueItem) completeDirectQueuedFile(ok)
+                                else chatNotice = if (ok) "File delivered and verified by the nearby phone." else "The other phone could not verify the file."
                             }
                         }
                         line.startsWith("FILE_CANCEL|") -> {
