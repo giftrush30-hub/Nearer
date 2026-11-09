@@ -19,7 +19,7 @@ class FileHttpHeadersTest {
     @Test fun encodesFileNameAsRfc5987ValueWithoutHeaderBreaks() {
         val header = FileHttpHeaders.contentDisposition("holiday video\r\nX-Injected: yes.mp4")
         assertEquals(
-            "Content-Disposition: attachment; filename*=UTF-8''holiday%20video%0D%0AX-Injected%3A%20yes.mp4\r\n",
+            "Content-Disposition: attachment; filename=\"holiday video__X-Injected_ yes.mp4\"; filename*=UTF-8''holiday%20video%0D%0AX-Injected%3A%20yes.mp4\r\n",
             header
         )
         assertEquals(-1, header.indexOf("\nX-Injected"))
@@ -29,7 +29,7 @@ class FileHttpHeadersTest {
         val headers = FileHttpHeaders.fileHeaders("application/pdf\r\nX: y", "report.pdf")
         assertTrue(headers.startsWith(
             "Content-Type: application/octet-stream\r\n" +
-                "Content-Disposition: attachment; filename*=UTF-8''report.pdf\r\n"
+                "Content-Disposition: attachment; filename=\"report.pdf\"; filename*=UTF-8''report.pdf\r\n"
         ))
         assertTrue(headers.contains("Cache-Control: no-store\r\n"))
         assertTrue(headers.contains("X-Content-Type-Options: nosniff\r\n"))
@@ -95,7 +95,7 @@ class FileHttpHeadersTest {
     @Test fun unicodeFileNamesRemainUtf8EncodedInContentDisposition() {
         val header = FileHttpHeaders.contentDisposition("日本語 résumé 🎬.mp4")
         assertEquals(
-            "Content-Disposition: attachment; filename*=UTF-8''%E6%97%A5%E6%9C%AC%E8%AA%9E%20r%C3%A9sum%C3%A9%20%F0%9F%8E%AC.mp4\r\n",
+            "Content-Disposition: attachment; filename=\"___ r_sum_ _.mp4\"; filename*=UTF-8''%E6%97%A5%E6%9C%AC%E8%AA%9E%20r%C3%A9sum%C3%A9%20%F0%9F%8E%AC.mp4\r\n",
             header
         )
         assertTrue(header.endsWith("\r\n"))
@@ -114,4 +114,15 @@ class FileHttpHeadersTest {
         assertFalse(headers.contains("\r\n\r\n\r\n"))
     }
 
+    @Test fun filenameStarEscapesCharactersOutsideRfc5987AttrCharSet() {
+        val header = FileHttpHeaders.contentDisposition("a*b`c|d~e'f.txt")
+        assertTrue(header.contains("filename*=UTF-8''a%2Ab`c|d~e%27f.txt\\r\\n"))
+        assertFalse(header.contains("filename*=UTF-8''a*b"))
+    }
+
+    @Test fun asciiFallbackCannotInjectAnotherHeader() {
+        val header = FileHttpHeaders.contentDisposition("report.pdf\\r\\nX-Injected: yes")
+        assertTrue(header.startsWith("Content-Disposition: attachment; filename=\"report.pdf__X-Injected_ yes\";"))
+        assertFalse(header.contains("\\r\\nX-Injected"))
+    }
 }
