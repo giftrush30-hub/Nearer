@@ -322,7 +322,7 @@ internal fun NeaRerOnboarding(
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD12D), contentColor = Color(0xFF152238)),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text(if (page == 3) "Enter NeaRer" else "Continue", fontWeight = FontWeight.Bold)
+                    Text(if (page == 4) "Enter NeaRer" else "Continue", fontWeight = FontWeight.Bold)
                 }
             }
             if (page == 2) {
