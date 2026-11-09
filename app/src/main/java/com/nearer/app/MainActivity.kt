@@ -1158,7 +1158,11 @@ class MainActivity : ComponentActivity() {
                 conversationId = nearbyTransport?.stableIdentityForEndpoint(targetEndpoint).orEmpty(),
                 conversationName = nearbyTransport?.displayNameForEndpoint(targetEndpoint).orEmpty()
             ))
-            persistMessages()
+            if (!persistMessages()) {
+                chatMessages.removeAll { it.id == id }
+                chatNotice = "NeaRer could not save this message on your phone. It was not sent."
+                return
+            }
             trimChatMessages()
             if (nearbyTransport?.send(body, id, targetEndpoint) != true) {
                 val index = chatMessages.indexOfFirst { it.id == id }
@@ -1172,7 +1176,11 @@ class MainActivity : ComponentActivity() {
         }
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
         chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…"))
-        persistMessages()
+        if (!persistMessages()) {
+            chatMessages.removeAll { it.id == id }
+            chatNotice = "NeaRer could not save this message on your phone. It was not sent."
+            return
+        }
         trimChatMessages()
         if (!sendWireLine("MSG|$id|$encoded")) {
             val index = chatMessages.indexOfFirst { it.id == id }
