@@ -42,7 +42,7 @@ class FileHttpHeadersTest {
             timeZone = java.util.TimeZone.getTimeZone("GMT")
         }.parse("Mon, 09 Nov 2026 12:34:56 GMT")!!.time
         val withValidator = FileHttpHeaders.fileHeaders("video/mp4", "clip.mp4", modified)
-        assertTrue(withValidator.contains("Last-Modified: Mon, 09 Nov 2026 12:34:56 GMT\\r\\n"))
+        assertTrue(withValidator.contains("Last-Modified: Mon, 09 Nov 2026 12:34:56 GMT\r\n"))
         val withoutValidator = FileHttpHeaders.fileHeaders("video/mp4", "clip.mp4")
         assertFalse(withoutValidator.contains("Last-Modified:"))
     }
