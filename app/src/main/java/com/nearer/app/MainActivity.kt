@@ -3021,6 +3021,14 @@ private fun PremiumChatsScreen(
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(thread.displayName, color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                val stablePeerId = thread.conversationId.removePrefix("nearer:")
+                                    .takeIf { thread.conversationId.startsWith("nearer:") && it.isNotBlank() }
+                                Text(
+                                    stablePeerId?.let { "NeaRer ID · " + it.take(12) + "..." }
+                                        ?: if (thread.conversationId.startsWith("nearby-name:")) "Name-based link · identity not verified" else "Older local history",
+                                    color = if (stablePeerId != null) Color(0xFF9BD8FF) else Muted,
+                                    fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
                                 Text(thread.lastMessage.body, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
