@@ -24,17 +24,22 @@ internal class SocketWriteStallGuard(
     private val armed = AtomicBoolean(false)
     private val timedOut = AtomicBoolean(false)
     private val lastSuccessfulWriteNanos = AtomicLong(0L)
-    private val watchdog: ScheduledFuture<*>
+    private val watchdog: ScheduledFuture<*>?
 
     init {
         require(timeoutMillis > 0L) { "Write timeout must be positive" }
         val checkEveryMillis = minOf(1_000L, maxOf(1L, timeoutMillis / 4L))
-        watchdog = scheduler.scheduleAtFixedRate(
-            { checkForStall() },
-            checkEveryMillis,
-            checkEveryMillis,
-            TimeUnit.MILLISECONDS
-        )
+        // Shutdown can race with a worker that has just been accepted. In
+        // that case the session is already closing its sockets, so a missing
+        // watchdog is safe and must not turn cleanup into a rejected task error.
+        watchdog = runCatching {
+            scheduler.scheduleAtFixedRate(
+                { checkForStall() },
+                checkEveryMillis,
+                checkEveryMillis,
+                TimeUnit.MILLISECONDS
+            )
+        }.getOrNull()
     }
 
     fun wrap(output: OutputStream): OutputStream = object : OutputStream() {
@@ -86,6 +91,6 @@ internal class SocketWriteStallGuard(
 
     override fun close() {
         disarm()
-        watchdog.cancel(false)
+        watchdog?.cancel(false)
     }
 }
