@@ -22,6 +22,6 @@ Status: cryptographic file-container primitive implemented on `feature/premium-o
 - Limits: 10,000 files, 512 MiB per file, 2 GiB total expanded data and a 1 MiB manifest.
 - Restore extracts to a private staging directory and publishes it only after all files verify. It refuses to merge into an existing destination directory.
 
-The archive layer is still not a complete user-facing backup feature. The app must prepare a consistent snapshot of chat history, profile/preferences, contacts and received media, then provide a restore preview and a transactional import with rollback. A public NeaRer ID must never be accepted as a recovery secret.
+The archive layer is still not a complete user-facing backup feature. The chat database now has portable JSON-lines export and validated merge-import methods: export reads the full SQLite archive without copying a live database/WAL file, and import validates every record and duplicate ID before applying the batch through the database transaction. Import merges by message ID and preserves unrelated local messages. The app must still orchestrate a full consistent snapshot of chat history, profile/preferences, contacts and received media, then provide a restore preview and a transactional whole-app import with rollback. A public NeaRer ID must never be accepted as a recovery secret.
 
 Automated unit tests have been added for encryption round-trips, wrong passwords, tampering, archive round-trips and refusing to overwrite existing restore destinations. They have not yet been run in an Android/Gradle build.
