@@ -291,6 +291,7 @@ private class FastShareHttpServer(
     )
     @Volatile private var running = true
     private val downloadGate = FastShareDownloadGate()
+    private val clients = FastShareSocketRegistry()
     private var socket: ServerSocket? = null
 
     fun start(): String {
@@ -299,15 +300,21 @@ private class FastShareHttpServer(
             while (running) {
                 try {
                     val client = socket?.accept() ?: break
+                    // Register before dispatch so stop() can close both active and
+                    // queued clients. track() also closes sockets accepted during
+                    // the shutdown race.
+                    if (!running || !clients.track(client)) continue
                     try {
                         executor.execute { handle(client) }
                     } catch (_: RejectedExecutionException) {
-                        // Close excess clients instead of retaining sockets when
-                        // the bounded worker queue is full.
+                        clients.release(client)
                         runCatching { client.close() }
                     }
                 } catch (_: Exception) {
-                    if (running) { /* allow the accept loop to retry */ }
+                    // A closed listener is the normal stop path. Other accept
+                    // failures should terminate this loop rather than spin hot.
+                    if (running) running = false
+                    break
                 }
             }
         }
@@ -317,6 +324,9 @@ private class FastShareHttpServer(
     fun stop() {
         running = false
         try { socket?.close() } catch (_: Exception) {}
+        // shutdownNow interrupts workers but does not close sockets already
+        // accepted or waiting in the executor queue.
+        clients.closeAll()
         executor.shutdownNow()
     }
 
@@ -357,6 +367,14 @@ private class FastShareHttpServer(
     }
 
     private fun handle(client: Socket) {
+        try {
+            handleConnection(client)
+        } finally {
+            clients.release(client)
+        }
+    }
+
+    private fun handleConnection(client: Socket) {
         client.use { connection ->
             connection.soTimeout = 15000
             val input = BufferedInputStream(connection.getInputStream())
