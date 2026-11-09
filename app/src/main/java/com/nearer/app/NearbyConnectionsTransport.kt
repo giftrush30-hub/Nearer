@@ -171,7 +171,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1800L))
             return
         }
-        val timeout = Runnable { scheduleMessageRetry(messageId, 1800L) }
+        val timeout = Runnable { scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1800L)) }
         pending.retryTask?.let(deliveryHandler::removeCallbacks)
         pending.retryTask = timeout
         deliveryHandler.postDelayed(timeout, 5000L)
@@ -179,7 +179,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             client.sendPayload(pending.endpointId, Payload.fromBytes(pending.payload))
                 .addOnFailureListener { scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1200L)) }
         } catch (_: Exception) {
-            scheduleMessageRetry(messageId, 1200L)
+            scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1200L))
         }
     }
 
