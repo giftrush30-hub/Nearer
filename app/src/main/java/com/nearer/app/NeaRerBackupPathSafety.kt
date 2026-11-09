@@ -12,4 +12,11 @@ internal object NeaRerBackupPathSafety {
         val childPath = child.canonicalPath
         return childPath.startsWith(parentPath + File.separator)
     }
+
+    /** True only when a not-yet-created path resolves to a direct child of parent. */
+    fun isDirectChild(parent: File, child: File): Boolean {
+        val parentPath = parent.canonicalPath
+        val childPath = child.canonicalPath
+        return File(childPath).parentFile?.canonicalPath == parentPath
+    }
 }
