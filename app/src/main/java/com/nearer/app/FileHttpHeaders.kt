@@ -49,7 +49,7 @@ internal object FileHttpHeaders {
                 val codePoint = fileName.codePointAt(index)
                 index += Character.charCount(codePoint)
                 when {
-                    codePoint in 0x20..0x7e && codePoint != 34 && codePoint != 92 -> append(codePoint.toChar())
+                    codePoint in 0x20..0x7e && codePoint != 34 && codePoint != 58 && codePoint != 92 -> append(codePoint.toChar())
                     codePoint == 34 || codePoint == 92 -> { append('\\'); append(codePoint.toChar()) }
                     else -> append('_')
                 }
