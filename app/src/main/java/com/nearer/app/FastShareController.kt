@@ -409,7 +409,8 @@ private class FastShareHttpServer(
         val response = FileHttpResponses.resolve(rangeHeader, item.fileLength)
         val resolvedRange = response.range
         if (resolvedRange == null) {
-            output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\nAccept-Ranges: bytes\r\nContent-Range: ${response.contentRange}\r\nContent-Length: ${response.contentLength}\r\nConnection: close\r\n\r\n".toByteArray())
+            output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\n".toByteArray())
+            output.write(FileHttpHeaders.unsatisfiedRangeHeaders(item.fileLength).toByteArray())
             return
         }
         val start = resolvedRange.start

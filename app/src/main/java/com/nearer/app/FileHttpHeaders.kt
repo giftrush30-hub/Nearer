@@ -37,6 +37,22 @@ internal object FileHttpHeaders {
     }
 
     /**
+     * Headers for an unsatisfied byte range. A 416 response still describes
+     * private file metadata, so it receives the same no-cache and sniffing
+     * protections as successful file responses.
+     */
+    fun unsatisfiedRangeHeaders(fileLength: Long): String {
+        require(fileLength >= 0L) { "File length must be non-negative" }
+        return "Accept-Ranges: bytes\r\n" +
+            "Content-Range: bytes */$fileLength\r\n" +
+            "Content-Length: 0\r\n" +
+            "Cache-Control: no-store\r\n" +
+            "X-Content-Type-Options: nosniff\r\n" +
+            "Referrer-Policy: no-referrer\r\n" +
+            "Connection: close\r\n\r\n"
+    }
+
+    /**
      * Prevent browsers and intermediary caches from retaining private local-share
      * content, and prevent MIME sniffing of provider-supplied file types.
      */

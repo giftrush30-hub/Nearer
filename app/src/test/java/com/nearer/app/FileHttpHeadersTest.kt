@@ -58,4 +58,21 @@ class FileHttpHeadersTest {
         FileHttpHeaders.receiverPageHeaders(-1L)
     }
 
+
+    @Test fun unsatisfiedRangeHeadersArePrivateAndDescribeTheWholeFile() {
+        val headers = FileHttpHeaders.unsatisfiedRangeHeaders(987654321L)
+        assertTrue(headers.startsWith("Accept-Ranges: bytes\\r\\n"))
+        assertTrue(headers.contains("Content-Range: bytes */987654321\\r\\n"))
+        assertTrue(headers.contains("Content-Length: 0\\r\\n"))
+        assertTrue(headers.contains("Cache-Control: no-store\\r\\n"))
+        assertTrue(headers.contains("X-Content-Type-Options: nosniff\\r\\n"))
+        assertTrue(headers.contains("Referrer-Policy: no-referrer\\r\\n"))
+        assertTrue(headers.endsWith("Connection: close\\r\\n\\r\\n"))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun unsatisfiedRangeHeadersRejectNegativeFileLength() {
+        FileHttpHeaders.unsatisfiedRangeHeaders(-1L)
+    }
+
 }
