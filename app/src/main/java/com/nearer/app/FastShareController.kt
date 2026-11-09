@@ -117,6 +117,52 @@ class FastShareController(private val context: Context) {
                             transferLedger.update(FastShareActiveTransfer(transferId, fileName, 0L, -1L, 0L, android.os.SystemClock.elapsedRealtime(), isQueued = true))
                             activeTransfers = transferLedger.snapshot()
                         }
+                    }, onUploadQueued = { transferId, fileName, totalBytes ->
+                        Handler(Looper.getMainLooper()).post {
+                            transferLedger.update(FastShareActiveTransfer(transferId, fileName, 0L, totalBytes, 0L, android.os.SystemClock.elapsedRealtime(), isQueued = true, isReceiving = true))
+                            activeTransfers = transferLedger.snapshot()
+                            status = "Waiting to receive " + fileName + "…"
+                        }
+                    }, onUploadProgress = { transferId, fileName, received, total, complete, interrupted ->
+                        val progress = progressByThread.get()
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        var startedAt = progress[0]
+                        var lastAt = progress[1]
+                        var lastBytes = progress[2]
+                        var speed = progress[3].toDouble()
+                        if ((received == 0L && !complete && !interrupted) || startedAt == 0L || received < lastBytes) {
+                            startedAt = now
+                            lastAt = now
+                            lastBytes = 0L
+                            speed = 0.0
+                        }
+                        val elapsed = now - lastAt
+                        if (elapsed > 0L && received >= lastBytes) speed = (received - lastBytes) * 1000.0 / elapsed
+                        lastAt = now
+                        lastBytes = received
+                        progress[0] = startedAt
+                        progress[1] = lastAt
+                        progress[2] = lastBytes
+                        progress[3] = speed.toLong()
+                        Handler(Looper.getMainLooper()).post {
+                            if (complete || interrupted) {
+                                transferLedger.finish(transferId)
+                                activeTransfers = transferLedger.snapshot()
+                            } else {
+                                transferLedger.update(FastShareActiveTransfer(transferId, fileName, received, total, speed.toLong(), startedAt, isReceiving = true))
+                                activeTransfers = transferLedger.snapshot()
+                            }
+                            status = when {
+                                interrupted -> "Upload interrupted at " + formatProgressSize(received) + ". The partial file was discarded; retry from the other device."
+                                complete -> "Received " + fileName + " · " + formatProgressSize(received)
+                                total > 0L -> "Receiving " + formatProgressSize(received) + " of " + formatProgressSize(total) + " · " + formatProgressSize(speed.toLong()) + "/s…"
+                                else -> "Receiving " + formatProgressSize(received) + " · " + formatProgressSize(speed.toLong()) + "/s…"
+                            }
+                            if (complete || interrupted) recordHistory(fileName, received, if (complete) "Received" else "Interrupted")
+                        }
+                        if (complete || interrupted) progressByThread.remove()
+                    }, onFileReceived = { fileName, file ->
+                        Handler(Looper.getMainLooper()).post { onFileReceived(fileName, file) }
                     }, onTransferDiscarded = { transferId ->
                         Handler(Looper.getMainLooper()).post {
                             transferLedger.finish(transferId)
