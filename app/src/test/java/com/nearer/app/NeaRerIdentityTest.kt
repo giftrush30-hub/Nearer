@@ -11,7 +11,7 @@ class NeaRerIdentityTest {
     @Test fun generatesTenCharacterUnambiguousIds() {
         repeat(100) {
             val id = NeaRerIdentity.generate()
-            assertEquals(10, id.length)
+            assertEquals(12, id.length)
             assertEquals(id, NeaRerIdentity.normalize(id))
             assertTrue(id.all { it in "23456789ABCDEFGHJKLMNPQRSTUVWXYZ" })
         }
@@ -40,7 +40,7 @@ class NeaRerIdentityTest {
                 bytes.indices.forEach { bytes[it] = it.toByte() }
             }
         })
-        assertEquals(10, generated.length)
+        assertEquals(12, generated.length)
         assertEquals(generated, NeaRerIdentity.normalize(generated))
     }
 }
