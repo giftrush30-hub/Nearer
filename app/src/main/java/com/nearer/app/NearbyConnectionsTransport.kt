@@ -60,6 +60,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val name: String,
         val size: Long,
         val payload: Payload,
+        val temporarySourceFile: java.io.File? = null,
         @Volatile var sha256: String = "",
         @Volatile var metadataReady: Boolean = false,
         @Volatile var awaitingResume: Boolean = false
@@ -311,6 +312,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     outgoing?.let { file ->
                         if (outgoingFiles.remove(payloadId, file)) {
                             try { file.payload.close() } catch (_: Exception) { }
+                            file.temporarySourceFile?.delete()
                         }
                     }
                     listener.onFileProgress(id, payloadId, name, update.totalBytes, update.totalBytes, false)
@@ -604,39 +606,55 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
         var descriptor: android.os.ParcelFileDescriptor? = null
         var filePayload: Payload? = null
+        var stagedSource: java.io.File? = null
         try {
-            val openedDescriptor = appContext.contentResolver.openFileDescriptor(uri, "r")
-                ?: throw IllegalStateException("The selected file could not be opened")
+            val openedDescriptor = runCatching {
+                appContext.contentResolver.openFileDescriptor(uri, "r")
+            }.getOrNull()
             descriptor = openedDescriptor
-            val descriptorSize = openedDescriptor.statSize
-            val reportedSize = if (descriptorSize >= 0L) descriptorSize else {
-                appContext.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                        if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex) else -1L
-                    } else -1L
-                } ?: -1L
+            val descriptorSize = openedDescriptor?.statSize ?: -1L
+            val size: Long
+            val payload: Payload
+            if (openedDescriptor != null && descriptorSize >= 0L) {
+                size = descriptorSize
+                payload = Payload.fromFile(openedDescriptor)
+                filePayload = payload
+                descriptor = null
+            } else {
+                // Providers may expose a stream without a seekable, size-bearing descriptor.
+                // Stage those sources to disk rather than rejecting them or buffering in RAM.
+                try { descriptor?.close() } catch (_: Exception) { }
+                descriptor = null
+                val stagingDir = java.io.File(appContext.cacheDir, "nearer-transfer-staging").apply { mkdirs() }
+                stagedSource = java.io.File.createTempFile("nearer-source-", ".bin", stagingDir)
+                val input = appContext.contentResolver.openInputStream(uri)
+                    ?: throw IllegalStateException("The selected file could not be opened as a stream")
+                input.use { source ->
+                    stagedSource!!.outputStream().buffered().use { output ->
+                        source.copyTo(output, 256 * 1024)
+                    }
+                }
+                size = stagedSource!!.length()
+                payload = Payload.fromFile(stagedSource!!)
+                filePayload = payload
             }
-            if (reportedSize < 0L) throw IllegalStateException("NeaRer could not determine this file's size. Choose another file.")
-            val size = reportedSize
-            val payload = Payload.fromFile(openedDescriptor)
-            filePayload = payload
-            descriptor = null // The Payload now owns the descriptor.
             val name = safeFileName(displayName)
             payload.setFileName(name)
             payload.setSensitive(true)
             val id = payload.id
             val peerStableId = synchronized(names) { stableIds[endpointId].orEmpty() }
-            val outgoing = OutgoingFile(endpointId, peerStableId, name, size, payload)
+            val outgoing = OutgoingFile(endpointId, peerStableId, name, size, payload, stagedSource)
             outgoingFiles[id] = outgoing
             listener.onFileProgress(endpointId, id, name, 0L, size, false)
             listener.onFileStatus("Preparing and verifying $name before sending…")
-            // Hash on a worker thread with a larger sequential buffer for large videos.
             transferPreparation.execute {
                 try {
-                    val sha256 = appContext.contentResolver.openInputStream(uri)?.use { input ->
-                        sha256Hex(input)
-                    } ?: throw IllegalStateException("The selected file can no longer be read")
+                    val sha256 = if (outgoing.temporarySourceFile != null) {
+                        outgoing.temporarySourceFile.inputStream().use { sha256Hex(it) }
+                    } else {
+                        appContext.contentResolver.openInputStream(uri)?.use { sha256Hex(it) }
+                            ?: throw IllegalStateException("The selected file can no longer be read")
+                    }
                     outgoing.sha256 = sha256
                     if (!synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) {
                         throw IllegalStateException("Nearby connection ended before transfer started")
@@ -646,14 +664,16 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     outgoingFiles.remove(id)
                     try { client.cancelPayload(id) } catch (_: Exception) { }
                     try { payload.close() } catch (_: Exception) { }
-                    listener.onFileStatus("File could not be verified before sending: ${error.localizedMessage ?: "please try again"}")
+                    outgoing.temporarySourceFile?.delete()
+                    listener.onFileStatus("File could not be verified before sending: \${error.localizedMessage ?: "please try again"}")
                 }
             }
             return id
         } catch (error: Exception) {
             try { filePayload?.close() } catch (_: Exception) { }
             try { descriptor?.close() } catch (_: Exception) { }
-            listener.onFileStatus("File could not be prepared: ${error.localizedMessage ?: "choose another file"}")
+            stagedSource?.delete()
+            listener.onFileStatus("File could not be prepared: \${error.localizedMessage ?: "choose another file"}")
             return null
         }
     }
@@ -713,7 +733,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
 
     fun cancelFile(payloadId: Long) {
         try { client.cancelPayload(payloadId) } catch (_: Exception) { }
-        outgoingFiles.remove(payloadId)?.let { try { it.payload.close() } catch (_: Exception) { } }
+        outgoingFiles.remove(payloadId)?.let {
+            try { it.payload.close() } catch (_: Exception) { }
+            it.temporarySourceFile?.delete()
+        }
     }
 
     private fun broadcast(content: String, excludeEndpoint: String?): Boolean {
@@ -744,7 +767,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         disconnect()
         pendingOutgoingMessages.values.forEach { it.retryTask?.let(deliveryHandler::removeCallbacks); it.retryTask = null }
         deliveryHandler.removeCallbacksAndMessages(null)
-        outgoingFiles.values.forEach { try { it.payload.close() } catch (_: Exception) { } }
+        outgoingFiles.values.forEach {
+            try { it.payload.close() } catch (_: Exception) { }
+            it.temporarySourceFile?.delete()
+        }
         outgoingFiles.clear()
         fileIo.shutdownNow()
         transferPreparation.shutdownNow()
