@@ -27,10 +27,16 @@ internal object FastShareArchiveNames {
                     )
                 }
             }.trim().ifBlank { "shared-file" }
-            val safeBase = if (safe == "." || safe == "..") "shared-file" else safe
-            val dot = safeBase.lastIndexOf('.')
-            val stem = if (dot > 0) safeBase.substring(0, dot) else safeBase
-            val extension = if (dot > 0) safeBase.substring(dot) else ""
+            val initialBase = if (safe == "." || safe == "..") "shared-file" else safe
+            val dot = initialBase.lastIndexOf('.')
+            val initialStem = if (dot > 0) initialBase.substring(0, dot) else initialBase
+            val extension = if (dot > 0) initialBase.substring(dot) else ""
+            val reserved = initialStem.uppercase(Locale.ROOT).let { stem ->
+                stem in setOf("CON", "PRN", "AUX", "NUL") ||
+                    stem.matches(Regex("COM[1-9]|LPT[1-9]"))
+            }
+            val safeBase = (if (reserved) "_" else "") + initialBase
+            val stem = (if (reserved) "_" else "") + initialStem
             var candidate = safeBase
             var suffix = 2
             while (!used.add(candidate.lowercase(Locale.ROOT))) {
