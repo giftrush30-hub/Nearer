@@ -7,21 +7,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class FastShareDownloadGateTest {
-    @Test fun twoReceiversCanDownloadConcurrently() {
+    @Test fun fiveReceiversCanDownloadConcurrently() {
         val gate = FastShareDownloadGate()
-        assertTrue(gate.tryAcquire(10, TimeUnit.MILLISECONDS))
-        assertTrue(gate.tryAcquire(10, TimeUnit.MILLISECONDS))
-        assertFalse("A third receiver must wait while both slots are occupied", gate.tryAcquire(0, TimeUnit.MILLISECONDS))
-        gate.release()
-        assertTrue("A waiting slot should become available after one transfer ends", gate.tryAcquire(10, TimeUnit.MILLISECONDS))
-        gate.release()
-        gate.release()
+        repeat(5) {
+            assertTrue("Receiver ${it + 1} should acquire one of five slots", gate.tryAcquire(10, TimeUnit.MILLISECONDS))
+        }
+        assertFalse("A sixth receiver must wait while all five slots are occupied", gate.tryAcquire(0, TimeUnit.MILLISECONDS))
+        repeat(5) { gate.release() }
     }
 
-    @Test fun thirdReceiverWaitsUntilOneOfTwoDownloadsReleasesASlot() {
+    @Test fun sixthReceiverWaitsUntilOneOfFiveDownloadsReleasesASlot() {
         val gate = FastShareDownloadGate()
-        assertTrue(gate.tryAcquire(10, TimeUnit.MILLISECONDS))
-        assertTrue(gate.tryAcquire(10, TimeUnit.MILLISECONDS))
+        repeat(5) { assertTrue(gate.tryAcquire(10, TimeUnit.MILLISECONDS)) }
         val acquired = AtomicBoolean(false)
         val started = CountDownLatch(1)
         val worker = Thread {
@@ -32,21 +29,19 @@ class FastShareDownloadGateTest {
         worker.start()
         assertTrue(started.await(1, TimeUnit.SECONDS))
         Thread.sleep(40)
-        assertFalse("A third receiver must wait", acquired.get())
+        assertFalse("A sixth receiver must wait", acquired.get())
         gate.release()
         worker.join(1500)
         assertFalse(worker.isAlive)
         assertTrue("Waiting receiver should acquire after one release", acquired.get())
-        gate.release()
+        repeat(4) { gate.release() }
     }
 
-    @Test fun receiverTimesOutWhenAllSlotsRemainOccupied() {
+    @Test fun receiverTimesOutWhenAllFiveSlotsRemainOccupied() {
         val gate = FastShareDownloadGate()
-        assertTrue(gate.tryAcquire(10, TimeUnit.MILLISECONDS))
-        assertTrue(gate.tryAcquire(10, TimeUnit.MILLISECONDS))
+        repeat(5) { assertTrue(gate.tryAcquire(10, TimeUnit.MILLISECONDS)) }
         assertFalse(gate.tryAcquire(25, TimeUnit.MILLISECONDS))
-        gate.release()
-        gate.release()
+        repeat(5) { gate.release() }
     }
 
     @Test fun zeroWaitCanAcquireAnImmediatelyAvailablePermit() {
@@ -62,8 +57,7 @@ class FastShareDownloadGateTest {
 
     @Test fun interruptedWaiterDoesNotConsumeAnActiveTransferPermit() {
         val gate = FastShareDownloadGate()
-        assertTrue(gate.tryAcquire(0, TimeUnit.MILLISECONDS))
-        assertTrue(gate.tryAcquire(0, TimeUnit.MILLISECONDS))
+        repeat(5) { assertTrue(gate.tryAcquire(0, TimeUnit.MILLISECONDS)) }
         val interrupted = java.util.concurrent.CountDownLatch(1)
         val worker = Thread {
             try {
@@ -81,7 +75,6 @@ class FastShareDownloadGateTest {
         assertFalse("Interrupted waiter must not release or steal a permit", gate.tryAcquire(0, TimeUnit.MILLISECONDS))
         gate.release()
         assertTrue(gate.tryAcquire(0, TimeUnit.MILLISECONDS))
-        gate.release()
-        gate.release()
+        repeat(5) { gate.release() }
     }
 }
