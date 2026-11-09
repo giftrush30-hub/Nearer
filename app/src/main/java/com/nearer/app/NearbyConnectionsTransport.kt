@@ -88,7 +88,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private fun persistPendingOutbox(): Boolean {
         return try {
             val array = org.json.JSONArray()
-            pendingOutgoingMessages.forEach { (id, p) -> array.put(JSONObject().put("id", id).put("peer", p.stablePeerId).put("payload", p.payload.toString(Charsets.UTF_8))) }
+            pendingOutgoingMessages.forEach { (id, p) ->
+                val encryptedPayload = LocalDataCipher.encrypt(appContext, p.payload)
+                array.put(JSONObject().put("id", id).put("peer", p.stablePeerId).put("payload", encryptedPayload))
+            }
             val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("nearby_outbox", array.toString()).commit()
             if (!saved) listener.onStatus("NeaRer could not save its pending-message queue.")
             saved
@@ -102,8 +105,22 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             val raw = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("nearby_outbox", "[]") ?: "[]"
             val array = org.json.JSONArray(raw)
             for (i in 0 until array.length()) {
-                val item = array.getJSONObject(i); val id = item.optString("id"); val peer = item.optString("peer"); val payload = item.optString("payload")
-                if (id.isNotBlank() && peer.isNotBlank() && payload.isNotBlank() && payload.length <= 12000) pendingOutgoingMessages[id] = PendingOutgoingMessage("", peer, payload.toByteArray(Charsets.UTF_8))
+                val item = array.getJSONObject(i)
+                val id = item.optString("id")
+                val peer = item.optString("peer")
+                val storedPayload = item.optString("payload")
+                if (id.isBlank() || peer.isBlank() || storedPayload.isBlank() || storedPayload.length > 24000) continue
+                val payload = if (storedPayload.startsWith("v1:")) {
+                    LocalDataCipher.decrypt(appContext, storedPayload)
+                } else {
+                    // One-time migration: older releases stored queued message bodies as plain text.
+                    storedPayload.toByteArray(Charsets.UTF_8)
+                }
+                if (payload != null && payload.isNotEmpty()) {
+                    pendingOutgoingMessages[id] = PendingOutgoingMessage("", peer, payload)
+                } else {
+                    listener.onStatus("A saved message could not be unlocked and was left out of the retry queue.")
+                }
             }
         } catch (_: Exception) { listener.onStatus("Some queued messages could not be restored.") }
     }
