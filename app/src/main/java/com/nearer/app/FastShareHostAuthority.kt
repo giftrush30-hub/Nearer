@@ -10,9 +10,13 @@ internal object FastShareHostAuthority {
         if (value.startsWith("[")) {
             val close = value.indexOf(']')
             if (close <= 1) return false
+            val literal = value.substring(1, close)
+            // Require an IPv6 colon before parsing so arbitrary bracketed hostnames
+            // never trigger a DNS lookup on a request-handling thread.
+            if (!literal.contains(':') || literal.contains('%')) return false
             val suffix = value.substring(close + 1)
             if (suffix.isNotEmpty() && !validPortSuffix(suffix)) return false
-            return runCatching { InetAddress.getByName(value.substring(1, close)) }.getOrNull() is Inet6Address
+            return runCatching { InetAddress.getByName(literal) }.getOrNull() is Inet6Address
         }
         if (value.count { it == ':' } > 1) return false
         val colon = value.lastIndexOf(':')
