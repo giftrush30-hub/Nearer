@@ -117,6 +117,9 @@ class MainActivity : ComponentActivity() {
     private val hybridPeers = mutableStateMapOf<String, String>()
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
+    private var onboardingComplete by mutableStateOf(false)
+    private var profileAvatarId by mutableStateOf("orbit")
+    private var profilePhotoPath by mutableStateOf<String?>(null)
     private var hybridSearching by mutableStateOf(false)
     private var pendingHybridEndpoint: String? = null
     private var hybridConnected = false
@@ -458,6 +461,10 @@ class MainActivity : ComponentActivity() {
         }
         restoreCommunityData()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
+        val profilePrefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        onboardingComplete = profilePrefs.getBoolean("onboarding_complete", profilePrefs.contains("display_name") && displayName != "NeaRer User")
+        profileAvatarId = profilePrefs.getString("profile_avatar_id", "orbit") ?: "orbit"
+        profilePhotoPath = profilePrefs.getString("profile_photo_path", null)
         nearbyTransport?.setDisplayName(displayName)
         restoreRecentlySeen()
         // Multi-hop relay is paused until recipient routing and end-to-end encryption are ready.
@@ -472,6 +479,7 @@ class MainActivity : ComponentActivity() {
                 onBackground = White,
                 onSurface = White
             )) {
+                if (onboardingComplete) {
                 NeaRerHome(
                     status = statusMessage,
                     scanning = scanning || hybridSearching,
@@ -530,6 +538,12 @@ class MainActivity : ComponentActivity() {
                     onStopSearch = ::stopDiscovery,
                     onConnect = ::connectToDevice
                 )
+                } else {
+                    NeaRerOnboarding(
+                        publicId = nearbyTransport?.localIdentityId().orEmpty(),
+                        onComplete = ::completeOnboarding
+                    )
+                }
             }
         }
     }
@@ -622,6 +636,34 @@ class MainActivity : ComponentActivity() {
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", enabled).apply()
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", false).apply()
         statusMessage = "Community relay is temporarily paused while recipient routing and end-to-end encryption are being built."
+    }
+
+    private fun completeOnboarding(rawName: String, avatarId: String, photoUri: Uri?, answers: Map<String, String>) {
+        val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
+        if (cleanName.isBlank()) return
+        var savedPhotoPath: String? = null
+        if (photoUri != null) {
+            runCatching {
+                val profileDirectory = File(filesDir, "profile").apply { mkdirs() }
+                val destination = File(profileDirectory, "profile-photo")
+                contentResolver.openInputStream(photoUri)?.use { input -> FileOutputStream(destination).use { output -> input.copyTo(output) } }
+                if (destination.exists() && destination.length() > 0L) savedPhotoPath = destination.absolutePath
+            }
+        }
+        val answerJson = JSONObject().apply { answers.forEach { (key, value) -> put(key, value) } }
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("onboarding_complete", true)
+            .putString("display_name", cleanName)
+            .putString("profile_avatar_id", avatarId)
+            .putString("profile_photo_path", savedPhotoPath)
+            .putString("onboarding_answers", answerJson.toString())
+            .apply()
+        displayName = cleanName
+        profileAvatarId = avatarId
+        profilePhotoPath = savedPhotoPath
+        nearbyTransport?.setDisplayName(cleanName)
+        onboardingComplete = true
+        statusMessage = "Welcome to NeaRer, $cleanName."
     }
 
     private fun saveDisplayName(rawName: String) {
