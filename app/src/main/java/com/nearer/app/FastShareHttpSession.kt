@@ -91,17 +91,24 @@ internal object FastShareHttpSession {
     private fun readLine(input: InputStream): Line? {
         val bytes = ByteArrayOutputStream()
         var terminated = false
+        var sawCarriageReturn = false
         while (bytes.size() <= MAX_LINE_BYTES) {
             val value = input.read()
             if (value < 0) break
-            if (value == 10) {
-                terminated = true
+            if (sawCarriageReturn) {
+                // HTTP/1.x lines must end in CRLF. A bare CR or embedded CR
+                // is malformed and must not be silently removed from a header.
+                if (value == 10) terminated = true
                 break
             }
-            if (value != 13) bytes.write(value)
+            when (value) {
+                13 -> sawCarriageReturn = true
+                10 -> break
+                else -> bytes.write(value)
+            }
+            if (terminated) break
         }
         if (bytes.size() > MAX_LINE_BYTES) return Line("", bytes.size(), false, true)
-        if (bytes.size() == 0 && !terminated) return null
+        if (bytes.size() == 0 && !terminated && !sawCarriageReturn) return null
         return Line(bytes.toString("UTF-8"), bytes.size(), terminated, false)
-    }
-}
+    }}
