@@ -484,7 +484,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private fun startAdvertising() {
         val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
         client.startAdvertising(encodedName(), serviceId, lifecycle, options).addOnFailureListener {
-            listener.onStatus("Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}")
+            // Do not leave the transport marked as started when advertising failed.
+            // Stop the other half of discovery too, so the next user retry starts cleanly.
+            stopSearching()
+            listener.onStatus("Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again.")
         }
     }
 
@@ -509,7 +512,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         val discovering = DiscoveryOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
         startAdvertising()
         client.startDiscovery(serviceId, discovery, discovering).addOnFailureListener {
-            listener.onStatus("Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}")
+            // Advertising may already have succeeded; roll both operations back together.
+            // This resets started so a later tap can retry instead of silently doing nothing.
+            stopSearching()
+            listener.onStatus("Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again.")
         }
         listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
     }
