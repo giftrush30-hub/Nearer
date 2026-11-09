@@ -28,8 +28,11 @@ internal object FastShareHttpErrors {
         response(
             "429 Too Many Requests",
             "Retry-After: 2\r\nContent-Type: text/plain; charset=utf-8\r\n",
-            "Another download is already in progress. Wait briefly, then retry.\n"
+            "Another transfer is already in progress. Wait briefly, then retry.\n"
         )
+
+    fun uploadFailed(): ByteArray =
+        response("500 Upload Failed", "Content-Type: text/plain; charset=utf-8\\r\\n", "The file was not saved. Check the connection and try again.\\n")
 
     fun forbidden(): ByteArray =
         response("403 Forbidden", "Content-Type: text/plain; charset=utf-8\r\n", "This Fast Share link is missing or invalid. Ask the sender for the current link.\n")
