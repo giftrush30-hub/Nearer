@@ -145,6 +145,7 @@ fun LudoGamePanel(
     )) }
     var message by remember { mutableStateOf("Roll a six to bring your first token out.") }
     var rolling by remember { mutableStateOf(false) }
+    var rollingFace by remember { mutableIntStateOf(1) }
     var difficulty by remember { mutableStateOf(LudoDifficulty.NORMAL) }
     var movementSpeed by remember { mutableStateOf(LudoMoveSpeed.NORMAL) }
     var gameText by remember { mutableStateOf("") }
@@ -177,8 +178,12 @@ fun LudoGamePanel(
             delay(750)
             if (localGame.diceValue == null) {
                 rolling = true
-                delay(280)
+                repeat(7) {
+                    rollingFace = (1..6).random()
+                    delay(45)
+                }
                 localGame = LudoEngine.rollDice(localGame)
+                rollingFace = localGame.diceValue ?: rollingFace
                 rolling = false
                 message = "${current.name} rolled ${localGame.diceValue}"
             } else {
@@ -272,15 +277,19 @@ fun LudoGamePanel(
                         else -> message
                     }, color = Color(0xFFD2DFEA), fontSize = 10.sp, lineHeight = 14.sp)
                 }
-                DiceFace(value = game.diceValue ?: 0, rotation = diceRotation)
+                DiceFace(value = game.diceValue ?: if (rolling) rollingFace else 0, rotation = diceRotation)
             }
             if (!game.isFinished && myTurn && ready && game.diceValue == null) {
                 Button(onClick = {
                     if (networkMode) requestNetworkAction("roll", -1) else {
                         rolling = true
                         scope.launch {
-                            delay(380)
+                            repeat(9) {
+                                rollingFace = (1..6).random()
+                                delay(42)
+                            }
                             localGame = LudoEngine.rollDice(localGame)
+                            rollingFace = localGame.diceValue ?: rollingFace
                             rolling = false
                             message = if (localGame.consecutiveSixes >= 3) "Third six! Your turn is forfeited." else "You rolled ${localGame.diceValue}. Choose a glowing token."
                         }
