@@ -5,8 +5,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Fair, bounded admission gate for Fast Share downloads.
- * Two receivers can transfer at once; additional requests wait in arrival order
- * rather than racing or immediately receiving 429 while both slots are occupied.
+ * Five receivers can transfer at once; additional requests wait in arrival order
+ * rather than racing or immediately receiving 429 while all slots are occupied.
  */
 internal class FastShareDownloadGate {
     companion object {
