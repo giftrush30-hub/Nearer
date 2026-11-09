@@ -645,15 +645,7 @@ class MainActivity : ComponentActivity() {
     private fun completeOnboarding(rawName: String, avatarId: String, photoUri: Uri?, answers: Map<String, String>) {
         val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
         if (cleanName.isBlank()) return
-        var savedPhotoPath: String? = null
-        if (photoUri != null) {
-            runCatching {
-                val profileDirectory = File(filesDir, "profile").apply { mkdirs() }
-                val destination = File(profileDirectory, "profile-photo")
-                contentResolver.openInputStream(photoUri)?.use { input -> FileOutputStream(destination).use { output -> input.copyTo(output) } }
-                if (destination.exists() && destination.length() > 0L) savedPhotoPath = destination.absolutePath
-            }
-        }
+        val savedPhotoPath = photoUri?.let(::storeProfilePhoto)
         val answerJson = JSONObject().apply { answers.forEach { (key, value) -> put(key, value) } }
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
             .putBoolean("onboarding_complete", true)
@@ -669,6 +661,24 @@ class MainActivity : ComponentActivity() {
         onboardingComplete = true
         statusMessage = "Welcome to NeaRer, $cleanName."
     }
+
+    private fun storeProfilePhoto(uri: Uri): String? = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / sample > 1024 || bounds.outHeight / sample > 1024) sample *= 2
+        val options = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = android.graphics.Bitmap.Config.RGB_565 }
+        val decoded = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) } ?: return null
+        val scale = minOf(1f, 512f / maxOf(decoded.width, decoded.height).toFloat())
+        val outputBitmap = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(decoded, (decoded.width * scale).toInt().coerceAtLeast(1), (decoded.height * scale).toInt().coerceAtLeast(1), true) else decoded
+        val profileDirectory = File(filesDir, "profile").apply { mkdirs() }
+        val destination = File(profileDirectory, "profile-photo.jpg")
+        FileOutputStream(destination).use { output -> outputBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 86, output) }
+        if (outputBitmap !== decoded) outputBitmap.recycle()
+        decoded.recycle()
+        destination.absolutePath.takeIf { destination.exists() && destination.length() > 0L }
+    }.getOrNull()
 
     private fun saveDisplayName(rawName: String) {
         val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
