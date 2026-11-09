@@ -2606,6 +2606,19 @@ private fun NeaRerHome(
                 PremiumChatsScreen(
                     chatReady = chatReady,
                     nearerId = nearerId,
+                    onCopyNearerId = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("NeaRer ID", nearerId))
+                        android.widget.Toast.makeText(context, "NeaRer ID copied", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    onShareNearerId = {
+                        val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_SUBJECT, "My NeaRer ID")
+                            putExtra(android.content.Intent.EXTRA_TEXT, "Find me on NeaRer: $nearerId")
+                        }
+                        context.startActivity(android.content.Intent.createChooser(share, "Share your NeaRer ID"))
+                    },
                     currentConversationId = conversationIdFor(connectedDeviceName),
                     connectedDeviceName = connectedDeviceName,
                     connectionMessage = connectionMessage,
@@ -2890,6 +2903,8 @@ private fun NeaRerHome(
 private fun PremiumChatsScreen(
     chatReady: Boolean,
     nearerId: String,
+    onCopyNearerId: () -> Unit,
+    onShareNearerId: () -> Unit,
     currentConversationId: String,
     connectedDeviceName: String?,
     connectionMessage: String,
@@ -2918,12 +2933,38 @@ private fun PremiumChatsScreen(
             Text("YOUR CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
             Text("Chats", color = White, fontSize = 29.sp, fontWeight = FontWeight.ExtraBold)
             Text("Private conversations, closer than ever.", color = Muted, fontSize = 13.sp)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Column(modifier = Modifier.weight(1f)) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFF172B49)
+            ) {
+                Column(modifier = Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Text("YOUR NEARER ID", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
-                    Text(nearerId, color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(nearerId, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.35.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = onCopyNearerId,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 7.dp)
+                        ) {
+                            Text("Copy ID", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = onShareNearerId,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 7.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                        ) {
+                            Text("Share ID", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Text(
+                        "This ID identifies this NeaRer installation, not a verified person. Share it only with people you want to find you. Changing phones currently creates a new ID.",
+                        color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                    )
                 }
-                Text("Share this ID with people you want to find you.", color = Muted, fontSize = 10.sp)
             }
         }
 
