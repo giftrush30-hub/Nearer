@@ -35,4 +35,27 @@ class FileHttpHeadersTest {
         assertTrue(headers.contains("Referrer-Policy: no-referrer\r\n"))
         assertEquals(1, Regex("(?m)^Cache-Control:").findAll(headers).count())
     }
+
+    @Test fun receiverPageHeadersPreventCachingFramingSniffingAndExternalExecution() {
+        val headers = FileHttpHeaders.receiverPageHeaders(123L).toMap()
+        assertEquals("text/html; charset=utf-8", headers["Content-Type"])
+        assertEquals("123", headers["Content-Length"])
+        assertEquals("no-store", headers["Cache-Control"])
+        assertEquals("no-cache", headers["Pragma"])
+        assertEquals("nosniff", headers["X-Content-Type-Options"])
+        assertEquals("no-referrer", headers["Referrer-Policy"])
+        assertEquals("DENY", headers["X-Frame-Options"])
+        assertEquals(
+            "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            headers["Content-Security-Policy"]
+        )
+        assertEquals("camera=(), microphone=(), geolocation=()", headers["Permissions-Policy"])
+        assertEquals("close", headers["Connection"])
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun receiverPageHeadersRejectNegativeContentLength() {
+        FileHttpHeaders.receiverPageHeaders(-1L)
+    }
+
 }

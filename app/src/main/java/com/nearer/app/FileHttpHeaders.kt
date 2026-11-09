@@ -4,6 +4,28 @@ import java.net.URLEncoder
 
 /** Builds safe HTTP header values for metadata supplied by Android file providers. */
 internal object FileHttpHeaders {
+
+    /**
+     * Security and cache headers for the private HTML receiver page.
+     * The page intentionally permits its embedded stylesheet but no scripts,
+     * external resources, forms, framing, or privileged browser capabilities.
+     */
+    fun receiverPageHeaders(contentLength: Long): List<Pair<String, String>> {
+        require(contentLength >= 0L) { "Content length must be non-negative" }
+        return listOf(
+            "Content-Type" to "text/html; charset=utf-8",
+            "Content-Length" to contentLength.toString(),
+            "Cache-Control" to "no-store",
+            "Pragma" to "no-cache",
+            "X-Content-Type-Options" to "nosniff",
+            "Referrer-Policy" to "no-referrer",
+            "X-Frame-Options" to "DENY",
+            "Content-Security-Policy" to "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            "Permissions-Policy" to "camera=(), microphone=(), geolocation=()",
+            "Connection" to "close"
+        )
+    }
+
     private val mimeTypePattern = Regex("[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+")
 
     fun contentType(value: String): String =

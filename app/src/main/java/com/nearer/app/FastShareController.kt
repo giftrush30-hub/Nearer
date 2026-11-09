@@ -374,7 +374,7 @@ private class FastShareHttpServer(
             when (request.route) {
                 FastShareHttpRequest.Route.RECEIVER_PAGE -> {
                     val bytes = catalog.receiverPage(accessKey).toByteArray(Charsets.UTF_8)
-                    output.write(FastShareHttpWire.responseHead("HTTP/1.1 200 OK", listOf("Content-Type" to "text/html; charset=utf-8", "Content-Length" to bytes.size.toString(), "Connection" to "close")))
+                    output.write(FastShareHttpWire.responseHead("HTTP/1.1 200 OK", FileHttpHeaders.receiverPageHeaders(bytes.size.toLong())))
                     if (!headOnly) output.write(bytes)
                 }
                 FastShareHttpRequest.Route.DOWNLOAD -> {
