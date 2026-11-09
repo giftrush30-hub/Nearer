@@ -1067,20 +1067,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun recordNearbyTransfer
-                }
-            } catch (_: Exception) {
-                chatMessages.clear()
-            }
-        }
-        val folder = File(filesDir, "received")
-        if (folder.exists()) {
-            folder.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }?.forEach {
-                receivedFiles.add(ReceivedFile(it.name.substringAfter('-', it.name), it))
-            }
-        }
-    }
-
     private fun recordNearbyTransfer(direction: String, fileName: String, bytes: Long, status: String) {
         nearbyTransferHistory.add(0, NearbyTransferRecord(direction, fileName.take(140), bytes.coerceAtLeast(0L), System.currentTimeMillis(), status))
         while (nearbyTransferHistory.size > 100) nearbyTransferHistory.removeAt(nearbyTransferHistory.lastIndex)
@@ -1112,6 +1098,8 @@ class MainActivity : ComponentActivity() {
             }
         } catch (_: Exception) { nearbyTransferHistory.clear() }
     }
+
+    private fun trimChatMessages() { ChatHistoryPolicy.trim(chatMessages) }
 
     private fun persistMessages(): Boolean {
         return try {
