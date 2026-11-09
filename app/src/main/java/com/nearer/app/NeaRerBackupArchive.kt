@@ -152,7 +152,7 @@ internal object NeaRerBackupArchive {
                         validatePath(path)
                         val size = item.optLong("size", -1L)
                         val hash = item.optString("sha256")
-                        if (size !in 0..MAX_ENTRY_BYTES || !hash.matches(Regex("[a-f0-9]{64}"))) {
+                        if (size < 0L || size > MAX_ENTRY_BYTES || !hash.matches(Regex("[a-f0-9]{64}"))) {
                             throw IOException("Backup manifest metadata is invalid")
                         }
                         if (expected.put(path, EntryRecord(path, size, hash)) != null) {
