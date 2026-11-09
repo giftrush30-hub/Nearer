@@ -2638,7 +2638,7 @@ private fun NeaRerHome(
                         val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                             type = "text/plain"
                             putExtra(android.content.Intent.EXTRA_SUBJECT, "My NeaRer ID")
-                            putExtra(android.content.Intent.EXTRA_TEXT, "Find me on NeaRer: $nearerId")
+                            putExtra(android.content.Intent.EXTRA_TEXT, "My NeaRer ID is $nearerId. Let's compare IDs when we're connected nearby on NeaRer.")
                         }
                         context.startActivity(android.content.Intent.createChooser(share, "Share your NeaRer ID"))
                     },
@@ -3024,7 +3024,7 @@ private fun PremiumChatsScreen(
                         }
                     }
                     Text(
-                        "This ID identifies this NeaRer installation, not a verified person. Share it only with people you want to find you. Changing phones currently creates a new ID.",
+                        "This ID identifies this NeaRer installation, not a verified person. Nearby NeaRer phones exchange this ID after connecting; it is not yet a global username search. Changing phones currently creates a new ID.",
                         color = Muted, fontSize = 10.sp, lineHeight = 15.sp
                     )
                 }
