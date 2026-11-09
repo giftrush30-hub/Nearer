@@ -44,8 +44,8 @@ class FastShareHttpErrorsTest {
     @Test fun idleUploadTimeoutReturns408AndRetryAfter() {
         val (headers, body) = headersAndBody(FastShareHttpErrors.requestTimeout())
         assertTrue(headers.startsWith("HTTP/1.1 408 Request Timeout"))
-        assertTrue(headers.contains("\\r\\nRetry-After: 2\\r\\n"))
-        assertEquals("Upload paused because the connection became idle. Reconnect and retry.\\n", body)
+        assertTrue(headers.contains("\r\nRetry-After: 2\r\n"))
+        assertEquals("Upload paused because the connection became idle. Reconnect and retry.\n", body)
         assertContentLength(headers, body)
     }
 
