@@ -78,7 +78,7 @@ internal object NeaRerBackupManager {
             val preview = NeaRerBackupSnapshot.inspect(restored)
             return PreparedRestore(restored, preview)
         } catch (failure: Exception) {
-            password.fill('\\u0000')
+            password.fill('\u0000')
             restored.deleteRecursively()
             if (failure is IOException) throw failure
             throw IOException("Could not prepare NeaRer backup restore", failure)
