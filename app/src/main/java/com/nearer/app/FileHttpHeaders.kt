@@ -92,9 +92,10 @@ internal object FileHttpHeaders {
      * Prevent browsers and intermediary caches from retaining private local-share
      * content, and prevent MIME sniffing of provider-supplied file types.
      */
-    fun fileHeaders(mimeType: String, fileName: String): String =
+    fun fileHeaders(mimeType: String, fileName: String, lastModifiedMillis: Long? = null): String =
         "Content-Type: ${contentType(mimeType)}\r\n" +
             contentDisposition(fileName) +
+            (FastShareResumePolicy.formatHttpDate(lastModifiedMillis)?.let { "Last-Modified: $it\r\n" } ?: "") +
             "Cache-Control: no-store\r\n" +
             "X-Content-Type-Options: nosniff\r\n" +
             "Referrer-Policy: no-referrer\r\n"
