@@ -10,8 +10,9 @@ import java.util.concurrent.TimeUnit
  */
 internal class FastShareDownloadGate {
     companion object {
-        // Two streams improve group-sharing throughput while keeping memory use bounded.
-        const val MAX_CONCURRENT_DOWNLOADS = 2
+        // First group-sharing milestone: five simultaneous file streams.
+        // Keep this aligned with FastShareController's five core workers.
+        const val MAX_CONCURRENT_DOWNLOADS = 5
     }
 
     private val permits = Semaphore(MAX_CONCURRENT_DOWNLOADS, true)
