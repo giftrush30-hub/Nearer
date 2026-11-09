@@ -391,10 +391,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             // has been saved. This closes the crash window between ID and message storage.
             try {
                 listener.onMessage(endpointId, senderName, messageId, body) {
-                    if (pendingIncomingMessageIds.remove(messageId)) {
-                        if (rememberMessageId(messageId)) {
-                            sendAcknowledgement(endpointId, messageId)
-                        }
+                    if (messageId in pendingIncomingMessageIds) {
+                        val dedupeRecordSaved = rememberMessageId(messageId)
+                        pendingIncomingMessageIds.remove(messageId)
+                        if (dedupeRecordSaved) sendAcknowledgement(endpointId, messageId)
                     }
                 }
             } catch (error: Exception) {
