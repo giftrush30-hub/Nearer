@@ -2390,6 +2390,42 @@ private fun NeaRerHome(
                         ) { Text("Fast Share • multiple large files", fontWeight = FontWeight.Bold) }
                         Text("Send a large video to a phone without NeaRer using a temporary local Wi-Fi connection. No mobile data.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                         Text(fastShare.status, color = if (fastShare.details != null) Mint else Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        if (fastShare.activeTransfers.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().background(Midnight, RoundedCornerShape(16.dp)).padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text("LIVE DOWNLOADS · ${fastShare.activeTransfers.size}/5", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                fastShare.activeTransfers.forEach { transfer ->
+                                    val percent = if (transfer.totalBytes > 0L) ((transfer.bytesSent * 100L) / transfer.totalBytes).coerceIn(0L, 100L).toInt() else -1
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(transfer.fileName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text(
+                                                if (percent >= 0) "${formatTransferBytes(transfer.bytesSent)} / ${formatTransferBytes(transfer.totalBytes)} · $percent%"
+                                                else "${formatTransferBytes(transfer.bytesSent)} sent · size unknown",
+                                                color = Muted, fontSize = 10.sp
+                                            )
+                                            Text("${formatTransferBytes(transfer.bytesPerSecond)}/s", color = Mint, fontSize = 10.sp)
+                                        }
+                                        if (percent >= 0) {
+                                            androidx.compose.material3.LinearProgressIndicator(
+                                                progress = { percent / 100f },
+                                                modifier = Modifier.fillMaxWidth().height(5.dp),
+                                                color = Gold,
+                                                trackColor = Panel
+                                            )
+                                        } else {
+                                            androidx.compose.material3.LinearProgressIndicator(
+                                                modifier = Modifier.fillMaxWidth().height(5.dp),
+                                                color = Mint,
+                                                trackColor = Panel
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         if (unifiedTransferHistory.isNotEmpty()) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text("RECENT TRANSFERS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
