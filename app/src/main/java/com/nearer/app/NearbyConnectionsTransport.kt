@@ -418,6 +418,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
+    fun localIdentityId(): String = localStableId
+
     fun setDisplayName(name: String) {
         val clean = name.trim().replace("|", " ").take(23).ifBlank { "NeaRer User" }
         if (clean == localName) return
