@@ -397,7 +397,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                                 retryQueuedMessagesForPeer(stableId, endpointId, publicId)
                             }
                             TrustedPeerKeyStore.Result.MATCH -> {
-                                rememberVerifiedPeer(stableId, publicId)
+                                if (!rememberVerifiedPeer(stableId, endpointId, publicId)) {
+                                    listener.onStatus("SECURITY WARNING: this nearby device code was previously associated with a different NeaRer ID, or its trust record could not be saved. No queued messages were released.")
+                                    return
+                                }
                                 listener.onPeerIdentity(endpointId, stableId, publicId, true)
                                 retryQueuedMessagesForPeer(stableId, endpointId, publicId)
                             }
