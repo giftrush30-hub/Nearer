@@ -2994,6 +2994,7 @@ private fun PremiumChatsScreen(
 
         // Real inbox: summaries are derived from saved messages, never demo contacts.
         var inboxQuery by remember { mutableStateOf("") }
+        var showSavedContactsOnly by remember { mutableStateOf(false) }
         var selectedConversationId by remember { mutableStateOf<String?>(null) }
         val inboxThreads = remember(messages) { ConversationIndex.build(messages) }
         val selectedThread = inboxThreads.firstOrNull { it.conversationId == selectedConversationId }
@@ -3004,11 +3005,13 @@ private fun PremiumChatsScreen(
         }
         val canSendInSelectedThread = chatReady && effectiveConversationId.isNotBlank() &&
             effectiveConversationId == currentConversationId
-        val visibleThreads = remember(inboxThreads, inboxQuery, contactAliases.toMap()) {
-            if (inboxQuery.isBlank()) inboxThreads else inboxThreads.filter {
-                it.displayName.contains(inboxQuery, ignoreCase = true) ||
-                    contactAliases[it.conversationId].orEmpty().contains(inboxQuery, ignoreCase = true) ||
-                    it.lastMessage.body.contains(inboxQuery, ignoreCase = true)
+        val visibleThreads = remember(inboxThreads, inboxQuery, showSavedContactsOnly, contactAliases.toMap()) {
+            inboxThreads.filter { thread ->
+                (!showSavedContactsOnly || contactAliases.containsKey(thread.conversationId)) &&
+                    (inboxQuery.isBlank() ||
+                        thread.displayName.contains(inboxQuery, ignoreCase = true) ||
+                        contactAliases[thread.conversationId].orEmpty().contains(inboxQuery, ignoreCase = true) ||
+                        thread.lastMessage.body.contains(inboxQuery, ignoreCase = true))
             }
         }
         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
@@ -3016,7 +3019,11 @@ private fun PremiumChatsScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("RECENT CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
                     Spacer(Modifier.weight(1f))
-                    Text("${inboxThreads.size} chats", color = Muted, fontSize = 10.sp)
+                    Text("${contactAliases.size} saved", color = Muted, fontSize = 10.sp)
+                    androidx.compose.material3.TextButton(
+                        onClick = { showSavedContactsOnly = !showSavedContactsOnly },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                    ) { Text(if (showSavedContactsOnly) "Show all" else "Saved", color = BlueAccent, fontSize = 10.sp) }
                 }
                 OutlinedTextField(
                     value = inboxQuery,
