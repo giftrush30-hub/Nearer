@@ -817,7 +817,7 @@ internal fun FileCentreScreen(
                                     scope.launch {
                                         val prepared = withContext(Dispatchers.IO) {
                                             selectedItems.mapNotNull { item ->
-                                                if (item.packageName == null) item
+                                                if (item.packageName == null || item.uri != null) item
                                                 else runCatching { AndroidFileCatalog.exportAppBundle(context, item) }.getOrNull()
                                             }
                                         }
