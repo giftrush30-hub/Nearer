@@ -134,4 +134,25 @@ class FastShareHttpRequestTest {
         }
     }
 
+    @Test fun generatedAccessKeysHaveTheExpectedHighEntropyWireFormat() {
+        val first = FastShareAccessKey.create()
+        val second = FastShareAccessKey.create()
+
+        assertEquals(64, first.length)
+        assertTrue(first.matches(Regex("[0-9a-f]{64}")))
+        assertNotEquals(first, second)
+    }
+
+    @Test fun accessKeyComparisonRejectsNullWrongLengthAndNonHexValues() {
+        val key = FastShareAccessKey.create()
+
+        assertTrue(FastShareAccessKey.matches(key, key))
+        assertFalse(FastShareAccessKey.matches(key, null))
+        assertFalse(FastShareAccessKey.matches(key, ""))
+        assertFalse(FastShareAccessKey.matches(key, key.dropLast(1)))
+        assertFalse(FastShareAccessKey.matches(key, key + "0"))
+        assertFalse(FastShareAccessKey.matches(key, "z".repeat(64)))
+        assertFalse(FastShareAccessKey.matches(key, key.uppercase(java.util.Locale.ROOT)))
+    }
+
 }
