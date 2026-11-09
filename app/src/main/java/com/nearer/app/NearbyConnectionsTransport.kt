@@ -38,15 +38,17 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val activeEndpoints = mutableSetOf<String>()
     private val localStableId = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         .let { prefs ->
-            prefs.getString("nearer_stable_id", null) ?: UUID.randomUUID().toString().replace("-", "").take(6).uppercase().also {
-                prefs.edit().putString("nearer_stable_id", it).apply()
-            }
+            val stored = prefs.getString("nearer_stable_id", null)
+            val identity = NeaRerIdentity.getOrCreate(stored)
+            if (identity != stored) prefs.edit().putString("nearer_stable_id", identity).apply()
+            identity
         }
     private fun encodedName(): String = "${localName.take(23)}|$localStableId"
     private fun decodeName(value: String): Pair<String, String> {
         val split = value.lastIndexOf('|')
-        if (split in 1 until value.lastIndex && value.length - split - 1 == 6) {
-            return value.substring(0, split).take(23) to value.substring(split + 1).uppercase()
+        if (split in 1 until value.lastIndex) {
+            val identity = NeaRerIdentity.normalize(value.substring(split + 1))
+            if (identity != null) return value.substring(0, split).take(23) to identity
         }
         return value.take(23) to ""
     }
