@@ -23,4 +23,10 @@ class FastShareHostAuthorityTest {
             assertFalse("Expected invalid authority: $it", FastShareHostAuthority.isValid(it))
         }
     }
+    @Test fun rejectsBracketedHostnamesAndScopedIpv6ZoneIds() {
+        listOf("[localhost]", "[example.com]:80", "[fe80::1%eth0]").forEach {
+            assertFalse("Expected invalid bracketed host: $it", FastShareHostAuthority.isValid(it))
+        }
+    }
+
 }
