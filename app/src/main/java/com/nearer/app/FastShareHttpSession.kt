@@ -40,6 +40,7 @@ internal object FastShareHttpSession {
 
         var rangeHeader: String? = null
         var sawRangeHeader = false
+        var sawHostHeader = false
         var headerBytes = 0
         var headerCount = 0
         while (true) {
@@ -60,6 +61,16 @@ internal object FastShareHttpSession {
             val headerValue = header.value.substring(separator + 1)
             if (headerValue.any { (it.code < 0x20 && it != '\t') || it.code == 0x7f }) {
                 return rejectBadRequest(output)
+            }
+            if (name.equals("Host", ignoreCase = true)) {
+                // A Host field is a single authority value, not a comma-list.
+                // Reject duplicates and empty/whitespace-only authorities so
+                // different HTTP components cannot disagree about the target host.
+                val host = headerValue.trim()
+                if (sawHostHeader || host.isEmpty() || host.any { it.isWhitespace() || it == ',' }) {
+                    return rejectBadRequest(output)
+                }
+                sawHostHeader = true
             }
             if (name.equals("Range", ignoreCase = true)) {
                 if (sawRangeHeader) return rejectBadRequest(output)
