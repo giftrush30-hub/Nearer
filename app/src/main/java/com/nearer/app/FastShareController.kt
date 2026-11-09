@@ -32,6 +32,8 @@ class FastShareController(private val context: Context) {
         private set
     var history by androidx.compose.runtime.mutableStateOf(loadHistory())
         private set
+    var activeTransfers by androidx.compose.runtime.mutableStateOf<List<FastShareActiveTransfer>>(emptyList())
+        private set
 
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
     private var callback: WifiManager.LocalOnlyHotspotCallback? = null
@@ -105,7 +107,7 @@ class FastShareController(private val context: Context) {
                     // Each HTTP worker owns its own progress clock. Two concurrent
                     // receivers must never overwrite one another's speed/timing state.
                     val progressByThread = ThreadLocal.withInitial { LongArray(4) }
-                    val httpServer = FastShareHttpServer(context, selectedUris, catalog, accessKey) { fileName, sent, total, complete, interrupted, partialResponse ->
+                    val httpServer = FastShareHttpServer(context, selectedUris, catalog, accessKey) { transferId, fileName, sent, total, complete, interrupted, partialResponse ->
                         val progress = progressByThread.get()
                         val now = android.os.SystemClock.elapsedRealtime()
                         var transferStartedAt = progress[0]
@@ -131,6 +133,12 @@ class FastShareController(private val context: Context) {
                         val speedLabel = if (bytesPerSecond > 0.0) " · ${formatProgressSize(bytesPerSecond.toLong())}/s" else ""
                         val averageSpeed = formatProgressSize(((sent * 1000.0) / (now - transferStartedAt).coerceAtLeast(1L)).toLong())
                         Handler(Looper.getMainLooper()).post {
+                            if (complete || interrupted) {
+                                activeTransfers = activeTransfers.filterNot { it.id == transferId }
+                            } else {
+                                val transfer = FastShareActiveTransfer(transferId, fileName, sent, total, bytesPerSecond.toLong(), transferStartedAt)
+                                activeTransfers = (activeTransfers.filterNot { it.id == transferId } + transfer).sortedBy { it.startedAtMillis }
+                            }
                             status = when {
                                 interrupted -> "Download interrupted at ${formatProgressSize(sent)}. Keep both phones connected and retry."
                                 complete && partialResponse -> "Download section sent · ${formatProgressSize(sent)}"
@@ -168,6 +176,7 @@ class FastShareController(private val context: Context) {
                 reservation = null
                 pendingUris = emptyList()
                 details = null
+                activeTransfers = emptyList()
                 callback = null
                 status = "The temporary Wi-Fi connection stopped."
             }
@@ -202,6 +211,7 @@ class FastShareController(private val context: Context) {
         server?.stop()
         server = null
         details = null
+        activeTransfers = emptyList()
         pendingUris = emptyList()
         try { reservation?.close() } catch (_: Exception) {}
         reservation = null
@@ -274,6 +284,7 @@ class FastShareController(private val context: Context) {
 }
 
 data class FastShareDetails(val ssid: String, val password: String, val url: String)
+data class FastShareActiveTransfer(val id: String, val fileName: String, val bytesSent: Long, val totalBytes: Long, val bytesPerSecond: Long, val startedAtMillis: Long)
 
 data class FastShareHistoryEntry(val fileName: String, val bytesTransferred: Long, val result: String, val timestampMillis: Long)
 
@@ -283,7 +294,7 @@ private class FastShareHttpServer(
     private val uris: List<Uri>,
     private val catalog: FastShareDownloadCatalog,
     private val accessKey: String,
-    private val onTransferUpdate: (fileName: String, sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean, partialResponse: Boolean) -> Unit
+    private val onTransferUpdate: (transferId: String, fileName: String, sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean, partialResponse: Boolean) -> Unit
 ) {
     // Bound client work so a busy or hostile local-network peer cannot
     // create an unbounded number of server threads.
@@ -451,6 +462,7 @@ private class FastShareHttpServer(
     }
 
     private fun streamFile(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, rangeHeader: String?, headOnly: Boolean) {
+        val transferId = java.util.UUID.randomUUID().toString()
         if (item.fileLength < 0L) {
             streamUnknownLength(output, uri, item, headOnly)
             return
@@ -486,7 +498,7 @@ private class FastShareHttpServer(
         }
         // Start the throughput clock before sending the HTTP response or first byte.
         val partialTransfer = ByteRange.isPartialTransfer(resolvedRange, item.fileLength)
-        if (!headOnly) onTransferUpdate(item.fileName, 0L, count, false, false, partialTransfer)
+        if (!headOnly) onTransferUpdate(transferId, item.fileName, 0L, count, false, false, partialTransfer)
         output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\n".toByteArray())
         output.write(FileHttpHeaders.fileHeaders(item.mimeType, item.fileName).toByteArray())
         output.write("Content-Length: $count\r\nAccept-Ranges: bytes\r\n".toByteArray())
@@ -503,13 +515,13 @@ private class FastShareHttpServer(
                     shouldContinue = { running },
                     onBytesCopied = { copied -> sent = copied },
                     onProgress = { copied ->
-                        onTransferUpdate(item.fileName, copied, count, false, false, partialTransfer)
+                        onTransferUpdate(transferId, item.fileName, copied, count, false, false, partialTransfer)
                     }
                 )
                 sent = result.bytesCopied
-                onTransferUpdate(item.fileName, sent, count, result.complete, !result.complete, partialTransfer)
+                onTransferUpdate(transferId, item.fileName, sent, count, result.complete, !result.complete, partialTransfer)
             } catch (error: Exception) {
-                onTransferUpdate(item.fileName, sent, count, false, true, partialTransfer)
+                onTransferUpdate(transferId, item.fileName, sent, count, false, true, partialTransfer)
                 throw error
             }
         }
@@ -521,6 +533,7 @@ private class FastShareHttpServer(
      * Resume/range requests are not available when the length is unknown.
      */
     private fun streamUnknownLength(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, headOnly: Boolean) {
+        val transferId = java.util.UUID.randomUUID().toString()
         val stream = if (headOnly) null else try {
             context.contentResolver.openInputStream(uri)
         } catch (_: Exception) {
@@ -531,7 +544,7 @@ private class FastShareHttpServer(
             return
         }
         // Start the throughput clock before the first chunk is read or written.
-        if (!headOnly) onTransferUpdate(item.fileName, 0L, -1L, false, false, false)
+        if (!headOnly) onTransferUpdate(transferId, item.fileName, 0L, -1L, false, false, false)
         output.write("HTTP/1.1 200 OK\r\n".toByteArray())
         output.write(FileHttpHeaders.fileHeaders(item.mimeType, item.fileName).toByteArray())
         output.write("Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n".toByteArray())
@@ -545,20 +558,20 @@ private class FastShareHttpServer(
                     shouldContinue = { running },
                     onBytesCopied = { copied -> sent = copied },
                     onProgress = { copied ->
-                        onTransferUpdate(item.fileName, copied, -1L, false, false, false)
+                        onTransferUpdate(transferId, item.fileName, copied, -1L, false, false, false)
                     }
                 )
                 sent = result.bytesCopied
-                onTransferUpdate(item.fileName, sent, -1L, result.complete, !result.complete, false)
+                onTransferUpdate(transferId, item.fileName, sent, -1L, result.complete, !result.complete, false)
             } catch (error: Exception) {
-                onTransferUpdate(item.fileName, sent, -1L, false, true, false)
+                onTransferUpdate(transferId, item.fileName, sent, -1L, false, true, false)
                 throw error
             }
         }
     }
 
     private fun writeFileUnavailable(output: BufferedOutputStream, item: FastShareDownloadItem) {
-        onTransferUpdate(item.fileName, 0L, item.fileLength, false, true, false)
+        onTransferUpdate(java.util.UUID.randomUUID().toString(), item.fileName, 0L, item.fileLength, false, true, false)
         val message = "The selected file is no longer available. Choose it again in NeaRer."
         val body = message.toByteArray(Charsets.UTF_8)
         output.write(FastShareHttpWire.responseHead(
