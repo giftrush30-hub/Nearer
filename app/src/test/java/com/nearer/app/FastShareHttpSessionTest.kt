@@ -66,7 +66,7 @@ class FastShareHttpSessionTest {
     }
 
     @Test fun uploadRequestReadsDeclaredBodyLengthAndContentTypeWithoutConsumingBody() {
-        val raw = "PUT /upload?name=photo.jpg HTTP/1.1\\r\\nHost: phone.local\\r\\nContent-Length: 4\\r\\nContent-Type: image/jpeg\\r\\n\\r\\nDATA"
+        val raw = "PUT /upload?name=photo.jpg HTTP/1.1\r\nHost: phone.local\r\nContent-Length: 4\r\nContent-Type: image/jpeg\r\n\r\nDATA"
         val input = ByteArrayInputStream(raw.toByteArray(Charsets.UTF_8))
         val output = ByteArrayOutputStream()
         val exchange = FastShareHttpSession.readRequest(input, output)
@@ -79,26 +79,26 @@ class FastShareHttpSessionTest {
     }
 
     @Test fun uploadRequiresContentLength() {
-        val (exchange, response) = read("PUT /upload?name=photo.jpg HTTP/1.1\\r\\n\\r\\n")
+        val (exchange, response) = read("PUT /upload?name=photo.jpg HTTP/1.1\r\n\r\n")
         assertNull(exchange)
-        assertTrue(response.startsWith("HTTP/1.1 411 Length Required\\r\\n"))
+        assertTrue(response.startsWith("HTTP/1.1 411 Length Required\r\n"))
     }
 
     @Test fun uploadRejectsDuplicateLengthAndTransferEncoding() {
-        val duplicate = read("PUT /upload?name=photo.jpg HTTP/1.1\\r\\nContent-Length: 1\\r\\nContent-Length: 1\\r\\n\\r\\n")
-        val chunked = read("PUT /upload?name=photo.jpg HTTP/1.1\\r\\nTransfer-Encoding: chunked\\r\\n\\r\\n")
-        assertTrue(duplicate.second.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
-        assertTrue(chunked.second.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+        val duplicate = read("PUT /upload?name=photo.jpg HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 1\r\n\r\n")
+        val chunked = read("PUT /upload?name=photo.jpg HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n")
+        assertTrue(duplicate.second.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+        assertTrue(chunked.second.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
     @Test fun uploadRejectsMissingOrRepeatedFileMimeHeaders() {
-        val duplicate = read("PUT /upload?name=photo.jpg HTTP/1.1\\r\\nContent-Length: 0\\r\\nContent-Type: image/jpeg\\r\\ncontent-type: image/png\\r\\n\\r\\n")
-        assertTrue(duplicate.second.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+        val duplicate = read("PUT /upload?name=photo.jpg HTTP/1.1\r\nContent-Length: 0\r\nContent-Type: image/jpeg\r\ncontent-type: image/png\r\n\r\n")
+        assertTrue(duplicate.second.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
     @Test fun getWithPositiveContentLengthRemainsRejected() {
-        val (_, response) = read("GET /download HTTP/1.1\\r\\nContent-Length: 1\\r\\n\\r\\n")
-        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+        val (_, response) = read("GET /download HTTP/1.1\r\nContent-Length: 1\r\n\r\n")
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
     @Test fun unknownPathWrites404WithoutCallingFileRoute() {
         val (exchange, response) = read("GET /private HTTP/1.1\r\n\r\n")
