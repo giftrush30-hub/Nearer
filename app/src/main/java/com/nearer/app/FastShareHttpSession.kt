@@ -27,17 +27,6 @@ internal object FastShareHttpSession {
 
         val request = FastShareHttpRequest.parse(requestLine.value)
             ?: return rejectBadRequest(output)
-        if (!request.supportsMethod) {
-            output.write(FastShareHttpErrors.methodNotAllowed())
-            output.flush()
-            return null
-        }
-        if (request.route == FastShareHttpRequest.Route.NOT_FOUND) {
-            output.write(FastShareHttpErrors.notFound())
-            output.flush()
-            return null
-        }
-
         var rangeHeader: String? = null
         var sawRangeHeader = false
         var sawHostHeader = false
@@ -78,6 +67,21 @@ internal object FastShareHttpSession {
                 rangeHeader = headerValue.trim()
             }
         }
+        // HTTP/1.1 requires exactly one Host field. HTTP/1.0 remains compatible
+        // with clients that omit it. Validate headers before dispatching even
+        // unsupported methods or unknown paths, so malformed requests fail closed.
+        if (request.version == "HTTP/1.1" && !sawHostHeader) return rejectBadRequest(output)
+        if (!request.supportsMethod) {
+            output.write(FastShareHttpErrors.methodNotAllowed())
+            output.flush()
+            return null
+        }
+        if (request.route == FastShareHttpRequest.Route.NOT_FOUND) {
+            output.write(FastShareHttpErrors.notFound())
+            output.flush()
+            return null
+        }
+
         // RFC byte ranges modify GET responses; HEAD must describe the full representation.
         return FastShareHttpExchange(request, if (request.isHeadOnly) null else rangeHeader)
     }
