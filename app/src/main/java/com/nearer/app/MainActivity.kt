@@ -1204,15 +1204,28 @@ class MainActivity : ComponentActivity() {
         val body = rawText.trim()
         if (body.isEmpty() || !chatReady) return
         val id = UUID.randomUUID().toString()
+        val pending = ChatMessage(
+            id, body, outgoing = true, delivery = "Sending…",
+            conversationId = conversationIdFor(connectedDeviceName),
+            conversationName = connectedDeviceName.orEmpty()
+        )
+        // Never transmit a message that this phone failed to save to its encrypted history.
+        // This keeps the visible conversation and retry state recoverable after process death.
+        chatMessages.add(pending)
+        if (!persistMessages()) {
+            chatMessages.removeAll { it.id == id }
+            chatNotice = "Message was not sent because NeaRer could not securely save it on this phone. Check storage and try again."
+            return
+        }
+
         if (hybridConnected) {
             val targetEndpoint = hybridConnectedEndpoint
             if (targetEndpoint.isNullOrBlank()) {
+                chatMessages.removeAll { it.id == id }
+                persistMessages()
                 chatNotice = "Your private connection is not ready. Reconnect to the person before sending."
                 return
             }
-            // Add the pending bubble before dispatch so a very fast receipt cannot race the UI.
-            chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…", conversationId = conversationIdFor(connectedDeviceName), conversationName = connectedDeviceName.orEmpty()))
-            persistMessages()
             if (nearbyTransport?.send(body, id, targetEndpoint) != true) {
                 val index = chatMessages.indexOfFirst { it.id == id }
                 if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
@@ -1223,9 +1236,8 @@ class MainActivity : ComponentActivity() {
             chatNotice = "Sent over the offline link • waiting for the recipient's NeaRer app to acknowledge it."
             return
         }
+
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
-        chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…", conversationId = conversationIdFor(connectedDeviceName), conversationName = connectedDeviceName.orEmpty()))
-        persistMessages()
         if (!sendWireLine("MSG|$id|$encoded")) {
             val index = chatMessages.indexOfFirst { it.id == id }
             if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
@@ -1235,7 +1247,6 @@ class MainActivity : ComponentActivity() {
         }
         chatNotice = "Sent directly • waiting for the recipient app to save and acknowledge it."
     }
-
 
     private fun persistCommunityData(): Boolean {
         return try {
