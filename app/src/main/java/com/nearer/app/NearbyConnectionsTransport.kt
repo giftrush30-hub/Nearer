@@ -105,7 +105,11 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             var skipped = false
             for (i in 0 until array.length()) {
                 try {
-                    val item = array.optJSONObject(i) ?: run { skipped = true; continue }
+                    val item = array.optJSONObject(i)
+                    if (item == null) {
+                        skipped = true
+                        continue
+                    }
                     val id = item.optString("id")
                     val peer = item.optString("peer")
                     val payload = item.optString("payload")
