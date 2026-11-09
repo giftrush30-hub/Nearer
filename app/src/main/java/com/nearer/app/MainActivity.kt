@@ -446,15 +446,15 @@ class MainActivity : ComponentActivity() {
         restoreNearbyTransferHistory()
         restoreNearbyFileQueue()
         val queuedAfterRestart = nearbyTransport?.pendingMessageIds().orEmpty()
-        if (queuedAfterRestart.isNotEmpty()) {
-            chatMessages.indices.forEach { index ->
-                val message = chatMessages[index]
-                if (message.outgoing && message.id in queuedAfterRestart && message.delivery != "Delivered") {
-                    chatMessages[index] = message.copy(delivery = "Queued")
-                }
-            }
+        val recoveredChatStates = ChatRestartRecoveryPolicy.reconcile(chatMessages, queuedAfterRestart)
+        if (recoveredChatStates) {
             persistMessages()
-            chatNotice = "Some messages are safely queued. NeaRer will retry when those people reconnect."
+            chatNotice = when {
+                queuedAfterRestart.isNotEmpty() -> "Some messages are safely queued. NeaRer will retry when those people reconnect."
+                chatMessages.any { it.outgoing && it.delivery == "Interrupted" } ->
+                    "A message was interrupted when NeaRer closed before its delivery could be confirmed. Check with the recipient before sending it again."
+                else -> chatNotice
+            }
         }
         restoreCommunityData()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
