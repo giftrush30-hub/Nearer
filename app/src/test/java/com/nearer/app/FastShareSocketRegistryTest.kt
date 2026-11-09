@@ -66,4 +66,33 @@ class FastShareSocketRegistryTest {
             runCatching { server.close() }
         }
     }
+    @Test fun closingSessionUnblocksAClientWaitingForRequestBytes() {
+        val registry = FastShareSocketRegistry()
+        val (client, server) = connectedSockets()
+        val readFinished = java.util.concurrent.CountDownLatch(1)
+        try {
+            assertTrue(registry.track(server))
+            val reader = Thread {
+                try {
+                    server.getInputStream().read()
+                } catch (_: Exception) {
+                    // Closing the session is expected to break the blocked read.
+                } finally {
+                    readFinished.countDown()
+                }
+            }
+            reader.start()
+
+            registry.closeAll()
+
+            assertTrue("Socket close should unblock the HTTP worker", readFinished.await(1, java.util.concurrent.TimeUnit.SECONDS))
+            reader.join(1000)
+            assertFalse(reader.isAlive)
+            assertTrue(server.isClosed)
+        } finally {
+            runCatching { client.close() }
+            runCatching { server.close() }
+        }
+    }
+
 }
