@@ -1986,7 +1986,7 @@ class MainActivity : ComponentActivity() {
                     if (cursor.moveToFirst()) rootName = cursor.getString(0)?.takeIf { it.isNotBlank() } ?: rootName
                 }
                 fun safeSegment(value: String): String {
-                    val cleaned = value.replace("/", "_").replace(String(charArrayOf(92)), "_").trim().trim('.')
+                    val cleaned = value.replace("/", "_").replace("\\", "_").trim().trim('.')
                     return cleaned.ifBlank { "folder-item" }
                 }
                 val stagingDirectory = File(cacheDir, "nearer-folder-shares").apply { mkdirs() }
