@@ -396,7 +396,7 @@ internal fun NeaRerProfileEditor(
                         choices.forEach { choice ->
                             Column(
                                 modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                                    .background(if (avatarId == choice.id && photoUri == null && !removePhoto) Color(0xFF263D5B) else Color(0xFF203047))
+                                    .background(if (avatarId == choice.id && photoUri == null && (removePhoto || currentPhotoPath == null)) Color(0xFF263D5B) else Color(0xFF203047))
                                     .clickable { avatarId = choice.id; photoUri = null; removePhoto = true }
                                     .padding(vertical = 8.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
