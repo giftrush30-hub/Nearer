@@ -62,7 +62,7 @@ class FastShareHttpSessionTest {
         val (exchange, response) = read("POST /download HTTP/1.1\r\n\r\n")
         assertNull(exchange)
         assertTrue(response.startsWith("HTTP/1.1 405 Method Not Allowed\r\n"))
-        assertTrue(response.contains("Allow: GET, HEAD\r\n"))
+        assertTrue(response.contains("Allow: GET, HEAD, POST\r\n"))
     }
 
     @Test fun browserUploadRequestCarriesFilenameAndLength() {
