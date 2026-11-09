@@ -97,6 +97,8 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             }
         } catch (_: Exception) { }
     }
+    // Session trust is separate from remembered peer history.
+    private val verifiedEndpointPublicIds = ConcurrentHashMap<String, String>()
     private val deliveryHandler = Handler(Looper.getMainLooper())
     private val maxMessageAttempts = 3
     init { restorePendingOutbox() }
@@ -161,18 +163,20 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         }
     }
 
-    fun isPeerVerified(endpointId: String): Boolean {
-        val stableId = synchronized(names) { stableIds[endpointId].orEmpty() }
-        return stableId.isNotBlank() && NeaRerIdentity.isValid(verifiedPeerPublicIds[stableId].orEmpty())
-    }
+    fun isPeerVerified(endpointId: String): Boolean =
+        NeaRerIdentity.isValid(verifiedEndpointPublicIds[endpointId].orEmpty())
 
-    private fun rememberVerifiedPeer(stableId: String, publicId: String) {
-        if (stableId.isBlank() || !NeaRerIdentity.isValid(publicId)) return
+    private fun rememberVerifiedPeer(stableId: String, endpointId: String, publicId: String): Boolean {
+        if (stableId.isBlank() || !NeaRerIdentity.isValid(publicId)) return false
+        val previouslyKnown = verifiedPeerPublicIds[stableId]
+        if (previouslyKnown != null && previouslyKnown != publicId) return false
         verifiedPeerPublicIds[stableId] = publicId
         val json = JSONObject()
         verifiedPeerPublicIds.forEach { (key, value) -> json.put(key, value) }
-        appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
             .edit().putString("nearby_verified_peer_public_ids", json.toString()).commit()
+        if (saved) verifiedEndpointPublicIds[endpointId] = publicId
+        return saved
     }
 
     private fun attemptOutgoingMessage(messageId: String) {
@@ -265,6 +269,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             identityChallenges.remove(id)
             peerIdentityKeys.remove(id)
             peerIdentityIds.remove(id)
+            verifiedEndpointPublicIds.remove(id)
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
             if (empty) listener.onDisconnected(id, details.first, details.second)
             else {
@@ -384,7 +389,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                         when (TrustedPeerKeyStore.checkAndPin(appContext, publicId, publicKey)) {
                             TrustedPeerKeyStore.Result.FIRST_SEEN -> {
                                 listener.onStatus("First-seen security key saved for $publicId on this phone. This is not proof of a person's identity.")
-                                rememberVerifiedPeer(stableId, publicId)
+                                if (!rememberVerifiedPeer(stableId, endpointId, publicId)) {
+                                    listener.onStatus("SECURITY WARNING: this nearby device code was previously associated with a different NeaRer ID. No queued messages were released.")
+                                    return
+                                }
                                 listener.onPeerIdentity(endpointId, stableId, publicId, true)
                                 retryQueuedMessagesForPeer(stableId, endpointId, publicId)
                             }
@@ -649,7 +657,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             return try {
                 val payload = envelope.toByteArray(Charsets.UTF_8)
                 val stablePeerId = synchronized(names) { stableIds[targetEndpointId].orEmpty() }
-                val publicPeerId = verifiedPeerPublicIds[stablePeerId].orEmpty()
+                val publicPeerId = verifiedEndpointPublicIds[targetEndpointId].orEmpty()
                 if (stablePeerId.isBlank() || !NeaRerIdentity.isValid(publicPeerId)) {
                     listener.onStatus("Private messaging is waiting for verified peer identity. Reconnect and compare the security code.")
                     return false
