@@ -877,8 +877,10 @@ class MainActivity : ComponentActivity() {
                 val accepted = approvalDecision.poll(60, java.util.concurrent.TimeUnit.SECONDS) ?: false
                 writer.println(if (accepted) "ACCEPT" else "REJECT")
                 if (accepted) {
+                    val authenticatedPeerId = performWifiDirectIdentityHandshake(reader, writer)
                     runOnUiThread {
                         chatReady = true
+                        chatNotice = "Secure nearby identity confirmed for $authenticatedPeerId."
                         resumeLudoAfterReconnect(name)
                         incomingRequesterName = null
                         approvalMessage = "Connection approved. Private chat can now be opened."
@@ -941,8 +943,10 @@ class MainActivity : ComponentActivity() {
                 }
                 when (reader.readLine()) {
                     "ACCEPT" -> {
+                        val authenticatedPeerId = performWifiDirectIdentityHandshake(reader, writer)
                         runOnUiThread {
                             chatReady = true
+                            chatNotice = "Secure nearby identity confirmed for $authenticatedPeerId."
                             resumeLudoAfterReconnect(connectedDeviceName ?: "Nearby device")
                             approvalMessage = "Your connection request was approved."
                             connectionMessage = "NeaRer connection approved"
@@ -2047,6 +2051,83 @@ class MainActivity : ComponentActivity() {
                 cancelledOutgoingTransfers.clear()
             }
         }
+    }
+
+    /**
+     * Mutual challenge-response for the Wi-Fi Direct socket fallback.
+     * The six-digit pairing approval happens first; this then proves control
+     * of each phone's Keystore signing key and pins the peer key locally.
+     */
+    private fun performWifiDirectIdentityHandshake(
+        reader: BufferedReader,
+        writer: PrintWriter
+    ): String {
+        val localId = nearerId.ifBlank {
+            NeaRerIdentity.loadOrCreate(getSharedPreferences("nearer_local", Context.MODE_PRIVATE))
+                .also { nearerId = it }
+        }
+        check(NeaRerIdentity.isValid(localId)) { "This phone's NeaRer ID is unavailable." }
+
+        val localKey = SecurePeerIdentity.publicKeyEncoded()
+        val localChallenge = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        val hello = JSONObject()
+            .put("publicId", localId)
+            .put("publicKey", android.util.Base64.encodeToString(localKey, android.util.Base64.NO_WRAP))
+            .put("challenge", android.util.Base64.encodeToString(localChallenge, android.util.Base64.NO_WRAP))
+            .toString()
+        synchronized(writerLock) { writer.println("WFD_ID_HELLO|$hello") }
+        check(!writer.checkError()) { "Could not send secure identity hello." }
+
+        val remoteLine = reader.readLine().orEmpty()
+        check(remoteLine.startsWith("WFD_ID_HELLO|") && remoteLine.length <= 4096) {
+            "The other phone did not provide a valid secure identity hello."
+        }
+        val remote = JSONObject(remoteLine.substringAfter("WFD_ID_HELLO|"))
+        val remoteId = remote.optString("publicId").uppercase()
+        check(NeaRerIdentity.isValid(remoteId)) { "The other phone's NeaRer ID is invalid." }
+        val remoteKey = android.util.Base64.decode(remote.optString("publicKey"), android.util.Base64.NO_WRAP)
+        val remoteChallenge = android.util.Base64.decode(remote.optString("challenge"), android.util.Base64.NO_WRAP)
+        check(SecurePeerIdentity.isValidPublicKey(remoteKey) && remoteChallenge.size == 32) {
+            "The other phone's secure identity information is invalid."
+        }
+
+        // Sign the challenge received from the other phone; both sides do this
+        // after exchanging hello packets, so authentication is mutual.
+        val localProof = SecurePeerIdentity.signChallenge(localId, localKey, remoteChallenge)
+        val proofJson = JSONObject()
+            .put("publicId", localId)
+            .put("publicKey", android.util.Base64.encodeToString(localKey, android.util.Base64.NO_WRAP))
+            .put("signature", android.util.Base64.encodeToString(localProof, android.util.Base64.NO_WRAP))
+            .toString()
+        synchronized(writerLock) { writer.println("WFD_ID_PROOF|$proofJson") }
+        check(!writer.checkError()) { "Could not send secure identity proof." }
+
+        val remoteProofLine = reader.readLine().orEmpty()
+        check(remoteProofLine.startsWith("WFD_ID_PROOF|") && remoteProofLine.length <= 4096) {
+            "The other phone did not provide a secure identity proof."
+        }
+        val proof = JSONObject(remoteProofLine.substringAfter("WFD_ID_PROOF|"))
+        val proofId = proof.optString("publicId").uppercase()
+        val proofKey = android.util.Base64.decode(proof.optString("publicKey"), android.util.Base64.NO_WRAP)
+        val signature = android.util.Base64.decode(proof.optString("signature"), android.util.Base64.NO_WRAP)
+        check(proofId == remoteId && java.security.MessageDigest.isEqual(remoteKey, proofKey) &&
+            SecurePeerIdentity.verifyChallenge(remoteId, remoteKey, localChallenge, signature)) {
+            "The other phone failed cryptographic identity verification."
+        }
+
+        when (TrustedPeerKeyStore.checkAndPin(this, remoteId, remoteKey)) {
+            TrustedPeerKeyStore.Result.FIRST_SEEN -> runOnUiThread {
+                chatNotice = "Secure key saved for $remoteId on this phone. This confirms key continuity, not a person's identity."
+            }
+            TrustedPeerKeyStore.Result.MATCH -> Unit
+            TrustedPeerKeyStore.Result.KEY_CHANGED -> throw SecurityException(
+                "SECURITY WARNING: $remoteId presented a different security key. The saved key was not replaced."
+            )
+            TrustedPeerKeyStore.Result.STORAGE_ERROR -> throw SecurityException(
+                "NeaRer could not safely save or check the other phone's security key."
+            )
+        }
+        return remoteId
     }
 
     private fun startMessageReader(socket: Socket) {
