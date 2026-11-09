@@ -16,7 +16,7 @@ import java.net.Socket
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.Collections
-import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -315,15 +315,16 @@ private class FastShareHttpServer(
 ) {
     // Bound client work so a busy or hostile local-network peer cannot
     // create an unbounded number of server threads.
-    // Five core workers allow five actual file streams to run together.
+    // Five transfers run at once. Up to seven additional request workers are
+    // allowed to reach the fair gate and appear in the visible waiting list.
+    // A SynchronousQueue prevents those requests hiding in an executor queue.
     // The accept loop has its own daemon thread, so it never steals a slot.
-    // Keep extra connections bounded to avoid unbounded thread/memory growth.
     private val executor = ThreadPoolExecutor(
         FastShareDownloadGate.MAX_CONCURRENT_DOWNLOADS,
-        FastShareDownloadGate.MAX_CONCURRENT_DOWNLOADS + 3,
+        FastShareDownloadGate.MAX_HANDLED_DOWNLOAD_REQUESTS,
         60L,
         TimeUnit.SECONDS,
-        ArrayBlockingQueue(16)
+        SynchronousQueue()
     )
     @Volatile private var running = true
     private val downloadGate = FastShareDownloadGate()
@@ -351,6 +352,14 @@ private class FastShareHttpServer(
                     try {
                         executor.execute { handle(client) }
                     } catch (_: RejectedExecutionException) {
+                        // The five active plus seven waiting request workers are full.
+                        // Return an explicit retryable response instead of a silent reset.
+                        runCatching {
+                            client.getOutputStream().apply {
+                                write(FastShareHttpErrors.tooManyRequests())
+                                flush()
+                            }
+                        }
                         clients.release(client)
                         runCatching { client.close() }
                     }
