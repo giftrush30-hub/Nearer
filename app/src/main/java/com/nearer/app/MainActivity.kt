@@ -2939,6 +2939,20 @@ private fun PremiumChatsScreen(
             } catch (_: Exception) { }
         }
     }
+    val pinnedContacts = remember {
+        androidx.compose.runtime.mutableStateListOf<String>().apply {
+            try {
+                addAll(context.getSharedPreferences("nearer_local", android.content.Context.MODE_PRIVATE)
+                    .getStringSet("pinned_contacts", emptySet()).orEmpty())
+            } catch (_: Exception) { }
+        }
+    }
+    fun togglePinnedContact(conversationId: String) {
+        if (conversationId in pinnedContacts) pinnedContacts.remove(conversationId)
+        else pinnedContacts.add(conversationId)
+        context.getSharedPreferences("nearer_local", android.content.Context.MODE_PRIVATE)
+            .edit().putStringSet("pinned_contacts", pinnedContacts.toSet()).apply()
+    }
     var editingContactId by remember { mutableStateOf<String?>(null) }
     var contactNameDraft by remember { mutableStateOf("") }
     fun saveContactAlias(conversationId: String, alias: String) {
@@ -3005,14 +3019,16 @@ private fun PremiumChatsScreen(
         }
         val canSendInSelectedThread = chatReady && effectiveConversationId.isNotBlank() &&
             effectiveConversationId == currentConversationId
-        val visibleThreads = remember(inboxThreads, inboxQuery, showSavedContactsOnly, contactAliases.toMap()) {
-            inboxThreads.filter { thread ->
-                (!showSavedContactsOnly || contactAliases.containsKey(thread.conversationId)) &&
-                    (inboxQuery.isBlank() ||
-                        thread.displayName.contains(inboxQuery, ignoreCase = true) ||
-                        contactAliases[thread.conversationId].orEmpty().contains(inboxQuery, ignoreCase = true) ||
-                        thread.lastMessage.body.contains(inboxQuery, ignoreCase = true))
+        val visibleThreads = remember(inboxThreads, inboxQuery, contactAliases.toMap(), pinnedContacts.toList()) {
+            val filtered = if (inboxQuery.isBlank()) inboxThreads else inboxThreads.filter {
+                it.displayName.contains(inboxQuery, ignoreCase = true) ||
+                    contactAliases[it.conversationId].orEmpty().contains(inboxQuery, ignoreCase = true) ||
+                    it.lastMessage.body.contains(inboxQuery, ignoreCase = true)
             }
+            filtered.sortedWith(
+                compareByDescending<ConversationSummary> { it.conversationId in pinnedContacts }
+                    .thenByDescending { it.lastMessage.timestamp }
+            )
         }
         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -3048,7 +3064,7 @@ private fun PremiumChatsScreen(
                         ) {
                             Surface(Modifier.size(38.dp), shape = CircleShape, color = Color(0xFF294D78)) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                    Text(thread.displayName.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold)
+                                    Text((contactAliases[thread.conversationId] ?: thread.displayName).take(1).uppercase(), color = White, fontWeight = FontWeight.Bold)
                                 }
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -3086,6 +3102,9 @@ private fun PremiumChatsScreen(
                 Text("‹ Inbox", color = BlueAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { selectedConversationId = null }.padding(horizontal = 10.dp, vertical = 8.dp))
                 Text(contactAliases[selectedThread.conversationId] ?: selectedThread.displayName, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                androidx.compose.material3.TextButton(onClick = { togglePinnedContact(selectedThread.conversationId) }) {
+                    Text(if (selectedThread.conversationId in pinnedContacts) "Unpin" else "Pin", color = Gold, fontSize = 11.sp)
+                }
                 androidx.compose.material3.TextButton(onClick = {
                     editingContactId = selectedThread.conversationId
                     contactNameDraft = contactAliases[selectedThread.conversationId] ?: selectedThread.displayName
