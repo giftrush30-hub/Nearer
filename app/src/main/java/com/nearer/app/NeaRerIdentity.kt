@@ -14,7 +14,11 @@ internal object NeaRerIdentity {
 
     fun normalize(value: String?): String? {
         val candidate = value?.trim()?.uppercase() ?: return null
-        if (candidate.length != ID_LENGTH && candidate.length != LEGACY_ID_LENGTH) return null
+        if (candidate.length == LEGACY_ID_LENGTH) {
+            // Original IDs were the first six hexadecimal characters of a UUID.
+            return candidate.takeIf { id -> id.all { it in "0123456789ABCDEF" } }
+        }
+        if (candidate.length != ID_LENGTH) return null
         return candidate.takeIf { id -> id.all { it in ALPHABET } }
     }
 
