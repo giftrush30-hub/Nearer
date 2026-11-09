@@ -88,3 +88,21 @@ portable active setting. Android runtime permissions and relay activation
 must never be recreated by restoring a backup; any future relay feature must
 show its current consent explanation and obtain fresh platform permissions on
 the destination device.
+
+
+## Verified restore staging lifecycle
+
+The backup manager now offers `prepareEncryptedBackup`, which decrypts and
+authenticates the archive, verifies the archive manifest and every file hash,
+then validates the NeaRer snapshot before returning a `PreparedRestore`.
+The prepared object owns the plaintext staging directory and implements
+`Closeable`; the caller must close it after the user confirms or cancels.
+Failures delete the staging directory. The existing `previewEncryptedBackup`
+uses this lifecycle and closes the staged data immediately after reading the
+preview.
+
+This is a staging milestone, not a full restore. It does not modify SQLite,
+preferences, profile media or received files. The live-data transaction and
+rollback coordinator, app-state refresh/restart, user-facing backup controls,
+and device testing remain outstanding. A UI must not present this as a
+completed restore feature until those steps are implemented and tested.
