@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +40,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -46,18 +50,51 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private data class NeaRerAvatarChoice(val id: String, val glyph: String, val label: String, val tint: Color)
+private data class NeaRerAvatarChoice(
+    val id: String, val glyph: String, val label: String, val tint: Color,
+    val skin: Color, val hair: Color, val outfit: Color, val hairStyle: Int
+)
 
 private val NeaRerAvatarChoices = listOf(
-    NeaRerAvatarChoice("aurora", "✦", "Aurora", Color(0xFF285D91)),
-    NeaRerAvatarChoice("spark", "✧", "Spark", Color(0xFF7655A5)),
-    NeaRerAvatarChoice("wave", "≈", "Wave", Color(0xFF247C88)),
-    NeaRerAvatarChoice("sun", "☼", "Sunrise", Color(0xFF9A6A28)),
-    NeaRerAvatarChoice("orbit", "◉", "Orbit", Color(0xFF425C86)),
-    NeaRerAvatarChoice("bloom", "❋", "Bloom", Color(0xFF9A5274)),
-    NeaRerAvatarChoice("leaf", "❧", "Leaf", Color(0xFF47745A)),
-    NeaRerAvatarChoice("star", "✴", "Starlight", Color(0xFF6B629D))
+    NeaRerAvatarChoice("aurora", "✦", "Aurora", Color(0xFF285D91), Color(0xFFF0C8A6), Color(0xFF382A3C), Color(0xFFD7B65C), 0),
+    NeaRerAvatarChoice("spark", "✧", "Spark", Color(0xFF7655A5), Color(0xFF8F583F), Color(0xFF211E2B), Color(0xFF8B6EC5), 1),
+    NeaRerAvatarChoice("wave", "≈", "Wave", Color(0xFF247C88), Color(0xFFE4B18A), Color(0xFF1D3446), Color(0xFF4B9EA6), 2),
+    NeaRerAvatarChoice("sun", "☼", "Sunrise", Color(0xFF9A6A28), Color(0xFFA66B49), Color(0xFF2A1C17), Color(0xFFD78C3D), 3),
+    NeaRerAvatarChoice("orbit", "◉", "Orbit", Color(0xFF425C86), Color(0xFFD49B73), Color(0xFF39251F), Color(0xFF5678A9), 0),
+    NeaRerAvatarChoice("bloom", "❋", "Bloom", Color(0xFF9A5274), Color(0xFFF1C9B4), Color(0xFFB96E8C), Color(0xFFB45D83), 1),
+    NeaRerAvatarChoice("leaf", "❧", "Leaf", Color(0xFF47745A), Color(0xFF9A664A), Color(0xFF1D2922), Color(0xFF568A64), 2),
+    NeaRerAvatarChoice("star", "✴", "Starlight", Color(0xFF6B629D), Color(0xFFD8A17B), Color(0xFF3D2F5B), Color(0xFF8273C7), 3)
 )
+
+@Composable
+internal fun NeaRerAvatarBadge(avatarId: String, modifier: Modifier = Modifier) {
+    val avatar = NeaRerAvatarChoices.firstOrNull { it.id == avatarId } ?: NeaRerAvatarChoices.first()
+    Canvas(modifier = modifier.clip(CircleShape).background(avatar.tint)) {
+        val w = size.width
+        val h = size.height
+        drawRoundRect(avatar.outfit, Offset(w * 0.08f, h * 0.70f), Size(w * 0.84f, h * 0.42f), CornerRadius(w * 0.28f, w * 0.28f))
+        drawRoundRect(avatar.skin, Offset(w * 0.43f, h * 0.54f), Size(w * 0.14f, h * 0.20f), CornerRadius(w * 0.04f, w * 0.04f))
+        drawCircle(avatar.hair, w * 0.275f, Offset(w * 0.5f, h * 0.39f))
+        drawCircle(avatar.skin, w * 0.205f, Offset(w * 0.5f, h * 0.405f))
+        drawArc(avatar.hair, 180f, 180f, true, Offset(w * 0.285f, h * 0.19f), Size(w * 0.43f, h * 0.42f))
+        when (avatar.hairStyle) {
+            1 -> {
+                drawRoundRect(avatar.hair, Offset(w * 0.22f, h * 0.34f), Size(w * 0.12f, h * 0.40f), CornerRadius(w * 0.08f, w * 0.08f))
+                drawRoundRect(avatar.hair, Offset(w * 0.66f, h * 0.34f), Size(w * 0.12f, h * 0.40f), CornerRadius(w * 0.08f, w * 0.08f))
+            }
+            2 -> {
+                drawCircle(avatar.hair, w * 0.10f, Offset(w * 0.29f, h * 0.34f))
+                drawCircle(avatar.hair, w * 0.10f, Offset(w * 0.71f, h * 0.34f))
+                drawCircle(avatar.hair, w * 0.09f, Offset(w * 0.38f, h * 0.20f))
+                drawCircle(avatar.hair, w * 0.09f, Offset(w * 0.62f, h * 0.20f))
+            }
+            3 -> drawRoundRect(avatar.hair, Offset(w * 0.30f, h * 0.18f), Size(w * 0.40f, h * 0.15f), CornerRadius(w * 0.08f, w * 0.08f))
+        }
+        drawCircle(Color(0xFF292532), w * 0.018f, Offset(w * 0.43f, h * 0.41f))
+        drawCircle(Color(0xFF292532), w * 0.018f, Offset(w * 0.57f, h * 0.41f))
+        drawLine(Color(0xFF8B4F4A), Offset(w * 0.46f, h * 0.51f), Offset(w * 0.54f, h * 0.51f), strokeWidth = w * 0.012f)
+    }
+}
 
 private data class NeaRerOnboardingQuestion(
     val id: String,
@@ -203,13 +240,7 @@ internal fun NeaRerOnboarding(
                         Spacer(Modifier.height(10.dp))
                         Text("Photo selected", color = Color(0xFFB9D7FF), fontSize = 13.sp)
                     } else {
-                        val selected = NeaRerAvatarChoices.first { it.id == avatarId }
-                        Box(
-                            modifier = Modifier.size(112.dp).clip(CircleShape).background(selected.tint),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(selected.glyph, color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Light)
-                        }
+                        NeaRerAvatarBadge(avatarId, Modifier.size(112.dp))
                     }
                     Spacer(Modifier.height(18.dp))
                     Text("CHOOSE AN AVATAR", color = Color(0xFF9FB2CC), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
@@ -223,9 +254,7 @@ internal fun NeaRerOnboarding(
                                         .clickable { avatarId = choice.id; photoUri = null }.padding(vertical = 10.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    Box(modifier = Modifier.size(48.dp).clip(CircleShape).background(choice.tint), contentAlignment = Alignment.Center) {
-                                        Text(choice.glyph, color = Color.White, fontSize = 25.sp)
-                                    }
+                                    NeaRerAvatarBadge(choice.id, Modifier.size(48.dp))
                                     Spacer(Modifier.height(5.dp))
                                     Text(choice.label, color = Color(0xFFDCE7F5), fontSize = 10.sp)
                                 }
