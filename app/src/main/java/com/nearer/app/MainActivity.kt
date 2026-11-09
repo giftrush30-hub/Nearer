@@ -2492,6 +2492,24 @@ private fun NeaRerHome(
             }
         }
     }
+    val anyPhoneMultiplePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) {
+            try {
+                val shareIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                    type = "*/*"
+                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+                    val first = uris.first()
+                    clipData = ClipData.newUri(context.contentResolver, "Files to share", first).apply {
+                        uris.drop(1).forEach { addItem(ClipData.Item(it)) }
+                    }
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(shareIntent, "Send files to another phone"))
+            } catch (_: Exception) {
+                android.widget.Toast.makeText(context, "Could not open multi-file sharing. Please try again.", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -2650,6 +2668,12 @@ private fun NeaRerHome(
                             colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = BlueAccent)
                         ) { Text("Send to any phone • no NeaRer needed", fontWeight = FontWeight.Bold) }
                         Text("Choose a file, then select Bluetooth or Quick Share. The receiving phone does not need NeaRer.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                        Button(
+                            onClick = { anyPhoneMultiplePicker.launch(arrayOf("*/*")) },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Gold)
+                        ) { Text("Send multiple files to any phone", fontWeight = FontWeight.Bold) }
                         Button(
                             onClick = {
                                 try {
