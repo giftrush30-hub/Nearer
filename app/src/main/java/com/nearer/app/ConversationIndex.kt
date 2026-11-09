@@ -27,6 +27,6 @@ internal object ConversationIndex {
             .sortedByDescending { it.lastMessage.timestamp }
 
     fun messagesFor(messages: List<ChatMessage>, conversationId: String): List<ChatMessage> =
-        messages.filter { (it.conversationId.ifBlank { "legacy" }) == conversationId }
+        messages.filter { it.conversationId.ifBlank { "legacy:${it.id}" } == conversationId }
             .sortedBy { it.timestamp }
 }
