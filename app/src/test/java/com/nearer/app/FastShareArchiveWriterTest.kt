@@ -57,7 +57,10 @@ class FastShareArchiveWriterTest {
         assertEquals(3L, copied)
         val names = mutableListOf<String>()
         ZipInputStream(ByteArrayInputStream(output.toByteArray())).use { zip ->
-            while (true) names += (zip.nextEntry?.name ?: break)
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                names.add(entry.name)
+            }
         }
         assertEquals(listOf("unknown.bin", "empty.txt"), names)
     }
@@ -71,6 +74,14 @@ class FastShareArchiveWriterTest {
         )
     }
 
+    @Test(expected = IllegalStateException::class)
+    fun rejectsSourceThatGrowsBeyondDeclaredSize() {
+        FastShareArchiveWriter.write(
+            listOf(FastShareArchiveItem(0, "growing.bin", 1L)),
+            { ByteArrayInputStream(byteArrayOf(1, 2)) },
+            ByteArrayOutputStream()
+        )
+    }
     @Test(expected = InterruptedIOException::class)
     fun stopsWhenTransferIsCancelled() {
         FastShareArchiveWriter.write(
