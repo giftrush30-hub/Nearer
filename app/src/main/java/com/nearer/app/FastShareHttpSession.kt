@@ -29,6 +29,7 @@ internal object FastShareHttpSession {
             ?: return rejectBadRequest(output)
         var rangeHeader: String? = null
         var sawRangeHeader = false
+        var sawIfRangeHeader = false
         var sawHostHeader = false
         var sawContentLengthHeader = false
         var headerBytes = 0
@@ -80,6 +81,14 @@ internal object FastShareHttpSession {
                 sawRangeHeader = true
                 rangeHeader = headerValue.trim()
             }
+            if (name.equals("If-Range", ignoreCase = true)) {
+                // This server does not emit ETag or Last-Modified validators.
+                // Therefore no If-Range value can be proven current: RFC 9110
+                // requires sending the full representation rather than risking
+                // a partial append to a changed source file.
+                if (sawIfRangeHeader) return rejectBadRequest(output)
+                sawIfRangeHeader = true
+            }
         }
         // HTTP/1.1 requires exactly one Host field. HTTP/1.0 remains compatible
         // with clients that omit it. Validate headers before dispatching even
@@ -97,7 +106,7 @@ internal object FastShareHttpSession {
         }
 
         // RFC byte ranges modify GET responses; HEAD must describe the full representation.
-        return FastShareHttpExchange(request, if (request.isHeadOnly) null else rangeHeader)
+        return FastShareHttpExchange(request, if (request.isHeadOnly || sawIfRangeHeader) null else rangeHeader)
     }
 
     private fun isValidHostAuthority(value: String): Boolean =
