@@ -117,10 +117,10 @@ class FastShareHttpSessionTest {
 
     @Test fun duplicateRangeHeadersAreRejectedEvenWhenFirstValueIsEmpty() {
         val (exchange, response) = read(
-            "GET /download HTTP/1.1\\r\\nRange:\\r\\nrange: bytes=10-19\\r\\n\\r\\n"
+            "GET /download HTTP/1.1\r\nRange:\r\nrange: bytes=10-19\r\n\r\n"
         )
         assertNull(exchange)
-        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
     @Test fun nonAsciiHeaderNameIsRejected() {
