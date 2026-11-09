@@ -12,6 +12,8 @@
 - A first-seen pin is a continuity warning mechanism, not proof that the ID belongs to a particular person. Users still need a future explicit verification / recovery UX.
 - The Wi-Fi Direct socket fallback now performs a mutual P-256 challenge-response after the six-digit connection approval: both phones exchange an ID, public key and fresh 32-byte challenge, sign the other phone's challenge, and verify that the proof key matches the announced key.
 - Wi-Fi Direct peers use the same local first-seen key pin store as Nearby Connections. A changed key blocks the session; the previous pin is not silently replaced.
+- Nearby Connections chat is now held closed until the current endpoint completes v2 identity proof and its key/ID continuity checks pass. Queued messages are released only after that proof; the queue is bound to both the nearby transport code and the previously verified NeaRer ID. A remembered transport code alone cannot authenticate a fresh connection.
+- Older queued messages that lack a verified NeaRer ID binding are deliberately not auto-delivered. The user may need to resend them after a verified connection.
 - The Wi-Fi Direct handshake authenticates possession of a key, not a person's real-world identity. The displayed NeaRer ID remains self-reported, and the six-digit comparison remains a separate human connection-approval step.
 - Older version-1 identity messages remain displayable as self-reported metadata for compatibility.
 
