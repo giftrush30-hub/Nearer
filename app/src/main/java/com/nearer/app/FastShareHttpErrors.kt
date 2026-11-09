@@ -32,7 +32,7 @@ internal object FastShareHttpErrors {
         )
 
     fun uploadFailed(): ByteArray =
-        response("500 Upload Failed", "Content-Type: text/plain; charset=utf-8\\r\\n", "The file was not saved. Check the connection and try again.\\n")
+        response("500 Upload Failed", "Content-Type: text/plain; charset=utf-8\r\n", "The file was not saved. Check the connection and try again.\n")
 
     fun forbidden(): ByteArray =
         response("403 Forbidden", "Content-Type: text/plain; charset=utf-8\r\n", "This Fast Share link is missing or invalid. Ask the sender for the current link.\n")
