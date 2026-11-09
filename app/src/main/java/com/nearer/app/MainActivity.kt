@@ -674,7 +674,7 @@ class MainActivity : ComponentActivity() {
         val scale = minOf(1f, 512f / maxOf(decoded.width, decoded.height).toFloat())
         val outputBitmap = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(decoded, (decoded.width * scale).toInt().coerceAtLeast(1), (decoded.height * scale).toInt().coerceAtLeast(1), true) else decoded
         val profileDirectory = File(filesDir, "profile").apply { mkdirs() }
-        val destination = File(profileDirectory, "profile-photo.jpg")
+        val destination = File(profileDirectory, "profile-photo-${System.currentTimeMillis()}.jpg")
         FileOutputStream(destination).use { output -> outputBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 86, output) }
         if (outputBitmap !== decoded) outputBitmap.recycle()
         decoded.recycle()
@@ -690,7 +690,9 @@ class MainActivity : ComponentActivity() {
             removePhoto -> null
             else -> oldPhotoPath
         }
-        if (removePhoto && photoUri == null && oldPhotoPath != null) runCatching { File(oldPhotoPath).delete() }
+        if ((removePhoto && photoUri == null || photoUri != null && newPhotoPath != oldPhotoPath) && oldPhotoPath != null && oldPhotoPath != newPhotoPath) {
+            runCatching { File(oldPhotoPath).delete() }
+        }
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
             .putString("display_name", cleanName)
             .putString("profile_avatar_id", avatarId)
