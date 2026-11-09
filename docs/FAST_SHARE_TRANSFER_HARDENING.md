@@ -15,6 +15,10 @@
 - The receiver page uses XMLHttpRequest for byte-level progress and cancellation. It validates the server's byte-count and digest-header shape before reporting success; it does not independently recompute the digest.
 - Multi-file browser uploads continue after an individual file fails, report the failed names, and retain only failed or not-yet-attempted files in the picker for a direct retry. Successful files are not automatically resent.
 
+## Browser receiver page policy
+
+- The receiver page Content Security Policy explicitly permits its embedded JavaScript and styles while retaining `default-src 'none'`. This enables browser upload progress, cancellation, and retry controls without allowing external scripts, images, fonts, or connections. The generated page HTML-escapes file names and embeds only a per-session hexadecimal access key.
+
 ## HTTP request validation
 
 - Request parsing bounds request-line length, individual header length, aggregate header bytes, and header count.

@@ -37,7 +37,7 @@ class FileHttpHeadersTest {
         assertEquals(1, Regex("(?m)^Cache-Control:").findAll(headers).count())
     }
 
-    @Test fun receiverPageHeadersPreventCachingFramingSniffingAndExternalExecution() {
+    @Test fun receiverPageHeadersAllowEmbeddedScriptWithoutExternalResources() {
         val headers = FileHttpHeaders.receiverPageHeaders(123L).toMap()
         assertEquals("text/html; charset=utf-8", headers["Content-Type"])
         assertEquals("123", headers["Content-Length"])
@@ -47,7 +47,7 @@ class FileHttpHeadersTest {
         assertEquals("no-referrer", headers["Referrer-Policy"])
         assertEquals("DENY", headers["X-Frame-Options"])
         assertEquals(
-            "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             headers["Content-Security-Policy"]
         )
         assertEquals("camera=(), microphone=(), geolocation=()", headers["Permissions-Policy"])
