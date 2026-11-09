@@ -166,11 +166,31 @@ internal object NeaRerBackupCrypto {
     }
 
     private fun publish(temporary: File, destination: File) {
-        if (destination.exists()) throw IOException("Destination already exists")
+        // Reserve the name first: ATOMIC_MOVE alone may replace an existing target
+        // on some filesystem providers, even without REPLACE_EXISTING.
         try {
-            Files.move(temporary.toPath(), destination.toPath(), StandardCopyOption.ATOMIC_MOVE)
-        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-            Files.move(temporary.toPath(), destination.toPath())
+            Files.createFile(destination.toPath())
+        } catch (_: java.nio.file.FileAlreadyExistsException) {
+            throw IOException("Destination already exists")
+        }
+        try {
+            try {
+                Files.move(
+                    temporary.toPath(),
+                    destination.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING
+                )
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                Files.move(
+                    temporary.toPath(),
+                    destination.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING
+                )
+            }
+        } catch (failure: Exception) {
+            destination.delete()
+            throw failure
         }
     }
 }
