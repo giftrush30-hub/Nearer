@@ -2925,6 +2925,30 @@ private fun PremiumChatsScreen(
     incomingProgress: Float,
     onCancelTransfer: () -> Unit
 ) {
+    val context = LocalContext.current
+    val contactAliases = remember {
+        androidx.compose.runtime.mutableStateMapOf<String, String>().apply {
+            try {
+                val raw = context.getSharedPreferences("nearer_local", android.content.Context.MODE_PRIVATE)
+                    .getString("contact_aliases", "{}") ?: "{}"
+                val stored = org.json.JSONObject(raw)
+                stored.keys().forEach { key ->
+                    val value = stored.optString(key).trim().take(32)
+                    if (key.isNotBlank() && value.isNotBlank()) put(key, value)
+                }
+            } catch (_: Exception) { }
+        }
+    }
+    var editingContactId by remember { mutableStateOf<String?>(null) }
+    var contactNameDraft by remember { mutableStateOf("") }
+    fun saveContactAlias(conversationId: String, alias: String) {
+        val clean = alias.trim().take(32)
+        if (clean.isBlank()) contactAliases.remove(conversationId) else contactAliases[conversationId] = clean
+        val stored = org.json.JSONObject()
+        contactAliases.forEach { (key, value) -> stored.put(key, value) }
+        context.getSharedPreferences("nearer_local", android.content.Context.MODE_PRIVATE)
+            .edit().putString("contact_aliases", stored.toString()).apply()
+    }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -3020,7 +3044,7 @@ private fun PremiumChatsScreen(
                                 }
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(thread.displayName, color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(contactAliases[thread.conversationId] ?: thread.displayName, color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 val stablePeerId = thread.conversationId.removePrefix("nearer:")
                                     .takeIf { thread.conversationId.startsWith("nearer:") && it.isNotBlank() }
                                 Text(
@@ -3046,8 +3070,40 @@ private fun PremiumChatsScreen(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("‹ Inbox", color = BlueAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { selectedConversationId = null }.padding(horizontal = 10.dp, vertical = 8.dp))
-                Text(selectedThread.displayName, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(contactAliases[selectedThread.conversationId] ?: selectedThread.displayName, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                androidx.compose.material3.TextButton(onClick = {
+                    editingContactId = selectedThread.conversationId
+                    contactNameDraft = contactAliases[selectedThread.conversationId] ?: selectedThread.displayName
+                }) { Text("Edit name", color = BlueAccent, fontSize = 11.sp) }
             }
+        }
+        if (editingContactId != null) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { editingContactId = null },
+                title = { Text("Save contact name") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("This name is stored only on this phone. It does not change the other person's profile.", color = Muted, fontSize = 12.sp)
+                        OutlinedTextField(
+                            value = contactNameDraft,
+                            onValueChange = { contactNameDraft = it.take(32) },
+                            singleLine = true,
+                            label = { Text("Contact name") }
+                        )
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        editingContactId?.let { saveContactAlias(it, contactNameDraft) }
+                        editingContactId = null
+                    }) { Text("Save", color = BlueAccent) }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { editingContactId = null }) {
+                        Text("Cancel", color = Muted)
+                    }
+                }
+            )
         }
 
         Surface(
@@ -3076,7 +3132,10 @@ private fun PremiumChatsScreen(
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        connectedDeviceName ?: "Your nearby circle",
+                        if (selectedThread != null) contactAliases[selectedThread.conversationId] ?: selectedThread.displayName
+                        else connectedDeviceName?.let { name ->
+                            contactAliases[currentConversationId] ?: name
+                        } ?: "Your nearby circle",
                         color = White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
@@ -3090,8 +3149,9 @@ private fun PremiumChatsScreen(
                             color = if (chatReady) Color(0xFF43D7A0) else Gold
                         ) {}
                         Text(
-                            if (chatReady) "Connected · Private chat ready" else "Not connected yet",
-                            color = if (chatReady) Color(0xFF9DE8C9) else Muted,
+                            if (selectedThread != null && selectedThread.conversationId != currentConversationId) "Saved conversation · reconnect to reply"
+                            else if (chatReady) "Connected · Direct chat ready" else "Not connected yet",
+                            color = if (selectedThread != null && selectedThread.conversationId != currentConversationId) Muted else if (chatReady) Color(0xFF9DE8C9) else Muted,
                             fontSize = 11.sp,
                             maxLines = 2
                         )
