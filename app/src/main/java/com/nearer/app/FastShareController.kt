@@ -291,8 +291,8 @@ private class FastShareHttpServer(
     // The accept loop has its own daemon thread, so it never steals a slot.
     // Keep extra connections bounded to avoid unbounded thread/memory growth.
     private val executor = ThreadPoolExecutor(
-        5,
-        8,
+        FastShareDownloadGate.MAX_CONCURRENT_DOWNLOADS,
+        FastShareDownloadGate.MAX_CONCURRENT_DOWNLOADS + 3,
         60L,
         TimeUnit.SECONDS,
         ArrayBlockingQueue(16)
