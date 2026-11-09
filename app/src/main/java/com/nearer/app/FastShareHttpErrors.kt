@@ -30,6 +30,9 @@ internal object FastShareHttpErrors {
 
     fun insufficientStorage(): ByteArray = response("507 Insufficient Storage", "Content-Type: text/plain; charset=utf-8\r\n", "Not enough free storage.\n")
 
+    fun uploadBusy(): ByteArray =
+        response("429 Too Many Requests", "Retry-After: 2\r\nContent-Type: text/plain; charset=utf-8\r\n", "Two uploads are already active. Wait briefly, then retry.\n")
+
     fun uploadFailed(): ByteArray = response("500 Internal Server Error", "Content-Type: text/plain; charset=utf-8\r\n", "Upload could not be saved.\n")
 
     fun forbidden(): ByteArray =

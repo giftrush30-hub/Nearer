@@ -10,13 +10,13 @@ internal class FastShareUploadGate(
     init { require(maxConcurrentUploads > 0) }
 
     @Synchronized
-    fun tryAcquire(contentLength: Long, availableBytes: Long): Boolean {
-        if (contentLength < 0L || availableBytes < 0L) return false
-        if (activeUploads >= maxConcurrentUploads) return false
-        if (contentLength > availableBytes - reservedBytes) return false
+    fun tryAcquire(contentLength: Long, availableBytes: Long): Admission {
+        if (contentLength < 0L || availableBytes < 0L) return Admission.INVALID_SIZE
+        if (activeUploads >= maxConcurrentUploads) return Admission.BUSY
+        if (contentLength > availableBytes - reservedBytes) return Admission.INSUFFICIENT_STORAGE
         activeUploads++
         reservedBytes += contentLength
-        return true
+        return Admission.ACCEPTED
     }
 
     @Synchronized
@@ -30,6 +30,7 @@ internal class FastShareUploadGate(
     @Synchronized
     fun snapshot(): Snapshot = Snapshot(activeUploads, reservedBytes)
 
+    enum class Admission { ACCEPTED, BUSY, INSUFFICIENT_STORAGE, INVALID_SIZE }
     data class Snapshot(val activeUploads: Int, val reservedBytes: Long)
 
     companion object { const val MAX_CONCURRENT_UPLOADS = 2 }

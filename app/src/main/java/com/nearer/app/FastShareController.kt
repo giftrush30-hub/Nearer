@@ -535,9 +535,20 @@ private class FastShareHttpServer(
             return
         }
         val available = runCatching { android.os.StatFs(directory.absolutePath).availableBytes }.getOrDefault(0L)
-        if (!uploadGate.tryAcquire(exchange.contentLength, available)) {
-            output.write(FastShareHttpErrors.tooManyRequests())
-            return
+        when (uploadGate.tryAcquire(exchange.contentLength, available)) {
+            FastShareUploadGate.Admission.ACCEPTED -> Unit
+            FastShareUploadGate.Admission.BUSY -> {
+                output.write(FastShareHttpErrors.uploadBusy())
+                return
+            }
+            FastShareUploadGate.Admission.INSUFFICIENT_STORAGE -> {
+                output.write(FastShareHttpErrors.insufficientStorage())
+                return
+            }
+            FastShareUploadGate.Admission.INVALID_SIZE -> {
+                output.write(FastShareHttpErrors.badRequest())
+                return
+            }
         }
         try {
             saveBrowserUpload(input, output, exchange, directory)
@@ -559,6 +570,7 @@ private class FastShareHttpServer(
         if (temporary == null) { output.write(FastShareHttpErrors.uploadFailed()); return }
         var published = false
         try {
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
             FileOutputStream(temporary).use { sink ->
                 val buffer = ByteArray(64 * 1024)
                 var remaining = exchange.contentLength
@@ -566,10 +578,15 @@ private class FastShareHttpServer(
                     if (!running || Thread.currentThread().isInterrupted) throw java.io.IOException("Stopped")
                     val count = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
                     if (count < 0) throw java.io.EOFException("Incomplete upload")
-                    if (count > 0) { sink.write(buffer, 0, count); remaining -= count.toLong() }
+                    if (count > 0) {
+                        sink.write(buffer, 0, count)
+                        digest.update(buffer, 0, count)
+                        remaining -= count.toLong()
+                    }
                 }
                 sink.fd.sync()
             }
+            val sha256 = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
             synchronized(uploadPublishLock) {
                 var destination = File(directory, safeName)
                 var suffix = 2
@@ -586,6 +603,8 @@ private class FastShareHttpServer(
             output.write(FastShareHttpWire.responseHead("HTTP/1.1 201 Created", listOf(
                 "Content-Type" to "text/plain; charset=utf-8",
                 "Content-Length" to body.size.toString(),
+                "X-Content-SHA256" to sha256,
+                "X-Received-Bytes" to exchange.contentLength.toString(),
                 "Cache-Control" to "no-store",
                 "Connection" to "close"
             )))
