@@ -72,9 +72,24 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
     private val fileIo = Executors.newSingleThreadExecutor()
     // Hash large files away from the UI thread before the receiver is given the payload.
     private val transferPreparation = Executors.newFixedThreadPool(2)
-    private val seenMessageIds = ConcurrentHashMap.newKeySet<String>().apply {
-        appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-            .getStringSet("nearby_seen_message_ids", HashSet<String>()).orEmpty().forEach { add(it) }
+    private val seenMessageIdsLock = Any()
+    private val seenMessageIds = LinkedHashSet<String>().apply {
+        val preferences = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val ordered = preferences.getString("nearby_seen_message_ids_ordered", null)
+        if (ordered != null) {
+            try {
+                val savedIds = org.json.JSONArray(ordered)
+                for (index in 0 until savedIds.length()) {
+                    val id = savedIds.optString(index)
+                    if (id.isNotBlank()) add(id)
+                }
+            } catch (_: Exception) {
+                preferences.getStringSet("nearby_seen_message_ids", emptySet()).orEmpty().forEach { add(it) }
+            }
+        } else {
+            preferences.getStringSet("nearby_seen_message_ids", emptySet()).orEmpty().forEach { add(it) }
+        }
+        MessageIdHistoryPolicy.trimOldest(this)
     }
     // Prevent two copies arriving at once while the first copy is still being saved.
     // An ID becomes "seen" only after the UI confirms local persistence.
@@ -190,14 +205,37 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         persistPendingOutbox()
     }
 
-    private fun rememberMessageId(messageId: String) {
+    private fun hasSeenMessageId(messageId: String): Boolean =
+        synchronized(seenMessageIdsLock) { messageId in seenMessageIds }
+
+    /**
+     * A delivery receipt is allowed only after this ID is durably committed.
+     * Restore the previous in-memory history if SharedPreferences cannot commit.
+     */
+    private fun rememberMessageId(messageId: String): Boolean = synchronized(seenMessageIdsLock) {
+        val previous = LinkedHashSet(seenMessageIds)
         seenMessageIds.add(messageId)
-        while (seenMessageIds.size > 5000) {
-            val oldest = seenMessageIds.firstOrNull() ?: break
-            seenMessageIds.remove(oldest)
+        MessageIdHistoryPolicy.trimOldest(seenMessageIds)
+        try {
+            val ordered = org.json.JSONArray()
+            seenMessageIds.forEach(ordered::put)
+            val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .edit()
+                .putString("nearby_seen_message_ids_ordered", ordered.toString())
+                .putStringSet("nearby_seen_message_ids", HashSet(seenMessageIds))
+                .commit()
+            if (!saved) {
+                seenMessageIds.clear()
+                seenMessageIds.addAll(previous)
+                listener.onStatus("NeaRer saved the message but could not secure its duplicate-protection record. Delivery was not confirmed.")
+            }
+            saved
+        } catch (_: Exception) {
+            seenMessageIds.clear()
+            seenMessageIds.addAll(previous)
+            listener.onStatus("NeaRer saved the message but could not secure its duplicate-protection record. Delivery was not confirmed.")
+            false
         }
-        appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-            .edit().putStringSet("nearby_seen_message_ids", HashSet(seenMessageIds)).apply()
     }
     private var started = false
     @Volatile private var localName = "NeaRer User"
@@ -341,7 +379,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             if (messageId.isBlank() || body.isBlank() || body.length > 4000) return
             if (messageId.length > 80 || ttl !in 0..4) return
             // A previously saved message is safe to acknowledge again after a lost receipt.
-            if (seenMessageIds.contains(messageId)) {
+            if (hasSeenMessageId(messageId)) {
                 sendAcknowledgement(endpointId, messageId)
                 return
             }
@@ -354,8 +392,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             try {
                 listener.onMessage(endpointId, senderName, messageId, body) {
                     if (pendingIncomingMessageIds.remove(messageId)) {
-                        rememberMessageId(messageId)
-                        sendAcknowledgement(endpointId, messageId)
+                        if (rememberMessageId(messageId)) {
+                            sendAcknowledgement(endpointId, messageId)
+                        }
                     }
                 }
             } catch (error: Exception) {
@@ -489,7 +528,6 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
         targetEndpointId: String? = null
     ): Boolean {
         if (body.isBlank() || body.length > 4000) return false
-        seenMessageIds.add(messageId)
         val envelope = JSONObject().put("kind", "message").put("version", 1)
             .put("id", messageId).put("body", body)
             .put("ttl", 0).put("hops", 0).put("origin", localName)
