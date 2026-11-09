@@ -256,6 +256,7 @@ class MainActivity : ComponentActivity() {
             override fun onFound(id: String, name: String, stableId: String) { runOnUiThread { hybridPeers[id] = name; if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId) } }
             override fun onLost(id: String, stableId: String) { runOnUiThread {
                 val name = hybridPeers.remove(id)
+                hybridPeerAvatars.remove(id)
                 if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
             } }
             override fun onRequest(id: String, name: String, token: String) {
@@ -316,6 +317,7 @@ class MainActivity : ComponentActivity() {
                     activeGame = activeGame?.let { it.copy(ready = false) }
                     incomingGameInvite = null
                     val lastName = hybridPeers.remove(id) ?: name
+                    hybridPeerAvatars.remove(id)
                     recordRecentlySeen(stableId.ifBlank { id }, lastName)
                     pendingHybridEndpoint = null
                     connectedDeviceName = null
