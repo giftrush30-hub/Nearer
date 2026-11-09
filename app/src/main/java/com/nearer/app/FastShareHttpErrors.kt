@@ -36,8 +36,8 @@ internal object FastShareHttpErrors {
     fun requestTimeout(): ByteArray =
         response(
             "408 Request Timeout",
-            "Retry-After: 2\\r\\nContent-Type: text/plain; charset=utf-8\\r\\n",
-            "Upload paused because the connection became idle. Reconnect and retry.\\n"
+            "Retry-After: 2\r\nContent-Type: text/plain; charset=utf-8\r\n",
+            "Upload paused because the connection became idle. Reconnect and retry.\n"
         )
 
     fun uploadFailed(): ByteArray = response("500 Internal Server Error", "Content-Type: text/plain; charset=utf-8\r\n", "Upload could not be saved.\n")
