@@ -117,6 +117,7 @@ class MainActivity : ComponentActivity() {
     private val hybridPeers = mutableStateMapOf<String, String>()
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
+    private var nearerId by mutableStateOf("")
     private var hybridSearching by mutableStateOf(false)
     private var pendingHybridEndpoint: String? = null
     private var hybridConnected = false
@@ -452,6 +453,7 @@ class MainActivity : ComponentActivity() {
         restoreCommunityData()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
         nearbyTransport?.setDisplayName(displayName)
+        nearerId = NeaRerIdentity.loadOrCreate(getSharedPreferences("nearer_local", Context.MODE_PRIVATE))
         restoreRecentlySeen()
         // Multi-hop relay is paused until recipient routing and end-to-end encryption are ready.
         meshRelayEnabled = false
@@ -514,6 +516,7 @@ class MainActivity : ComponentActivity() {
                     hybridPeers = hybridPeers.toMap(),
                     recentlySeenPeers = recentlySeenPeers.toMap(),
                     displayName = displayName,
+                    nearerId = nearerId,
                     onSaveDisplayName = ::saveDisplayName,
                     meshRelayEnabled = meshRelayEnabled,
                     onMeshRelayChange = ::updateMeshRelayEnabled,
@@ -2256,6 +2259,7 @@ private fun NeaRerHome(
     hybridPeers: Map<String, String>,
     recentlySeenPeers: Map<String, NearbyPerson>,
     displayName: String,
+    nearerId: String,
     onSaveDisplayName: (String) -> Unit,
     meshRelayEnabled: Boolean,
     onMeshRelayChange: (Boolean) -> Unit,
@@ -2585,6 +2589,7 @@ private fun NeaRerHome(
             if (selectedTab == "Chats") {
                 PremiumChatsScreen(
                     chatReady = chatReady,
+                    nearerId = nearerId,
                     connectedDeviceName = connectedDeviceName,
                     connectionMessage = connectionMessage,
                     usingNearbyConnections = usingNearbyConnections,
@@ -2867,6 +2872,7 @@ private fun NeaRerHome(
 @Composable
 private fun PremiumChatsScreen(
     chatReady: Boolean,
+    nearerId: String,
     connectedDeviceName: String?,
     connectionMessage: String,
     usingNearbyConnections: Boolean,
@@ -2894,6 +2900,15 @@ private fun PremiumChatsScreen(
             Text("YOUR CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
             Text("Chats", color = White, fontSize = 29.sp, fontWeight = FontWeight.ExtraBold)
             Text("Private conversations, closer than ever.", color = Muted, fontSize = 13.sp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("YOUR NEARER ID", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+                    Text(nearerId, color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+                androidx.compose.material3.TextButton(onClick = { /* ID can be copied from the profile in a later identity pass. */ }) {
+                    Text("MY ID", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
 
         Surface(
@@ -2973,7 +2988,7 @@ private fun PremiumChatsScreen(
                     }
                     Surface(shape = RoundedCornerShape(30.dp), color = if (chatReady) Color(0xFF174B43) else Color(0xFF3C3540)) {
                         Text(
-                            if (chatReady) "SECURE LINK" else "OFFLINE",
+                            if (chatReady) "DIRECT LINK" else "OFFLINE",
                             color = if (chatReady) Color(0xFF9DE8C9) else Gold,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
