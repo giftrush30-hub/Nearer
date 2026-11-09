@@ -19,10 +19,15 @@ internal object IncomingFileMetadataPolicy {
         if (incoming.sha256.isNotBlank() && !incoming.sha256.matches(Regex("[a-fA-F0-9]{64}"))) return false
         if (existing == null) return true
 
-        val samePeer = existing.peerId.isNotBlank() && incoming.peerId.isNotBlank() &&
-            existing.peerId == incoming.peerId
-        val sameEndpoint = existing.endpointId == incoming.endpointId
-        if (!samePeer && !sameEndpoint) return false
+        // Once a stable peer identity is known, endpoint-ID reuse must never
+        // let a different peer (or an unidentified peer) replace its metadata.
+        // Endpoint matching is only a compatibility fallback for legacy peers.
+        val samePeer = existing.peerId.isNotBlank()
+        if (samePeer) {
+            if (incoming.peerId.isBlank() || existing.peerId != incoming.peerId) return false
+        } else if (existing.endpointId != incoming.endpointId) {
+            return false
+        }
 
         val compatibleHash = existing.sha256.isBlank() || incoming.sha256.isBlank() ||
             existing.sha256.equals(incoming.sha256, ignoreCase = true)

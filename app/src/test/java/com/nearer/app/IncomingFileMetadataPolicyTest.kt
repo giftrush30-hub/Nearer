@@ -28,6 +28,14 @@ class IncomingFileMetadataPolicyTest {
         assertFalse(IncomingFileMetadataPolicy.canAccept(identity(), identity(endpoint = "endpoint-2", peer = "nearer-peer-2")))
     }
 
+    @Test fun rejectsDifferentStablePeerEvenWhenEndpointIdIsReused() {
+        assertFalse(IncomingFileMetadataPolicy.canAccept(identity(), identity(peer = "nearer-peer-2")))
+    }
+
+    @Test fun rejectsMissingStablePeerAfterOneWasEstablished() {
+        assertFalse(IncomingFileMetadataPolicy.canAccept(identity(), identity(peer = "")))
+    }
+
     @Test fun rejectsConflictingNameOrSize() {
         assertFalse(IncomingFileMetadataPolicy.canAccept(identity(), identity(name = "other.mp4")))
         assertFalse(IncomingFileMetadataPolicy.canAccept(identity(), identity(size = 2048L)))
