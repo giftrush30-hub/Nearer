@@ -11,6 +11,7 @@
 - Duplicate filenames are kept distinct by adding a numeric suffix under a publication lock.
 - A failed or interrupted upload leaves no published partial file; temporary files are deleted and the admission reservation is released in finally.
 - The receiver page uses XMLHttpRequest for byte-level progress and cancellation. It validates the server's byte-count and digest-header shape before reporting success; it does not independently recompute the digest.
+- Multi-file browser uploads continue after an individual file fails, report the failed names, and retain only failed or not-yet-attempted files in the picker for a direct retry. Successful files are not automatically resent.
 
 ## HTTP request validation
 
