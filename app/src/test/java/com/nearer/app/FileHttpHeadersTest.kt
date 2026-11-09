@@ -48,6 +48,13 @@ class FileHttpHeadersTest {
         assertFalse(withoutValidator.contains("Last-Modified:"))
     }
 
+    @Test fun receiverPageCspAllowsOnlySameOriginUploadConnections() {
+        val headers = FileHttpHeaders.receiverPageHeaders(100L)
+        val csp = headers.first { it.first == "Content-Security-Policy" }.second
+        assertTrue(csp.contains("script-src 'unsafe-inline'"))
+        assertTrue(csp.contains("connect-src 'self'"))
+        assertTrue(csp.contains("default-src 'none'"))
+    }
     @Test fun archiveHeadersDescribePrivateZipAndUseSafeAttachmentName() {
         val headers = FileHttpHeaders.archiveHeaders("NeaRer-Files.zip")
         assertTrue(headers.startsWith("Content-Type: application/zip\r\n"))
