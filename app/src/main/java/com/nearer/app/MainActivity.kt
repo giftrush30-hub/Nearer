@@ -2397,7 +2397,7 @@ private fun NeaRerHome(
                             ) {
                                 Text("LIVE DOWNLOADS · ${fastShare.activeTransfers.size}/5", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 fastShare.activeTransfers.forEach { transfer ->
-                                    val percent = if (transfer.totalBytes > 0L) ((transfer.bytesSent * 100L) / transfer.totalBytes).coerceIn(0L, 100L).toInt() else -1
+                                    val percent = if (transfer.totalBytes > 0L) ((transfer.bytesSent.toDouble() / transfer.totalBytes.toDouble()) * 100.0).toInt().coerceIn(0, 100) else -1
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text(transfer.fileName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
