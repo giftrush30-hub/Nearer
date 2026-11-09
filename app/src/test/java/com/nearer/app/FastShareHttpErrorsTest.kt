@@ -62,6 +62,7 @@ class FastShareHttpErrorsTest {
             FastShareHttpErrors.badRequest(),
             FastShareHttpErrors.methodNotAllowed(),
             FastShareHttpErrors.tooManyRequests(),
+            FastShareHttpErrors.requestTimeout(),
             FastShareHttpErrors.forbidden(),
             FastShareHttpErrors.notFound()
         ).forEach { response ->
