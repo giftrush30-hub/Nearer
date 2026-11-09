@@ -76,6 +76,22 @@ class FileHttpHeadersTest {
         FileHttpHeaders.unsatisfiedRangeHeaders(-1L)
     }
 
+    @Test fun unavailableFileResponseIsNotCachedAndCannotBeMimeSniffed() {
+        val headers = FileHttpHeaders.unavailableFileHeaders(72L).toMap()
+        assertEquals("text/plain; charset=utf-8", headers["Content-Type"])
+        assertEquals("72", headers["Content-Length"])
+        assertEquals("no-store", headers["Cache-Control"])
+        assertEquals("no-cache", headers["Pragma"])
+        assertEquals("nosniff", headers["X-Content-Type-Options"])
+        assertEquals("no-referrer", headers["Referrer-Policy"])
+        assertEquals("close", headers["Connection"])
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun unavailableFileHeadersRejectNegativeContentLength() {
+        FileHttpHeaders.unavailableFileHeaders(-1L)
+    }
+
     @Test fun unicodeFileNamesRemainUtf8EncodedInContentDisposition() {
         val header = FileHttpHeaders.contentDisposition("日本語 résumé 🎬.mp4")
         assertEquals(
