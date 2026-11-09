@@ -14,7 +14,8 @@ internal data class FastShareHttpRequest(
         return values.size == 1 && FastShareAccessKey.matches(expected, values.single())
     }
     val isHeadOnly: Boolean get() = method == "HEAD"
-    val supportsMethod: Boolean get() = method == "GET" || isHeadOnly
+    val isUpload: Boolean get() = method == "POST" && path == "/upload"
+    val supportsMethod: Boolean get() = method == "GET" || isHeadOnly || method == "POST"
 
     /** Zero-based item requested by /download/N; legacy /download means item zero. */
     val downloadIndex: Int?
@@ -29,11 +30,12 @@ internal data class FastShareHttpRequest(
             path == "/" || path == "/index.html" -> Route.RECEIVER_PAGE
             path == "/download" -> Route.DOWNLOAD
             path == "/download-all" -> Route.DOWNLOAD_ALL
+            path == "/upload" -> Route.UPLOAD
             path.matches(Regex("/download/[0-9]{1,4}")) && downloadIndex != null -> Route.DOWNLOAD
             else -> Route.NOT_FOUND
         }
 
-    internal enum class Route { RECEIVER_PAGE, DOWNLOAD, DOWNLOAD_ALL, NOT_FOUND }
+    internal enum class Route { RECEIVER_PAGE, DOWNLOAD, DOWNLOAD_ALL, UPLOAD, NOT_FOUND }
 
     companion object {
         /**
