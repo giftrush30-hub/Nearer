@@ -48,8 +48,12 @@ internal data class NeaRerBackupRestorePlan(
          * No SharedPreferences, SQLite rows, profile files or received files are changed.
          */
         @Throws(IOException::class)
-        fun fromStagedDirectory(directory: File): NeaRerBackupRestorePlan {
+        fun fromPreparedRestore(prepared: NeaRerBackupManager.PreparedRestore): NeaRerBackupRestorePlan {
+            val directory = prepared.directory
             val preview = NeaRerBackupSnapshot.inspect(directory)
+            if (preview != prepared.preview) {
+                throw IOException("Prepared restore preview no longer matches its staged data")
+            }
             val root = directory.canonicalFile
             val profileFile = File(root, "profile.json")
             val profile = try {
