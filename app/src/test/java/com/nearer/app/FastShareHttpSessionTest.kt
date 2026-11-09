@@ -15,6 +15,13 @@ class FastShareHttpSessionTest {
         return exchange to output.toString("UTF-8")
     }
 
+    @Test fun overloadResponseClearlyAsksReceiverToRetry() {
+        val response = FastShareHttpErrors.tooManyRequests().toString(Charsets.UTF_8)
+        assertTrue(response.startsWith("HTTP/1.1 429 Too Many Requests\r\n"))
+        assertTrue(response.contains("Retry-After: 2\r\n"))
+        assertTrue(response.contains("Connection: close\r\n"))
+    }
+
     @Test fun getRequestReadsRangeHeaderCaseInsensitively() {
         val (exchange, response) = read(
             "GET /download HTTP/1.1\r\nHost: 192.168.43.1\r\nrAnGe: bytes=10-29\r\n\r\n"

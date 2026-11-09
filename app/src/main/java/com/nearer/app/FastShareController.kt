@@ -16,7 +16,7 @@ import java.net.Socket
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.Collections
-import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -32,6 +32,9 @@ class FastShareController(private val context: Context) {
         private set
     var history by androidx.compose.runtime.mutableStateOf(loadHistory())
         private set
+    var activeTransfers by androidx.compose.runtime.mutableStateOf<List<FastShareActiveTransfer>>(emptyList())
+        private set
+    private val transferLedger = FastShareTransferLedger()
 
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
     private var callback: WifiManager.LocalOnlyHotspotCallback? = null
@@ -105,7 +108,17 @@ class FastShareController(private val context: Context) {
                     // Each HTTP worker owns its own progress clock. Two concurrent
                     // receivers must never overwrite one another's speed/timing state.
                     val progressByThread = ThreadLocal.withInitial { LongArray(4) }
-                    val httpServer = FastShareHttpServer(context, selectedUris, catalog, accessKey) { fileName, sent, total, complete, interrupted, partialResponse ->
+                    val httpServer = FastShareHttpServer(context, selectedUris, catalog, accessKey, onTransferQueued = { transferId, fileName ->
+                        Handler(Looper.getMainLooper()).post {
+                            transferLedger.update(FastShareActiveTransfer(transferId, fileName, 0L, -1L, 0L, android.os.SystemClock.elapsedRealtime(), isQueued = true))
+                            activeTransfers = transferLedger.snapshot()
+                        }
+                    }, onTransferDiscarded = { transferId ->
+                        Handler(Looper.getMainLooper()).post {
+                            transferLedger.finish(transferId)
+                            activeTransfers = transferLedger.snapshot()
+                        }
+                    }) { transferId, fileName, sent, total, complete, interrupted, partialResponse ->
                         val progress = progressByThread.get()
                         val now = android.os.SystemClock.elapsedRealtime()
                         var transferStartedAt = progress[0]
@@ -131,6 +144,14 @@ class FastShareController(private val context: Context) {
                         val speedLabel = if (bytesPerSecond > 0.0) " · ${formatProgressSize(bytesPerSecond.toLong())}/s" else ""
                         val averageSpeed = formatProgressSize(((sent * 1000.0) / (now - transferStartedAt).coerceAtLeast(1L)).toLong())
                         Handler(Looper.getMainLooper()).post {
+                            if (complete || interrupted) {
+                                transferLedger.finish(transferId)
+                                activeTransfers = transferLedger.snapshot()
+                            } else {
+                                val transfer = FastShareActiveTransfer(transferId, fileName, sent, total, bytesPerSecond.toLong(), transferStartedAt)
+                                transferLedger.update(transfer)
+                                activeTransfers = transferLedger.snapshot()
+                            }
                             status = when {
                                 interrupted -> "Download interrupted at ${formatProgressSize(sent)}. Keep both phones connected and retry."
                                 complete && partialResponse -> "Download section sent · ${formatProgressSize(sent)}"
@@ -168,6 +189,8 @@ class FastShareController(private val context: Context) {
                 reservation = null
                 pendingUris = emptyList()
                 details = null
+                transferLedger.clear()
+                activeTransfers = emptyList()
                 callback = null
                 status = "The temporary Wi-Fi connection stopped."
             }
@@ -202,6 +225,8 @@ class FastShareController(private val context: Context) {
         server?.stop()
         server = null
         details = null
+        transferLedger.clear()
+        activeTransfers = emptyList()
         pendingUris = emptyList()
         try { reservation?.close() } catch (_: Exception) {}
         reservation = null
@@ -274,6 +299,7 @@ class FastShareController(private val context: Context) {
 }
 
 data class FastShareDetails(val ssid: String, val password: String, val url: String)
+data class FastShareActiveTransfer(val id: String, val fileName: String, val bytesSent: Long, val totalBytes: Long, val bytesPerSecond: Long, val startedAtMillis: Long, val isQueued: Boolean = false)
 
 data class FastShareHistoryEntry(val fileName: String, val bytesTransferred: Long, val result: String, val timestampMillis: Long)
 
@@ -283,19 +309,22 @@ private class FastShareHttpServer(
     private val uris: List<Uri>,
     private val catalog: FastShareDownloadCatalog,
     private val accessKey: String,
-    private val onTransferUpdate: (fileName: String, sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean, partialResponse: Boolean) -> Unit
+    private val onTransferQueued: (transferId: String, fileName: String) -> Unit,
+    private val onTransferDiscarded: (transferId: String) -> Unit,
+    private val onTransferUpdate: (transferId: String, fileName: String, sentBytes: Long, totalBytes: Long, complete: Boolean, interrupted: Boolean, partialResponse: Boolean) -> Unit
 ) {
     // Bound client work so a busy or hostile local-network peer cannot
     // create an unbounded number of server threads.
-    // Five core workers allow five actual file streams to run together.
+    // Five transfers run at once. Up to seven additional request workers are
+    // allowed to reach the fair gate and appear in the visible waiting list.
+    // A SynchronousQueue prevents those requests hiding in an executor queue.
     // The accept loop has its own daemon thread, so it never steals a slot.
-    // Keep extra connections bounded to avoid unbounded thread/memory growth.
     private val executor = ThreadPoolExecutor(
         FastShareDownloadGate.MAX_CONCURRENT_DOWNLOADS,
-        FastShareDownloadGate.MAX_CONCURRENT_DOWNLOADS + 3,
+        FastShareDownloadGate.MAX_HANDLED_DOWNLOAD_REQUESTS,
         60L,
         TimeUnit.SECONDS,
-        ArrayBlockingQueue(16)
+        SynchronousQueue()
     )
     @Volatile private var running = true
     private val downloadGate = FastShareDownloadGate()
@@ -323,6 +352,14 @@ private class FastShareHttpServer(
                     try {
                         executor.execute { handle(client) }
                     } catch (_: RejectedExecutionException) {
+                        // The five active plus seven waiting request workers are full.
+                        // Return an explicit retryable response instead of a silent reset.
+                        runCatching {
+                            client.getOutputStream().apply {
+                                write(FastShareHttpErrors.tooManyRequests())
+                                flush()
+                            }
+                        }
                         clients.release(client)
                         runCatching { client.close() }
                     }
@@ -422,8 +459,10 @@ private class FastShareHttpServer(
                     if (item == null || uri == null) {
                         output.write(FastShareHttpErrors.notFound())
                     } else if (headOnly) {
-                        streamFile(output, uri, item, rangeHeader, true)
+                        streamFile(output, uri, item, rangeHeader, true, java.util.UUID.randomUUID().toString())
                     } else {
+                        val transferId = java.util.UUID.randomUUID().toString()
+                        onTransferQueued(transferId, item.fileName)
                         // Allow five file streams for small-group sharing while keeping memory
                         // bounded. Additional receivers wait fairly instead of being
                         // rejected immediately; the wait is bounded.
@@ -434,10 +473,23 @@ private class FastShareHttpServer(
                             false
                         }
                         if (!acquired) {
+                            onTransferUpdate(transferId, item.fileName, 0L, item.fileLength, false, true, false)
                             output.write(FastShareHttpErrors.tooManyRequests())
                         } else {
                             try {
-                                if (running) streamFile(output, uri, item, rangeHeader, false)
+                                if (running) {
+                                    try {
+                                        streamFile(output, uri, item, rangeHeader, false, transferId)
+                                    } catch (error: Exception) {
+                                        // A socket can fail while writing response headers, before
+                                        // StreamCopy has a chance to report interruption. Always
+                                        // retire this receiver's ledger entry on that path too.
+                                        onTransferDiscarded(transferId)
+                                        throw error
+                                    }
+                                } else {
+                                    onTransferDiscarded(transferId)
+                                }
                             } finally {
                                 downloadGate.release()
                             }
@@ -450,14 +502,15 @@ private class FastShareHttpServer(
         }
     }
 
-    private fun streamFile(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, rangeHeader: String?, headOnly: Boolean) {
+    private fun streamFile(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, rangeHeader: String?, headOnly: Boolean, transferId: String) {
         if (item.fileLength < 0L) {
-            streamUnknownLength(output, uri, item, headOnly)
+            streamUnknownLength(output, uri, item, headOnly, transferId)
             return
         }
         val response = FileHttpResponses.resolve(rangeHeader, item.fileLength)
         val resolvedRange = response.range
         if (resolvedRange == null) {
+            onTransferDiscarded(transferId)
             output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\n".toByteArray())
             output.write(FileHttpHeaders.unsatisfiedRangeHeaders(item.fileLength).toByteArray())
             return
@@ -472,7 +525,7 @@ private class FastShareHttpServer(
             null
         }
         if (!headOnly && stream == null) {
-            writeFileUnavailable(output, item)
+            writeFileUnavailable(output, item, transferId)
             return
         }
         if (stream != null) {
@@ -480,13 +533,13 @@ private class FastShareHttpServer(
                 StreamRangeCopy.skipFully(stream, start)
             } catch (_: Exception) {
                 stream.close()
-                writeFileUnavailable(output, item)
+                writeFileUnavailable(output, item, transferId)
                 return
             }
         }
         // Start the throughput clock before sending the HTTP response or first byte.
         val partialTransfer = ByteRange.isPartialTransfer(resolvedRange, item.fileLength)
-        if (!headOnly) onTransferUpdate(item.fileName, 0L, count, false, false, partialTransfer)
+        if (!headOnly) onTransferUpdate(transferId, item.fileName, 0L, count, false, false, partialTransfer)
         output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\n".toByteArray())
         output.write(FileHttpHeaders.fileHeaders(item.mimeType, item.fileName).toByteArray())
         output.write("Content-Length: $count\r\nAccept-Ranges: bytes\r\n".toByteArray())
@@ -503,13 +556,13 @@ private class FastShareHttpServer(
                     shouldContinue = { running },
                     onBytesCopied = { copied -> sent = copied },
                     onProgress = { copied ->
-                        onTransferUpdate(item.fileName, copied, count, false, false, partialTransfer)
+                        onTransferUpdate(transferId, item.fileName, copied, count, false, false, partialTransfer)
                     }
                 )
                 sent = result.bytesCopied
-                onTransferUpdate(item.fileName, sent, count, result.complete, !result.complete, partialTransfer)
+                onTransferUpdate(transferId, item.fileName, sent, count, result.complete, !result.complete, partialTransfer)
             } catch (error: Exception) {
-                onTransferUpdate(item.fileName, sent, count, false, true, partialTransfer)
+                onTransferUpdate(transferId, item.fileName, sent, count, false, true, partialTransfer)
                 throw error
             }
         }
@@ -520,18 +573,18 @@ private class FastShareHttpServer(
      * these files shareable without buffering the entire file in memory.
      * Resume/range requests are not available when the length is unknown.
      */
-    private fun streamUnknownLength(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, headOnly: Boolean) {
+    private fun streamUnknownLength(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, headOnly: Boolean, transferId: String) {
         val stream = if (headOnly) null else try {
             context.contentResolver.openInputStream(uri)
         } catch (_: Exception) {
             null
         }
         if (!headOnly && stream == null) {
-            writeFileUnavailable(output, item)
+            writeFileUnavailable(output, item, transferId)
             return
         }
         // Start the throughput clock before the first chunk is read or written.
-        if (!headOnly) onTransferUpdate(item.fileName, 0L, -1L, false, false, false)
+        if (!headOnly) onTransferUpdate(transferId, item.fileName, 0L, -1L, false, false, false)
         output.write("HTTP/1.1 200 OK\r\n".toByteArray())
         output.write(FileHttpHeaders.fileHeaders(item.mimeType, item.fileName).toByteArray())
         output.write("Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n".toByteArray())
@@ -545,20 +598,20 @@ private class FastShareHttpServer(
                     shouldContinue = { running },
                     onBytesCopied = { copied -> sent = copied },
                     onProgress = { copied ->
-                        onTransferUpdate(item.fileName, copied, -1L, false, false, false)
+                        onTransferUpdate(transferId, item.fileName, copied, -1L, false, false, false)
                     }
                 )
                 sent = result.bytesCopied
-                onTransferUpdate(item.fileName, sent, -1L, result.complete, !result.complete, false)
+                onTransferUpdate(transferId, item.fileName, sent, -1L, result.complete, !result.complete, false)
             } catch (error: Exception) {
-                onTransferUpdate(item.fileName, sent, -1L, false, true, false)
+                onTransferUpdate(transferId, item.fileName, sent, -1L, false, true, false)
                 throw error
             }
         }
     }
 
-    private fun writeFileUnavailable(output: BufferedOutputStream, item: FastShareDownloadItem) {
-        onTransferUpdate(item.fileName, 0L, item.fileLength, false, true, false)
+    private fun writeFileUnavailable(output: BufferedOutputStream, item: FastShareDownloadItem, transferId: String) {
+        onTransferUpdate(transferId, item.fileName, 0L, item.fileLength, false, true, false)
         val message = "The selected file is no longer available. Choose it again in NeaRer."
         val body = message.toByteArray(Charsets.UTF_8)
         output.write(FastShareHttpWire.responseHead(

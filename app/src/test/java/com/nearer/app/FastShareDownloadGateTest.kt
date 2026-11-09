@@ -8,6 +8,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class FastShareDownloadGateTest {
+    @Test fun requestCapacityIsFiveActivePlusSevenWaiting() {
+        assertEquals(5, FastShareDownloadGate.MAX_CONCURRENT_DOWNLOADS)
+        assertEquals(7, FastShareDownloadGate.MAX_WAITING_DOWNLOADS)
+        assertEquals(12, FastShareDownloadGate.MAX_HANDLED_DOWNLOAD_REQUESTS)
+    }
+
     @Test fun fiveReceiversCanDownloadConcurrently() {
         val gate = FastShareDownloadGate()
         repeat(5) {

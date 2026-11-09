@@ -64,6 +64,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -2390,6 +2391,43 @@ private fun NeaRerHome(
                         ) { Text("Fast Share • multiple large files", fontWeight = FontWeight.Bold) }
                         Text("Send a large video to a phone without NeaRer using a temporary local Wi-Fi connection. No mobile data.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                         Text(fastShare.status, color = if (fastShare.details != null) Mint else Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        if (fastShare.activeTransfers.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().background(Midnight, RoundedCornerShape(16.dp)).padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text("LIVE DOWNLOADS · ${fastShare.activeTransfers.count { !it.isQueued }}/5 · ${fastShare.activeTransfers.count { it.isQueued }} waiting", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                fastShare.activeTransfers.forEach { transfer ->
+                                    val percent = if (transfer.totalBytes > 0L) ((transfer.bytesSent.toDouble() / transfer.totalBytes.toDouble()) * 100.0).toInt().coerceIn(0, 100) else -1
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(transfer.fileName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text(
+                                                if (transfer.isQueued) "Waiting for a download slot…"
+                                                else if (percent >= 0) "${formatTransferBytes(transfer.bytesSent)} / ${formatTransferBytes(transfer.totalBytes)} · $percent%"
+                                                else "${formatTransferBytes(transfer.bytesSent)} sent · size unknown",
+                                                color = Muted, fontSize = 10.sp
+                                            )
+                                            Text("${formatTransferBytes(transfer.bytesPerSecond)}/s", color = Mint, fontSize = 10.sp)
+                                        }
+                                        if (percent >= 0 && !transfer.isQueued) {
+                                            androidx.compose.material3.LinearProgressIndicator(
+                                                progress = { percent / 100f },
+                                                modifier = Modifier.fillMaxWidth().height(5.dp),
+                                                color = Gold,
+                                                trackColor = Panel
+                                            )
+                                        } else {
+                                            androidx.compose.material3.LinearProgressIndicator(
+                                                modifier = Modifier.fillMaxWidth().height(5.dp),
+                                                color = Mint,
+                                                trackColor = Panel
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         if (unifiedTransferHistory.isNotEmpty()) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text("RECENT TRANSFERS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
