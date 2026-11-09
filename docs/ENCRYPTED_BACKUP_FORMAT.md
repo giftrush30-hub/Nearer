@@ -13,4 +13,15 @@ Status: cryptographic file-container primitive implemented on `feature/premium-o
 - Password handling: minimum 12 characters; caller-provided char array is cleared before return.
 - Defensive parsing: only the supported version and a bounded KDF iteration range are accepted.
 
-This primitive is not, by itself, a complete backup feature. A future backup layer must add a versioned manifest, include selected app data, validate all extracted paths and sizes, preview restore contents, and apply restored data transactionally with rollback. A public NeaRer ID must never be accepted as a recovery secret.
+## Archive layer
+
+`NeaRerBackupArchive` now packages a caller-prepared snapshot directory into a ZIP archive and encrypts it with the container above.
+
+- The ZIP starts with `nearer-backup-manifest.json`, listing every file's relative path, byte count and SHA-256 digest.
+- Restore rejects unsafe paths, duplicate manifest records, unlisted or missing files, size mismatches, hash mismatches and oversized archives.
+- Limits: 10,000 files, 512 MiB per file, 2 GiB total expanded data and a 1 MiB manifest.
+- Restore extracts to a private staging directory and publishes it only after all files verify. It refuses to merge into an existing destination directory.
+
+The archive layer is still not a complete user-facing backup feature. The app must prepare a consistent snapshot of chat history, profile/preferences, contacts and received media, then provide a restore preview and a transactional import with rollback. A public NeaRer ID must never be accepted as a recovery secret.
+
+Automated unit tests have been added for encryption round-trips, wrong passwords, tampering, archive round-trips and refusing to overwrite existing restore destinations. They have not yet been run in an Android/Gradle build.
