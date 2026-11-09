@@ -22,8 +22,21 @@ class TransferFileNamePolicyTest {
         assertEquals("shared-file", TransferFileNamePolicy.safeName(".."))
     }
 
-    @Test fun limitsNameLength() {
+    @Test fun limitsNameLengthWithoutSplittingUnicodeCodePoints() {
         assertEquals(100, TransferFileNamePolicy.safeName("a".repeat(300) + ".mp4").length)
+        val unicode = TransferFileNamePolicy.safeName("🎬".repeat(120))
+        assertEquals(200, unicode.length)
+        assertTrue(unicode.endsWith("🎬"))
+    }
+
+    @Test fun preservesUnicodeLettersAndEmoji() {
+        assertEquals("日本語 résumé 🎬.mp4", TransferFileNamePolicy.safeName("日本語 résumé 🎬.mp4"))
+    }
+
+    @Test fun avoidsWindowsReservedDeviceNamesAndTrailingDots() {
+        assertEquals("_CON.txt", TransferFileNamePolicy.safeName("CON.txt"))
+        assertEquals("_LPT1.pdf", TransferFileNamePolicy.safeName("LPT1.pdf"))
+        assertEquals("holiday", TransferFileNamePolicy.safeName("holiday."))
     }
 
     @Test fun preservesOrdinaryNamesAndExtensions() {
