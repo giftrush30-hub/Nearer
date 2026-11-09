@@ -24,6 +24,7 @@ class NeaRerIdentityTest {
     @Test fun preservesExistingLegacyIdsForConversationContinuity() {
         assertEquals("ABC234", NeaRerIdentity.getOrCreate("abc234"))
         assertEquals("ABC234", NeaRerIdentity.normalize(" ABC234 "))
+        assertEquals("0F1A2B", NeaRerIdentity.normalize("0f1a2b"))
     }
 
     @Test fun rejectsMalformedOrAmbiguousIds() {
