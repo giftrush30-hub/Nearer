@@ -90,7 +90,7 @@ internal fun NeaRerOnboarding(
     }
     val photoBitmap = remember(photoUri) {
         photoUri?.let { uri ->
-            runCatching { context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream) }.getOrNull()
+            runCatching { context.contentResolver.openInputStream(uri)?.use { stream -> BitmapFactory.decodeStream(stream) } }.getOrNull()
         }
     }
     val pages = listOf("Your name", "A little about you", "Choose your look", "Your NeaRer ID")
@@ -104,7 +104,9 @@ internal fun NeaRerOnboarding(
         ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Nea", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
-                Text("R", color = Color(0xFFFFD12D), fontSize = 27.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                Text("R", color = Color(0xFFFFD12D), fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
+                Text("er", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
+                Spacer(Modifier.weight(1f))
                 Text("GETTING STARTED", color = Color(0xFF9FB2CC), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
             }
             Spacer(Modifier.height(28.dp))
