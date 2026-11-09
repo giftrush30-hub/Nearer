@@ -37,6 +37,17 @@ class FileHttpHeadersTest {
         assertEquals(1, Regex("(?m)^Cache-Control:").findAll(headers).count())
     }
 
+    @Test fun fileHeadersExposeLastModifiedOnlyWhenSourceTimestampIsKnown() {
+        val modified = java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("GMT")
+        }.parse("Mon, 09 Nov 2026 12:34:56 GMT")!!.time
+        val withValidator = FileHttpHeaders.fileHeaders("video/mp4", "clip.mp4", modified)
+        val expectedValidator = FastShareResumePolicy.formatHttpDate(modified)!!
+        assertTrue(withValidator.contains("Last-Modified: $expectedValidator"))
+        val withoutValidator = FileHttpHeaders.fileHeaders("video/mp4", "clip.mp4")
+        assertFalse(withoutValidator.contains("Last-Modified:"))
+    }
+
     @Test fun receiverPageHeadersPreventCachingFramingSniffingAndExternalExecution() {
         val headers = FileHttpHeaders.receiverPageHeaders(123L).toMap()
         assertEquals("text/html; charset=utf-8", headers["Content-Type"])
