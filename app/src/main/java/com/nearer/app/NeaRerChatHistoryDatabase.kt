@@ -49,7 +49,8 @@ internal class NeaRerChatHistoryDatabase(context: Context) :
                     put("conversation_id", message.conversationId)
                     put("conversation_name", message.conversationName)
                 }
-                db.insertWithOnConflict("messages", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+                val savedRow = db.insertWithOnConflict("messages", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+                if (savedRow == -1L) throw IllegalStateException("Could not save a chat message")
             }
             db.setTransactionSuccessful()
             true
