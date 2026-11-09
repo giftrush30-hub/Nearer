@@ -2689,6 +2689,12 @@ private fun NeaRerHome(
                         Text(if (usingNearbyConnections) "Nearby Connections • no fixed file-size cap" else "Wi-Fi Direct • no fixed file-size cap", color = Muted, fontSize = 10.sp)
                     } else {
                         Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        Button(
+                            onClick = { selectedTab = "Nearby"; onFindNearby() },
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
+                        ) { Text("Find people nearby", fontWeight = FontWeight.Bold) }
                     }
                 }
             }
