@@ -103,7 +103,7 @@ class FastShareController(private val context: Context) {
                                 } else -1L
                             } ?: -1L
                         }
-                        FastShareDownloadItem(index, name, mime, length)
+                        FastShareDownloadItem(index, name, mime, length, queryLastModified(selectedUri))
                     }
                     val catalog = FastShareDownloadCatalog(items)
                     val accessKey = FastShareAccessKey.create()
@@ -287,6 +287,39 @@ class FastShareController(private val context: Context) {
             unit++
         } while (value >= 1024.0 && unit < units.lastIndex)
         return String.format(java.util.Locale.US, "%.1f %s", value, units[unit])
+    }
+
+    private fun queryLastModified(uri: Uri): Long? {
+        val resolver = context.contentResolver
+        val documentMillis = runCatching {
+            resolver.query(
+                uri,
+                arrayOf(android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val column = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                if (cursor.moveToFirst() && column >= 0 && !cursor.isNull(column)) cursor.getLong(column) else null
+            }
+        }.getOrNull()?.takeIf { it >= 0L }
+        if (documentMillis != null) return documentMillis
+
+        // MediaStore timestamps are seconds, unlike DocumentsContract's milliseconds.
+        return runCatching {
+            resolver.query(
+                uri,
+                arrayOf(android.provider.MediaStore.MediaColumns.DATE_MODIFIED),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val column = cursor.getColumnIndex(android.provider.MediaStore.MediaColumns.DATE_MODIFIED)
+                if (cursor.moveToFirst() && column >= 0 && !cursor.isNull(column)) {
+                    cursor.getLong(column).takeIf { it >= 0L }?.times(1000L)
+                } else null
+            }
+        }.getOrNull()
     }
 
     private fun queryDisplayName(uri: Uri): String {
@@ -481,7 +514,7 @@ private class FastShareHttpServer(
                     if (item == null || uri == null) {
                         output.write(FastShareHttpErrors.notFound())
                     } else if (headOnly) {
-                        streamFile(output, uri, item, rangeHeader, true, java.util.UUID.randomUUID().toString())
+                        streamFile(output, uri, item, rangeHeader, exchange.ifRangeHeader, true, java.util.UUID.randomUUID().toString())
                     } else {
                         val transferId = java.util.UUID.randomUUID().toString()
                         onTransferQueued(transferId, item.fileName)
@@ -502,7 +535,7 @@ private class FastShareHttpServer(
                                 if (running) {
                                     writeGuard.arm()
                                     try {
-                                        streamFile(output, uri, item, rangeHeader, false, transferId)
+                                        streamFile(output, uri, item, rangeHeader, exchange.ifRangeHeader, false, transferId)
                                     } catch (error: Exception) {
                                         // A socket can fail while writing response headers, before
                                         // StreamCopy has a chance to report interruption. Always
@@ -529,12 +562,13 @@ private class FastShareHttpServer(
         }
     }
 
-    private fun streamFile(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, rangeHeader: String?, headOnly: Boolean, transferId: String) {
+    private fun streamFile(output: BufferedOutputStream, uri: Uri, item: FastShareDownloadItem, rangeHeader: String?, ifRangeHeader: String?, headOnly: Boolean, transferId: String) {
         if (item.fileLength < 0L) {
             streamUnknownLength(output, uri, item, headOnly, transferId)
             return
         }
-        val response = FileHttpResponses.resolve(rangeHeader, item.fileLength)
+        val safeRangeHeader = if (FastShareResumePolicy.shouldHonorRange(rangeHeader, ifRangeHeader, item.lastModifiedMillis)) rangeHeader else null
+        val response = FileHttpResponses.resolve(safeRangeHeader, item.fileLength)
         val resolvedRange = response.range
         if (resolvedRange == null) {
             onTransferDiscarded(transferId)
@@ -568,7 +602,7 @@ private class FastShareHttpServer(
         val partialTransfer = ByteRange.isPartialTransfer(resolvedRange, item.fileLength)
         if (!headOnly) onTransferUpdate(transferId, item.fileName, 0L, count, false, false, partialTransfer)
         output.write("HTTP/1.1 ${response.statusCode} ${response.statusText}\r\n".toByteArray())
-        output.write(FileHttpHeaders.fileHeaders(item.mimeType, item.fileName).toByteArray())
+        output.write(FileHttpHeaders.fileHeaders(item.mimeType, item.fileName, item.lastModifiedMillis).toByteArray())
         output.write("Content-Length: $count\r\nAccept-Ranges: bytes\r\n".toByteArray())
         response.contentRange?.let { output.write("Content-Range: $it\r\n".toByteArray()) }
         output.write("Connection: close\r\n\r\n".toByteArray())
@@ -613,7 +647,7 @@ private class FastShareHttpServer(
         // Start the throughput clock before the first chunk is read or written.
         if (!headOnly) onTransferUpdate(transferId, item.fileName, 0L, -1L, false, false, false)
         output.write("HTTP/1.1 200 OK\r\n".toByteArray())
-        output.write(FileHttpHeaders.fileHeaders(item.mimeType, item.fileName).toByteArray())
+        output.write(FileHttpHeaders.fileHeaders(item.mimeType, item.fileName, item.lastModifiedMillis).toByteArray())
         output.write("Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n".toByteArray())
         if (headOnly) return
         stream?.use { source ->
