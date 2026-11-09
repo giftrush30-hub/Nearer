@@ -75,6 +75,15 @@ class FastShareDownloadCatalogTest {
         assertTrue(page.contains("Download"))
     }
 
+    @Test fun receiverPageAppliesTheSameNonceToEmbeddedStyleAndScript() {
+        val nonce = "abcdefghijklmnopqrstuvwx"
+        val page = FastShareDownloadCatalog(listOf(
+            FastShareDownloadItem(0, "file.txt", "text/plain", 1L)
+        )).receiverPage("f".repeat(64), nonce)
+        assertTrue(page.contains("<style nonce=\"$nonce\">"))
+        assertTrue(page.contains("<script nonce=\"$nonce\">"))
+    }
+
     @Test fun receiverPageDownloadActionHasKeyboardFocusTreatment() {
         val page = FastShareDownloadCatalog(
             listOf(FastShareDownloadItem(0, "document.pdf", "application/pdf", 2048L))

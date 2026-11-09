@@ -55,6 +55,11 @@ class FileHttpHeadersTest {
     }
 
     @Test(expected = IllegalArgumentException::class)
+    fun receiverPageHeadersRejectInvalidNonceCharacters() {
+        FileHttpHeaders.receiverPageHeaders(10L, "bad\\r\\nnonce")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
     fun receiverPageHeadersRejectNegativeContentLength() {
         FileHttpHeaders.receiverPageHeaders(-1L, "abcdefghijklmnopqrstuvwx")
     }
