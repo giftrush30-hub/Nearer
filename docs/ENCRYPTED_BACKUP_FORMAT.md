@@ -68,3 +68,23 @@ The chat database now exposes two distinct import modes:
 The restore coordinator is still preview-only. The full-device restore must not call the replacement method until a coordinated rollback strategy exists for SharedPreferences, the profile photo and the received-files directory, and until the app can refresh its in-memory profile/community/transport state or restart cleanly. Pending file-send selections are deliberately not restored because their Android URI grants are device-specific. The transfer history and offline message outbox are portable JSON preference values and are retained in the encrypted snapshot.
 
 Validation also parses the JSON-backed preference payloads before preview, so malformed onboarding/community/history/outbox data is rejected before any app data can be touched.
+
+
+## Portable preference validation hardening
+
+Restore preview parses each portable preference using its expected JSON root type:
+`onboarding_answers` must be an object; community, history, nearby-peer,
+pending-outbox and duplicate-protection records must be arrays. Pending outbox
+entries are checked against the transport's current restore contract (unique
+message ID, stable peer ID, bounded serialized envelope, matching message ID,
+and a non-empty bounded body). Duplicate-protection IDs must be unique and
+bounded. Malformed entries reject the preview rather than being silently
+partially restored.
+
+The current app deliberately forces community relay off at startup and when
+the setting is changed, while routing and end-to-end encryption remain
+unfinished. The backup therefore does not treat `mesh_relay_enabled` as a
+portable active setting. Android runtime permissions and relay activation
+must never be recreated by restoring a backup; any future relay feature must
+show its current consent explanation and obtain fresh platform permissions on
+the destination device.
