@@ -52,7 +52,11 @@ internal object NeaRerBackupSnapshot {
             // The app-private absolute path is device-specific; restore uses the
             // portable profile/profile-photo.jpg location instead.
             val photoPath = prefs.getString("profile_photo_path", null)
-            val photo = photoPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
+            val appRoot = context.filesDir.canonicalFile
+            val photo = photoPath?.let(::File)?.takeIf { candidate ->
+                candidate.isFile && candidate.canRead() &&
+                    candidate.canonicalPath.startsWith(appRoot.path + File.separator)
+            }
             val profileDirectory = File(destination, "profile")
             if (!profileDirectory.mkdirs()) throw IOException("Could not create profile snapshot folder")
             val hasPhoto = photo?.let {
