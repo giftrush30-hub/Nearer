@@ -94,13 +94,14 @@ class FastShareDownloadCatalogTest {
         assertTrue(page.contains("X-Received-Bytes"))
         assertTrue(page.contains("X-Content-SHA256"))
         assertTrue(page.contains("xhr.abort()"))
-        assertTrue(page.contains("const failed=[]"))
+        assertTrue(page.contains("const retryFiles=[]"))
         assertTrue(page.contains("Trying the next file"))
-        assertTrue(page.contains("Select failed files to retry"))
+        assertTrue(page.contains("retryFiles.push(file)"))
         assertTrue(page.contains("Cancelled after"))
         assertTrue(page.contains("new DataTransfer()"))
         assertTrue(page.contains("selection.items.add(file)"))
         assertTrue(page.contains("Retry "))
         assertTrue(page.contains("Remaining files are ready to retry"))
+        assertTrue(page.contains("retryFiles.map(file=>file.name)"))
     }
 }
