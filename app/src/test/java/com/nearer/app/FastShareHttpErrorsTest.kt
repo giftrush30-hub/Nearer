@@ -71,9 +71,9 @@ class FastShareHttpErrorsTest {
     }
     @Test fun tooManyRequestsExplainsThatReceiverMustRetry() {
         val response = FastShareHttpErrors.tooManyRequests().toString(Charsets.UTF_8)
-        assertTrue(response.startsWith("HTTP/1.1 429 Too Many Requests\\r\\n"))
-        assertTrue(response.contains("Retry-After: 2\\r\\n"))
-        assertTrue(response.contains("Cache-Control: no-store\\r\\n"))
+        assertTrue(response.startsWith("HTTP/1.1 429 Too Many Requests\r\n"))
+        assertTrue(response.contains("Retry-After: 2\r\n"))
+        assertTrue(response.contains("Cache-Control: no-store\r\n"))
         assertTrue(response.contains("Another download is already in progress"))
     }
 
