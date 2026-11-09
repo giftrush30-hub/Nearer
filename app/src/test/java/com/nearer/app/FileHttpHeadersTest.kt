@@ -56,6 +56,14 @@ class FileHttpHeadersTest {
         assertTrue(!csp.contains("script-src 'unsafe-inline'"))
         assertTrue(csp.contains("default-src 'none'"))
     }
+    @Test fun uploadCreatedHeadersArePrivateAndLengthDelimited() {
+        val headers = FileHttpHeaders.uploadCreatedHeaders(12L).toMap()
+        assertEquals("text/plain; charset=utf-8", headers["Content-Type"])
+        assertEquals("12", headers["Content-Length"])
+        assertEquals("no-store", headers["Cache-Control"])
+        assertEquals("nosniff", headers["X-Content-Type-Options"])
+        assertEquals("close", headers["Connection"])
+    }
     @Test fun archiveHeadersDescribePrivateZipAndUseSafeAttachmentName() {
         val headers = FileHttpHeaders.archiveHeaders("NeaRer-Files.zip")
         assertTrue(headers.startsWith("Content-Type: application/zip\r\n"))
