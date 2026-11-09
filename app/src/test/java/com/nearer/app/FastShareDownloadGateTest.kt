@@ -44,6 +44,69 @@ class FastShareDownloadGateTest {
         repeat(4) { gate.release() }
     }
 
+
+    @Test fun fairGateGrantsReleasedSlotToFirstQueuedReceiver() {
+        val gate = FastShareDownloadGate()
+        repeat(5) { assertTrue(gate.tryAcquire(0, TimeUnit.MILLISECONDS)) }
+
+        val firstAttempting = CountDownLatch(1)
+        val secondAttempting = CountDownLatch(1)
+        val firstAcquired = CountDownLatch(1)
+        val secondAcquired = CountDownLatch(1)
+        val holdFirst = CountDownLatch(1)
+        val order = java.util.Collections.synchronizedList(mutableListOf<Int>())
+
+        val first = Thread {
+            firstAttempting.countDown()
+            if (gate.tryAcquire(3, TimeUnit.SECONDS)) {
+                order.add(1)
+                firstAcquired.countDown()
+                holdFirst.await(2, TimeUnit.SECONDS)
+                gate.release()
+            }
+        }
+        val second = Thread {
+            secondAttempting.countDown()
+            if (gate.tryAcquire(3, TimeUnit.SECONDS)) {
+                order.add(2)
+                secondAcquired.countDown()
+                gate.release()
+            }
+        }
+
+        try {
+            first.start()
+            assertTrue(firstAttempting.await(1, TimeUnit.SECONDS))
+            val firstQueuedDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1)
+            while (first.state != Thread.State.TIMED_WAITING && System.nanoTime() < firstQueuedDeadline) {
+                Thread.yield()
+            }
+            assertEquals("First receiver should be waiting before the second arrives", Thread.State.TIMED_WAITING, first.state)
+
+            second.start()
+            assertTrue(secondAttempting.await(1, TimeUnit.SECONDS))
+            val secondQueuedDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1)
+            while (second.state != Thread.State.TIMED_WAITING && System.nanoTime() < secondQueuedDeadline) {
+                Thread.yield()
+            }
+            assertEquals("Second receiver should also be queued", Thread.State.TIMED_WAITING, second.state)
+
+            gate.release()
+            assertTrue("First queued receiver should acquire the released slot", firstAcquired.await(1, TimeUnit.SECONDS))
+            assertEquals(listOf(1), order.toList())
+            assertEquals("Second receiver must not pass the first while it holds the slot", 1L, secondAcquired.count)
+
+            holdFirst.countDown()
+            assertTrue("Second receiver should acquire after the first releases", secondAcquired.await(1, TimeUnit.SECONDS))
+            assertEquals(listOf(1, 2), order.toList())
+        } finally {
+            holdFirst.countDown()
+            first.join(1000)
+            second.join(1000)
+            repeat(4) { gate.release() }
+        }
+    }
+
     @Test fun receiverTimesOutWhenAllFiveSlotsRemainOccupied() {
         val gate = FastShareDownloadGate()
         repeat(5) { assertTrue(gate.tryAcquire(10, TimeUnit.MILLISECONDS)) }
