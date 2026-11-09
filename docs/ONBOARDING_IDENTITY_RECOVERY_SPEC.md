@@ -93,7 +93,17 @@ If a phone is lost or destroyed, no backup exists, and the old phone cannot be a
 1. First-run onboarding, name, optional answers, avatar/photo choice, ID reveal and local persistence — implemented.
 2. Local profile editor and profile preview in More — implemented. Nearby display-name/avatar metadata exchange and avatar rendering in discovery/connection lists — implemented. SQLite chat archive migration and older-message paging — implemented in code; build/device verification remains pending. Profile-photo sharing and avatar rendering in chat/contact surfaces remain pending.
 3. Recovery Kit generation and secure key storage.
-4. Encrypted backup/export and restore for SQLite chat history, contacts/profile and selected media, with preview, integrity checks and rollback-safe replacement.
+4. Encrypted backup/export and restore groundwork — encrypted backup creation, authenticated staging, strict snapshot validation and a read-only typed restore plan are implemented. The plan exposes only portable allow-listed preferences, profile photo and received files, and explicitly excludes device permissions, relay consent, Android URI grants, live transport sessions and device-specific identity. Applying the plan with a cross-store rollback coordinator and user-facing confirmation UI remains pending.
 5. Old-to-new phone migration with pairing, integrity checks and rollback-safe completion.
 6. Device management and credential revocation.
 7. Optional cloud backup only if later approved; never make it a prerequisite for the offline-first core.
+
+
+## Restore-plan boundary (implemented groundwork)
+
+- `NeaRerBackupRestorePlan.fromPreparedRestore` re-validates the verified staging directory and checks that its preview has not changed.
+- The plan exposes only allow-listed portable preference strings, onboarding completion, a contained profile-photo file when present, and sorted contained received-file references.
+- File references remain valid only while the caller keeps the owning `PreparedRestore` open. Closing it deletes the plaintext staging directory.
+- Planning is read-only: it does not change SharedPreferences, SQLite, the active profile, received files or transport state.
+- Device-specific identity, Android permissions/nearby consent, active mesh-relay consent, pending Android content-URI selections and live Bluetooth/Wi-Fi sessions are excluded and must be re-established locally.
+- This is not yet a restore/apply feature. A confirmed apply path still needs a tested rollback coordinator across SQLite, preferences, profile media and received files, followed by a controlled app-state/transport restart.
