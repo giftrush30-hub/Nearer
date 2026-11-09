@@ -535,6 +535,7 @@ class MainActivity : ComponentActivity() {
                     profilePhotoPath = profilePhotoPath,
                     nearbyIdentityId = nearbyTransport?.localIdentityId().orEmpty(),
                     onSaveDisplayName = ::saveDisplayName,
+                    onSaveProfile = ::saveProfileEdits,
                     meshRelayEnabled = meshRelayEnabled,
                     onMeshRelayChange = ::updateMeshRelayEnabled,
                     onHybridConnect = { id -> nearbyTransport?.request(id) },
@@ -679,6 +680,28 @@ class MainActivity : ComponentActivity() {
         decoded.recycle()
         destination.absolutePath.takeIf { destination.exists() && destination.length() > 0L }
     }.getOrNull()
+
+    private fun saveProfileEdits(rawName: String, avatarId: String, photoUri: Uri?, removePhoto: Boolean) {
+        val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
+        if (cleanName.isBlank()) return
+        val oldPhotoPath = profilePhotoPath
+        val newPhotoPath = when {
+            photoUri != null -> storeProfilePhoto(photoUri) ?: oldPhotoPath
+            removePhoto -> null
+            else -> oldPhotoPath
+        }
+        if (removePhoto && photoUri == null && oldPhotoPath != null) runCatching { File(oldPhotoPath).delete() }
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putString("display_name", cleanName)
+            .putString("profile_avatar_id", avatarId)
+            .putString("profile_photo_path", newPhotoPath)
+            .apply()
+        displayName = cleanName
+        profileAvatarId = avatarId
+        profilePhotoPath = newPhotoPath
+        nearbyTransport?.setDisplayName(cleanName)
+        statusMessage = "Your NeaRer profile has been updated."
+    }
 
     private fun saveDisplayName(rawName: String) {
         val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
@@ -2348,6 +2371,7 @@ private fun NeaRerHome(
     profilePhotoPath: String?,
     nearbyIdentityId: String,
     onSaveDisplayName: (String) -> Unit,
+    onSaveProfile: (String, String, Uri?, Boolean) -> Unit,
     meshRelayEnabled: Boolean,
     onMeshRelayChange: (Boolean) -> Unit,
     onHybridConnect: (String) -> Unit,
@@ -2358,6 +2382,7 @@ private fun NeaRerHome(
     val context = LocalContext.current
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
+    var showProfileEditor by remember { mutableStateOf(false) }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val profileBitmap = remember(profilePhotoPath) { profilePhotoPath?.let { path -> runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull() } }
@@ -2953,6 +2978,9 @@ private fun NeaRerHome(
                             Text(displayName, color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                             Text("ID  $nearbyIdentityId", color = Muted, fontSize = 11.sp)
                         }
+                        androidx.compose.material3.TextButton(onClick = { showProfileEditor = true }) {
+                            Text("Edit", color = BlueAccent, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
@@ -3043,6 +3071,19 @@ private fun NeaRerHome(
                 }
             }
         }
+    }
+
+    if (showProfileEditor) {
+        NeaRerProfileEditor(
+            currentName = displayName,
+            currentAvatarId = profileAvatarId,
+            currentPhotoPath = profilePhotoPath,
+            onSave = { name, avatarId, photoUri, removePhoto ->
+                onSaveProfile(name, avatarId, photoUri, removePhoto)
+                showProfileEditor = false
+            },
+            onDismiss = { showProfileEditor = false }
+        )
     }
 
     // Connection approval is global: users must not miss a request just because
