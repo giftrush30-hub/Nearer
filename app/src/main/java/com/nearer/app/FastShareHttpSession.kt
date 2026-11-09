@@ -30,6 +30,7 @@ internal object FastShareHttpSession {
         var rangeHeader: String? = null
         var sawRangeHeader = false
         var sawHostHeader = false
+        var sawContentLengthHeader = false
         var headerBytes = 0
         var headerCount = 0
         while (true) {
@@ -60,6 +61,19 @@ internal object FastShareHttpSession {
                     return rejectBadRequest(output)
                 }
                 sawHostHeader = true
+            }
+            if (name.equals("Transfer-Encoding", ignoreCase = true)) {
+                // This receiver never consumes request bodies or chunk framing.
+                return rejectBadRequest(output)
+            }
+            if (name.equals("Content-Length", ignoreCase = true)) {
+                // GET/HEAD requests have no body in this protocol. Accept zero only.
+                if (sawContentLengthHeader) return rejectBadRequest(output)
+                sawContentLengthHeader = true
+                val length = headerValue.trim()
+                if (length.isEmpty() || length.any { it !in '0'..'9' } ||
+                    length.toLongOrNull() != 0L
+                ) return rejectBadRequest(output)
             }
             if (name.equals("Range", ignoreCase = true)) {
                 if (sawRangeHeader) return rejectBadRequest(output)
