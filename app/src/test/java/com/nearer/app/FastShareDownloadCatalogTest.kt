@@ -98,5 +98,9 @@ class FastShareDownloadCatalogTest {
         assertTrue(page.contains("Trying the next file"))
         assertTrue(page.contains("Select failed files to retry"))
         assertTrue(page.contains("Cancelled after"))
+        assertTrue(page.contains("new DataTransfer()"))
+        assertTrue(page.contains("selection.items.add(file)"))
+        assertTrue(page.contains("Retry "))
+        assertTrue(page.contains("Remaining files are ready to retry"))
     }
 }
