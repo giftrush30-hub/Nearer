@@ -412,13 +412,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
             override fun onFileReceived(id: String, name: String, file: File) {
+                val isAppBundle = isNeaRerAppBundle(file)
                 runOnUiThread {
                     incomingTransferName = null
                     incomingProgress = 0f
-                    val isAppBundle = isNeaRerAppBundle(file)
                     receivedFiles.add(0, ReceivedFile(name, file, isAppBundle))
                     recordNearbyTransfer("Received", name, file.length(), "Complete")
-                    chatNotice = "Received and saved: $name. Tap it below to open."
+                    chatNotice = if (isAppBundle) {
+                        "Received an app bundle: $name. Review it and tap Install when ready."
+                    } else "Received and saved: $name. Tap it below to open."
                 }
             }
             override fun onFileStatus(message: String) {
@@ -1808,8 +1810,7 @@ class MainActivity : ComponentActivity() {
                         }
                         val resultIntent = Intent(this, AppInstallResultActivity::class.java)
                             .putExtra("received_app_name", item.displayName)
-                        val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+                        val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
                         val callback = PendingIntent.getActivity(this, sessionId, resultIntent, pendingFlags)
                         session.commit(callback.intentSender)
                     }
@@ -3406,6 +3407,37 @@ private data class IncomingTransfer(
 ) {
     fun close() {
         try { output.flush(); output.close() } catch (_: Exception) { }
+    }
+}
+
+internal class AppInstallResultActivity : android.app.Activity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            val confirmation = if (Build.VERSION.SDK_INT >= 33) {
+                intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(Intent.EXTRA_INTENT) as? Intent
+            }
+            if (confirmation != null) startActivity(confirmation)
+            finish()
+            return
+        }
+        val success = status == PackageInstaller.STATUS_SUCCESS
+        val detail = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE).orEmpty()
+        val message = if (success) {
+            "Android reports that the app was installed successfully."
+        } else {
+            "Android did not complete the installation." + if (detail.isBlank()) "" else "\n\n" + detail
+        }
+        AlertDialog.Builder(this)
+            .setTitle(if (success) "App installed" else "Installation not completed")
+            .setMessage(message)
+            .setPositiveButton("OK") { _, _ -> finish() }
+            .setOnCancelListener { finish() }
+            .show()
     }
 }
 
