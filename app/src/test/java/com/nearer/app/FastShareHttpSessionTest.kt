@@ -97,10 +97,10 @@ class FastShareHttpSessionTest {
 
     @Test fun uploadRejectsRangeAndIfRangeHeaders() {
         val (exchange, response) = read(
-            "POST /upload HTTP/1.1\\r\\nX-Filename: clip.mp4\\r\\nContent-Length: 0\\r\\nIf-Range: \\"validator\\"\\r\\n\\r\\n"
+            "POST /upload HTTP/1.1\r\nX-Filename: clip.mp4\r\nContent-Length: 0\r\nIf-Range: \"validator\"\r\n\r\n"
         )
         assertNull(exchange)
-        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
     @Test fun uploadWithoutFilenameOrLengthIsRejected() {
