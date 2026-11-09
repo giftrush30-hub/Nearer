@@ -89,7 +89,7 @@ class FastShareHttpSocketTest {
 
     @Test fun duplicateRangeHeadersOverTcpAreRejected() {
         val response = exchange(
-            "GET /download HTTP/1.1\r\nRange: bytes=0-2\r\nrange: bytes=3-5\r\n\r\n"
+            "GET /download HTTP/1.1\r\nHost: localhost\r\nRange: bytes=0-2\r\nrange: bytes=3-5\r\n\r\n"
         )
         assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
@@ -104,7 +104,7 @@ class FastShareHttpSocketTest {
     }
 
     @Test fun headRequestReturnsMetadataWithoutFileBody() {
-        val response = exchange("HEAD /download HTTP/1.1\r\n\r\n")
+        val response = exchange("HEAD /download HTTP/1.1\r\nHost: localhost\r\n\r\n")
         assertTrue(response.startsWith("HTTP/1.1 200 OK\r\n"))
         assertTrue(response.contains("Content-Length: 10\r\n"))
         assertTrue(response.endsWith("\r\n\r\n"))
