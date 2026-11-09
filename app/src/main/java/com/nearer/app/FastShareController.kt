@@ -287,12 +287,15 @@ private class FastShareHttpServer(
 ) {
     // Bound client work so a busy or hostile local-network peer cannot
     // create an unbounded number of server threads.
+    // Five core workers allow five actual file streams to run together.
+    // The accept loop has its own daemon thread, so it never steals a slot.
+    // Keep extra connections bounded to avoid unbounded thread/memory growth.
     private val executor = ThreadPoolExecutor(
-        2,
-        4,
+        5,
+        8,
         60L,
         TimeUnit.SECONDS,
-        ArrayBlockingQueue(8)
+        ArrayBlockingQueue(16)
     )
     @Volatile private var running = true
     private val downloadGate = FastShareDownloadGate()
