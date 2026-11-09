@@ -3021,7 +3021,7 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Chats" to "▤", "Share" to "⇧", "Games" to "♟").forEach { item ->
+                    listOf("Chats" to "▤", "Share" to "⇧", "Games" to "♟", "More" to "⋯").forEach { item ->
                         val selected = selectedTab == item.first
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
