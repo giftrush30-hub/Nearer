@@ -53,11 +53,11 @@ internal object FastShareHttpSession {
                 return rejectBadRequest(output)
             }
             if (name.equals("Host", ignoreCase = true)) {
-                // A Host field is a single authority value, not a comma-list.
-                // Reject duplicates and empty/whitespace-only authorities so
-                // different HTTP components cannot disagree about the target host.
+                // Host is an HTTP authority, not a URL or a list of authorities.
+                // Restrict it to visible ASCII and reject URI delimiters so
+                // malformed values cannot be interpreted differently by clients.
                 val host = headerValue.trim()
-                if (sawHostHeader || host.isEmpty() || host.any { it.isWhitespace() || it == ',' }) {
+                if (sawHostHeader || !isValidHostAuthority(host)) {
                     return rejectBadRequest(output)
                 }
                 sawHostHeader = true
@@ -100,6 +100,13 @@ internal object FastShareHttpSession {
         return FastShareHttpExchange(request, if (request.isHeadOnly) null else rangeHeader)
     }
 
+    private fun isValidHostAuthority(value: String): Boolean {
+        if (value.isEmpty()) return false
+        return value.all { character ->
+            character.code in 0x21..0x7e && character !in "/\\?#@"
+        }
+    }
+
     private fun isTokenCharacter(value: Char): Boolean =
         value in 'a'..'z' || value in 'A'..'Z' || value in '0'..'9' ||
             value in "!#$%&'*+-.^_`|~"
@@ -140,4 +147,5 @@ internal object FastShareHttpSession {
         if (bytes.size() > MAX_LINE_BYTES) return Line("", bytes.size(), false, true)
         if (bytes.size() == 0 && !terminated && !sawCarriageReturn) return null
         return Line(bytes.toString("UTF-8"), bytes.size(), terminated, false)
-    }}
+    }
+}
