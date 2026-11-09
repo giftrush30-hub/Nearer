@@ -2733,7 +2733,7 @@ private fun NeaRerHome(
             }
 
             if (selectedTab == "Share") {
-                FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, modifier = Modifier.weight(1f))
+                FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, onReceive = { selectedTab = "Nearby"; onFindNearby() }, modifier = Modifier.weight(1f))
             }
 
             if (selectedTab == "Nearby") {

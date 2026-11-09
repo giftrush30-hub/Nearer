@@ -352,6 +352,7 @@ internal object AndroidFileCatalog {
 internal fun FileCentreScreen(
     connected: Boolean,
     onSendFiles: (List<Uri>) -> Unit,
+    onReceive: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -618,6 +619,29 @@ internal fun FileCentreScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = BlueAccent),
                 shape = RoundedCornerShape(12.dp)
             ) { Text(if (gridMode) "List" else "Grid") }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            Button(
+                onClick = onReceive,
+                modifier = Modifier.weight(1f).height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight),
+                shape = RoundedCornerShape(13.dp)
+            ) {
+                Text("Receive nearby", fontWeight = FontWeight.Bold)
+            }
+            Surface(
+                modifier = Modifier.weight(1f),
+                color = if (connected) Color(0xFF173C3A) else Panel,
+                shape = RoundedCornerShape(13.dp)
+            ) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Text(if (connected) "READY TO SHARE" else "NOT CONNECTED", color = if (connected) BlueAccent else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(if (connected) "Choose files below" else "Connect to a nearby phone", color = White, fontSize = 10.sp, maxLines = 1)
+                }
+            }
         }
         OutlinedTextField(
             value = search,
