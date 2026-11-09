@@ -2519,7 +2519,7 @@ private fun NeaRerHome(
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = BlueAccent)
                         ) { Text("Save my nearby name") }
-                        androidx.compose.foundation.layout.Divider(color = Midnight)
+                        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Midnight))
                         Text("YOUR NEARER ID", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Text("NR-$nearbyIdentityId", color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                         Text("This is your public nearby identity. Share it so people can recognise the right NeaRer profile.", color = Muted, fontSize = 12.sp)
