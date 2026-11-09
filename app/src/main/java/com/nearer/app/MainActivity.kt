@@ -520,6 +520,7 @@ class MainActivity : ComponentActivity() {
                     incomingTransferName = incomingTransferName,
                     incomingProgress = incomingProgress,
                     onOpenFile = ::openReceivedFile,
+                    onForwardReceivedFile = ::forwardReceivedFile,
                     onSaveReceivedFile = ::saveReceivedFileToDownloads,
                     onDisconnect = ::disconnectFromPeer,
                     onAccept = ::approveIncoming,
@@ -1753,6 +1754,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun forwardReceivedFile(item: ReceivedFile) {
+        try {
+            val uri = FileProvider.getUriForFile(this, "${packageName}.files", item.file)
+            sendFiles(listOf(uri))
+        } catch (error: Exception) {
+            chatNotice = "Could not prepare ${item.displayName} to send again: ${error.localizedMessage ?: "file access error"}"
+        }
+    }
+
     private fun saveReceivedFileToDownloads(item: ReceivedFile) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             chatNotice = "Saving directly to Downloads is supported on Android 10 and newer. You can still open this file and use your phone's Save or Share option."
@@ -2411,6 +2421,7 @@ private fun NeaRerHome(
     incomingTransferName: String?,
     incomingProgress: Float,
     onOpenFile: (ReceivedFile) -> Unit,
+    onForwardReceivedFile: (ReceivedFile) -> Unit,
     onSaveReceivedFile: (ReceivedFile) -> Unit,
     onDisconnect: () -> Unit,
     onAccept: () -> Unit,
@@ -2825,6 +2836,12 @@ private fun NeaRerHome(
                                         shape = RoundedCornerShape(12.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
                                     ) { Text("Save to device", maxLines = 1) }
+                                    Button(
+                                        onClick = { onForwardReceivedFile(fileItem) },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                                    ) { Text("Send again", maxLines = 1) }
                                 }
                             }
                         }
