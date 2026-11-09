@@ -9,11 +9,11 @@ class FastShareHttpSessionTest {
     private fun read(raw: String, addDefaultHost: Boolean = true): Pair<FastShareHttpExchange?, String> {
         val request = if (addDefaultHost && raw.startsWith("GET ") || addDefaultHost && raw.startsWith("HEAD ") ||
             addDefaultHost && raw.startsWith("POST ")) {
-            val firstLineEnd = raw.indexOf("\\r\\n")
+            val firstLineEnd = raw.indexOf("\r\n")
             val head = if (firstLineEnd >= 0) raw.substring(0, firstLineEnd + 2) else ""
-            if (head.endsWith("HTTP/1.1\\r\\n") && !raw.substring(firstLineEnd + 2).startsWith("Host:", ignoreCase = true) &&
-                !raw.contains("\\r\\nHost:", ignoreCase = true) && !raw.contains("\\r\\nhost:", ignoreCase = true)) {
-                raw.replaceFirst("\\r\\n", "\\r\\nHost: test.local\\r\\n")
+            if (head.endsWith("HTTP/1.1\r\n") && !raw.substring(firstLineEnd + 2).startsWith("Host:", ignoreCase = true) &&
+                !raw.contains("\r\nHost:", ignoreCase = true) && !raw.contains("\r\nhost:", ignoreCase = true)) {
+                raw.replaceFirst("\r\n", "\r\nHost: test.local\r\n")
             } else raw
         } else raw
         val output = ByteArrayOutputStream()
@@ -191,13 +191,13 @@ class FastShareHttpSessionTest {
     }
 
     @Test fun http11RequestWithoutHostIsRejected() {
-        val (exchange, response) = read("GET /download HTTP/1.1\\r\\n\\r\\n", addDefaultHost = false)
+        val (exchange, response) = read("GET /download HTTP/1.1\r\n\r\n", addDefaultHost = false)
         assertNull(exchange)
-        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\\r\\n"))
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
     @Test fun http10RequestMayOmitHostHeader() {
-        val (exchange, response) = read("GET /download HTTP/1.0\\r\\n\\r\\n", addDefaultHost = false)
+        val (exchange, response) = read("GET /download HTTP/1.0\r\n\r\n", addDefaultHost = false)
         assertNotNull(exchange)
         assertTrue(response.isEmpty())
     }
