@@ -2909,6 +2909,60 @@ private fun PremiumChatsScreen(
             }
         }
 
+        // Real inbox: summaries are derived from saved messages, never demo contacts.
+        var inboxQuery by remember { mutableStateOf("") }
+        val inboxThreads = remember(messages) { ConversationIndex.build(messages) }
+        val visibleThreads = remember(inboxThreads, inboxQuery) {
+            if (inboxQuery.isBlank()) inboxThreads else inboxThreads.filter {
+                it.displayName.contains(inboxQuery, ignoreCase = true) ||
+                    it.lastMessage.body.contains(inboxQuery, ignoreCase = true)
+            }
+        }
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("RECENT CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                    Spacer(Modifier.weight(1f))
+                    Text("${inboxThreads.size} chats", color = Muted, fontSize = 10.sp)
+                }
+                OutlinedTextField(
+                    value = inboxQuery,
+                    onValueChange = { inboxQuery = it.take(60) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("Search names or messages", color = Muted, fontSize = 12.sp) },
+                    leadingIcon = { Text("⌕", color = BlueAccent, fontSize = 20.sp) },
+                    shape = RoundedCornerShape(15.dp)
+                )
+                if (visibleThreads.isEmpty()) {
+                    Text(if (inboxThreads.isEmpty()) "Your conversations will appear here as you chat." else "No conversations match that search.", color = Muted, fontSize = 11.sp, lineHeight = 17.sp)
+                } else {
+                    visibleThreads.take(8).forEach { thread ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(Color(0xFF1A2B43)).padding(11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(Modifier.size(38.dp), shape = CircleShape, color = Color(0xFF294D78)) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text(thread.displayName.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(thread.displayName, color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(thread.lastMessage.body, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(thread.lastMessage.timestamp)), color = Muted, fontSize = 9.sp)
+                                Text("${thread.messageCount}", color = BlueAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    if (visibleThreads.size > 8) Text("Showing 8 recent chats. Search to find older conversations.", color = Muted, fontSize = 9.sp)
+                }
+            }
+        }
+
         Surface(
             modifier = Modifier.fillMaxWidth().animateContentSize(),
             shape = RoundedCornerShape(24.dp),
