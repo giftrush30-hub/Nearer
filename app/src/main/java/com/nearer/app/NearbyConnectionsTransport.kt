@@ -665,7 +665,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     try { client.cancelPayload(id) } catch (_: Exception) { }
                     try { payload.close() } catch (_: Exception) { }
                     outgoing.temporarySourceFile?.delete()
-                    listener.onFileStatus("File could not be verified before sending: \${error.localizedMessage ?: "please try again"}")
+                    listener.onFileStatus("File could not be verified before sending: " + (error.localizedMessage ?: "please try again"))
                 }
             }
             return id
@@ -673,7 +673,7 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
             try { filePayload?.close() } catch (_: Exception) { }
             try { descriptor?.close() } catch (_: Exception) { }
             stagedSource?.delete()
-            listener.onFileStatus("File could not be prepared: \${error.localizedMessage ?: "choose another file"}")
+            listener.onFileStatus("File could not be prepared: " + (error.localizedMessage ?: "choose another file"))
             return null
         }
     }
