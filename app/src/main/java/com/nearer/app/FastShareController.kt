@@ -477,8 +477,19 @@ private class FastShareHttpServer(
                             output.write(FastShareHttpErrors.tooManyRequests())
                         } else {
                             try {
-                                if (running) streamFile(output, uri, item, rangeHeader, false, transferId)
-                                else onTransferDiscarded(transferId)
+                                if (running) {
+                                    try {
+                                        streamFile(output, uri, item, rangeHeader, false, transferId)
+                                    } catch (error: Exception) {
+                                        // A socket can fail while writing response headers, before
+                                        // StreamCopy has a chance to report interruption. Always
+                                        // retire this receiver's ledger entry on that path too.
+                                        onTransferDiscarded(transferId)
+                                        throw error
+                                    }
+                                } else {
+                                    onTransferDiscarded(transferId)
+                                }
                             } finally {
                                 downloadGate.release()
                             }
