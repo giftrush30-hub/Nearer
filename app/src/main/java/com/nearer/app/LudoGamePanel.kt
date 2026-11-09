@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -36,14 +37,16 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val LudoGold = Color(0xFFFFC857)
-private val LudoNavy = Color(0xFF10243B)
-private val LudoSurface = Color(0xFF193653)
+private val LudoGold = Color(0xFFFFD15A)
+private val LudoNavy = Color(0xFF0B1728)
+private val LudoSurface = Color(0xFF14263B)
+private val LudoIvory = Color(0xFFF1EBDD)
+private val LudoTrackLine = Color(0xFFB9AD96)
 private fun LudoColor.paint(): Color = when (this) {
-    LudoColor.RED -> Color(0xFFE64F61)
-    LudoColor.GREEN -> Color(0xFF20A978)
-    LudoColor.YELLOW -> Color(0xFFFFC857)
-    LudoColor.BLUE -> Color(0xFF428CE8)
+    LudoColor.RED -> Color(0xFFC94D5D)
+    LudoColor.GREEN -> Color(0xFF168B70)
+    LudoColor.YELLOW -> Color(0xFFD4A43E)
+    LudoColor.BLUE -> Color(0xFF2D67B2)
 }
 
 private val ludoTrack = buildList {
@@ -396,10 +399,13 @@ fun LudoGamePanel(
 
 @Composable
 private fun DiceFace(value: Int, rotation: Float) {
-    Canvas(Modifier.size(54.dp)) {
+    Canvas(Modifier.size(58.dp)) {
         rotate(rotation) {
-            drawRoundRect(Color(0xFFFFFEFA), cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width * .2f))
-            drawRoundRect(Color(0xFFD4DCE5), cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width * .2f), style = Stroke(size.width * .035f))
+            val corner = androidx.compose.ui.geometry.CornerRadius(size.width * .2f)
+            drawRoundRect(Color(0xFF050D18).copy(alpha = .58f), topLeft = Offset(size.width * .04f, size.height * .07f), size = Size(size.width * .94f, size.height * .94f), cornerRadius = corner)
+            drawRoundRect(Brush.linearGradient(listOf(Color(0xFFFFFDF6), Color(0xFFE2D8C5))), cornerRadius = corner)
+            drawRoundRect(LudoGold.copy(alpha = .9f), cornerRadius = corner, style = Stroke(size.width * .045f))
+            drawRoundRect(Color(0xFF9A8C72), topLeft = Offset(size.width * .035f, size.height * .035f), size = Size(size.width * .93f, size.height * .93f), cornerRadius = corner, style = Stroke(size.width * .012f))
             val r = size.width * .075f
             val points = when (value) {
                 1 -> listOf(.5f to .5f)
@@ -424,7 +430,7 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, stepDurationMs
         }
     }
     Canvas(modifier
-        .background(Color(0xFFF4F6FA), RoundedCornerShape(16.dp))
+        .background(LudoNavy, RoundedCornerShape(20.dp))
         .pointerInput(game, legalMoves) {
             detectTapGestures { tap ->
                 if (game.currentPlayer.isComputer || game.diceValue == null) return@detectTapGestures
@@ -437,8 +443,12 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, stepDurationMs
         }) {
         val unit = size.width / 15f
         val palette = LudoColor.entries.associateWith { it.paint() }
-        drawRoundRect(Color(0xFFDFE5ED), cornerRadius = androidx.compose.ui.geometry.CornerRadius(unit * .25f))
-        drawRect(Color(0xFFF8FAFC), Offset(unit * .25f, unit * .25f), Size(unit * 14.5f, unit * 14.5f))
+        val boardCorner = androidx.compose.ui.geometry.CornerRadius(unit * .34f)
+        drawRoundRect(Color(0xFF050D18).copy(alpha = .72f), topLeft = Offset(0f, unit * .08f), size = Size(size.width, size.height), cornerRadius = boardCorner)
+        drawRoundRect(Brush.linearGradient(listOf(Color(0xFF203A55), Color(0xFF0B1728))), cornerRadius = boardCorner)
+        drawRoundRect(LudoGold.copy(alpha = .9f), topLeft = Offset(unit * .07f, unit * .07f), size = Size(size.width - unit * .14f, size.height - unit * .14f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(unit * .3f), style = Stroke(unit * .055f))
+        drawRoundRect(Color(0xFF071321), Offset(unit * .22f, unit * .22f), Size(unit * 14.56f, unit * 14.56f), androidx.compose.ui.geometry.CornerRadius(unit * .18f))
+        drawRoundRect(Brush.linearGradient(listOf(Color(0xFF1A2E44), Color(0xFF101F32))), Offset(unit * .3f, unit * .3f), Size(unit * 14.4f, unit * 14.4f), androidx.compose.ui.geometry.CornerRadius(unit * .12f))
 
         // Four raised home quarters.
         val quarters = listOf(
@@ -446,9 +456,13 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, stepDurationMs
             Triple(9f, 9f, LudoColor.YELLOW), Triple(0f, 9f, LudoColor.BLUE)
         )
         quarters.forEach { (x, y, color) ->
-            drawRoundRect(palette.getValue(color), Offset((x + .12f) * unit, (y + .12f) * unit), Size(5.76f * unit, 5.76f * unit), androidx.compose.ui.geometry.CornerRadius(unit * .45f))
-            drawRoundRect(Color.White, Offset((x + .9f) * unit, (y + .9f) * unit), Size(4.2f * unit, 4.2f * unit), androidx.compose.ui.geometry.CornerRadius(unit * .35f))
-            drawRoundRect(Color(0xFFE7ECF2), Offset((x + 1.05f) * unit, (y + 1.05f) * unit), Size(3.9f * unit, 3.9f * unit), androidx.compose.ui.geometry.CornerRadius(unit * .3f), style = Stroke(unit * .035f))
+            val jewel = palette.getValue(color)
+            drawRoundRect(Color.Black.copy(alpha = .34f), Offset((x + .12f) * unit, (y + .2f) * unit), Size(5.76f * unit, 5.76f * unit), androidx.compose.ui.geometry.CornerRadius(unit * .45f))
+            drawRoundRect(Brush.linearGradient(listOf(jewel, jewel.copy(alpha = .72f))), Offset((x + .12f) * unit, (y + .12f) * unit), Size(5.76f * unit, 5.76f), androidx.compose.ui.geometry.CornerRadius(unit * .45f))
+            drawRoundRect(LudoGold.copy(alpha = .78f), Offset((x + .12f) * unit, (y + .12f) * unit), Size(5.76f * unit, 5.76f), androidx.compose.ui.geometry.CornerRadius(unit * .45f), style = Stroke(unit * .045f))
+            drawRoundRect(Color(0xFF102238), Offset((x + .9f) * unit, (y + .9f) * unit), Size(4.2f * unit, 4.2f * unit), androidx.compose.ui.geometry.CornerRadius(unit * .35f))
+            drawRoundRect(Brush.linearGradient(listOf(LudoIvory, Color(0xFFDCD0B9))), Offset((x + 1.05f) * unit, (y + 1.05f) * unit), Size(3.9f * unit, 3.9f), androidx.compose.ui.geometry.CornerRadius(unit * .3f))
+            drawRoundRect(Color(0xFF9F9279), Offset((x + 1.05f) * unit, (y + 1.05f) * unit), Size(3.9f * unit, 3.9f), androidx.compose.ui.geometry.CornerRadius(unit * .3f), style = Stroke(unit * .035f))
         }
 
         // The real 52-square clockwise race track.
@@ -460,9 +474,13 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, stepDurationMs
                 39 -> LudoColor.BLUE
                 else -> null
             }
-            val fill = color?.let { palette.getValue(it) } ?: Color.White
-            drawRoundRect(fill, Offset(x * unit + unit * .035f, y * unit + unit * .035f), Size(unit * .93f, unit * .93f), androidx.compose.ui.geometry.CornerRadius(unit * .12f))
-            drawRoundRect(Color(0xFFD5DCE5), Offset(x * unit + unit * .035f, y * unit + unit * .035f), Size(unit * .93f, unit * .93f), androidx.compose.ui.geometry.CornerRadius(unit * .12f), style = Stroke(unit * .025f))
+            val fill = color?.let { palette.getValue(it) } ?: LudoIvory
+            val cellTopLeft = Offset(x * unit + unit * .035f, y * unit + unit * .035f)
+            val cellSize = Size(unit * .93f, unit * .93f)
+            val cellCorner = androidx.compose.ui.geometry.CornerRadius(unit * .12f)
+            drawRoundRect(Color(0xFF06111E).copy(alpha = .5f), Offset(cellTopLeft.x, cellTopLeft.y + unit * .035f), cellSize, cellCorner)
+            drawRoundRect(fill, cellTopLeft, cellSize, cellCorner)
+            drawRoundRect(if (color == null) LudoTrackLine else Color.White.copy(alpha = .48f), cellTopLeft, cellSize, cellCorner, style = Stroke(unit * .028f))
             if (index in setOf(0, 13, 26, 39)) {
                 val direction = when (index) {
                     0 -> Offset(0f, -1f)
@@ -506,8 +524,11 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, stepDurationMs
                 Triple(1 + i, 7, LudoColor.BLUE)
             )
             lanes.forEach { (x, y, color) ->
-                drawRoundRect(palette.getValue(color), Offset(x * unit + unit * .035f, y * unit + unit * .035f), Size(unit * .93f, unit * .93f), androidx.compose.ui.geometry.CornerRadius(unit * .1f))
-                drawRoundRect(Color.White.copy(alpha = .55f), Offset(x * unit + unit * .035f, y * unit + unit * .035f), Size(unit * .93f, unit * .93f), androidx.compose.ui.geometry.CornerRadius(unit * .1f), style = Stroke(unit * .025f))
+                val laneTopLeft = Offset(x * unit + unit * .035f, y * unit + unit * .035f)
+                val laneSize = Size(unit * .93f, unit * .93f)
+                val laneCorner = androidx.compose.ui.geometry.CornerRadius(unit * .1f)
+                drawRoundRect(palette.getValue(color), laneTopLeft, laneSize, laneCorner)
+                drawRoundRect(Color.White.copy(alpha = .62f), laneTopLeft, laneSize, laneCorner, style = Stroke(unit * .035f))
             }
         }
 
@@ -541,10 +562,11 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, stepDurationMs
                     drawCircle(LudoGold.copy(alpha = .35f), unit * .48f, stackedPoint)
                     drawCircle(LudoGold, unit * .48f, stackedPoint, style = Stroke(unit * .07f))
                 }
-                drawCircle(Color(0x550C1B2A), unit * .36f, stackedPoint + Offset(unit * .035f, unit * .07f))
-                drawCircle(player.color.paint(), unit * .32f, stackedPoint)
-                drawCircle(Color.White, unit * .24f, stackedPoint, style = Stroke(unit * .07f))
-                drawCircle(Color.White.copy(alpha = .9f), unit * .07f, stackedPoint + Offset(-unit * .09f, -unit * .1f))
+                drawCircle(Color(0x99030A12), unit * .37f, stackedPoint + Offset(unit * .045f, unit * .095f))
+                drawCircle(Color(0xFF081525), unit * .34f, stackedPoint + Offset(0f, unit * .025f))
+                drawCircle(Brush.linearGradient(listOf(player.color.paint(), player.color.paint().copy(alpha = .68f))), unit * .31f, stackedPoint)
+                drawCircle(LudoGold.copy(alpha = .95f), unit * .245f, stackedPoint, style = Stroke(unit * .025f))
+                drawCircle(Color.White.copy(alpha = .9f), unit * .075f, stackedPoint + Offset(-unit * .09f, -unit * .1f))
             }
         }
     }
