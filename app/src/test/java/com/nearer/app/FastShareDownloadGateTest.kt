@@ -3,6 +3,7 @@ package com.nearer.app
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -76,5 +77,46 @@ class FastShareDownloadGateTest {
         gate.release()
         assertTrue(gate.tryAcquire(0, TimeUnit.MILLISECONDS))
         repeat(5) { gate.release() }
+    }
+    @Test fun concurrentCallersNeverExceedFiveActivePermitsAndAllComplete() {
+        val gate = FastShareDownloadGate()
+        val callers = 12
+        val ready = CountDownLatch(callers)
+        val start = CountDownLatch(1)
+        val active = AtomicInteger(0)
+        val peak = AtomicInteger(0)
+        val completed = AtomicInteger(0)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(callers)
+
+        try {
+            val tasks = (1..callers).map {
+                pool.submit<Boolean> {
+                    ready.countDown()
+                    if (!start.await(2, TimeUnit.SECONDS)) return@submit false
+                    val acquired = gate.tryAcquire(5, TimeUnit.SECONDS)
+                    if (!acquired) return@submit false
+                    try {
+                        val nowActive = active.incrementAndGet()
+                        peak.updateAndGet { previous -> maxOf(previous, nowActive) }
+                        Thread.sleep(40)
+                        completed.incrementAndGet()
+                        true
+                    } finally {
+                        active.decrementAndGet()
+                        gate.release()
+                    }
+                }
+            }
+
+            assertTrue("All callers should be ready before the race starts", ready.await(2, TimeUnit.SECONDS))
+            start.countDown()
+            assertTrue("Every queued caller should finish", tasks.all { it.get(7, TimeUnit.SECONDS) })
+            assertEquals(callers, completed.get())
+            assertEquals("The five available slots should all be used", 5, peak.get())
+            assertEquals(0, active.get())
+        } finally {
+            start.countDown()
+            pool.shutdownNow()
+        }
     }
 }
