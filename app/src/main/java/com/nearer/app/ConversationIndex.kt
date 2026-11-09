@@ -14,7 +14,7 @@ internal data class ConversationSummary(
 
 internal object ConversationIndex {
     fun build(messages: List<ChatMessage>): List<ConversationSummary> =
-        messages.groupBy { it.conversationId.ifBlank { "legacy" } }
+        messages.groupBy { message -> message.conversationId.ifBlank { "legacy:${message.id}" } }
             .map { (id, thread) ->
                 val latest = thread.maxByOrNull { it.timestamp }!!
                 ConversationSummary(
