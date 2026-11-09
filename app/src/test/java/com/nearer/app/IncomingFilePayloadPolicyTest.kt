@@ -21,6 +21,10 @@ class IncomingFilePayloadPolicyTest {
         assertFalse(NearbyConnectionsTransport.IncomingFilePayloadPolicy.canAccept("endpoint-2", "peer-a", "endpoint-3", "peer-b"))
     }
 
+    @Test fun rejectsMissingStableIdentityEvenWhenEndpointIsReused() {
+        assertFalse(NearbyConnectionsTransport.IncomingFilePayloadPolicy.canAccept("endpoint-1", "peer-a", "endpoint-1", ""))
+    }
+
     @Test fun legacyPeerMustUseOriginalEndpoint() {
         assertTrue(NearbyConnectionsTransport.IncomingFilePayloadPolicy.canAccept("endpoint-1", "", "endpoint-1", ""))
         assertFalse(NearbyConnectionsTransport.IncomingFilePayloadPolicy.canAccept("endpoint-1", "", "endpoint-2", ""))
