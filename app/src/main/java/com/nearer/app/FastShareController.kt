@@ -445,7 +445,15 @@ private class FastShareHttpServer(
             try {
             val input = BufferedInputStream(connection.getInputStream())
             val output = BufferedOutputStream(writeGuard.wrap(connection.getOutputStream()))
-            val exchange = FastShareHttpSession.readRequest(input, output) ?: return
+            // SO_TIMEOUT limits each individual read. A peer could otherwise
+            // trickle one header byte before every timeout and pin a worker.
+            // Bound the complete request-header phase as well.
+            val readDeadline = SocketReadDeadline(connection, writeWatchdog, 30_000L)
+            val exchange = try {
+                FastShareHttpSession.readRequest(input, output)
+            } finally {
+                readDeadline.close()
+            } ?: return
             val request = exchange.request
             val headOnly = request.isHeadOnly
             val rangeHeader = exchange.rangeHeader
