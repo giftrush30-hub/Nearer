@@ -18,6 +18,13 @@ class FastShareHostAuthorityTest {
         }
     }
 
+    @Test fun rejectsInvalidOrAmbiguousIpv4Authorities() {
+        listOf("256.1.2.3", "1.999.2.3", "1.2.3.999", "01.2.3.4",
+            "1.02.3.4", "1.2.003.4", "1.2.3.04").forEach {
+            assertFalse("Expected invalid IPv4 authority: $it", FastShareHostAuthority.isValid(it))
+        }
+    }
+
     @Test fun rejectsMalformedDnsLabelsAndEmptyAuthority() {
         listOf("", ".", "-phone.local", "phone-.local", "two..labels", "bad_host.local", " phone.local").forEach {
             assertFalse("Expected invalid authority: $it", FastShareHostAuthority.isValid(it))
