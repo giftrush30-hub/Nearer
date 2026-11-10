@@ -3216,7 +3216,7 @@ private fun NeaRerHome(
                         Text("RECENT CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         conversations.forEach { conversation ->
                             val latest = conversation.lastMessage
-                            val isSelected = conversation.conversationId == activeConversation?.key
+                            val isSelected = conversation.conversationId == activeConversation?.conversationId
                             Surface(
                                 modifier = Modifier.fillMaxWidth().clickable { selectedConversationKey = conversation.conversationId },
                                 shape = RoundedCornerShape(14.dp),
