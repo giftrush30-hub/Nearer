@@ -37,6 +37,8 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.UUID
 
 /**
@@ -195,7 +197,10 @@ internal fun NeaRerBackupRecoveryPanel(chatDatabase: NeaRerChatHistoryDatabase) 
                                     try {
                                         val input = context.contentResolver.openInputStream(sourceUri)
                                             ?: throw IOException("Could not read the selected backup")
-                                        input.use { source -> FileOutputStream(temp).use { source.copyTo(it, 64 * 1024); it.fd.sync() } }
+                                        input.use { source -> FileOutputStream(temp).use { destination ->
+                                            copyBackupInput(source, destination)
+                                            destination.fd.sync()
+                                        } }
                                         NeaRerBackupManager.prepareEncryptedBackup(context, temp, secret)
                                     } finally {
                                         temp.delete()
@@ -225,7 +230,7 @@ internal fun NeaRerBackupRecoveryPanel(chatDatabase: NeaRerChatHistoryDatabase) 
     }
 
     val staged = prepared
-    if (staged != null) {
+    if (staged != null && !showRestoreConfirmation) {
         val preview = staged.preview
         AlertDialog(
             onDismissRequest = { if (!busy) { prepared?.close(); prepared = null } },
@@ -283,5 +288,23 @@ internal fun NeaRerBackupRecoveryPanel(chatDatabase: NeaRerChatHistoryDatabase) 
             },
             dismissButton = { TextButton(enabled = !busy, onClick = { showRestoreConfirmation = false }) { Text("Go back") } }
         )
+    }
+}
+
+
+private const val MAX_ENCRYPTED_BACKUP_BYTES = 2L * 1024 * 1024 * 1024 + 64L * 1024 * 1024
+
+@Throws(IOException::class)
+private fun copyBackupInput(input: InputStream, output: OutputStream) {
+    val buffer = ByteArray(64 * 1024)
+    var total = 0L
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) break
+        total += count
+        if (total > MAX_ENCRYPTED_BACKUP_BYTES) {
+            throw IOException("Selected backup is larger than NeaRer's supported backup limit")
+        }
+        output.write(buffer, 0, count)
     }
 }
