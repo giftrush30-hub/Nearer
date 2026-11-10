@@ -36,25 +36,13 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - The community feature layer is not a substitute for a reviewed end-to-end security design. Nearby Connections provides encrypted peer connections, but group identity, membership verification and relay privacy need further security work.
 - Two-physical-phone testing is required before these features can be described as field-verified.
 
-## Build and download
+## Build policy
 
-The GitHub Actions workflow builds a debug APK on pushes to `main` and uploads an artifact named `nearer-debug-apk` after a successful run. Open the repository's **Actions** tab, select the latest successful **Android debug APK** run, and download its artifact.
-
-Local build:
-
-```bash
-gradle assembleDebug
-```
-
-APK output:
-
-```
-app/build/outputs/apk/debug/app-debug.apk
-```
+GitHub Actions runs JVM unit tests only. It does not compile the Android app, assemble an APK, or upload APK artifacts. APK creation is intentionally deferred until the project owner explicitly declares development complete and authorizes an APK build.
 
 ## Suggested two-phone test
 
-1. Install the same APK on two Android phones.
+1. Install the same APK on two Android phones once an authorized build is available.
 2. Enable Bluetooth and Wi-Fi on both phones and grant NeaRer's nearby-device permissions.
 3. Search from both phones, connect and compare the displayed authentication code before accepting.
 4. Create a group on one phone, share the six-digit code, and join from the other phone.
