@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -123,6 +124,7 @@ internal fun NeaRerOnboarding(
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     var page by remember { mutableStateOf(0) }
+    BackHandler(enabled = page > 0) { page -= 1 }
     var displayName by remember { mutableStateOf("") }
     var avatarId by remember { mutableStateOf("orbit") }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
