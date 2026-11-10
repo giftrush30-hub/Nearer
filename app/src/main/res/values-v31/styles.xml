@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="NeaRerAppTheme" parent="@style/NeaRerAppTheme">
+        <item name="android:windowSplashScreenBackground">#07182A</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_nearer</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#004B90</item>
+        <item name="android:postSplashScreenTheme">@style/NeaRerAppTheme</item>
+    </style>
+</resources>
