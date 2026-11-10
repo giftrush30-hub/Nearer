@@ -712,6 +712,7 @@ internal object IncomingFilePayloadPolicy {
         var descriptor: android.os.ParcelFileDescriptor? = null
         var filePayload: Payload? = null
         var stagedSource: java.io.File? = null
+        var stagedSha256 = ""
         try {
             val openedDescriptor = runCatching {
                 appContext.contentResolver.openFileDescriptor(uri, "r")
@@ -736,7 +737,7 @@ internal object IncomingFilePayloadPolicy {
                     ?: throw IllegalStateException("The selected file could not be opened as a stream")
                 input.use { source ->
                     stagedSource!!.outputStream().buffered().use { output ->
-                        source.copyTo(output, 1024 * 1024)
+                        stagedSha256 = TransferDigest.copyAndSha256(source, output).sha256
                     }
                 }
                 size = stagedSource!!.length()
@@ -757,11 +758,13 @@ internal object IncomingFilePayloadPolicy {
             listener.onFileStatus("Preparing and verifying $name before sending…")
             transferPreparation.execute {
                 try {
-                    val sha256 = if (outgoing.temporarySourceFile != null) {
-                        outgoing.temporarySourceFile.inputStream().use { sha256Hex(it) }
-                    } else {
-                        appContext.contentResolver.openInputStream(uri)?.use { sha256Hex(it) }
-                            ?: throw IllegalStateException("The selected file can no longer be read")
+                    val sha256 = outgoing.sha256.ifBlank {
+                        if (outgoing.temporarySourceFile != null) {
+                            outgoing.temporarySourceFile.inputStream().use { sha256Hex(it) }
+                        } else {
+                            appContext.contentResolver.openInputStream(uri)?.use { sha256Hex(it) }
+                                ?: throw IllegalStateException("The selected file can no longer be read")
+                        }
                     }
                     outgoing.sha256 = sha256
                     if (!synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) {
