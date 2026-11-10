@@ -56,10 +56,11 @@ internal object NeaRerBackupRestoreTransaction {
         val prefs = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         // SharedPreferences may expose mutable StringSet instances. Copy them before
         // any mutation so the rollback snapshot remains an immutable point-in-time copy.
-        val oldPreferences = prefs.all.mapValues { (_, value) ->
-            if (value is Set<*>) value.filterIsInstance<String>().toSet() else value
+        val preferenceValues = prefs.all
+        validatePreferenceSnapshot(preferenceValues)
+        val oldPreferences = preferenceValues.mapValues { (_, value) ->
+            if (value is Set<*>) value.toSet() else value
         }
-        validatePreferenceSnapshot(oldPreferences)
 
         // Validate all rollback inputs before allocating the private workspace.
         val rollbackRoot = createPrivateDirectory(context, "nearer-restore-rollback-")
