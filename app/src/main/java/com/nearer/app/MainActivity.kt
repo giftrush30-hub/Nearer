@@ -256,13 +256,52 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val startupCrash = getSharedPreferences("nearer_diagnostics", Context.MODE_PRIVATE)
-            .getString("nearer_startup_crash", null)
+        val diagnosticPreferences = getSharedPreferences("nearer_diagnostics", Context.MODE_PRIVATE)
+        val startupCrash = runCatching {
+            diagnosticPreferences.getString("nearer_startup_crash", null)
+        }.getOrNull()
         if (!startupCrash.isNullOrBlank()) {
-            val crashHeadline = startupCrash.lineSequence().firstOrNull()?.take(110).orEmpty()
-            statusMessage = "Previous NeaRer crash: ${crashHeadline.ifBlank { "details saved" }}. Please share this message if it appears again."
-            getSharedPreferences("nearer_diagnostics", Context.MODE_PRIVATE).edit()
-                .remove("nearer_startup_crash").apply()
+            // Do not immediately retry a known-crashing startup path. Show the saved
+            // exception first so a phone-only tester can share the actual stack trace.
+            window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
+            window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
+            setContent {
+                MaterialTheme(colorScheme = darkColorScheme(
+                    background = Midnight, surface = Panel, primary = BlueAccent,
+                    secondary = Gold, onBackground = White, onSurface = White
+                )) {
+                    Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text("NeaRer found a startup error", color = Gold, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                            Text("The previous launch crashed. This report records the real error so it can be repaired.", color = White)
+                            Text(startupCrash.take(12000), color = Muted, fontSize = 12.sp)
+                            Button(
+                                onClick = {
+                                    val reportIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "NeaRer startup crash report")
+                                        putExtra(Intent.EXTRA_TEXT, startupCrash)
+                                    }
+                                    startActivity(Intent.createChooser(reportIntent, "Share NeaRer crash report"))
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Share crash report") }
+                            Button(
+                                onClick = {
+                                    diagnosticPreferences.edit().remove("nearer_startup_crash").apply()
+                                    recreate()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                            ) { Text("Try opening NeaRer again") }
+                        }
+                    }
+                }
+            }
+            return
         }
         captureExternalShareIntent(intent)
         window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
@@ -276,8 +315,10 @@ class MainActivity : ComponentActivity() {
             channel = null
             statusMessage = "Wi-Fi Direct could not initialise on this phone. Bluetooth nearby features can still be used."
         }
-        ultraSpeedMode = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-            .getBoolean("ultra_speed_mode", false)
+        ultraSpeedMode = runCatching {
+            getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .getBoolean("ultra_speed_mode", false)
+        }.getOrDefault(false)
         ultraSpeedRestartRequired = false
         nearbyTransport = try {
             NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
@@ -522,9 +563,11 @@ class MainActivity : ComponentActivity() {
         runCatching { restoreNearbyTransferHistory() }
         runCatching { restoreNearbyFileQueue() }
         val queuedAfterRestart = runCatching { nearbyTransport?.pendingMessageIds().orEmpty() }.getOrDefault(emptySet())
-        val recoveredChatStates = ChatRestartRecoveryPolicy.reconcile(chatMessages, queuedAfterRestart)
+        val recoveredChatStates = runCatching {
+            ChatRestartRecoveryPolicy.reconcile(chatMessages, queuedAfterRestart)
+        }.getOrDefault(false)
         if (recoveredChatStates) {
-            persistMessages()
+            runCatching { persistMessages() }
             chatNotice = when {
                 queuedAfterRestart.isNotEmpty() -> "Some messages are safely queued. NeaRer will retry when those people reconnect."
                 chatMessages.any { it.outgoing && it.delivery == "Interrupted" } ->
@@ -639,13 +682,18 @@ class MainActivity : ComponentActivity() {
             addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
         }
         if (!receiverRegistered) {
-            if (Build.VERSION.SDK_INT >= 33) {
-                registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
-            } else {
-                @Suppress("DEPRECATION")
-                registerReceiver(receiver, filter)
+            try {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+                } else {
+                    @Suppress("DEPRECATION")
+                    registerReceiver(receiver, filter)
+                }
+                receiverRegistered = true
+            } catch (error: Exception) {
+                receiverRegistered = false
+                statusMessage = "NeaRer opened with limited Wi-Fi discovery: ${error.javaClass.simpleName}. Bluetooth nearby features may still be available."
             }
-            receiverRegistered = true
         }
     }
 
@@ -659,7 +707,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         if (receiverRegistered) {
-            unregisterReceiver(receiver)
+            runCatching { unregisterReceiver(receiver) }
             receiverRegistered = false
         }
         super.onPause()
