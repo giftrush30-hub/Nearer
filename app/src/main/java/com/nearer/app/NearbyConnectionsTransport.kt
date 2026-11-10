@@ -48,7 +48,6 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val meshRouteTable = MeshRouteTable()
     private val meshIdentity = runCatching { meshIdentityVault.loadOrCreate() }.getOrNull()
     private val meshPeerHellos = ConcurrentHashMap<String, MeshWireProtocol.IdentityHello>()
-    private val meshSeenFrames = ConcurrentHashMap.newKeySet<String>()
     private val localStableId = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         .let { prefs ->
             val stored = prefs.getString("nearer_stable_id", null)
@@ -416,20 +415,6 @@ internal object IncomingFilePayloadPolicy {
                 }
         } catch (_: Exception) {
             listener.onStatus("Could not prepare the secure nearby identity.")
-        }
-    }
-
-    private fun sendDirectRouteAdvertisement(endpointId: String) {
-        val identity = meshIdentity ?: return
-        try {
-            val route = MeshWireProtocol.createRouteAdvertisement(
-                localStableId, localStableId, 0, System.currentTimeMillis(), identity.signing
-            )
-            // The local identity cannot advertise itself as a destination route.
-            // The peer hello is the direct route proof; route advertisements are
-            // reserved for destinations other than the local sender.
-        } catch (_: Exception) {
-            // No route is installed from an invalid local advertisement.
         }
     }
 
