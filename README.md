@@ -19,14 +19,15 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 
 **Multi-hop relay is still disabled in the app.** This milestone adds several security and reliability building blocks, but they are not yet connected into an operational mesh transport:
 
-- `MeshCrypto.kt`: P-256 ECDH, HKDF-SHA256, AES-256-GCM recipient encryption and ECDSA packet signatures. Packets are bound to message/origin/destination metadata. The recipient must supply a trusted sender signing key; key authentication and secure persistent Android Keystore identity management are not yet integrated.
+- `MeshCrypto.kt`: P-256 ECDH, HKDF-SHA256, AES-256-GCM recipient encryption and ECDSA packet signatures. Packets are bound to message/origin/destination metadata. The recipient must supply a trusted sender signing key.
+- `MeshIdentityVault.kt`: helper for persisting P-256 identity keys with private-key material encrypted by an Android Keystore AES-GCM key. The vault is not yet wired into app startup, identity exchange or a user-facing fingerprint verification flow.
 - `MeshRelayPolicy.kt`: four-hop ceiling, TTL decrement, visited-peer loop prevention, duplicate/expiry checks, consent gate and local destination delivery.
 - `MeshRouting.kt`: bounded in-memory route learning, shortest-route preference, stale-route expiry and next-hop invalidation.
 - `MeshDeadDropStore.kt`: SQLite persistence for opaque encrypted packets, duplicate insertion protection, expiry pruning and retry counters.
 - `MeshStatusPanel.kt`: premium blue-and-gold mesh status display. The nearby-peer number reflects actual discovery state; route and Dead Drop counters are currently placeholders (zero), not live network metrics.
 - JVM tests cover encryption/decryption, wrong-recipient and tamper rejection, route selection/expiry, and relay-policy limits.
 
-**Not yet operational:** cryptographic identity provisioning and trusted-key verification, serialisation/versioning between phones, wiring packet callbacks into Nearby Connections, authenticated route advertisements, automatic multi-hop forwarding, real Dead Drop retry/acknowledgement integration, and real-device testing. The current app intentionally keeps multi-hop relay disabled. Do not describe the current APK as a working mesh network.
+**Not yet operational:** wiring the identity vault into app startup, trusted-key verification and identity exchange, a versioned wire serialiser between phones, packet callbacks in Nearby Connections, authenticated route advertisements, automatic multi-hop forwarding, real Dead Drop retry/acknowledgement integration, and real-device testing. The current app intentionally keeps multi-hop relay disabled. Do not describe the current APK as a working mesh network.
 
 ### NeaRer visual identity
 The app's existing brand palette is midnight navy, deep blue panels, electric/clear blue accents and gold. Mesh visuals should use that same blue-and-gold identity, with cyan reserved for transmission effects. Network animations must reflect real discovered peers, actual forwarding and confirmed delivery; simulated activity must not be presented as live network state.
