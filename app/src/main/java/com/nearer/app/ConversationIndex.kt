@@ -14,12 +14,12 @@ internal data class ConversationSummary(
 
 internal object ConversationIndex {
     fun build(messages: List<ChatMessage>): List<ConversationSummary> =
-        messages.groupBy { it.conversationId.ifBlank { "legacy" } }
+        messages.groupBy { message -> message.conversationId.ifBlank { "legacy:${message.id}" } }
             .map { (id, thread) ->
                 val latest = thread.maxByOrNull { it.timestamp }!!
                 ConversationSummary(
                     conversationId = id,
-                    displayName = latest.conversationName.ifBlank { "Nearby person" },
+                    displayName = latest.conversationName.ifBlank { if (latest.conversationId.isBlank()) "Unlinked history" else "Nearby person" },
                     lastMessage = latest,
                     messageCount = thread.size
                 )
@@ -27,6 +27,6 @@ internal object ConversationIndex {
             .sortedByDescending { it.lastMessage.timestamp }
 
     fun messagesFor(messages: List<ChatMessage>, conversationId: String): List<ChatMessage> =
-        messages.filter { (it.conversationId.ifBlank { "legacy" }) == conversationId }
+        messages.filter { it.conversationId.ifBlank { "legacy:${it.id}" } == conversationId }
             .sortedBy { it.timestamp }
 }

@@ -55,6 +55,15 @@ class FastShareDownloadCatalogTest {
             FastShareDownloadItem(it, "file-$it", "application/octet-stream", 1L)
         })
     }
+    @Test fun receiverPageOffersBrowserToPhoneUploads() {
+        val page = FastShareDownloadCatalog(
+            listOf(FastShareDownloadItem(0, "photo.jpg", "image/jpeg", 1024L))
+        ).receiverPage("e".repeat(64))
+        assertTrue(page.contains("id=\"uploads\" type=\"file\" multiple"))
+        assertTrue(page.contains("xhr.open(\"POST\",\"/upload?key=e"))
+        assertTrue(page.contains("Send files to NeaRer"))
+    }
+
     @Test fun receiverPageUsesNeaRerBlueAndGoldBrandColors() {
         val page = FastShareDownloadCatalog(
             listOf(FastShareDownloadItem(0, "photo.jpg", "image/jpeg", 1024L))
@@ -66,6 +75,15 @@ class FastShareDownloadCatalogTest {
         assertTrue(page.contains("Download"))
     }
 
+    @Test fun receiverPageAppliesTheSameNonceToEmbeddedStyleAndScript() {
+        val nonce = "abcdefghijklmnopqrstuvwx"
+        val page = FastShareDownloadCatalog(listOf(
+            FastShareDownloadItem(0, "file.txt", "text/plain", 1L)
+        )).receiverPage("f".repeat(64), nonce)
+        assertTrue(page.contains("<style nonce=\"$nonce\">"))
+        assertTrue(page.contains("<script nonce=\"$nonce\">"))
+    }
+
     @Test fun receiverPageDownloadActionHasKeyboardFocusTreatment() {
         val page = FastShareDownloadCatalog(
             listOf(FastShareDownloadItem(0, "document.pdf", "application/pdf", 2048L))
@@ -75,4 +93,32 @@ class FastShareDownloadCatalogTest {
         assertTrue(page.contains("outline-offset:3px"))
     }
 
+
+    @Test fun receiverPageOffersProgressCancelAndReceiptValidationForUploads() {
+        val page = FastShareDownloadCatalog(listOf(
+            FastShareDownloadItem(0, "sample.txt", "text/plain", 5L)
+        )).receiverPage("test-key")
+        assertTrue(page.contains("id=\"cancel\""))
+        assertTrue(page.contains("xhr.upload.onprogress"));
+        assertTrue(page.contains("connection became idle; reconnect and retry"))
+        assertTrue(page.contains("NeaRer is busy; wait briefly and retry"))
+        assertTrue(page.contains("not enough free storage on the receiving phone"))
+        assertTrue(page.contains("X-Received-Bytes"))
+        assertTrue(page.contains("X-Content-SHA256"))
+        assertTrue(page.contains("xhr.abort()"))
+        assertTrue(page.contains("const retryFiles=[]"))
+        assertTrue(page.contains("retryQueue=[]"))
+        assertTrue(page.contains("retryQueue.length?retryQueue.slice()"))
+        assertTrue(page.contains("retryQueue=retryFiles.slice()"))
+        assertTrue(page.contains("picker.disabled=true"))
+        assertTrue(page.contains("picker.disabled=false"))
+        assertTrue(page.contains("Trying the next file"))
+        assertTrue(page.contains("retryFiles.push(file)"))
+        assertTrue(page.contains("Cancelled after"))
+        assertTrue(page.contains("new DataTransfer()"))
+        assertTrue(page.contains("selection.items.add(file)"))
+        assertTrue(page.contains("Retry "))
+        assertTrue(page.contains("Remaining files are ready to retry"))
+        assertTrue(page.contains("retryFiles.map(file=>file.name)"))
+    }
 }

@@ -10,10 +10,13 @@ import android.os.Looper
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.OutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.Collections
@@ -330,6 +333,8 @@ private class FastShareHttpServer(
     )
     @Volatile private var running = true
     private val downloadGate = FastShareDownloadGate()
+    private val uploadGate = FastShareUploadGate()
+    private val uploadPublishLock = Any()
     private val clients = FastShareSocketRegistry()
     private val writeWatchdog = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "NeaRer-FastShare-WriteWatchdog").apply { isDaemon = true }
@@ -338,6 +343,10 @@ private class FastShareHttpServer(
     private var acceptThread: Thread? = null
 
     fun start(): String {
+        // A process death can leave a hidden .part file behind. Sweep the
+        // previous session's staging files before this server accepts uploads.
+        val uploadDirectory = File(context.filesDir, "nearer-pc-uploads")
+        FastShareTempFileCleanup.removeAbandoned(uploadDirectory)
         val listener = ServerSocket(8765, 8, java.net.InetAddress.getByName("0.0.0.0"))
         socket = listener
         // Keep accepting on its own daemon thread. If the accept loop occupied
@@ -464,10 +473,12 @@ private class FastShareHttpServer(
             }
             when (request.route) {
                 FastShareHttpRequest.Route.RECEIVER_PAGE -> {
-                    val bytes = catalog.receiverPage(accessKey).toByteArray(Charsets.UTF_8)
-                    output.write(FastShareHttpWire.responseHead("HTTP/1.1 200 OK", FileHttpHeaders.receiverPageHeaders(bytes.size.toLong())))
+                    val pageNonce = FastSharePageNonce.create()
+                    val bytes = catalog.receiverPage(accessKey, pageNonce).toByteArray(Charsets.UTF_8)
+                    output.write(FastShareHttpWire.responseHead("HTTP/1.1 200 OK", FileHttpHeaders.receiverPageHeaders(bytes.size.toLong(), pageNonce)))
                     if (!headOnly) output.write(bytes)
                 }
+                FastShareHttpRequest.Route.UPLOAD -> { handleBrowserUpload(connection, input, output, exchange) }
                 FastShareHttpRequest.Route.DOWNLOAD -> {
                     val index = request.downloadIndex
                     val item = index?.let { catalog.itemAt(it) }
@@ -520,6 +531,95 @@ private class FastShareHttpServer(
             } finally {
                 writeGuard.close()
             }
+        }
+    }
+
+    private fun handleBrowserUpload(connection: Socket, input: BufferedInputStream, output: BufferedOutputStream, exchange: FastShareHttpExchange) {
+        val directory = File(context.filesDir, "nearer-pc-uploads")
+        if (!directory.exists() && !directory.mkdirs()) {
+            output.write(FastShareHttpErrors.uploadFailed())
+            return
+        }
+        val available = runCatching { android.os.StatFs(directory.absolutePath).availableBytes }.getOrDefault(0L)
+        when (uploadGate.tryAcquire(exchange.contentLength, available)) {
+            FastShareUploadGate.Admission.ACCEPTED -> Unit
+            FastShareUploadGate.Admission.BUSY -> {
+                output.write(FastShareHttpErrors.uploadBusy())
+                return
+            }
+            FastShareUploadGate.Admission.INSUFFICIENT_STORAGE -> {
+                output.write(FastShareHttpErrors.insufficientStorage())
+                return
+            }
+            FastShareUploadGate.Admission.INVALID_SIZE -> {
+                output.write(FastShareHttpErrors.badRequest())
+                return
+            }
+        }
+        // Bound the complete body phase as well as each idle socket read.
+        // The allowance scales with file size, so this is not a fixed transfer-size cap.
+        val bodyDeadline = SocketReadDeadline(
+            connection,
+            writeWatchdog,
+            FastShareUploadDeadline.timeoutMillis(exchange.contentLength)
+        )
+        try {
+            saveBrowserUpload(input, output, exchange, directory)
+        } finally {
+            bodyDeadline.close()
+            uploadGate.release(exchange.contentLength)
+        }
+    }
+
+    private fun saveBrowserUpload(
+        input: BufferedInputStream,
+        output: BufferedOutputStream,
+        exchange: FastShareHttpExchange,
+        directory: File
+    ) {
+        val safeName = FastShareFileName.sanitize(exchange.uploadFileName.orEmpty())
+        val temporary = runCatching { File.createTempFile(".nearer-upload-", ".part", directory) }.getOrNull()
+        if (temporary == null) { output.write(FastShareHttpErrors.uploadFailed()); return }
+        var published = false
+        try {
+            val digest = FastShareSha256()
+            FileOutputStream(temporary).use { sink ->
+                val buffer = ByteArray(64 * 1024)
+                var remaining = exchange.contentLength
+                while (remaining > 0L) {
+                    if (!running || Thread.currentThread().isInterrupted) throw java.io.IOException("Stopped")
+                    val count = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                    if (count < 0) throw java.io.EOFException("Incomplete upload")
+                    if (count > 0) {
+                        sink.write(buffer, 0, count)
+                        digest.update(buffer, 0, count)
+                        remaining -= count.toLong()
+                    }
+                }
+                sink.fd.sync()
+            }
+            val sha256 = digest.finishHex()
+            synchronized(uploadPublishLock) {
+                val destination = FastShareUploadDestination.nextAvailable(directory, safeName)
+                if (!temporary.renameTo(destination)) throw java.io.IOException("Could not publish file")
+                published = true
+            }
+            val body = "File received by NeaRer".toByteArray(Charsets.UTF_8)
+            output.write(FastShareHttpWire.responseHead("HTTP/1.1 201 Created", listOf(
+                "Content-Type" to "text/plain; charset=utf-8",
+                "Content-Length" to body.size.toString(),
+                "X-Content-SHA256" to sha256,
+                "X-Received-Bytes" to exchange.contentLength.toString(),
+                "Cache-Control" to "no-store",
+                "Connection" to "close"
+            )))
+            output.write(body)
+        } catch (_: SocketTimeoutException) {
+            if (!published) output.write(FastShareHttpErrors.requestTimeout())
+        } catch (_: Exception) {
+            if (!published) output.write(FastShareHttpErrors.uploadFailed())
+        } finally {
+            if (temporary.exists()) temporary.delete()
         }
     }
 

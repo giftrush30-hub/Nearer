@@ -8,13 +8,28 @@ internal data class FastShareHttpRequest(
     val query: String = ""
 ) {
     fun hasAccessKey(expected: String): Boolean {
-        val values = query.split('&').mapNotNull { part ->
-            if (part.startsWith("key=")) part.substringAfter("key=") else null
+        // Decode parameter names before counting them. Otherwise an encoded
+        // spelling such as %6Bey could create ambiguous duplicate key fields
+        // that a browser, proxy, or future parser might interpret differently.
+        val values = mutableListOf<String>()
+        for (part in query.split('&')) {
+            val separator = part.indexOf('=')
+            val rawName = if (separator >= 0) part.substring(0, separator) else part
+            val decodedName = try {
+                java.net.URLDecoder.decode(rawName, Charsets.UTF_8.name())
+            } catch (_: IllegalArgumentException) {
+                return false
+            }
+            if (decodedName == "key") {
+                if (separator < 0) return false
+                values += part.substring(separator + 1)
+            }
         }
         return values.size == 1 && FastShareAccessKey.matches(expected, values.single())
     }
     val isHeadOnly: Boolean get() = method == "HEAD"
-    val supportsMethod: Boolean get() = method == "GET" || isHeadOnly
+    val isUpload: Boolean get() = method == "POST" && path == "/upload"
+    val supportsMethod: Boolean get() = method == "GET" || isHeadOnly || isUpload
 
     /** Zero-based item requested by /download/N; legacy /download means item zero. */
     val downloadIndex: Int?
@@ -27,12 +42,13 @@ internal data class FastShareHttpRequest(
     val route: Route
         get() = when {
             path == "/" || path == "/index.html" -> Route.RECEIVER_PAGE
+            path == "/upload" && isUpload -> Route.UPLOAD
             path == "/download" -> Route.DOWNLOAD
             path.matches(Regex("/download/[0-9]{1,4}")) && downloadIndex != null -> Route.DOWNLOAD
             else -> Route.NOT_FOUND
         }
 
-    internal enum class Route { RECEIVER_PAGE, DOWNLOAD, NOT_FOUND }
+    internal enum class Route { RECEIVER_PAGE, DOWNLOAD, UPLOAD, NOT_FOUND }
 
     companion object {
         /**

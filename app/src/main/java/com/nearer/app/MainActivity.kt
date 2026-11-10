@@ -115,8 +115,10 @@ class MainActivity : ComponentActivity() {
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
     private val hybridPeers = mutableStateMapOf<String, String>()
+    private val nearbyPeerPublicIds = mutableStateMapOf<String, String>()
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
+    private var nearerId by mutableStateOf("")
     private var hybridSearching by mutableStateOf(false)
     private var pendingHybridEndpoint: String? = null
     private var hybridConnected = false
@@ -138,6 +140,10 @@ class MainActivity : ComponentActivity() {
     private var serverSocket: ServerSocket? = null
     private var peerSocket: Socket? = null
     private var peerWriter: PrintWriter? = null
+    private var wifiDirectPeerPublicId by mutableStateOf<String?>(null)
+    private val directChatOutbox by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        DirectChatOutbox(applicationContext)
+    }
     private val writerLock = Any()
     private val receivedMessageIds = ConcurrentHashMap.newKeySet<String>()
     private val io = Executors.newCachedThreadPool()
@@ -260,6 +266,21 @@ class MainActivity : ComponentActivity() {
                     statusMessage = "$name is requesting a nearby connection."
                 }
             }
+            override fun onPeerIdentity(id: String, stableId: String, publicId: String, verified: Boolean) {
+                runOnUiThread {
+                    if (verified && hybridConnectedEndpoint == id) {
+                        chatReady = true
+                        chatNotice = "Peer identity checked. Direct offline chat is ready; messages are not end-to-end encrypted yet."
+                    }
+                    if (stableId.isNotBlank()) {
+                        nearbyPeerPublicIds[stableId] = publicId
+                        val saved = org.json.JSONObject()
+                        nearbyPeerPublicIds.forEach { (key, value) -> saved.put(key, value) }
+                        getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                            .edit().putString("nearby_peer_public_ids", saved.toString()).apply()
+                    }
+                }
+            }
             override fun onConnected(id: String, name: String, stableId: String) {
                 runOnUiThread {
                     hybridConnected = true
@@ -283,11 +304,13 @@ class MainActivity : ComponentActivity() {
                     pendingHybridEndpoint = null
                     incomingRequesterName = null
                     connectedDeviceName = name
-                    chatReady = true
+                    chatReady = nearbyTransport?.isPeerVerified(id) == true
+                    if (!chatReady) chatNotice = "Connection approved. Checking the other phone's cryptographic identity before enabling private chat."
                     resumeLudoAfterReconnect(name)
-                    connectionMessage = "Secure nearby connection active"
+                    connectionMessage = "Nearby connection active • checking peer identity"
                     approvalMessage = "Connection approved"
                     chatNotice = when {
+                        !chatReady -> "Connected to $name. Checking the other phone's cryptographic identity before private chat is enabled…"
                         requestedIncomingResume -> "Connection restored. Requesting the saved receive position…"
                         hasQueuedOutgoingFile -> "Connection restored. Checking for a saved transfer position…"
                         else -> "Connected to $name. Offline chat is ready."
@@ -327,7 +350,7 @@ class MainActivity : ComponentActivity() {
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
-                        chatMessages.add(ChatMessage(messageId, body, outgoing = false, delivery = "Received"))
+                        chatMessages.add(ChatMessage(messageId, body, outgoing = false, delivery = "Received", conversationId = conversationIdFor(senderName), conversationName = senderName))
                         safelyStored = persistMessages()
                         if (safelyStored) chatNotice = "New offline message received from $senderName."
                         else {
@@ -339,17 +362,26 @@ class MainActivity : ComponentActivity() {
                     if (safelyStored) acknowledge()
                 }
             }
-            override fun onMessageStatus(messageId: String, status: String) {
+            override fun onMessageStatus(messageId: String, status: String, onPersisted: ((Boolean) -> Unit)?) {
                 runOnUiThread {
                     val index = chatMessages.indexOfFirst { it.id == messageId }
                     if (index >= 0) {
-                        chatMessages[index] = chatMessages[index].copy(delivery = status)
-                        persistMessages()
-                        chatNotice = when (status) {
-                            "Delivered" -> "Your message was received by the other NeaRer phone."
-                            "Queued" -> "Not delivered yet. NeaRer saved it and will retry when this person reconnects."
-                            else -> "Message delivery failed. Reconnect and try again."
+                        val previous = chatMessages[index]
+                        chatMessages[index] = previous.copy(delivery = status)
+                        val saved = persistMessages()
+                        if (!saved && status == "Delivered") {
+                            chatMessages[index] = previous.copy(delivery = "Queued")
+                            chatNotice = "The other phone received your message, but NeaRer could not save the delivery receipt. It will safely retry."
+                        } else {
+                            chatNotice = when (status) {
+                                "Delivered" -> "Your message was received by the other NeaRer phone."
+                                "Queued" -> "Not delivered yet. NeaRer saved it and will retry when this person reconnects."
+                                else -> "Message delivery failed. Reconnect and try again."
+                            }
                         }
+                        onPersisted?.invoke(saved)
+                    } else {
+                        onPersisted?.invoke(false)
                     }
                 }
             }
@@ -452,6 +484,18 @@ class MainActivity : ComponentActivity() {
         restoreCommunityData()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
         nearbyTransport?.setDisplayName(displayName)
+        nearerId = NeaRerIdentity.loadOrCreate(getSharedPreferences("nearer_local", Context.MODE_PRIVATE))
+        nearbyTransport?.setLocalIdentity(nearerId)
+        try {
+            val savedPeerIds = org.json.JSONObject(
+                getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                    .getString("nearby_peer_public_ids", "{}") ?: "{}"
+            )
+            savedPeerIds.keys().forEach { key ->
+                val value = savedPeerIds.optString(key).uppercase()
+                if (key.isNotBlank() && Regex("^NR-[0-9A-F]{32}$").matches(value)) nearbyPeerPublicIds[key] = value
+            }
+        } catch (_: Exception) { }
         restoreRecentlySeen()
         // Multi-hop relay is paused until recipient routing and end-to-end encryption are ready.
         meshRelayEnabled = false
@@ -514,6 +558,7 @@ class MainActivity : ComponentActivity() {
                     hybridPeers = hybridPeers.toMap(),
                     recentlySeenPeers = recentlySeenPeers.toMap(),
                     displayName = displayName,
+                    nearerId = nearerId,
                     onSaveDisplayName = ::saveDisplayName,
                     meshRelayEnabled = meshRelayEnabled,
                     onMeshRelayChange = ::updateMeshRelayEnabled,
@@ -798,7 +843,7 @@ class MainActivity : ComponentActivity() {
             connectionMessage = if (info.isGroupOwner) {
                 "Connected • this phone hosts the local link"
             } else {
-                "Connected • secure local link established"
+                "Connected • local Wi-Fi Direct link formed"
             }
             statusMessage = "Direct link formed. Checking whether the other phone has NeaRer…"
             if (!transportStarted) {
@@ -829,7 +874,7 @@ class MainActivity : ComponentActivity() {
                 val socket = server.accept()
                 peerSocket = socket
                 socket.soTimeout = 60_000
-                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+                val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 peerWriter = writer
                 val hello = reader.readLine().orEmpty()
@@ -851,16 +896,20 @@ class MainActivity : ComponentActivity() {
                 val accepted = approvalDecision.poll(60, java.util.concurrent.TimeUnit.SECONDS) ?: false
                 writer.println(if (accepted) "ACCEPT" else "REJECT")
                 if (accepted) {
+                    val authenticatedPeerId = performWifiDirectIdentityHandshake(reader, writer)
                     runOnUiThread {
+                        wifiDirectPeerPublicId = authenticatedPeerId
                         chatReady = true
+                        chatNotice = "Secure nearby identity confirmed for $authenticatedPeerId."
                         resumeLudoAfterReconnect(name)
                         incomingRequesterName = null
-                        approvalMessage = "Connection approved. Private chat can now be opened."
+                        approvalMessage = "Connection approved. Checking the other phone's identity…"
                         connectionMessage = "NeaRer connection approved"
                         chatNotice = "Connected directly to $name. Say hello."
-                        statusMessage = "You approved $name. Private chat is ready."
+                        flushDirectChatOutbox(authenticatedPeerId)
+                        statusMessage = "You approved $name. Checking the other phone's identity…"
                     }
-                    startMessageReader(socket)
+                    startMessageReader(socket, reader)
                 } else {
                     runOnUiThread {
                         incomingRequesterName = null
@@ -915,15 +964,19 @@ class MainActivity : ComponentActivity() {
                 }
                 when (reader.readLine()) {
                     "ACCEPT" -> {
+                        val authenticatedPeerId = performWifiDirectIdentityHandshake(reader, writer)
                         runOnUiThread {
+                            wifiDirectPeerPublicId = authenticatedPeerId
                             chatReady = true
+                            chatNotice = "Secure nearby identity confirmed for $authenticatedPeerId."
                             resumeLudoAfterReconnect(connectedDeviceName ?: "Nearby device")
                             approvalMessage = "Your connection request was approved."
                             connectionMessage = "NeaRer connection approved"
                             chatNotice = "Connected directly to the other phone. Say hello."
-                            statusMessage = "Connection approved. Private chat is ready."
+                            flushDirectChatOutbox(authenticatedPeerId)
+                            statusMessage = "Connection approved. Checking the other phone's identity…"
                         }
-                        startMessageReader(socket)
+                        startMessageReader(socket, reader)
                     }
                     else -> {
                         runOnUiThread {
@@ -1010,6 +1063,7 @@ class MainActivity : ComponentActivity() {
         peerSocket = null
         peerWriter = null
         serverSocket = null
+        wifiDirectPeerPublicId = null
         incomingTransfers.values.forEach {
             it.close()
             it.file.delete()
@@ -1031,20 +1085,36 @@ class MainActivity : ComponentActivity() {
             .getString("messages", null)
         if (!stored.isNullOrBlank()) {
             try {
-                val array = JSONArray(stored)
+                val json = if (stored.startsWith("v1:")) {
+                    LocalDataCipher.decrypt(this, stored)?.toString(Charsets.UTF_8)
+                        ?: throw IllegalStateException("Saved chat history could not be unlocked.")
+                } else {
+                    // One-time migration from the earlier plaintext conversation store.
+                    stored
+                }
+                val array = JSONArray(json)
                 for (i in 0 until array.length()) {
                     val item = array.getJSONObject(i)
                     val message = ChatMessage(
                         id = item.getString("id"),
                         body = item.getString("body"),
                         outgoing = item.getBoolean("outgoing"),
-                        delivery = item.optString("delivery", "Sent")
+                        delivery = item.optString("delivery", "Sent"),
+                        // Older installs did not persist timestamps or conversation metadata.
+                        // Keep those fields explicitly unknown instead of inventing history.
+                        timestamp = item.optLong("timestamp", 0L),
+                        conversationId = item.optString("conversationId", ""),
+                        conversationName = item.optString("conversationName", "")
                     )
                     chatMessages.add(message)
                     if (!message.outgoing) receivedMessageIds.add(message.id)
                 }
+                if (!stored.startsWith("v1:") && chatMessages.isNotEmpty()) {
+                    if (!persistMessages()) chatNotice = "Your chat history loaded, but NeaRer could not finish encrypting the older saved copy."
+                }
             } catch (_: Exception) {
                 chatMessages.clear()
+                chatNotice = "Saved chat history could not be unlocked or read. NeaRer did not overwrite the saved copy."
             }
         }
         val folder = File(filesDir, "received")
@@ -1095,13 +1165,20 @@ class MainActivity : ComponentActivity() {
                     .put("id", message.id)
                     .put("body", message.body)
                     .put("outgoing", message.outgoing)
-                    .put("delivery", message.delivery))
+                    .put("delivery", message.delivery)
+                    .put("timestamp", message.timestamp)
+                    .put("conversationId", message.conversationId)
+                    .put("conversationName", message.conversationName))
             }
-            // commit() is intentional here: a delivery receipt must follow the disk write,
-            // not just an in-memory SharedPreferences update queued by apply().
+            // Encrypt the complete local conversation store before writing it.
+            // commit() is intentional: incoming receipts must follow durable storage.
+            val encrypted = LocalDataCipher.encrypt(this, array.toString().toByteArray(Charsets.UTF_8))
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-                .edit().putString("messages", array.toString()).commit()
-        } catch (_: Exception) { false }
+                .edit().putString("messages", encrypted).commit()
+        } catch (_: Exception) {
+            chatNotice = "NeaRer could not securely save chat history. Delivery will not be confirmed."
+            false
+        }
     }
 
     private fun sha256(file: File): String {
@@ -1125,19 +1202,51 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun conversationIdFor(peerName: String?): String {
+        val stableId = hybridConnectedStableId?.takeIf { it.isNotBlank() }
+        if (stableId != null) return "nearer:$stableId"
+        val normalizedName = peerName?.trim()?.lowercase(java.util.Locale.ROOT)?.takeIf { it.isNotBlank() }
+        return normalizedName?.let { "nearby-name:$it" }.orEmpty()
+    }
+
+
+    private fun flushDirectChatOutbox(peerId: String) {
+        if (!NeaRerIdentity.isValid(peerId) || wifiDirectPeerPublicId != peerId || !chatReady) return
+        directChatOutbox.forPeer(peerId).forEach { entry ->
+            val encoded = Base64.getEncoder().encodeToString(entry.body.toByteArray(Charsets.UTF_8))
+            if (!sendWireLine("MSG|${entry.id}|$encoded")) {
+                chatNotice = "Some messages are saved and waiting for the direct connection to recover."
+                return
+            }
+        }
+    }
+
     private fun sendChatMessage(rawText: String) {
         val body = rawText.trim()
         if (body.isEmpty() || !chatReady) return
         val id = UUID.randomUUID().toString()
+        val pending = ChatMessage(
+            id, body, outgoing = true, delivery = "Sending…",
+            conversationId = conversationIdFor(connectedDeviceName),
+            conversationName = connectedDeviceName.orEmpty()
+        )
+        // Never transmit a message that this phone failed to save to its encrypted history.
+        // This keeps the visible conversation and retry state recoverable after process death.
+        chatMessages.add(pending)
+        if (!persistMessages()) {
+            chatMessages.removeAll { it.id == id }
+            chatNotice = "Message was not sent because NeaRer could not securely save it on this phone. Check storage and try again."
+            return
+        }
+
         if (hybridConnected) {
             val targetEndpoint = hybridConnectedEndpoint
             if (targetEndpoint.isNullOrBlank()) {
+                chatMessages.removeAll { it.id == id }
+                persistMessages()
                 chatNotice = "Your private connection is not ready. Reconnect to the person before sending."
                 return
             }
-            // Add the pending bubble before dispatch so a very fast receipt cannot race the UI.
-            chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…"))
-            persistMessages()
             if (nearbyTransport?.send(body, id, targetEndpoint) != true) {
                 val index = chatMessages.indexOfFirst { it.id == id }
                 if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
@@ -1148,19 +1257,32 @@ class MainActivity : ComponentActivity() {
             chatNotice = "Sent over the offline link • waiting for the recipient's NeaRer app to acknowledge it."
             return
         }
+
+        val peerId = wifiDirectPeerPublicId
+        if (!NeaRerIdentity.isValid(peerId.orEmpty())) {
+            val index = chatMessages.indexOfFirst { it.id == id }
+            if (index >= 0) chatMessages.removeAt(index)
+            persistMessages()
+            chatNotice = "Private direct chat is waiting for the other phone's verified identity."
+            return
+        }
+        if (!directChatOutbox.enqueue(id, peerId!!, body)) {
+            val index = chatMessages.indexOfFirst { it.id == id }
+            if (index >= 0) chatMessages.removeAt(index)
+            persistMessages()
+            chatNotice = "NeaRer could not securely save this message for delivery."
+            return
+        }
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
-        chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…"))
-        persistMessages()
         if (!sendWireLine("MSG|$id|$encoded")) {
             val index = chatMessages.indexOfFirst { it.id == id }
-            if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
+            if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Queued")
             persistMessages()
-            chatNotice = "Message could not be sent. Check the nearby connection."
+            chatNotice = "Message saved securely and queued. NeaRer will retry when this person reconnects."
             return
         }
         chatNotice = "Sent directly • waiting for the recipient app to save and acknowledge it."
     }
-
 
     private fun persistCommunityData(): Boolean {
         return try {
@@ -1992,11 +2114,87 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startMessageReader(socket: Socket) {
+    /**
+     * Mutual challenge-response for the Wi-Fi Direct socket fallback.
+     * The six-digit pairing approval happens first; this then proves control
+     * of each phone's Keystore signing key and pins the peer key locally.
+     */
+    private fun performWifiDirectIdentityHandshake(
+        reader: BufferedReader,
+        writer: PrintWriter
+    ): String {
+        val localId = nearerId.ifBlank {
+            NeaRerIdentity.loadOrCreate(getSharedPreferences("nearer_local", Context.MODE_PRIVATE))
+                .also { nearerId = it }
+        }
+        check(NeaRerIdentity.isValid(localId)) { "This phone's NeaRer ID is unavailable." }
+
+        val localKey = SecurePeerIdentity.publicKeyEncoded()
+        val localChallenge = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        val hello = JSONObject()
+            .put("publicId", localId)
+            .put("publicKey", android.util.Base64.encodeToString(localKey, android.util.Base64.NO_WRAP))
+            .put("challenge", android.util.Base64.encodeToString(localChallenge, android.util.Base64.NO_WRAP))
+            .toString()
+        synchronized(writerLock) { writer.println("WFD_ID_HELLO|$hello") }
+        check(!writer.checkError()) { "Could not send secure identity hello." }
+
+        val remoteLine = reader.readLine().orEmpty()
+        check(remoteLine.startsWith("WFD_ID_HELLO|") && remoteLine.length <= 4096) {
+            "The other phone did not provide a valid secure identity hello."
+        }
+        val remote = JSONObject(remoteLine.substringAfter("WFD_ID_HELLO|"))
+        val remoteId = remote.optString("publicId").uppercase()
+        check(NeaRerIdentity.isValid(remoteId)) { "The other phone's NeaRer ID is invalid." }
+        val remoteKey = android.util.Base64.decode(remote.optString("publicKey"), android.util.Base64.NO_WRAP)
+        val remoteChallenge = android.util.Base64.decode(remote.optString("challenge"), android.util.Base64.NO_WRAP)
+        check(SecurePeerIdentity.isValidPublicKey(remoteKey) && remoteChallenge.size == 32) {
+            "The other phone's secure identity information is invalid."
+        }
+
+        // Sign the challenge received from the other phone; both sides do this
+        // after exchanging hello packets, so authentication is mutual.
+        val localProof = SecurePeerIdentity.signChallenge(localId, localKey, remoteChallenge)
+        val proofJson = JSONObject()
+            .put("publicId", localId)
+            .put("publicKey", android.util.Base64.encodeToString(localKey, android.util.Base64.NO_WRAP))
+            .put("signature", android.util.Base64.encodeToString(localProof, android.util.Base64.NO_WRAP))
+            .toString()
+        synchronized(writerLock) { writer.println("WFD_ID_PROOF|$proofJson") }
+        check(!writer.checkError()) { "Could not send secure identity proof." }
+
+        val remoteProofLine = reader.readLine().orEmpty()
+        check(remoteProofLine.startsWith("WFD_ID_PROOF|") && remoteProofLine.length <= 4096) {
+            "The other phone did not provide a secure identity proof."
+        }
+        val proof = JSONObject(remoteProofLine.substringAfter("WFD_ID_PROOF|"))
+        val proofId = proof.optString("publicId").uppercase()
+        val proofKey = android.util.Base64.decode(proof.optString("publicKey"), android.util.Base64.NO_WRAP)
+        val signature = android.util.Base64.decode(proof.optString("signature"), android.util.Base64.NO_WRAP)
+        check(proofId == remoteId && java.security.MessageDigest.isEqual(remoteKey, proofKey) &&
+            SecurePeerIdentity.verifyChallenge(remoteId, remoteKey, localChallenge, signature)) {
+            "The other phone failed cryptographic identity verification."
+        }
+
+        when (TrustedPeerKeyStore.checkAndPin(this, remoteId, remoteKey)) {
+            TrustedPeerKeyStore.Result.FIRST_SEEN -> runOnUiThread {
+                chatNotice = "Secure key saved for $remoteId on this phone. This confirms key continuity, not a person's identity."
+            }
+            TrustedPeerKeyStore.Result.MATCH -> Unit
+            TrustedPeerKeyStore.Result.KEY_CHANGED -> throw SecurityException(
+                "SECURITY WARNING: $remoteId presented a different security key. The saved key was not replaced."
+            )
+            TrustedPeerKeyStore.Result.STORAGE_ERROR -> throw SecurityException(
+                "NeaRer could not safely save or check the other phone's security key."
+            )
+        }
+        return remoteId
+    }
+
+    private fun startMessageReader(socket: Socket, reader: BufferedReader) {
         io.execute {
             try {
                 socket.soTimeout = 0
-                val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
                 while (!socket.isClosed) {
                     val line = reader.readLine() ?: break
                     if (line.length > 24 * 1024) throw IllegalStateException("NeaRer message frame exceeded the allowed size")
@@ -2015,7 +2213,7 @@ class MainActivity : ComponentActivity() {
                                             receivedMessageIds.add(id)
                                             synchronized(writerLock) { peerWriter?.println("ACK|$id") }
                                         } else {
-                                            chatMessages.add(ChatMessage(id, body, outgoing = false, delivery = "Received"))
+                                            chatMessages.add(ChatMessage(id, body, outgoing = false, delivery = "Received", conversationId = conversationIdFor(connectedDeviceName), conversationName = connectedDeviceName.orEmpty()))
                                             if (persistMessages()) {
                                                 receivedMessageIds.add(id)
                                                 chatNotice = "New message received and saved directly."
@@ -2033,11 +2231,23 @@ class MainActivity : ComponentActivity() {
                         }
                         line.startsWith("ACK|") -> {
                             val id = line.substringAfter("ACK|")
-                            runOnUiThread {
-                                val index = chatMessages.indexOfFirst { it.id == id && it.outgoing }
-                                if (index >= 0) {
-                                    chatMessages[index] = chatMessages[index].copy(delivery = "Delivered")
-                                    persistMessages()
+                            if (id.isNotBlank() && id.length <= 80 && id.matches(Regex("[A-Za-z0-9._:-]+"))) {
+                                runOnUiThread {
+                                    val queued = directChatOutbox.find(id)
+                                    if (queued != null && queued.peerId == wifiDirectPeerPublicId) {
+                                        val index = chatMessages.indexOfFirst { it.id == id && it.outgoing }
+                                        if (index >= 0 && chatMessages[index].delivery != "Delivered") {
+                                            val previous = chatMessages[index]
+                                            chatMessages[index] = previous.copy(delivery = "Delivered")
+                                            if (persistMessages()) {
+                                                directChatOutbox.remove(id)
+                                                chatNotice = "Your message was received by the other NeaRer phone."
+                                            } else {
+                                                chatMessages[index] = previous.copy(delivery = "Queued")
+                                                chatNotice = "The other phone acknowledged your message, but NeaRer could not save the receipt. It remains queued."
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -2256,6 +2466,7 @@ private fun NeaRerHome(
     hybridPeers: Map<String, String>,
     recentlySeenPeers: Map<String, NearbyPerson>,
     displayName: String,
+    nearerId: String,
     onSaveDisplayName: (String) -> Unit,
     meshRelayEnabled: Boolean,
     onMeshRelayChange: (Boolean) -> Unit,
@@ -2522,7 +2733,7 @@ private fun NeaRerHome(
             }
 
             if (selectedTab == "Share") {
-                FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, modifier = Modifier.weight(1f))
+                FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, onReceive = { selectedTab = "Nearby"; onFindNearby() }, modifier = Modifier.weight(1f))
             }
 
             if (selectedTab == "Nearby") {
@@ -2585,6 +2796,22 @@ private fun NeaRerHome(
             if (selectedTab == "Chats") {
                 PremiumChatsScreen(
                     chatReady = chatReady,
+                    nearerId = nearerId,
+                    onCopyNearerId = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("NeaRer ID", nearerId))
+                        android.widget.Toast.makeText(context, "NeaRer ID copied", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    onShareNearerId = {
+                        val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_SUBJECT, "My NeaRer ID")
+                            putExtra(android.content.Intent.EXTRA_TEXT, "My NeaRer ID is $nearerId. Let's compare IDs when we're connected nearby on NeaRer.")
+                        }
+                        context.startActivity(android.content.Intent.createChooser(share, "Share your NeaRer ID"))
+                    },
+                    peerPublicIds = nearbyPeerPublicIds.toMap(),
+                    currentConversationId = conversationIdFor(connectedDeviceName),
                     connectedDeviceName = connectedDeviceName,
                     connectionMessage = connectionMessage,
                     usingNearbyConnections = usingNearbyConnections,
@@ -2867,6 +3094,11 @@ private fun NeaRerHome(
 @Composable
 private fun PremiumChatsScreen(
     chatReady: Boolean,
+    nearerId: String,
+    onCopyNearerId: () -> Unit,
+    onShareNearerId: () -> Unit,
+    peerPublicIds: Map<String, String>,
+    currentConversationId: String,
     connectedDeviceName: String?,
     connectionMessage: String,
     usingNearbyConnections: Boolean,
@@ -2886,6 +3118,44 @@ private fun PremiumChatsScreen(
     incomingProgress: Float,
     onCancelTransfer: () -> Unit
 ) {
+    val context = LocalContext.current
+    val contactAliases = remember {
+        androidx.compose.runtime.mutableStateMapOf<String, String>().apply {
+            try {
+                val raw = context.getSharedPreferences("nearer_local", android.content.Context.MODE_PRIVATE)
+                    .getString("contact_aliases", "{}") ?: "{}"
+                val stored = org.json.JSONObject(raw)
+                stored.keys().forEach { key ->
+                    val value = stored.optString(key).trim().take(32)
+                    if (key.isNotBlank() && value.isNotBlank()) put(key, value)
+                }
+            } catch (_: Exception) { }
+        }
+    }
+    val pinnedContacts = remember {
+        androidx.compose.runtime.mutableStateListOf<String>().apply {
+            try {
+                addAll(context.getSharedPreferences("nearer_local", android.content.Context.MODE_PRIVATE)
+                    .getStringSet("pinned_contacts", emptySet()).orEmpty())
+            } catch (_: Exception) { }
+        }
+    }
+    fun togglePinnedContact(conversationId: String) {
+        if (conversationId in pinnedContacts) pinnedContacts.remove(conversationId)
+        else pinnedContacts.add(conversationId)
+        context.getSharedPreferences("nearer_local", android.content.Context.MODE_PRIVATE)
+            .edit().putStringSet("pinned_contacts", pinnedContacts.toSet()).apply()
+    }
+    var editingContactId by remember { mutableStateOf<String?>(null) }
+    var contactNameDraft by remember { mutableStateOf("") }
+    fun saveContactAlias(conversationId: String, alias: String) {
+        val clean = alias.trim().take(32)
+        if (clean.isBlank()) contactAliases.remove(conversationId) else contactAliases[conversationId] = clean
+        val stored = org.json.JSONObject()
+        contactAliases.forEach { (key, value) -> stored.put(key, value) }
+        context.getSharedPreferences("nearer_local", android.content.Context.MODE_PRIVATE)
+            .edit().putString("contact_aliases", stored.toString()).apply()
+    }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -2894,6 +3164,192 @@ private fun PremiumChatsScreen(
             Text("YOUR CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
             Text("Chats", color = White, fontSize = 29.sp, fontWeight = FontWeight.ExtraBold)
             Text("Private conversations, closer than ever.", color = Muted, fontSize = 13.sp)
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFF172B49)
+            ) {
+                Column(modifier = Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("YOUR NEARER ID", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+                    Text(nearerId, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.35.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = onCopyNearerId,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 7.dp)
+                        ) {
+                            Text("Copy ID", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = onShareNearerId,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 7.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                        ) {
+                            Text("Share ID", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Text(
+                        "This ID identifies this NeaRer installation, not a verified person. Nearby NeaRer phones exchange this ID after connecting; it is not yet a global username search. Changing phones currently creates a new ID.",
+                        color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                    )
+                }
+            }
+        }
+
+        // Real inbox: summaries are derived from saved messages, never demo contacts.
+        var inboxQuery by remember { mutableStateOf("") }
+        var showSavedContactsOnly by remember { mutableStateOf(false) }
+        var selectedConversationId by remember { mutableStateOf<String?>(null) }
+        val inboxThreads = remember(messages) { ConversationIndex.build(messages) }
+        val selectedThread = inboxThreads.firstOrNull { it.conversationId == selectedConversationId }
+        val effectiveConversationId = selectedConversationId ?: currentConversationId
+        val visibleMessages = remember(messages, effectiveConversationId) {
+            if (effectiveConversationId.isBlank()) emptyList()
+            else ConversationIndex.messagesFor(messages, effectiveConversationId)
+        }
+        val canSendInSelectedThread = chatReady && effectiveConversationId.isNotBlank() &&
+            effectiveConversationId == currentConversationId
+        val visibleThreads = remember(inboxThreads, inboxQuery, showSavedContactsOnly, contactAliases.toMap(), pinnedContacts.toList()) {
+            val filtered = inboxThreads.filter { thread ->
+                (!showSavedContactsOnly || contactAliases.containsKey(thread.conversationId)) &&
+                    (inboxQuery.isBlank() ||
+                        thread.displayName.contains(inboxQuery, ignoreCase = true) ||
+                        contactAliases[thread.conversationId].orEmpty().contains(inboxQuery, ignoreCase = true) ||
+                        thread.lastMessage.body.contains(inboxQuery, ignoreCase = true) ||
+                        thread.conversationId.removePrefix("nearer:").contains(inboxQuery, ignoreCase = true))
+            }
+            filtered.sortedWith(
+                compareByDescending<ConversationSummary> { it.conversationId in pinnedContacts }
+                    .thenByDescending { it.lastMessage.timestamp }
+            )
+        }
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("RECENT CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                    Spacer(Modifier.weight(1f))
+                    Text("${contactAliases.size} saved", color = Muted, fontSize = 10.sp)
+                    androidx.compose.material3.TextButton(
+                        onClick = { showSavedContactsOnly = !showSavedContactsOnly },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                    ) { Text(if (showSavedContactsOnly) "Show all" else "Saved", color = BlueAccent, fontSize = 10.sp) }
+                }
+                OutlinedTextField(
+                    value = inboxQuery,
+                    onValueChange = { inboxQuery = it.take(60) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("Search names or messages", color = Muted, fontSize = 12.sp) },
+                    leadingIcon = { Text("⌕", color = BlueAccent, fontSize = 20.sp) },
+                    shape = RoundedCornerShape(15.dp)
+                )
+                if (visibleThreads.isEmpty()) {
+                    Text(if (inboxThreads.isEmpty()) "Your conversations will appear here as you chat." else "No conversations match that search.", color = Muted, fontSize = 11.sp, lineHeight = 17.sp)
+                } else {
+                    visibleThreads.take(8).forEach { thread ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
+                                .background(if (selectedConversationId == thread.conversationId) Color(0xFF29486B) else Color(0xFF1A2B43))
+                                .clickable { selectedConversationId = thread.conversationId }
+                                .padding(11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(Modifier.size(38.dp), shape = CircleShape, color = Color(0xFF294D78)) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text((contactAliases[thread.conversationId] ?: thread.displayName).take(1).uppercase(), color = White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(contactAliases[thread.conversationId] ?: thread.displayName, color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                val stablePeerId = thread.conversationId.removePrefix("nearer:")
+                                    .takeIf { thread.conversationId.startsWith("nearer:") && it.isNotBlank() }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    if (thread.conversationId in pinnedContacts) {
+                                        Text("PINNED", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Text(
+                                        stablePeerId?.let { code ->
+                                            peerPublicIds[code]?.let { "NeaRer ID · " + it.take(13) + "... · self-reported" }
+                                                ?: "Nearby device code · " + code + " · unverified"
+                                        } ?: if (thread.conversationId.startsWith("nearby-name:")) "Name-based link · identity not verified" else "Older local history",
+                                        color = if (stablePeerId != null) Color(0xFF9BD8FF) else Muted,
+                                        fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text(thread.lastMessage.body, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(if (thread.lastMessage.timestamp > 0L) java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(thread.lastMessage.timestamp)) else "Earlier", color = Muted, fontSize = 9.sp)
+                                Text("${thread.messageCount}", color = BlueAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                androidx.compose.material3.TextButton(
+                                    onClick = {
+                                        editingContactId = thread.conversationId
+                                        contactNameDraft = contactAliases[thread.conversationId] ?: thread.displayName
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                ) { Text(if (contactAliases.containsKey(thread.conversationId)) "Edit name" else "Save name", color = BlueAccent, fontSize = 9.sp) }
+                            }
+                        }
+                    }
+                    if (visibleThreads.size > 8) Text("Showing 8 recent chats. Search to find older conversations.", color = Muted, fontSize = 9.sp)
+                }
+            }
+        }
+
+        if (selectedThread != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("‹ Inbox", color = BlueAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { selectedConversationId = null }.padding(horizontal = 10.dp, vertical = 8.dp))
+                Text(contactAliases[selectedThread.conversationId] ?: selectedThread.displayName, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                androidx.compose.material3.TextButton(onClick = { togglePinnedContact(selectedThread.conversationId) }) {
+                    Text(if (selectedThread.conversationId in pinnedContacts) "Unpin" else "Pin", color = Gold, fontSize = 11.sp)
+                }
+                androidx.compose.material3.TextButton(onClick = {
+                    editingContactId = selectedThread.conversationId
+                    contactNameDraft = contactAliases[selectedThread.conversationId] ?: selectedThread.displayName
+                }) { Text("Edit name", color = BlueAccent, fontSize = 11.sp) }
+            }
+        }
+        if (editingContactId != null) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { editingContactId = null },
+                title = { Text("Save contact name") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("This name is stored only on this phone. It does not change the other person's profile.", color = Muted, fontSize = 12.sp)
+                        if (editingContactId?.startsWith("nearby-name:") == true) {
+                            Text("This older link is matched by display name, not a verified ID. People using the same name may be confused.", color = Gold, fontSize = 11.sp)
+                        }
+                        OutlinedTextField(
+                            value = contactNameDraft,
+                            onValueChange = { contactNameDraft = it.take(32) },
+                            singleLine = true,
+                            label = { Text("Contact name") }
+                        )
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        editingContactId?.let { saveContactAlias(it, contactNameDraft) }
+                        editingContactId = null
+                    }) { Text("Save", color = BlueAccent) }
+                },
+                dismissButton = {
+                    Row {
+                        androidx.compose.material3.TextButton(onClick = {
+                            editingContactId?.let { saveContactAlias(it, "") }
+                            editingContactId = null
+                        }) { Text("Reset", color = Muted) }
+                        androidx.compose.material3.TextButton(onClick = { editingContactId = null }) {
+                            Text("Cancel", color = Muted)
+                        }
+                    }
+                }
+            )
         }
 
         Surface(
@@ -2922,7 +3378,10 @@ private fun PremiumChatsScreen(
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        connectedDeviceName ?: "Your nearby circle",
+                        if (selectedThread != null) contactAliases[selectedThread.conversationId] ?: selectedThread.displayName
+                        else connectedDeviceName?.let { name ->
+                            contactAliases[currentConversationId] ?: name
+                        } ?: "Your nearby circle",
                         color = White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
@@ -2936,8 +3395,9 @@ private fun PremiumChatsScreen(
                             color = if (chatReady) Color(0xFF43D7A0) else Gold
                         ) {}
                         Text(
-                            if (chatReady) "Connected · Private chat ready" else "Not connected yet",
-                            color = if (chatReady) Color(0xFF9DE8C9) else Muted,
+                            if (selectedThread != null && selectedThread.conversationId != currentConversationId) "Saved conversation · reconnect to reply"
+                            else if (chatReady) "Connected · Direct chat ready" else "Not connected yet",
+                            color = if (selectedThread != null && selectedThread.conversationId != currentConversationId) Muted else if (chatReady) Color(0xFF9DE8C9) else Muted,
                             fontSize = 11.sp,
                             maxLines = 2
                         )
@@ -2973,7 +3433,7 @@ private fun PremiumChatsScreen(
                     }
                     Surface(shape = RoundedCornerShape(30.dp), color = if (chatReady) Color(0xFF174B43) else Color(0xFF3C3540)) {
                         Text(
-                            if (chatReady) "SECURE LINK" else "OFFLINE",
+                            if (chatReady) "DIRECT LINK" else "OFFLINE",
                             color = if (chatReady) Color(0xFF9DE8C9) else Gold,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
@@ -2982,8 +3442,8 @@ private fun PremiumChatsScreen(
                     }
                 }
 
-                if (chatReady) {
-                    if (messages.isEmpty()) {
+                if (chatReady || selectedConversationId != null) {
+                    if (visibleMessages.isEmpty()) {
                         Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFF142238)) {
                             Column(
                                 modifier = Modifier.fillMaxWidth().padding(18.dp),
@@ -3000,7 +3460,7 @@ private fun PremiumChatsScreen(
                             modifier = Modifier.fillMaxWidth().height(230.dp).verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(9.dp)
                         ) {
-                            messages.forEach { message ->
+                            visibleMessages.forEach { message ->
                                 Column(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
@@ -3029,43 +3489,50 @@ private fun PremiumChatsScreen(
                         Text(chatNotice, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = draft,
-                            onValueChange = onDraftChange,
-                            modifier = Modifier.weight(1f),
-                            placeholder = { Text("Write a message…", color = Muted, fontSize = 13.sp) },
-                            shape = RoundedCornerShape(18.dp),
-                            singleLine = true
-                        )
-                        Button(
-                            onClick = { if (draft.isNotBlank()) onSendMessage(draft) },
-                            enabled = draft.isNotBlank(),
-                            modifier = Modifier.height(54.dp),
-                            shape = RoundedCornerShape(17.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
-                        ) { Text("Send", fontWeight = FontWeight.Bold) }
-                    }
+                    if (canSendInSelectedThread) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = draft,
+                                onValueChange = onDraftChange,
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text("Write a message…", color = Muted, fontSize = 13.sp) },
+                                shape = RoundedCornerShape(18.dp),
+                                singleLine = true
+                            )
+                            Button(
+                                onClick = { if (draft.isNotBlank()) onSendMessage(draft) },
+                                enabled = draft.isNotBlank(),
+                                modifier = Modifier.height(54.dp),
+                                shape = RoundedCornerShape(17.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                            ) { Text("Send", fontWeight = FontWeight.Bold) }
+                        }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(9.dp)
-                    ) {
-                        Button(
-                            onClick = onChooseFiles,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263B59), contentColor = White)
-                        ) { Text("＋  Share files", fontSize = 12.sp) }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(9.dp)
+                        ) {
+                            Button(
+                                onClick = onChooseFiles,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263B59), contentColor = White)
+                            ) { Text("＋  Share files", fontSize = 12.sp) }
+                            Text(
+                                if (usingNearbyConnections) "Nearby link" else "Wi-Fi Direct link",
+                                color = Muted,
+                                fontSize = 10.sp,
+                                modifier = Modifier.align(Alignment.CenterVertically)
+                            )
+                        }
+                    } else {
                         Text(
-                            if (usingNearbyConnections) "Nearby link" else "Wi-Fi Direct link",
-                            color = Muted,
-                            fontSize = 10.sp,
-                            modifier = Modifier.align(Alignment.CenterVertically)
+                            "History only · reconnect to this person to reply. NeaRer won't send this message to a different connected phone.",
+                            color = Gold, fontSize = 10.sp, lineHeight = 15.sp
                         )
                     }
 

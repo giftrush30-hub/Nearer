@@ -47,4 +47,32 @@ class SocketReadDeadlineTest {
             runCatching { peer.close() }
         }
     }
+    @Test fun closesSocketWhenWatchdogCannotScheduleDeadline() {
+        val (client, peer) = connectedSockets()
+        val scheduler = Executors.newSingleThreadScheduledExecutor()
+        scheduler.shutdownNow()
+        try {
+            SocketReadDeadline(client, scheduler, 1000L).close()
+            assertTrue("A request must fail closed if its deadline cannot be scheduled", client.isClosed)
+        } finally {
+            runCatching { client.close() }
+            runCatching { peer.close() }
+        }
+    }
+
+    @Test fun deadlineCancellationWinsAgainstAnAlreadyQueuedExpiry() {
+        val (client, peer) = connectedSockets()
+        val scheduler = Executors.newSingleThreadScheduledExecutor()
+        try {
+            val deadline = SocketReadDeadline(client, scheduler, 10_000L)
+            deadline.close()
+            Thread.sleep(30L)
+            assertFalse("Closing a completed request must keep its socket open", client.isClosed)
+        } finally {
+            scheduler.shutdownNow()
+            runCatching { client.close() }
+            runCatching { peer.close() }
+        }
+    }
+
 }

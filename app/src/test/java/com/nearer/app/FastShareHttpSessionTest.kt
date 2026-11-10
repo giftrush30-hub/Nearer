@@ -58,11 +58,69 @@ class FastShareHttpSessionTest {
         assertTrue(response.isEmpty())
     }
 
+    @Test fun ifRangeValidatorForcesSafeFullDownloadWhenServerHasNoValidators() {
+        val (exchange, response) = read(
+            "GET /download HTTP/1.1\r\nRange: bytes=500-\r\nIf-Range: \"stale-validator\"\r\n\r\n"
+        )
+        assertNotNull(exchange)
+        assertNull(exchange!!.rangeHeader)
+        assertEquals("\"stale-validator\"", exchange.ifRangeHeader)
+        assertTrue(response.isEmpty())
+    }
+
+    @Test fun duplicateIfRangeHeadersAreRejectedEvenWhenFirstValueIsEmpty() {
+        val (exchange, response) = read(
+            "GET /download HTTP/1.1\r\nIf-Range:\r\nif-range: \"validator\"\r\n\r\n"
+        )
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
     @Test fun unsupportedMethodWrites405AndAllowHeader() {
         val (exchange, response) = read("POST /download HTTP/1.1\r\n\r\n")
         assertNull(exchange)
         assertTrue(response.startsWith("HTTP/1.1 405 Method Not Allowed\r\n"))
-        assertTrue(response.contains("Allow: GET, HEAD\r\n"))
+        assertTrue(response.contains("Allow: GET, HEAD, POST\r\n"))
+    }
+
+    @Test fun browserUploadRequestCarriesFilenameAndLength() {
+        val (exchange, response) = read(
+            "POST /upload HTTP/1.1\r\nX-Filename: holiday%20photo.jpg\r\nContent-Type: image/jpeg\r\nContent-Length: 12345\r\n\r\n"
+        )
+        assertNotNull(exchange)
+        assertEquals(FastShareHttpRequest.Route.UPLOAD, exchange!!.request.route)
+        assertEquals(12345L, exchange.contentLength)
+        assertEquals("holiday%20photo.jpg", exchange.uploadFileName)
+        assertEquals("image/jpeg", exchange.uploadMimeType)
+        assertTrue(response.isEmpty())
+    }
+
+    @Test fun uploadRejectsRangeAndIfRangeHeaders() {
+        val (exchange, response) = read(
+            "POST /upload HTTP/1.1\r\nX-Filename: clip.mp4\r\nContent-Length: 0\r\nIf-Range: \"validator\"\r\n\r\n"
+        )
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun uploadWithoutFilenameOrLengthIsRejected() {
+        val (exchange, response) = read("POST /upload HTTP/1.1\r\n\r\n")
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun duplicateUploadFilenameHeadersAreRejected() {
+        val (exchange, response) = read(
+            "POST /upload HTTP/1.1\r\nX-Filename: first.txt\r\nX-Filename: second.txt\r\nContent-Length: 1\r\n\r\n"
+        )
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun getStillRejectsNonzeroRequestBodies() {
+        val (exchange, response) = read("GET /download HTTP/1.1\r\nContent-Length: 1\r\n\r\n")
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
     }
 
     @Test fun unknownPathWrites404WithoutCallingFileRoute() {
@@ -285,6 +343,32 @@ class FastShareHttpSessionTest {
         val (exchange, response) = read("GET /download HTTP/1.1\r\nHost: phone.local/path\r\n\r\n")
         assertNull(exchange)
         assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun duplicateUploadContentLengthsAreRejected() {
+        val (exchange, response) = read(
+            "POST /upload HTTP/1.1\r\nX-Filename: first.txt\r\nContent-Length: 1\r\ncontent-length: 1\r\n\r\n"
+        )
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun negativeUploadContentLengthIsRejected() {
+        val (exchange, response) = read(
+            "POST /upload HTTP/1.1\r\nX-Filename: first.txt\r\nContent-Length: -1\r\n\r\n"
+        )
+        assertNull(exchange)
+        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request\r\n"))
+    }
+
+    @Test fun zeroByteUploadIsAValidRequest() {
+        val (exchange, response) = read(
+            "POST /upload HTTP/1.1\r\nX-Filename: empty.txt\r\nContent-Length: 0\r\n\r\n"
+        )
+        assertNotNull(exchange)
+        assertEquals(0L, exchange!!.contentLength)
+        assertEquals("empty.txt", exchange.uploadFileName)
+        assertTrue(response.isEmpty())
     }
 
 }

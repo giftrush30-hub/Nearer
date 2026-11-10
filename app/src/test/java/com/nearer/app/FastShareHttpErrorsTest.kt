@@ -41,11 +41,28 @@ class FastShareHttpErrorsTest {
         assertContentLength(headers, body)
     }
 
+    @Test fun idleUploadTimeoutReturns408AndRetryAfter() {
+        val (headers, body) = headersAndBody(FastShareHttpErrors.requestTimeout())
+        assertTrue(headers.startsWith("HTTP/1.1 408 Request Timeout"))
+        assertTrue(headers.contains("\r\nRetry-After: 2\r\n"))
+        assertEquals("Upload paused because the connection became idle. Reconnect and retry.\n", body)
+        assertContentLength(headers, body)
+    }
+
+    @Test fun concurrentUploadReturnsDistinctRetryMessage() {
+        val (headers, body) = headersAndBody(FastShareHttpErrors.uploadBusy())
+        assertTrue(headers.startsWith("HTTP/1.1 429 Too Many Requests"))
+        assertTrue(headers.contains("\r\nRetry-After: 2\r\n"))
+        assertEquals("Two uploads are already active. Wait briefly, then retry.\n", body)
+        assertContentLength(headers, body)
+    }
+
     @Test fun allErrorResponsesAreNotCachedAndDisableMimeSniffing() {
         listOf(
             FastShareHttpErrors.badRequest(),
             FastShareHttpErrors.methodNotAllowed(),
             FastShareHttpErrors.tooManyRequests(),
+            FastShareHttpErrors.requestTimeout(),
             FastShareHttpErrors.forbidden(),
             FastShareHttpErrors.notFound()
         ).forEach { response ->

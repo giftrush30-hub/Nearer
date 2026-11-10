@@ -41,6 +41,14 @@ class FastShareHttpRequestTest {
         assertEquals(FastShareHttpRequest.Route.DOWNLOAD, request.route)
     }
 
+    @Test fun browserUploadUsesDedicatedPostRoute() {
+        val request = FastShareHttpRequest.parse("POST /upload HTTP/1.1")!!
+        assertTrue(request.supportsMethod)
+        assertTrue(request.isUpload)
+        assertEquals(FastShareHttpRequest.Route.UPLOAD, request.route)
+        assertFalse(FastShareHttpRequest.parse("GET /upload HTTP/1.1")!!.isUpload)
+    }
+
     @Test fun unknownPathSelectsNotFoundRoute() {
         assertEquals(
             FastShareHttpRequest.Route.NOT_FOUND,
@@ -132,6 +140,20 @@ class FastShareHttpRequestTest {
             val request = FastShareHttpRequest.parse("GET /?" + query + " HTTP/1.1")!!
             assertFalse("Query should not authenticate: " + query, request.hasAccessKey(key))
         }
+    }
+
+    @Test fun encodedAccessKeyParameterNameCannotCreateAnAmbiguousDuplicate() {
+        val key = "f".repeat(64)
+        val duplicate = FastShareHttpRequest.parse("GET /?key=" + key + "&%6Bey=" + key + " HTTP/1.1")!!
+        val encodedOnly = FastShareHttpRequest.parse("GET /?%6Bey=" + key + " HTTP/1.1")!!
+        assertFalse(duplicate.hasAccessKey(key))
+        assertTrue(encodedOnly.hasAccessKey(key))
+    }
+
+    @Test fun malformedPercentEncodingInQueryParameterNameFailsClosed() {
+        val key = "9".repeat(64)
+        val request = FastShareHttpRequest.parse("GET /?%6B%ZZey=ignored&key=" + key + " HTTP/1.1")!!
+        assertFalse(request.hasAccessKey(key))
     }
 
 }

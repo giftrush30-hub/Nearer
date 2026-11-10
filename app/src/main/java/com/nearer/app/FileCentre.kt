@@ -224,6 +224,16 @@ internal object AndroidFileCatalog {
         return results
     }
 
+    fun scanPcUploads(context: Context): List<FileCentreItem> {
+        val directory = java.io.File(context.filesDir, "nearer-pc-uploads")
+        return directory.listFiles()?.filter { it.isFile && !it.name.endsWith(".part") }?.map { file ->
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+            FileCentreItem(uri.toString(), file.name, FileCentreCategory.DOWNLOADS,
+                uri, file.length().coerceAtLeast(0L), file.lastModified() / 1000L,
+                java.net.URLConnection.guessContentTypeFromName(file.name) ?: "application/octet-stream")
+        }?.sortedByDescending { it.modifiedSeconds } ?: emptyList()
+    }
+
     fun installedApps(context: Context): List<FileCentreItem> {
         val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         return try {
@@ -352,6 +362,7 @@ internal object AndroidFileCatalog {
 internal fun FileCentreScreen(
     connected: Boolean,
     onSendFiles: (List<Uri>) -> Unit,
+    onReceive: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -468,7 +479,7 @@ internal fun FileCentreScreen(
             loading = true
             scope.launch {
                 val media = withContext(Dispatchers.IO) { AndroidFileCatalog.scanMedia(context) }
-                items.removeAll { it.category != FileCentreCategory.APPS }
+                items.removeAll { it.category != FileCentreCategory.APPS && it.category != FileCentreCategory.DOWNLOADS }
                 items.addAll(media)
                 loading = false
                 notice = "Your accessible pictures, videos and music are ready."
@@ -579,9 +590,10 @@ internal fun FileCentreScreen(
         val apps = withContext(Dispatchers.IO) { AndroidFileCatalog.installedApps(context) }
         items.removeAll { it.category == FileCentreCategory.APPS }
         items.addAll(apps)
+        AndroidFileCatalog.scanPcUploads(context).forEach { uploaded -> if (items.none { it.id == uploaded.id }) items.add(uploaded) }
         if (AndroidFileCatalog.hasMediaAccess(context, category)) {
             val media = withContext(Dispatchers.IO) { AndroidFileCatalog.scanMedia(context) }
-            items.removeAll { it.category != FileCentreCategory.APPS }
+            items.removeAll { it.category != FileCentreCategory.APPS && it.category != FileCentreCategory.DOWNLOADS }
             items.addAll(media)
             notice = "Showing accessible files and installed apps on this phone."
         } else {
@@ -618,6 +630,29 @@ internal fun FileCentreScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = BlueAccent),
                 shape = RoundedCornerShape(12.dp)
             ) { Text(if (gridMode) "List" else "Grid") }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            Button(
+                onClick = onReceive,
+                modifier = Modifier.weight(1f).height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight),
+                shape = RoundedCornerShape(13.dp)
+            ) {
+                Text("Receive nearby", fontWeight = FontWeight.Bold)
+            }
+            Surface(
+                modifier = Modifier.weight(1f),
+                color = if (connected) Color(0xFF173C3A) else Panel,
+                shape = RoundedCornerShape(13.dp)
+            ) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Text(if (connected) "READY TO SHARE" else "NOT CONNECTED", color = if (connected) BlueAccent else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(if (connected) "Choose files below" else "Connect to a nearby phone", color = White, fontSize = 10.sp, maxLines = 1)
+                }
+            }
         }
         OutlinedTextField(
             value = search,
