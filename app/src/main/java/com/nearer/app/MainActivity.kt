@@ -111,14 +111,14 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 
-// NeaRer brand palette: midnight, deep panel, clear blue, soft white and gold.
-internal val Midnight = Color(0xFF101A2B)
-internal val Panel = Color(0xFF1A2940)
-internal val BlueAccent = Color(0xFF6EA8FF)
-internal val Muted = Color(0xFFA8B6C9)
-internal val White = Color(0xFFF6F8FC)
-internal val BrandBlue = Color(0xFF2563EB)
-internal val Gold = Color(0xFFFFD12D)
+// NeaRer signature palette: rich brand blue, deep ink surfaces, clear blue and warm gold.
+internal val Midnight = Color(0xFF07182A)
+internal val Panel = Color(0xFF102B46)
+internal val BlueAccent = Color(0xFF78B9FF)
+internal val Muted = Color(0xFFB2C2D3)
+internal val White = Color(0xFFF7FAFF)
+internal val BrandBlue = Color(0xFF004B90)
+internal val Gold = Color(0xFFFFC928)
 
 class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
@@ -257,8 +257,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         captureExternalShareIntent(intent)
-        window.statusBarColor = android.graphics.Color.rgb(16, 26, 43)
-        window.navigationBarColor = android.graphics.Color.rgb(16, 26, 43)
+        window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
+        window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
         window.decorView.systemUiVisibility = 0
         wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
         channel = wifiManager?.initialize(this, mainLooper, null)
@@ -520,10 +520,15 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme(
                 background = Midnight,
                 surface = Panel,
+                surfaceVariant = Color(0xFF173A5B),
                 primary = BlueAccent,
                 onPrimary = Midnight,
+                secondary = Gold,
+                onSecondary = Midnight,
+                tertiary = BrandBlue,
                 onBackground = White,
-                onSurface = White
+                onSurface = White,
+                onSurfaceVariant = Muted
             )) {
                 NeaRerHome(
                     status = statusMessage,
@@ -3456,15 +3461,15 @@ private fun NeaRerHome(
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
                             shape = RoundedCornerShape(13.dp),
-                            color = if (selected) BlueAccent.copy(alpha = 0.13f) else Panel
+                            color = if (selected) BrandBlue.copy(alpha = 0.42f) else Panel
                         ) {
                             Column(
                                 modifier = Modifier.clickable { selectedTab = item.first }.padding(vertical = 8.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
-                                Text(item.second, color = if (selected) BlueAccent else Muted, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text(item.first, color = if (selected) BlueAccent else Muted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                Text(item.second, color = if (selected) Gold else Muted, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                                Text(item.first, color = if (selected) White else Muted, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
                                 Surface(
                                     modifier = Modifier.width(16.dp).height(2.dp),
                                     shape = RoundedCornerShape(2.dp),
