@@ -712,6 +712,7 @@ internal object IncomingFilePayloadPolicy {
         var descriptor: android.os.ParcelFileDescriptor? = null
         var filePayload: Payload? = null
         var stagedSource: java.io.File? = null
+        var stagedSha256 = ""
         try {
             val openedDescriptor = runCatching {
                 appContext.contentResolver.openFileDescriptor(uri, "r")
@@ -734,12 +735,17 @@ internal object IncomingFilePayloadPolicy {
                 stagedSource = java.io.File.createTempFile("nearer-source-", ".bin", stagingDir)
                 val input = appContext.contentResolver.openInputStream(uri)
                     ?: throw IllegalStateException("The selected file could not be opened as a stream")
-                input.use { source ->
+                val copyResult = input.use { source ->
                     stagedSource!!.outputStream().buffered().use { output ->
-                        source.copyTo(output, 1024 * 1024)
+                        TransferDigest.copyAndSha256(source, output)
                     }
                 }
-                size = stagedSource!!.length()
+                val stagedLength = stagedSource!!.length()
+                if (copyResult.bytesCopied != stagedLength) {
+                    throw IllegalStateException("Staged file length did not match the number of bytes copied")
+                }
+                stagedSha256 = copyResult.sha256
+                size = copyResult.bytesCopied
                 payload = Payload.fromFile(stagedSource!!)
                 filePayload = payload
             }
@@ -749,6 +755,8 @@ internal object IncomingFilePayloadPolicy {
             val id = payload.id
             val peerStableId = synchronized(names) { stableIds[endpointId].orEmpty() }
             val outgoing = OutgoingFile(endpointId, peerStableId, name, size, payload, stagedSource)
+            // Provider-backed sources were already hashed during the staging copy.
+            outgoing.sha256 = stagedSha256
             outgoingFiles[id] = outgoing
             val initialSpeed = transferSpeedMeters.computeIfAbsent(id) { TransferSpeedMeter() }
                 .record(0L, size)
@@ -757,11 +765,13 @@ internal object IncomingFilePayloadPolicy {
             listener.onFileStatus("Preparing and verifying $name before sending…")
             transferPreparation.execute {
                 try {
-                    val sha256 = if (outgoing.temporarySourceFile != null) {
-                        outgoing.temporarySourceFile.inputStream().use { sha256Hex(it) }
-                    } else {
-                        appContext.contentResolver.openInputStream(uri)?.use { sha256Hex(it) }
-                            ?: throw IllegalStateException("The selected file can no longer be read")
+                    val sha256 = outgoing.sha256.ifBlank {
+                        if (outgoing.temporarySourceFile != null) {
+                            outgoing.temporarySourceFile.inputStream().use { sha256Hex(it) }
+                        } else {
+                            appContext.contentResolver.openInputStream(uri)?.use { sha256Hex(it) }
+                                ?: throw IllegalStateException("The selected file can no longer be read")
+                        }
                     }
                     outgoing.sha256 = sha256
                     if (!synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) {
