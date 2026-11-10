@@ -13,7 +13,7 @@ class MeshCryptoAndRoutingTest {
             alice.signing, bob.agreementPublicKey
         )
         val opened = MeshCrypto.open(packet, "bob", bob.agreement.private, alice.signingPublicKey)
-        assertArrayEquals("hello mesh".toByteArray(), opened)
+        assertArrayEquals("hello mesh".toByteArray(), requireNotNull(opened))
         assertNull(MeshCrypto.open(packet, "mallory", mallory.agreement.private, alice.signingPublicKey))
         assertNull(MeshCrypto.open(packet, "bob", bob.agreement.private, mallory.signingPublicKey))
     }
