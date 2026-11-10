@@ -535,18 +535,22 @@ internal object IncomingFilePayloadPolicy {
                 // read/write pass for multi-gigabyte videos.
                 val moved = sourceFile != null && sourceFile.exists() && sourceFile.renameTo(target)
                 var copiedSha256 = ""
+                var copiedBytes = -1L
                 if (!moved) {
                     val uri: Uri = receivedFile.asUri() ?: throw IllegalStateException("Nearby file content is unavailable")
                     appContext.contentResolver.openInputStream(uri)?.use { input ->
                         FileOutputStream(target).use { output ->
-                            copiedSha256 = TransferStreamCopy.copyAndSha256(input, output).sha256
+                            val copyResult = TransferStreamCopy.copyAndSha256(input, output)
+                            copiedBytes = copyResult.bytesCopied
+                            copiedSha256 = copyResult.sha256
                             output.fd.sync()
                         }
                     } ?: throw IllegalStateException("Could not open the received file")
                     appContext.contentResolver.delete(uri, null, null)
                 }
-                if (!target.isFile || target.length() != meta.size) {
-                    throw IllegalStateException("Received file size did not match")
+                if (!target.isFile || target.length() != meta.size ||
+                    (copiedBytes >= 0L && copiedBytes != target.length())) {
+                    throw IllegalStateException("Received file size did not match the expected and copied byte counts")
                 }
                 // The fallback copy already calculated the digest. Only the rename path
                 // needs a separate read to verify the completed file.
