@@ -49,8 +49,13 @@ jobs:
           retention-days: 14
 
   launch-smoke-test:
-    name: Launch NeaRer on Android emulator
+    name: Launch NeaRer on Android ${{ matrix.api-level }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [31, 35]
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -74,7 +79,7 @@ jobs:
       - name: Install, launch and verify NeaRer on Android 35
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: ${{ matrix.api-level }}
           arch: x86_64
           target: google_apis
           profile: pixel_2
