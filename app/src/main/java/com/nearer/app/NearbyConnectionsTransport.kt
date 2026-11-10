@@ -30,6 +30,9 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         fun onFileSpeed(id: String, payloadId: Long, name: String, snapshot: TransferSpeedSnapshot, incoming: Boolean) {}
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
+        /** A signed public identity was received; UI must compare this fingerprint before trusting it. */
+        fun onMeshIdentityObserved(endpointId: String, peerId: String, fingerprint: String) {}
+        fun onMeshRouteUpdated(destinationPeerId: String, nextHopPeerId: String, hopCount: Int) {}
     }
 
     private val appContext = context.applicationContext
@@ -41,6 +44,11 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val names = mutableMapOf<String, String>()
     private val stableIds = mutableMapOf<String, String>()
     private val activeEndpoints = mutableSetOf<String>()
+    private val meshIdentityVault = MeshIdentityVault(appContext)
+    private val meshRouteTable = MeshRouteTable()
+    private val meshIdentity = runCatching { meshIdentityVault.loadOrCreate() }.getOrNull()
+    private val meshPeerHellos = ConcurrentHashMap<String, MeshWireProtocol.IdentityHello>()
+    private val meshSeenFrames = ConcurrentHashMap.newKeySet<String>()
     private val localStableId = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         .let { prefs ->
             val stored = prefs.getString("nearer_stable_id", null)
@@ -296,12 +304,15 @@ internal object IncomingFilePayloadPolicy {
                 val details = synchronized(names) { (names[id] ?: "Nearby NeaRer user") to stableIds[id].orEmpty() }
                 retryQueuedMessagesForPeer(details.second, id)
                 listener.onConnected(id, details.first, details.second)
+                sendMeshIdentityHello(id)
             } else listener.onStatus("Nearby connection was not approved. Try again.")
         }
         override fun onDisconnected(id: String) {
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
             pauseOutgoingFilesForEndpoint(id)
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
+            meshPeerHellos.remove(id)
+            meshRouteTable.removeNextHop(details.first)
             if (empty) listener.onDisconnected(id, details.first, details.second)
             else {
                 listener.onLost(id, details.first)
@@ -392,9 +403,67 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
+    private fun sendMeshIdentityHello(endpointId: String) {
+        val identity = meshIdentity ?: run {
+            listener.onStatus("Secure mesh identity is unavailable on this phone.")
+            return
+        }
+        try {
+            val hello = MeshWireProtocol.createIdentityHello(localStableId, identity)
+            client.sendPayload(endpointId, Payload.fromBytes(MeshWireProtocol.encodeIdentityHello(hello)))
+                .addOnFailureListener {
+                    listener.onStatus("Could not exchange the secure nearby identity with this phone.")
+                }
+        } catch (_: Exception) {
+            listener.onStatus("Could not prepare the secure nearby identity.")
+        }
+    }
+
+    private fun sendDirectRouteAdvertisement(endpointId: String) {
+        val identity = meshIdentity ?: return
+        try {
+            val route = MeshWireProtocol.createRouteAdvertisement(
+                localStableId, localStableId, 0, System.currentTimeMillis(), identity.signing
+            )
+            // The local identity cannot advertise itself as a destination route.
+            // The peer hello is the direct route proof; route advertisements are
+            // reserved for destinations other than the local sender.
+        } catch (_: Exception) {
+            // No route is installed from an invalid local advertisement.
+        }
+    }
+
     private fun handleBytes(endpointId: String, bytes: ByteArray?) {
         try {
-            val envelope = JSONObject(bytes?.toString(Charsets.UTF_8).orEmpty())
+            if (bytes == null || bytes.isEmpty() || bytes.size > MeshWireProtocol.MAX_FRAME_BYTES) return
+            val envelope = JSONObject(bytes.toString(Charsets.UTF_8))
+            if (envelope.optString("kind") == MeshWireProtocol.KIND_IDENTITY_HELLO) {
+                val hello = MeshWireProtocol.decodeIdentityHello(envelope)
+                    ?: return listener.onStatus("A nearby phone sent an invalid signed identity.")
+                val advertisedStableId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                if (advertisedStableId.isBlank() || hello.peerId != advertisedStableId) {
+                    listener.onStatus("Nearby identity did not match the advertised device identity; it was not trusted.")
+                    return
+                }
+                meshPeerHellos[endpointId] = hello
+                listener.onMeshIdentityObserved(endpointId, hello.peerId, hello.fingerprint)
+                listener.onStatus("Signed identity received. Compare its fingerprint with the other phone before trusting it.")
+                return
+            }
+            if (envelope.optString("kind") == MeshWireProtocol.KIND_ROUTE_ADVERTISEMENT) {
+                val route = MeshWireProtocol.decodeRoute(envelope) ?: return
+                val hello = meshPeerHellos[endpointId] ?: return
+                if (route.originPeerId != hello.peerId ||
+                    !MeshWireProtocol.verifyRouteAdvertisement(route, hello.signingPublicKey, System.currentTimeMillis())
+                ) return
+                if (route.destinationPeerId == localStableId) return
+                val learned = meshRouteTable.learn(
+                    route.destinationPeerId, hello.peerId, route.hopCount,
+                    hello.peerId, localStableId, System.currentTimeMillis()
+                )
+                if (learned) listener.onMeshRouteUpdated(route.destinationPeerId, hello.peerId, route.hopCount + 1)
+                return
+            }
             if (envelope.optString("kind") == "file_meta") {
                 val payloadId = envelope.optLong("payloadId", -1L)
                 val name = safeFileName(envelope.optString("name", "shared-file"))
@@ -905,6 +974,7 @@ internal object IncomingFilePayloadPolicy {
     fun disconnect() {
         try { client.stopAllEndpoints() } catch (_: Exception) { }
         synchronized(activeEndpoints) { activeEndpoints.clear() }
+        meshPeerHellos.clear()
     }
     fun stop() {
         stopSearching()
