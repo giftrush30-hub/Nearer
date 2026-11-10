@@ -19,7 +19,7 @@ class NeaRerBackupCryptoTest {
                 NeaRerBackupCrypto.encryptFile(missingSource, File(folder, "backup.nearer"), secret)
             }
             assertTrue(failure.isFailure)
-            assertTrue(secret.all { it == '\\u0000' })
+            assertTrue(secret.all { it == '\u0000' })
         } finally {
             folder.deleteRecursively()
         }
