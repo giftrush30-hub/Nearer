@@ -423,7 +423,6 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
-
     private fun beginPeerHandshake(endpointId: String) {
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (NeaRerIdentity.normalize(peerId) == null) {
@@ -468,6 +467,7 @@ internal object IncomingFilePayloadPolicy {
         val state = peerHandshakes[endpointId] ?: return
         try {
             val (peerId, signature) = NearbyPeerHandshake.decodeProof(envelope)
+            require(state.localProofSent) { "Local proof has not been sent." }
             val remoteKey = state.remotePublicKey ?: throw IllegalArgumentException("Peer key has not been received.")
             val remoteNonce = state.remoteNonce ?: throw IllegalArgumentException("Peer challenge has not been received.")
             require(peerId == state.remotePeerId)
@@ -1017,4 +1017,42 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun broadcast(content: String, excludeEndpoint: String?): Boolean {
-        val targets = synchronized(activeEndpoints) { activeEndpoints.filter { it != excludeEndpoint } }
+        val targets = synchronized(activeEndpoints) { activeEndpoints.filter { it != excludeEndpoint && authenticatedEndpoints.contains(it) } }
+        if (targets.isEmpty()) return false
+        var sent = false
+        targets.forEach { endpoint ->
+            try {
+                client.sendPayload(endpoint, Payload.fromBytes(content.toByteArray(Charsets.UTF_8)))
+                sent = true
+            } catch (_: Exception) { }
+        }
+        return sent
+    }
+
+    fun stopSearching() {
+        started = false
+        try { client.stopAdvertising() } catch (_: Exception) { }
+        try { client.stopDiscovery() } catch (_: Exception) { }
+    }
+
+    fun disconnect() {
+        try { client.stopAllEndpoints() } catch (_: Exception) { }
+        synchronized(activeEndpoints) { activeEndpoints.clear() }
+        authenticatedEndpoints.clear()
+        peerHandshakes.clear()
+    }
+    fun stop() {
+        stopSearching()
+        disconnect()
+        pendingOutgoingMessages.values.forEach { it.retryTask?.let(deliveryHandler::removeCallbacks); it.retryTask = null }
+        deliveryHandler.removeCallbacksAndMessages(null)
+        outgoingFiles.values.forEach {
+            try { it.payload.close() } catch (_: Exception) { }
+            it.temporarySourceFile?.delete()
+        }
+        outgoingFiles.clear()
+        fileIo.shutdownNow()
+        transferPreparation.shutdownNow()
+    }
+
+}
