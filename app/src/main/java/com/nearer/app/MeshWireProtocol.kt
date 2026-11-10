@@ -54,7 +54,7 @@ internal object MeshWireProtocol {
         return unsigned.copy(signature = MeshCrypto.encode(signer.sign()))
     }
 
-    fun verifyIdentityHello(hello: IdentityHello): Boolean = try {
+    fun verifyIdentityHello(hello: IdentityHello): Boolean {\n        return try {
         if (hello.peerId.isBlank() || hello.peerId.length > 64 ||
             hello.signingPublicKey.length !in 1..512 ||
             hello.agreementPublicKey.length !in 1..512 ||
@@ -83,7 +83,7 @@ internal object MeshWireProtocol {
         .toString().toByteArray(Charsets.UTF_8)
         .also { require(it.size <= MAX_FRAME_BYTES) }
 
-    fun decodeIdentityHello(json: JSONObject): IdentityHello? = try {
+    fun decodeIdentityHello(json: JSONObject): IdentityHello? {\n        return try {
         if (json.optString("kind") != KIND_IDENTITY_HELLO ||
             json.optInt("version", -1) != VERSION
         ) return null
