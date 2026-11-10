@@ -1,6 +1,7 @@
 package com.nearer.app
 
-import org.json.JSONObject\nimport org.json.JSONArray
+import org.json.JSONObject
+import org.json.JSONArray
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.security.KeyFactory
