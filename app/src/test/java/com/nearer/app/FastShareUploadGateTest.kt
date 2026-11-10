@@ -30,6 +30,19 @@ class FastShareUploadGateTest {
         assertEquals(FastShareUploadGate.Admission.INSUFFICIENT_STORAGE, gate.tryAcquire(1L, Long.MAX_VALUE))
     }
 
+    @Test fun rejectsNewUploadWhenFreeSpaceShrinksBelowExistingReservations() {
+        val gate = FastShareUploadGate()
+        assertEquals(FastShareUploadGate.Admission.ACCEPTED, gate.tryAcquire(70L, 100L))
+
+        // A fresh StatFs reading can be lower than the reading used by the
+        // first request. Existing reservations must not be mistaken for space.
+        assertEquals(FastShareUploadGate.Admission.INSUFFICIENT_STORAGE, gate.tryAcquire(1L, 60L))
+        assertEquals(FastShareUploadGate.Snapshot(1, 70L), gate.snapshot())
+
+        gate.release(70L)
+        assertEquals(FastShareUploadGate.Admission.ACCEPTED, gate.tryAcquire(60L, 60L))
+    }
+
     @Test fun releaseRestoresCapacity() {
         val gate = FastShareUploadGate()
         assertEquals(FastShareUploadGate.Admission.ACCEPTED, gate.tryAcquire(50L, 100L))

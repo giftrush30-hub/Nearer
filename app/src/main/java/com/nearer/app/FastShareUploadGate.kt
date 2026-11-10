@@ -13,7 +13,12 @@ internal class FastShareUploadGate(
     fun tryAcquire(contentLength: Long, availableBytes: Long): Admission {
         if (contentLength < 0L || availableBytes < 0L) return Admission.INVALID_SIZE
         if (activeUploads >= maxConcurrentUploads) return Admission.BUSY
-        if (contentLength > availableBytes - reservedBytes) return Admission.INSUFFICIENT_STORAGE
+        // Free space can shrink after an earlier request reserved its bytes
+        // (for example, another app writes to storage). Fail closed rather
+        // than treating a stale reservation as available capacity.
+        if (reservedBytes > availableBytes || contentLength > availableBytes - reservedBytes) {
+            return Admission.INSUFFICIENT_STORAGE
+        }
         activeUploads++
         reservedBytes += contentLength
         return Admission.ACCEPTED
