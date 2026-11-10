@@ -536,8 +536,10 @@ internal object IncomingFilePayloadPolicy {
                 val moved = sourceFile != null && sourceFile.exists() && sourceFile.renameTo(target)
                 var copiedSha256 = ""
                 var copiedBytes = -1L
+                var copiedSourceUri: Uri? = null
                 if (!moved) {
                     val uri: Uri = receivedFile.asUri() ?: throw IllegalStateException("Nearby file content is unavailable")
+                    copiedSourceUri = uri
                     appContext.contentResolver.openInputStream(uri)?.use { input ->
                         FileOutputStream(target).use { output ->
                             val copyResult = TransferStreamCopy.copyAndSha256(input, output)
@@ -546,7 +548,6 @@ internal object IncomingFilePayloadPolicy {
                             output.fd.sync()
                         }
                     } ?: throw IllegalStateException("Could not open the received file")
-                    appContext.contentResolver.delete(uri, null, null)
                 }
                 if (!target.isFile || target.length() != meta.size ||
                     (copiedBytes >= 0L && copiedBytes != target.length())) {
@@ -561,6 +562,9 @@ internal object IncomingFilePayloadPolicy {
                     throw IllegalStateException("File integrity check failed. The received file was not kept.")
                 }
                 listener.onFileReceived(meta.endpointId, meta.name, target)
+                // Keep the provider's original payload until the staged copy has passed
+                // size/hash checks and the app has accepted the saved file.
+                copiedSourceUri?.let { appContext.contentResolver.delete(it, null, null) }
             } catch (error: Exception) {
                 destination?.delete()
                 listener.onFileStatus("Could not save the received file: ${error.localizedMessage ?: "transfer error"}")
