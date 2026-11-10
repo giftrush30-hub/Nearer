@@ -2821,20 +2821,16 @@ private fun NeaRerHome(
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Nea", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                        Text("R", color = Color(0xFFFFD400), fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("R", color = Gold, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                         Text("er", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                     }
-                    Text("NO DATA? WE ARE NEARER.", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.1.sp)
+                    Text("NeaRer You, NeaRer Everything", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.25.sp)
                 }
-                Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(46.dp)) {
-                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                        androidx.compose.foundation.Image(
-                            painter = androidx.compose.ui.res.painterResource(R.drawable.ic_nearer),
-                            contentDescription = "NeaRer logo",
-                            modifier = Modifier.size(38.dp)
-                        )
-                    }
-                }
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(R.drawable.ic_nearer),
+                    contentDescription = "NeaRer logo",
+                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp))
+                )
             }
 
             if (selectedTab == "Home") {
