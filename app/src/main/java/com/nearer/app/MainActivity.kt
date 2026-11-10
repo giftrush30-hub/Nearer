@@ -2820,7 +2820,6 @@ private fun NeaRerHome(
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
     var selectedConversationKey by remember { mutableStateOf<String?>(null) }
-    var selectedFileUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     LaunchedEffect(externalShareUris) { if (externalShareUris.isNotEmpty()) selectedTab = "Share" }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
@@ -2854,27 +2853,6 @@ private fun NeaRerHome(
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) {
-            selectedFileUris = uris.distinct()
-            selectedTab = "Chats"
-        }
-    }
-    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) { selectedFileUris = uris.distinct(); selectedTab = "Chats" }
-    }
-    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) { selectedFileUris = uris.distinct(); selectedTab = "Chats" }
-    }
-    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) { selectedFileUris = uris.distinct(); selectedTab = "Chats" }
-    }
-    val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) { selectedFileUris = uris.distinct(); selectedTab = "Chats" }
-    }
-    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) onSendFolder(uri)
-    }
     // Native Android sharing allows Bluetooth/Quick Share recipients without NeaRer.
     val anyPhonePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -2957,11 +2935,11 @@ private fun NeaRerHome(
                             colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
                         ) { Text(if (scanning) "Finding people…" else "Find people nearby", fontWeight = FontWeight.Bold) }
                         Button(
-                            onClick = { filePicker.launch(arrayOf("*/*")) },
+                            onClick = { selectedTab = "Share" },
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD12D), contentColor = Midnight)
-                        ) { Text("Browse files on this phone", fontWeight = FontWeight.Bold) }
+                        ) { Text("Open phone file centre", fontWeight = FontWeight.Bold) }
                         Text(
                             if (chatReady) "Choose photos, videos, music or documents. You can browse the phone at any time."
                             else "Browse your phone now; connect to a nearby NeaRer user when you are ready to send.",
@@ -3381,46 +3359,15 @@ private fun NeaRerHome(
                             ) { Text("Cancel file transfer") }
                         }
                         Button(
-                            onClick = { filePicker.launch(arrayOf("*/*")) },
+                            onClick = { selectedTab = "Share" },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)
-                        ) { Text("Browse all files on this phone") }
-                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
-                            Button(onClick = { photoPicker.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)) { Text("Photos", fontSize = 10.sp) }
-                            Button(onClick = { videoPicker.launch(arrayOf("video/*")) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)) { Text("Videos", fontSize = 10.sp) }
-                            Button(onClick = { audioPicker.launch(arrayOf("audio/*")) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)) { Text("Music", fontSize = 10.sp) }
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
-                            Button(onClick = { documentPicker.launch(arrayOf("application/pdf", "text/plain", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation")) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)) { Text("Documents", fontSize = 10.sp) }
-                            Button(onClick = { folderPicker.launch(null) }, modifier = Modifier.weight(1f), enabled = chatReady, shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Gold)) { Text("Whole folder", fontSize = 10.sp) }
-                        }
-                        if (selectedFileUris.isNotEmpty()) {
-                            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = Midnight) {
-                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                                    Text("${selectedFileUris.size} file(s) selected", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    selectedFileUris.take(5).forEach { uri ->
-                                        Text(displayNameForUri(context, uri), color = White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                    if (selectedFileUris.size > 5) Text("+ ${selectedFileUris.size - 5} more", color = Muted, fontSize = 10.sp)
-                                    Button(
-                                        onClick = { onSendFiles(selectedFileUris); selectedFileUris = emptyList() },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        enabled = chatReady,
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
-                                    ) { Text(if (chatReady) "Send selected files" else "Connect to send selected files") }
-                                    Button(onClick = { selectedFileUris = emptyList() }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Muted)) { Text("Clear selection") }
-                                }
-                            }
-                        }
-                        Button(
-                            onClick = { folderPicker.launch(null) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263B58), contentColor = Gold)
-                        ) { Text("Share an entire folder") }
-                        Text("Folders are packaged as ZIP archives with their subfolder structure preserved. No fixed file-size cap is added.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                        ) { Text("Open phone file centre", fontWeight = FontWeight.Bold) }
+                        Text(
+                            "Browse pictures, videos, music, apps, documents, downloads and folders. Select several items and send them together.",
+                            color = Muted, fontSize = 11.sp, lineHeight = 16.sp
+                        )
                     if (!chatReady) {
                         Text("Connect to a nearby NeaRer phone to send messages. Your saved conversations remain visible while offline.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         Button(
@@ -3803,20 +3750,6 @@ private data class NearbyTransferRecord(
 
 private fun formatChatTime(timestamp: Long): String =
     java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
-
-private fun displayNameForUri(context: Context, uri: Uri): String {
-    val queried = runCatching {
-        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (index >= 0) cursor.getString(index) else null
-            } else null
-        }
-    }.getOrNull()
-    return queried?.takeIf { it.isNotBlank() }
-        ?: uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')?.takeIf { it.isNotBlank() }
-        ?: "Selected file"
-}
 
 private fun formatTransferBytes(bytes: Long): String = when {
     bytes >= 1024L * 1024L * 1024L -> String.format(java.util.Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
