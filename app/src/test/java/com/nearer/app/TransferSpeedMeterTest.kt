@@ -79,7 +79,7 @@ class TransferSpeedMeterTest {
 
         meter.record(0L)
         clock.advance(1L)
-        repeat(511) { meter.record(900_000L) }
+        repeat(10_000) { meter.record(900_000L) }
 
         clock.advance(999L)
         val snapshot = meter.record(1_000_000L)
