@@ -614,6 +614,10 @@ class MainActivity : ComponentActivity() {
                     onUltraSpeedModeChange = ::updateUltraSpeedMode,
                     onSaveDisplayName = ::saveDisplayName,
                     meshRelayEnabled = meshRelayEnabled,
+                    meshRouteCount = meshRouteTable.snapshot(System.currentTimeMillis()).size,
+                    meshQueuedPacketCount = meshDeadDropStore.count(System.currentTimeMillis()),
+                    meshIdentityFingerprint = meshIdentityFingerprint,
+                    meshIdentityError = meshIdentityError,
                     onMeshRelayChange = ::updateMeshRelayEnabled,
                     onHybridConnect = { id -> nearbyTransport?.request(id) },
                     onFindNearby = ::startDiscovery,
@@ -2748,6 +2752,10 @@ private fun NeaRerHome(
     onUltraSpeedModeChange: (Boolean) -> Unit,
     onSaveDisplayName: (String) -> Unit,
     meshRelayEnabled: Boolean,
+    meshRouteCount: Int,
+    meshQueuedPacketCount: Int,
+    meshIdentityFingerprint: String?,
+    meshIdentityError: String?,
     onMeshRelayChange: (Boolean) -> Unit,
     onHybridConnect: (String) -> Unit,
     onFindNearby: () -> Unit,
@@ -3292,9 +3300,9 @@ private fun NeaRerHome(
             if (selectedTab == "Nearby") {
             MeshStatusPanel(
                 activePeerCount = hybridPeers.size,
-                routeCount = meshRouteTable.snapshot(System.currentTimeMillis()).size,
-                queuedPacketCount = meshDeadDropStore.count(System.currentTimeMillis()),
-                relayEnabled = false,
+                routeCount = meshRouteCount,
+                queuedPacketCount = meshQueuedPacketCount,
+                relayEnabled = meshRelayEnabled,
                 identityFingerprint = meshIdentityFingerprint,
                 identityError = meshIdentityError
             )
@@ -3587,8 +3595,8 @@ private fun CommunityHub(
     }
     LudoGamePanel(game, invite, nearbyConnected, onInviteGame, onAccept, onReject, onMove, gameChat, onGameChat, onGameRematch, onEndGame)
 }
-private data class CommunityGroup(val code: String, val name: String, val members: List<String>)
-private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
+internal data class CommunityGroup(val code: String, val name: String, val members: List<String>)
+internal data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
 data class GameInvite(val matchId: String, val sender: String)
 
 private data class NearbyPerson(val name: String, val lastSeenAt: Long)
@@ -3622,7 +3630,7 @@ private fun isNeaRerAppBundle(file: File): Boolean {
     }.getOrDefault(false)
 }
 
-private data class ReceivedFile(val displayName: String, val file: File, val isAppBundle: Boolean = false)
+internal data class ReceivedFile(val displayName: String, val file: File, val isAppBundle: Boolean = false)
 
 private data class UnifiedTransferHistoryEntry(
     val direction: String,
@@ -3635,7 +3643,7 @@ private data class UnifiedTransferHistoryEntry(
 
 private data class DirectOutgoingTransfer(val fileName: String, val bytes: Long)
 
-private data class NearbyTransferRecord(
+internal data class NearbyTransferRecord(
     val direction: String,
     val fileName: String,
     val bytes: Long,
