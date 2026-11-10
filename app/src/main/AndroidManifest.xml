@@ -30,12 +30,13 @@
     </queries>
 
     <application
+        android:name=".NeaRerApplication"
         android:allowBackup="false"
         android:label="NeaRer"
         android:icon="@drawable/ic_nearer"
         android:roundIcon="@drawable/ic_nearer"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/NeaRerAppTheme">
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"
