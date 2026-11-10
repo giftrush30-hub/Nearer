@@ -750,6 +750,8 @@ internal object IncomingFilePayloadPolicy {
             val id = payload.id
             val peerStableId = synchronized(names) { stableIds[endpointId].orEmpty() }
             val outgoing = OutgoingFile(endpointId, peerStableId, name, size, payload, stagedSource)
+            // Provider-backed sources were already hashed during the staging copy.
+            outgoing.sha256 = stagedSha256
             outgoingFiles[id] = outgoing
             val initialSpeed = transferSpeedMeters.computeIfAbsent(id) { TransferSpeedMeter() }
                 .record(0L, size)
