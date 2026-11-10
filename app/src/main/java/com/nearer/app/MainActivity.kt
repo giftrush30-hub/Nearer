@@ -259,7 +259,8 @@ class MainActivity : ComponentActivity() {
         val startupCrash = getSharedPreferences("nearer_diagnostics", Context.MODE_PRIVATE)
             .getString("nearer_startup_crash", null)
         if (!startupCrash.isNullOrBlank()) {
-            statusMessage = "NeaRer recovered after a previous startup crash. Details saved for diagnosis."
+            val crashHeadline = startupCrash.lineSequence().firstOrNull()?.take(110).orEmpty()
+            statusMessage = "Previous NeaRer crash: ${crashHeadline.ifBlank { "details saved" }}. Please share this message if it appears again."
             getSharedPreferences("nearer_diagnostics", Context.MODE_PRIVATE).edit()
                 .remove("nearer_startup_crash").apply()
         }
