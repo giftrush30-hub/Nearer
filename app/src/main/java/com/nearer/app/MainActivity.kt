@@ -2904,7 +2904,7 @@ private fun NeaRerHome(
                     Text("NeaRer You, NeaRer Everything", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.35.sp)
                 }
                 androidx.compose.foundation.Image(
-                    painter = androidx.compose.ui.res.painterResource(R.drawable.ic_nearer),
+                    painter = androidx.compose.ui.res.painterResource(R.drawable.nearer_logo),
                     contentDescription = "NeaRer logo",
                     modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp))
                 )
@@ -2919,7 +2919,7 @@ private fun NeaRerHome(
                                 Text("Stay close. Share freely.", color = White, fontSize = 25.sp, lineHeight = 31.sp, fontWeight = FontWeight.ExtraBold)
                             }
                             androidx.compose.foundation.Image(
-                                painter = androidx.compose.ui.res.painterResource(R.drawable.ic_nearer),
+                                painter = androidx.compose.ui.res.painterResource(R.drawable.nearer_logo),
                                 contentDescription = "NeaRer logo",
                                 modifier = Modifier.size(48.dp)
                             )
