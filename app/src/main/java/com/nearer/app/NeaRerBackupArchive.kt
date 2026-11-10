@@ -43,7 +43,7 @@ internal object NeaRerBackupArchive {
             NeaRerBackupCrypto.encryptFile(zipFile, destination, password)
         } finally {
             zipFile.delete()
-            password.fill('\\u0000')
+            password.fill('\u0000')
         }
     }
 
