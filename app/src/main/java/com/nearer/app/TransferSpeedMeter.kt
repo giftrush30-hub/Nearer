@@ -40,6 +40,14 @@ internal class TransferSpeedMeter(
 
         samples.addLast(Sample(now, transferredBytes))
         prune(now)
+        // Keep callback bursts bounded without losing the oldest sample in the
+        // rolling window. That anchor preserves the full measurement interval;
+        // intermediate samples are expendable when the cap is reached.
+        while (samples.size > MAX_SAMPLES) {
+            val oldest = samples.removeFirst()
+            if (samples.isNotEmpty()) samples.removeFirst()
+            samples.addFirst(oldest)
+        }
         updatePeakWindowRate(now)
         return snapshotAt(now)
     }
@@ -71,13 +79,20 @@ internal class TransferSpeedMeter(
 
     private fun rateWithinWindow(now: Long): Double {
         val cutoff = now - windowMillis
-        val recentSamples = samples.filter { it.timeMillis >= cutoff }
-        if (recentSamples.size < 2) return 0.0
-        val first = recentSamples.first()
-        val last = recentSamples.last()
-        val elapsed = last.timeMillis - first.timeMillis
+        var first: Sample? = null
+        var last: Sample? = null
+        for (sample in samples) {
+            if (sample.timeMillis >= cutoff) {
+                if (first == null) first = sample
+                last = sample
+            }
+        }
+        val firstSample = first ?: return 0.0
+        val lastSample = last ?: return 0.0
+        if (firstSample === lastSample) return 0.0
+        val elapsed = lastSample.timeMillis - firstSample.timeMillis
         if (elapsed <= 0L) return 0.0
-        return (last.bytes - first.bytes).coerceAtLeast(0L) * 1000.0 / elapsed
+        return (lastSample.bytes - firstSample.bytes).coerceAtLeast(0L) * 1000.0 / elapsed
     }
 
     private fun snapshotAt(now: Long): TransferSpeedSnapshot {
@@ -100,6 +115,7 @@ internal class TransferSpeedMeter(
 
     companion object {
         const val DEFAULT_WINDOW_MILLIS = 5_000L
+        private const val MAX_SAMPLES = 512
     }
 }
 
