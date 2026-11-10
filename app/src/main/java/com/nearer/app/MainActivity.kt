@@ -276,6 +276,17 @@ class MainActivity : ComponentActivity() {
         ultraSpeedRestartRequired = false
         nearbyTransport = NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
             override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
+            override fun onMeshIdentityObserved(endpointId: String, peerId: String, fingerprint: String) {
+                runOnUiThread {
+                    statusMessage = "Signed device identity received from $peerId. Compare this fingerprint on both phones: $fingerprint"
+                    chatNotice = "Identity proof received. Do not enable relaying until you have verified this fingerprint with the other person."
+                }
+            }
+            override fun onMeshRouteUpdated(destinationPeerId: String, nextHopPeerId: String, hopCount: Int) {
+                runOnUiThread {
+                    statusMessage = "Authenticated route hint received for $destinationPeerId via $nextHopPeerId ($hopCount hop(s))."
+                }
+            }
             override fun onFound(id: String, name: String, stableId: String) { runOnUiThread { hybridPeers[id] = name; if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId) } }
             override fun onLost(id: String, stableId: String) { runOnUiThread {
                 val name = hybridPeers.remove(id)
