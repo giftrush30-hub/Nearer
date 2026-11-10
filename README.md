@@ -12,7 +12,24 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - One-to-one text chat.
 - Nearby Connections and Wi-Fi Direct file transfer code, progress and cancellation.
 - Local recent-message history and received-file storage.
-- Optional community mesh text relay (up to four hops; relaying devices can read relayed text).
+- Stable public nearby peer identities.
+- Persistent direct-message outbox and duplicate-message protection for direct delivery.
+
+### Mesh development status
+
+**Multi-hop relay is not enabled in the app yet.** The repository contains a new, pure Kotlin relay-policy foundation in `MeshRelayPolicy.kt`, with JVM tests for:
+- A four-hop protocol ceiling.
+- TTL decrement and hop counting.
+- Visited-peer loop prevention.
+- Duplicate and expired-message rejection.
+- Explicit relay-consent enforcement.
+- Local destination delivery.
+- Ciphertext-only payload modelling.
+
+This policy is not yet wired into Nearby Connections forwarding, route discovery, durable store-and-forward, or recipient-key encryption. The existing app intentionally keeps multi-hop relay disabled until end-to-end encryption and secure recipient routing are implemented and reviewed. Do not describe the current APK as a working mesh network.
+
+### NeaRer visual identity
+The app's existing brand palette is midnight navy, deep blue panels, electric/clear blue accents and gold. Mesh visuals should use that same blue-and-gold identity, with cyan reserved for transmission effects. Network animations must reflect real discovered peers, actual forwarding and confirmed delivery; simulated activity must not be presented as live network state.
 
 ### Community and multiplayer additions
 - Create a local group with a six-digit join code.
@@ -33,7 +50,7 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - The game is a real two-player tic-tac-toe implementation, not a catalogue of finished multiplayer games. A match is live and does not currently recover after either phone disconnects.
 - No in-game voice chat, voice notes, voice calls, video calls, game matchmaking service, or cross-device message queue has been implemented yet.
 - File transfers have no fixed application-level size cap, but available storage, Android document providers, hardware and connection stability still constrain actual transfers. Interrupted transfers cannot yet resume.
-- The community feature layer is not a substitute for a reviewed end-to-end security design. Nearby Connections provides encrypted peer connections, but group identity, membership verification and relay privacy need further security work.
+- Nearby Connections provides encrypted peer connections, but that does not by itself provide end-to-end encryption across multiple relay devices. Recipient-key management, message authentication, replay protection, relay privacy and group identity need a reviewed design before forwarding is enabled.
 - Two-physical-phone testing is required before these features can be described as field-verified.
 
 ## Build policy
