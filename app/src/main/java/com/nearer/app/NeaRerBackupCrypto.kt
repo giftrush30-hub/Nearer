@@ -68,7 +68,7 @@ internal object NeaRerBackupCrypto {
         } finally {
             // Clear caller-owned password memory even when validation or destination
             // preparation fails before encryption starts.
-            password.fill('\\u0000')
+            password.fill('\u0000')
         }
     }
 
@@ -104,7 +104,7 @@ internal object NeaRerBackupCrypto {
                 throw failure
             }
         } finally {
-            password.fill('\\u0000')
+            password.fill('\u0000')
         }
     }
 
