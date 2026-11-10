@@ -55,7 +55,10 @@ internal object NeaRerBackupArchive {
         require(!destinationDirectory.exists()) { "Restore folder already exists; choose a new empty destination" }
         val parent = destinationDirectory.absoluteFile.parentFile ?: throw IOException("Restore folder has no parent")
         if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create restore parent folder")
-        val encryptedZip = File.createTempFile(".nearer-restore-", ".zip", parent)
+        val encryptedZip = File.createTempFile(".nearer-restore-", ".zip", parent).apply {
+            // decryptFile publishes only to a path that does not already exist.
+            if (!delete()) throw IOException("Could not prepare temporary restore archive")
+        }
         val staging = File.createTempFile(".nearer-restore-stage-", ".tmp", parent).apply {
             delete()
             if (!mkdirs()) throw IOException("Could not create private restore staging folder")
