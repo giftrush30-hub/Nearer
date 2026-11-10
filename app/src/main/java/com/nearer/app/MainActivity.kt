@@ -2810,8 +2810,8 @@ private fun NeaRerHome(
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 22.dp, vertical = 22.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
+                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 20.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -2820,11 +2820,11 @@ private fun NeaRerHome(
             ) {
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Nea", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                        Text("R", color = Gold, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                        Text("er", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("Nea", color = White, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp)
+                        Text("R", color = Gold, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp)
+                        Text("er", color = White, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp)
                     }
-                    Text("NeaRer You, NeaRer Everything", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.25.sp)
+                    Text("NeaRer You, NeaRer Everything", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.35.sp)
                 }
                 androidx.compose.foundation.Image(
                     painter = androidx.compose.ui.res.painterResource(R.drawable.ic_nearer),
@@ -3105,7 +3105,22 @@ private fun NeaRerHome(
             }
 
             if (selectedTab == "Chats") {
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
+            Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("YOUR CHATS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                        Text("Keep your people close.", color = White, fontSize = 23.sp, lineHeight = 28.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                    Surface(shape = RoundedCornerShape(30.dp), color = if (chatReady) Color(0xFF174B43) else Panel) {
+                        Row(modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Surface(modifier = Modifier.size(7.dp), shape = CircleShape, color = if (chatReady) Gold else Muted) {}
+                            Text(if (chatReady) "CONNECTED" else "OFFLINE", color = if (chatReady) Gold else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp)
+                        }
+                    }
+                }
+                Text("Private conversations and nearby sharing, even without mobile data.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+            }
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("PRIVATE CHAT", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
