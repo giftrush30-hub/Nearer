@@ -37,3 +37,8 @@ This branch is a protected integration workspace. It is not a release and must n
 ## Release gate
 
 Only publish an APK after unit tests, Android emulator launch tests, and real-device two-phone chat/file-transfer tests pass. A workflow run from an earlier commit is not evidence for this branch head.
+
+
+## Latest validation feedback
+
+An earlier Android validation attempt exposed integration compile errors in the extracted Chats screen, the Ludo avatar argument, and identity-ID validation calls. Those issues have been corrected on this branch. A fresh validation run against the corrected head is still required; no APK from the failed attempt is publishable.
