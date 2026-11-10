@@ -29,6 +29,25 @@ class MeshWireProtocolTest {
         assertFalse(MeshWireProtocol.verifyRouteAdvertisement(route.copy(hopCount = 4), alice.signingPublicKey, now + 10))
     }
 
+    @Test fun relayFramePreservesOpaquePacketAndBoundsVisitedPeers() {
+        val alice = MeshCrypto.generateIdentity()
+        val bob = MeshCrypto.generateIdentity()
+        val packet = MeshCrypto.seal(
+            "secret payload".toByteArray(), "relay-1", "alice", "bob",
+            alice.signing, bob.agreementPublicKey
+        )
+        val envelope = MeshRelayEnvelope(
+            "relay-1", "alice", "bob", "opaque", 4, 0, emptyList(), 1_800_000_000_000L
+        )
+        val encoded = MeshWireProtocol.encodeRelayFrame(envelope, packet)
+        val decoded = MeshWireProtocol.decodeRelayFrame(JSONObject(encoded.toString(Charsets.UTF_8)))
+        assertNotNull(decoded)
+        assertEquals(packet.ciphertext, decoded?.packet?.ciphertext)
+        assertEquals("alice", decoded?.envelope?.originPeerId)
+        assertEquals("bob", decoded?.envelope?.destinationPeerId)
+        assertNull(MeshWireProtocol.decodeRelayFrame(JSONObject(encoded.toString(Charsets.UTF_8)).put("version", 2)))
+    }
+
     @Test fun routeWireFrameRoundTripsAndRejectsWrongVersion() {
         val alice = MeshCrypto.generateIdentity()
         val route = MeshWireProtocol.createRouteAdvertisement("alice", "bob", 0, 1000, alice.signing)
