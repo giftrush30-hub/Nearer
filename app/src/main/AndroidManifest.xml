@@ -33,8 +33,8 @@
         android:name=".NeaRerApplication"
         android:allowBackup="false"
         android:label="NeaRer"
-        android:icon="@drawable/ic_nearer"
-        android:roundIcon="@drawable/ic_nearer"
+        android:icon="@mipmap/ic_nearer"
+        android:roundIcon="@mipmap/ic_nearer"
         android:supportsRtl="true"
         android:theme="@style/NeaRerAppTheme">
         <provider
