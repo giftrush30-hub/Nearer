@@ -112,7 +112,7 @@ internal object MeshWireProtocol {
         require(envelope.messageId == packet.messageId)
         require(envelope.originPeerId == packet.originPeerId)
         require(envelope.destinationPeerId == packet.destinationPeerId)
-        require(envelope.ciphertext.isNotBlank())
+        require(envelope.ciphertext == packet.ciphertext)
         val json = JSONObject()
             .put("kind", "mesh_relay")
             .put("version", VERSION)
@@ -157,14 +157,14 @@ internal object MeshWireProtocol {
                 packetJson.getString("signature")
             )
             val envelope = MeshRelayEnvelope(
-                id, origin, destination, MeshCrypto.encode(packet.ciphertext.toByteArray(Charsets.UTF_8)),
+                id, origin, destination, packet.ciphertext,
                 json.getInt("ttl"), json.getInt("hops"), visited, json.getLong("createdAt")
             )
             if (id.isBlank() || origin.isBlank() || destination.isBlank() ||
                 id.length > MeshRelayPolicy.MAX_MESSAGE_ID_LENGTH ||
                 origin.length > MeshRelayPolicy.MAX_PEER_ID_LENGTH ||
                 destination.length > MeshRelayPolicy.MAX_PEER_ID_LENGTH ||
-                packet.ciphertext.length !in 1..MeshRelayPolicy.MAX_CIPHERTEXT_LENGTH * 2 ||
+                packet.ciphertext.length !in 1..MeshRelayPolicy.MAX_CIPHERTEXT_LENGTH ||
                 visited.any { it.isBlank() || it.length > MeshRelayPolicy.MAX_PEER_ID_LENGTH }
             ) null else RelayFrame(envelope, packet)
         } catch (_: Exception) {
