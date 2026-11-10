@@ -1,22 +1,21 @@
-# NeaRer Brand Colour Direction
+# NeaRer Official Brand Identity
 
-The approved launcher reference is a confident, rich blue square with a white two-bar emblem and sweeping warm-gold curves.
+The approved official logo is the diagonal-sweep emblem shown in the user's second reference screenshot: a rich blue rounded-square field, two white vertical bars, and two long sweeping gold curves. This exact direction is the source of truth; do not substitute the shorter arching curves or alter its palette.
 
-## Core tokens
+## Core colours
 
-- Signature blue: `#004B90` — rich, confident blue sampled from the supplied NeaRer reference
-- Gold: `#FFC928` — warm signature gold
-- Gold highlight: `#FFE56A`
-- Gold shadow: `#EFAE08`
-- White: `#FFFFFF`
+- Signature blue: `#005091`
+- Signature gold: `#FFC928`
+- Emblem white: `#FFFFFF`
 
-## Usage
+## Non-negotiable identity rules
 
-- Preserve the established emblem: two white vertical bars and two sweeping gold curves.
-- Keep the launcher artwork large, optically centred, and safely inside Android's adaptive-icon mask.
-- Use a rounded-square app icon silhouette; let Android's launcher apply its standard mask rather than drawing a second inset tile.
-- Do not substitute a dark navy/slate background for the signature blue in the app icon.
-- Keep the wordmark treatment: `Nea` white, `R` gold, `er` white.
-- Keep the tagline exactly: “NeaRer You, NeaRer Everything”.
+- Preserve both diagonal sweeping gold curves and their direction.
+- Preserve the two white vertical bars.
+- Keep the blue field and gold/white artwork; do not recolour, simplify, rotate, or replace the emblem.
+- Use the same symbol on the Android launcher, splash/entry experience, app header, and brand assets.
+- Android may apply its standard adaptive rounded-square mask; keep the artwork within its safe area.
+- Wordmark: `Nea` white, `R` gold, `er` white.
+- Tagline: “NeaRer You, NeaRer Everything”.
 
-Use the signature blue and gold consistently across app surfaces, with neutral white/near-white text and restrained dark surfaces where appropriate.
+App surfaces may use dark supporting backgrounds, but the official logo artwork itself must retain the approved blue, gold, and white design.
