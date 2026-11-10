@@ -1,6 +1,6 @@
 # NeaRer onboarding, identity and recovery specification
 
-Status: product decisions approved. First-run onboarding, local profile persistence, profile editing, the More-tab profile preview, nearby avatar metadata exchange and the first durable SQLite chat-history archive with older-message paging are implemented on the `feature/premium-onboarding-identity` branch. Profile-photo exchange, encrypted backup verification, recovery and cross-device migration remain separate implementation milestones.
+Status: product decisions approved. First-run onboarding, local profile persistence, profile editing, the More-tab profile preview, nearby avatar metadata exchange, the durable SQLite chat-history archive with older-message paging, and the encrypted local backup/restore workflow are implemented in code on the `feature/premium-onboarding-identity` branch. Profile-photo exchange and authenticated old-to-new phone migration remain separate milestones. Android compilation, unit-test execution and real-device verification are still pending.
 
 ## Product promise
 
