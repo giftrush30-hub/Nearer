@@ -486,7 +486,13 @@ class MainActivity : ComponentActivity() {
                 primary = BlueAccent,
                 onPrimary = Midnight,
                 onBackground = White,
-                onSurface = White
+                onSurface = White,
+                secondary = Gold,
+                onSecondary = Midnight,
+                tertiary = BrandBlue,
+                onTertiary = White,
+                error = Color(0xFFFF7D91),
+                outline = Color(0xFF40516A)
             )) {
                 if (onboardingComplete) {
                 NeaRerHome(
@@ -2530,7 +2536,8 @@ private fun NeaRerHome(
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
                         ) { Text("Fast Share • multiple large files", fontWeight = FontWeight.Bold) }
-                        Text("Send a large video to a phone without NeaRer using a temporary local Wi-Fi connection. No mobile data.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                        Text("Send large files to a phone or computer over a temporary local Wi-Fi connection. The file is streamed directly instead of making a second full copy; mobile data is not used.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                        Text("For best speed, keep both devices close, avoid heavy phone workloads and leave NeaRer open. Actual speed depends on both devices, Wi-Fi conditions and storage.", color = BlueAccent, fontSize = 10.sp, lineHeight = 15.sp)
                         Text(fastShare.status, color = if (fastShare.details != null) BlueAccent else Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         if (fastShare.activeTransfers.isNotEmpty()) {
                             Column(
@@ -2593,7 +2600,7 @@ private fun NeaRerHome(
                                     Text("Password: ${share.password}", color = White, fontSize = 14.sp)
                                     Text("2. Open a web browser on that device and visit:", color = Muted, fontSize = 12.sp)
                                     Text(share.url, color = BlueAccent, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                    Text("3. Choose the files to download. Keep NeaRer open and stay connected until they finish.", color = Muted, fontSize = 12.sp)
+                                    Text("3. Choose the files to download. Keep NeaRer open and stay connected until they finish. If a download is interrupted, reconnect to this Wi-Fi and retry the file.", color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
                                     Button(onClick = {
                                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                         clipboard.setPrimaryClip(ClipData.newPlainText("NeaRer Fast Share link", share.url))
