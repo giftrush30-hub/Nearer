@@ -3226,204 +3226,27 @@ private fun NeaRerHome(
             }
 
             if (selectedTab == "Chats") {
-            Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("YOUR CHATS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                        Text("Keep your people close.", color = White, fontSize = 23.sp, lineHeight = 28.sp, fontWeight = FontWeight.ExtraBold)
-                    }
-                    Surface(shape = RoundedCornerShape(30.dp), color = if (chatReady) Color(0xFF174B43) else Panel) {
-                        Row(modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Surface(modifier = Modifier.size(7.dp), shape = CircleShape, color = if (chatReady) Gold else Muted) {}
-                            Text(if (chatReady) "CONNECTED" else "OFFLINE", color = if (chatReady) Gold else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp)
-                        }
-                    }
-                }
-                Text("Private conversations and nearby sharing, even without mobile data.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
-            }
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("PRIVATE CHAT", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        Spacer(modifier = Modifier.weight(1f))
-                        Text(if (chatReady) "LOCAL LINK" else "NOT CONNECTED", color = Muted, fontSize = 9.sp)
-                    }
-                    val conversations = ConversationIndex.build(messages)
-                    val activeConversation = conversations.firstOrNull { it.conversationId == selectedConversationKey }
-                        ?: conversations.firstOrNull()
-                    if (conversations.isEmpty()) {
-                        Text(
-                            "No conversations yet. Find someone nearby and connect to start your first private chat.",
-                            color = Muted, fontSize = 12.sp, lineHeight = 18.sp
-                        )
-                    } else {
-                        Text("RECENT CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        conversations.forEach { conversation ->
-                            val latest = conversation.lastMessage
-                            val isSelected = conversation.conversationId == activeConversation?.conversationId
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().clickable { selectedConversationKey = conversation.conversationId },
-                                shape = RoundedCornerShape(14.dp),
-                                color = if (isSelected) BrandBlue.copy(alpha = 0.42f) else Midnight
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(38.dp)) {
-                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                            Text(conversation.displayName.take(1).uppercase(), color = Gold, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text(conversation.displayName, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(latest.body, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                        Text(formatChatTime(latest.timestamp), color = Muted, fontSize = 9.sp)
-                                        Text("${conversation.messageCount}", color = if (isSelected) Gold else Muted, fontSize = 9.sp)
-                                    }
-                                }
-                            }
-                        }
-                        Column(
-                            modifier = Modifier.fillMaxWidth().height(220.dp).verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(7.dp)
-                        ) {
-                            activeConversation?.let { ConversationIndex.messagesFor(messages, it.conversationId) }?.forEach { message ->
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
-                                ) {
-                                    Surface(
-                                        color = if (message.outgoing) BrandBlue.copy(alpha = 0.82f) else Midnight,
-                                        shape = RoundedCornerShape(18.dp)
-                                    ) {
-                                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
-                                            Text(message.body, color = White, fontSize = 14.sp)
-                                            Text(
-                                                "${if (message.outgoing) message.delivery else "Received"} • ${formatChatTime(message.timestamp)}",
-                                                color = if (message.outgoing) Gold else BlueAccent, fontSize = 9.sp
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Text(if (chatReady) chatNotice else "Chat history is saved on this phone. Connect nearby to send or receive new messages.", color = Muted, fontSize = 10.sp)
-                        if (transferHistory.isNotEmpty()) {
-                            Text("Recent transfers", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            transferHistory.take(5).forEach { record ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text("${if (record.direction == "Sent") "↑ Sent" else "↓ Received"} • ${record.fileName}", color = White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text("${formatTransferBytes(record.bytes)} • ${record.status}", color = Muted, fontSize = 9.sp)
-                                    }
-                                    Text(record.timeLabel, color = Muted, fontSize = 9.sp)
-                                }
-                            }
-                        }
-                        receivedFiles.take(3).forEach { fileItem ->
-                            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text(fileItem.displayName, color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                    Button(
-                                        onClick = { onOpenFile(fileItem) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)
-                                    ) { Text("Open", maxLines = 1) }
-                                    Button(
-                                        onClick = { onSaveReceivedFile(fileItem) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
-                                    ) { Text("Save to device", maxLines = 1) }
-                                    if (fileItem.isAppBundle) {
-                                        Button(
-                                            onClick = { onInstallAppBundle(fileItem) },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(12.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
-                                        ) { Text("Install", maxLines = 1) }
-                                    }
-                                    Button(
-                                        onClick = { onForwardReceivedFile(fileItem) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
-                                    ) { Text("Send again", maxLines = 1) }
-                                }
-                            }
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = draft,
-                                onValueChange = { draft = it.take(2000) },
-                                modifier = Modifier.weight(1f),
-                                placeholder = { Text(if (chatReady) "Write a message…" else "Connect to send a message", color = Muted) },
-                                shape = RoundedCornerShape(14.dp),
-                                singleLine = true,
-                                enabled = chatReady
-                            )
-                            Button(
-                                onClick = { onSendMessage(draft); draft = "" },
-                                enabled = draft.isNotBlank() && chatReady,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
-                            ) { Text("Send", fontWeight = FontWeight.Bold) }
-                        }
-                        incomingTransferName?.let { incomingName ->
-                            Text("Receiving $incomingName", color = Muted, fontSize = 11.sp)
-                            LinearProgressIndicator(
-                                progress = { incomingProgress },
-                                modifier = Modifier.fillMaxWidth(),
-                                color = BlueAccent,
-                                trackColor = Panel
-                            )
-                        }
-                        if (outgoingTransferId != null) {
-                            LinearProgressIndicator(
-                                progress = { outgoingProgress },
-                                modifier = Modifier.fillMaxWidth(),
-                                color = BlueAccent,
-                                trackColor = Panel
-                            )
-                            Button(
-                                onClick = onCancelTransfer,
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)
-                            ) { Text("Cancel file transfer") }
-                        }
-                        Button(
-                            onClick = { selectedTab = "Share" },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
-                        ) { Text("Open phone file centre", fontWeight = FontWeight.Bold) }
-                        Text(
-                            "Browse pictures, videos, music, apps, documents, downloads and folders. Select several items and send them together.",
-                            color = Muted, fontSize = 11.sp, lineHeight = 16.sp
-                        )
-                    if (!chatReady) {
-                        Text("Connect to a nearby NeaRer phone to send messages. Your saved conversations remain visible while offline.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
-                        Button(
-                            onClick = { selectedTab = "Nearby"; onFindNearby() },
-                            modifier = Modifier.fillMaxWidth().height(50.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
-                        ) { Text("Find people nearby", fontWeight = FontWeight.Bold) }
-                    }
-                }
-            }
-
+                PremiumChatsScreen(
+                    chatReady = chatReady,
+                    connectedDeviceName = connectedDeviceName,
+                    connectionMessage = connectionMessage,
+                    usingNearbyConnections = usingNearbyConnections,
+                    messages = messages,
+                    chatNotice = chatNotice,
+                    draft = draft,
+                    onDraftChange = { draft = it.take(2000) },
+                    onSendMessage = { onSendMessage(it); draft = "" },
+                    onFindNearby = { selectedTab = "Nearby"; onFindNearby() },
+                    onChooseFiles = { filePicker.launch(arrayOf("*/*")) },
+                    receivedFiles = receivedFiles,
+                    onOpenFile = onOpenFile,
+                    transferHistory = transferHistory,
+                    outgoingTransferId = outgoingTransferId,
+                    outgoingProgress = outgoingProgress,
+                    incomingTransferName = incomingTransferName,
+                    incomingProgress = incomingProgress,
+                    onCancelTransfer = onCancelTransfer
+                )
             }
 
             if (selectedTab == "Games") {
