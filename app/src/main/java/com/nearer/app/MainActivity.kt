@@ -2905,8 +2905,35 @@ private fun NeaRerHome(
     var showProfileEditor by remember { mutableStateOf(false) }
     val profileBitmap = remember(profilePhotoPath) { profilePhotoPath?.let { path -> runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull() } }
     var draft by remember { mutableStateOf("") }
-    var selectedTab by remember { mutableStateOf("Chats") }
-    LaunchedEffect(externalShareUris) { if (externalShareUris.isNotEmpty()) selectedTab = "Share" }
+    var selectedTab by remember { mutableStateOf("Home") }
+    val tabBackStack = remember { mutableStateListOf<String>() }
+
+    fun navigateTo(tab: String) {
+        if (tab == selectedTab) return
+        tabBackStack.add(selectedTab)
+        selectedTab = tab
+    }
+
+    fun navigateToRootTab(tab: String) {
+        tabBackStack.clear()
+        selectedTab = tab
+    }
+
+    fun navigateBack() {
+        selectedTab = if (tabBackStack.isNotEmpty()) {
+            tabBackStack.removeAt(tabBackStack.lastIndex)
+        } else {
+            "Home"
+        }
+    }
+
+    BackHandler(enabled = selectedTab != "Home") {
+        navigateBack()
+    }
+
+    LaunchedEffect(externalShareUris) {
+        if (externalShareUris.isNotEmpty()) navigateToRootTab("Share")
+    }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val fastShare = remember(context) { FastShareController(context) }
@@ -2990,6 +3017,15 @@ private fun NeaRerHome(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (selectedTab != "Home") {
+                    Text(
+                        "‹",
+                        modifier = Modifier.clickable { navigateBack() }.padding(end = 10.dp),
+                        color = Gold,
+                        fontSize = 38.sp,
+                        fontWeight = FontWeight.Light
+                    )
+                }
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Nea", color = White, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp)
@@ -3021,7 +3057,7 @@ private fun NeaRerHome(
                         }
                         Text("Find people around you, chat and share files — without mobile data.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
                         Button(
-                            onClick = { selectedTab = "Nearby"; onFindNearby() },
+                            onClick = { navigateTo("Nearby"); onFindNearby() },
                             modifier = Modifier.fillMaxWidth().height(54.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
@@ -3029,7 +3065,7 @@ private fun NeaRerHome(
                         Button(
                             onClick = {
                                 if (chatReady) filePicker.launch(arrayOf("*/*"))
-                                else { selectedTab = "Nearby"; onFindNearby() }
+                                else { navigateTo("Nearby"); onFindNearby() }
                             },
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(16.dp),
@@ -3430,7 +3466,7 @@ private fun NeaRerHome(
                     } else {
                         Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         Button(
-                            onClick = { selectedTab = "Nearby"; onFindNearby() },
+                            onClick = { navigateTo("Nearby"); onFindNearby() },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
@@ -3654,7 +3690,7 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Chats" to "▤", "Share" to "⇧", "Games" to "♟", "More" to "⋯").forEach { item ->
+                    listOf("Home" to "⌂", "Chats" to "▤", "Share" to "⇧", "Games" to "♟", "More" to "⋯").forEach { item ->
                         val selected = selectedTab == item.first
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
@@ -3662,7 +3698,7 @@ private fun NeaRerHome(
                             color = if (selected) BrandBlue.copy(alpha = 0.42f) else Panel
                         ) {
                             Column(
-                                modifier = Modifier.clickable { selectedTab = item.first }.padding(vertical = 8.dp),
+                                modifier = Modifier.clickable { navigateToRootTab(item.first) }.padding(vertical = 8.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
