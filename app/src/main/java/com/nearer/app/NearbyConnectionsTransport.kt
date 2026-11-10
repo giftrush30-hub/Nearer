@@ -538,12 +538,7 @@ internal object IncomingFilePayloadPolicy {
                     val uri: Uri = receivedFile.asUri() ?: throw IllegalStateException("Nearby file content is unavailable")
                     appContext.contentResolver.openInputStream(uri)?.use { input ->
                         FileOutputStream(target).use { output ->
-                            val buffer = ByteArray(1024 * 1024)
-                            while (true) {
-                                val count = input.read(buffer)
-                                if (count < 0) break
-                                output.write(buffer, 0, count)
-                            }
+                            TransferStreamCopy.copy(input, output)
                             output.fd.sync()
                         }
                     } ?: throw IllegalStateException("Could not open the received file")
