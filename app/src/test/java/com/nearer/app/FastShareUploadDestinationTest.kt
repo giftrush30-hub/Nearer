@@ -46,6 +46,24 @@ class FastShareUploadDestinationTest {
         }
     }
 
+
+    @Test fun rejectsPathSeparatorsAndDotTraversalSegments() {
+        val directory = createTempDir(prefix = "nearer-upload-destination-")
+        try {
+            listOf("../escape.txt", "folder/file.txt", "folder\\\\file.txt", ".", "..", "bad\\u0000name").forEach { unsafe ->
+                try {
+                    FastShareUploadDestination.nextAvailable(directory, unsafe)
+                    throw AssertionError("Expected unsafe filename to be rejected: $unsafe")
+                } catch (_: IllegalArgumentException) {
+                    // Expected: this helper must remain safe even if a caller
+                    // accidentally skips the upstream filename sanitizer.
+                }
+            }
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsBlankSafeName() {
         FastShareUploadDestination.nextAvailable(createTempDir(), " ")

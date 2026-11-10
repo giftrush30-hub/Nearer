@@ -9,6 +9,11 @@ import java.io.File
 internal object FastShareUploadDestination {
     fun nextAvailable(directory: File, safeName: String): File {
         require(safeName.isNotBlank()) { "A safe filename is required" }
+        require(
+            safeName != "." && safeName != ".." &&
+                '/' !in safeName && '\\\\' !in safeName &&
+                safeName.none { it.code < 0x20 || it.code == 0x7f }
+        ) { "Filename must be a single safe path segment" }
         val original = File(directory, safeName)
         if (!original.exists()) return original
 
