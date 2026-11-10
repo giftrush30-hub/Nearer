@@ -115,6 +115,13 @@ internal object NeaRerBackupManager {
             marker.delete()
             throw IOException("Could not create private backup workspace")
         }
+        // Confirm the newly-created workspace is a direct child of app-private cache.
+        // This mirrors restore staging and prevents backup plaintext from being written
+        // through an unexpected redirected path if the cache location is misconfigured.
+        if (!NeaRerBackupPathSafety.isDirectChild(context.cacheDir, marker)) {
+            marker.deleteRecursively()
+            throw IOException("Backup workspace is outside private cache")
+        }
         return marker
     }
 
