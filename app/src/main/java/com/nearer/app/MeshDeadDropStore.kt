@@ -72,15 +72,13 @@ internal class MeshDeadDropStore(context: Context) :
 
     @Synchronized
     fun recordAttempt(messageId: String, now: Long): Boolean {
-        val values = ContentValues().apply {
-            put("attempts", "attempts + 1")
-            put("last_attempt_at", now)
-        }
-        // Use SQL arithmetic rather than storing a literal expression in ContentValues.
-        return writableDatabase.execSQL(
+        writableDatabase.execSQL(
             "UPDATE dead_drop SET attempts = attempts + 1, last_attempt_at = ? WHERE message_id = ?",
             arrayOf(now, messageId)
-        ).let { true }
+        )
+        readableDatabase.rawQuery("SELECT changes()", null).use { cursor ->
+            return cursor.moveToFirst() && cursor.getInt(0) > 0
+        }
     }
 
     @Synchronized
