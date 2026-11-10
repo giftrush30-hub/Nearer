@@ -352,13 +352,14 @@ internal object IncomingFilePayloadPolicy {
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
                 val speed = transferSpeedMeters.computeIfAbsent(payloadId) { TransferSpeedMeter() }
                     .record(update.bytesTransferred, update.totalBytes)
-                listener.onFileSpeed(id, payloadId, name, speed, isIncoming)
                 listener.onFileProgress(id, payloadId, name, update.bytesTransferred, update.totalBytes, isIncoming)
+                listener.onFileSpeed(id, payloadId, name, speed, isIncoming)
                 return
             }
             if (update.status == PayloadTransferUpdate.Status.SUCCESS) {
                 val finalSpeed = transferSpeedMeters.computeIfAbsent(payloadId) { TransferSpeedMeter() }
                     .record(update.totalBytes, update.totalBytes)
+                if (!isIncoming) listener.onFileProgress(id, payloadId, name, update.totalBytes, update.totalBytes, false)
                 listener.onFileSpeed(id, payloadId, name, finalSpeed, isIncoming)
                 transferSpeedMeters.remove(payloadId)
                 if (isIncoming) {
@@ -371,7 +372,6 @@ internal object IncomingFilePayloadPolicy {
                             file.temporarySourceFile?.delete()
                         }
                     }
-                    listener.onFileProgress(id, payloadId, name, update.totalBytes, update.totalBytes, false)
                     listener.onFileStatus("File sent to the nearby phone: $name")
                 }
             } else {
@@ -442,8 +442,8 @@ internal object IncomingFilePayloadPolicy {
                 if (incomingPeerId.isNotBlank() || previousPeerId.isBlank()) {
                     incomingPeerIds[payloadId] = incomingPeerId
                 }
-                listener.onFileSpeed(endpointId, payloadId, name, speed, true)
                 listener.onFileProgress(endpointId, payloadId, name, resumeOffset, size, true)
+                listener.onFileSpeed(endpointId, payloadId, name, speed, true)
                 processCompletedFile(payloadId)
                 return
             }
@@ -459,8 +459,8 @@ internal object IncomingFilePayloadPolicy {
                 val resumedMeter = transferSpeedMeters.computeIfAbsent(payloadId) { TransferSpeedMeter() }
                 resumedMeter.reset()
                 val resumedSpeed = resumedMeter.record(offset, outgoing.size)
-                listener.onFileSpeed(endpointId, payloadId, outgoing.name, resumedSpeed, false)
                 listener.onFileProgress(endpointId, payloadId, outgoing.name, offset, outgoing.size, false)
+                listener.onFileSpeed(endpointId, payloadId, outgoing.name, resumedSpeed, false)
                 sendPreparedFile(payloadId, outgoing, offset)
                 return
             }
@@ -748,8 +748,8 @@ internal object IncomingFilePayloadPolicy {
             outgoingFiles[id] = outgoing
             val initialSpeed = transferSpeedMeters.computeIfAbsent(id) { TransferSpeedMeter() }
                 .record(0L, size)
-            listener.onFileSpeed(endpointId, id, name, initialSpeed, false)
             listener.onFileProgress(endpointId, id, name, 0L, size, false)
+            listener.onFileSpeed(endpointId, id, name, initialSpeed, false)
             listener.onFileStatus("Preparing and verifying $name before sending…")
             transferPreparation.execute {
                 try {
