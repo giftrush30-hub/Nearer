@@ -15,7 +15,7 @@ import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
-class NearbyConnectionsTransport(context: Context, private val listener: Listener) {
+class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = false, private val listener: Listener) {
     interface Listener {
         fun onStatus(message: String)
         fun onFound(id: String, name: String, stableId: String)
@@ -34,7 +34,10 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
 
     private val appContext = context.applicationContext
     private val client = Nearby.getConnectionsClient(appContext)
-    private val serviceId = context.packageName
+    // Both peers must choose the same mode before discovery. The distinct service ID
+    // prevents automatic-mode peers from accidentally matching Ultra Speed peers.
+    private val connectionStrategy = if (ultraSpeedMode) Strategy.P2P_POINT_TO_POINT else Strategy.P2P_CLUSTER
+    private val serviceId = context.packageName + if (ultraSpeedMode) ".ultraspeed" else ""
     private val names = mutableMapOf<String, String>()
     private val stableIds = mutableMapOf<String, String>()
     private val activeEndpoints = mutableSetOf<String>()
@@ -585,7 +588,7 @@ internal object IncomingFilePayloadPolicy {
     private fun safeFileName(raw: String): String = TransferFileNamePolicy.safeName(raw)
 
     private fun startAdvertising() {
-        val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
+        val options = AdvertisingOptions.Builder().setStrategy(connectionStrategy).build()
         client.startAdvertising(encodedName(), serviceId, lifecycle, options).addOnFailureListener {
             // Do not leave the transport marked as started when advertising failed.
             // Stop the other half of discovery too, so the next user retry starts cleanly.
@@ -612,7 +615,7 @@ internal object IncomingFilePayloadPolicy {
     fun start() {
         if (started) return
         started = true
-        val discovering = DiscoveryOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
+        val discovering = DiscoveryOptions.Builder().setStrategy(connectionStrategy).build()
         startAdvertising()
         client.startDiscovery(serviceId, discovery, discovering).addOnFailureListener {
             // Advertising may already have succeeded; roll both operations back together.
