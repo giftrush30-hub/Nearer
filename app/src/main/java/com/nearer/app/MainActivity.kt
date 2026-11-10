@@ -20,6 +20,7 @@ import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.net.Uri
+import android.graphics.BitmapFactory
 import android.provider.OpenableColumns
 import android.provider.DocumentsContract
 import android.provider.MediaStore
@@ -99,6 +100,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
@@ -131,6 +133,9 @@ class MainActivity : ComponentActivity() {
     private val hybridPeers = mutableStateMapOf<String, String>()
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
+    private var onboardingComplete by mutableStateOf(false)
+    private var profileAvatarId by mutableStateOf("orbit")
+    private var profilePhotoPath by mutableStateOf<String?>(null)
     private var hybridSearching by mutableStateOf(false)
     private var pendingHybridEndpoint: String? = null
     private var hybridConnected = false
@@ -580,6 +585,10 @@ class MainActivity : ComponentActivity() {
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
         }.getOrDefault("NeaRer User")
+        val profilePrefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        onboardingComplete = profilePrefs.getBoolean("onboarding_complete", false)
+        profileAvatarId = profilePrefs.getString("profile_avatar_id", "orbit") ?: "orbit"
+        profilePhotoPath = profilePrefs.getString("profile_photo_path", null)
         runCatching { nearbyTransport?.setDisplayName(displayName) }
         runCatching { restoreRecentlySeen() }
         // Multi-hop relay is paused until recipient routing and end-to-end encryption are ready.
@@ -602,6 +611,7 @@ class MainActivity : ComponentActivity() {
                 onSurface = White,
                 onSurfaceVariant = Muted
             )) {
+                if (onboardingComplete) {
                 NeaRerHome(
                     status = statusMessage,
                     scanning = scanning || hybridSearching,
@@ -657,6 +667,9 @@ class MainActivity : ComponentActivity() {
                     hybridPeers = hybridPeers.toMap(),
                     recentlySeenPeers = recentlySeenPeers.toMap(),
                     displayName = displayName,
+                    profileAvatarId = profileAvatarId,
+                    profilePhotoPath = profilePhotoPath,
+                    onSaveProfile = ::saveProfileEdits,
                     nearbyIdentityId = nearbyTransport?.localIdentityId().orEmpty(),
                     ultraSpeedMode = ultraSpeedMode,
                     ultraSpeedRestartRequired = ultraSpeedRestartRequired,
@@ -669,6 +682,12 @@ class MainActivity : ComponentActivity() {
                     onStopSearch = ::stopDiscovery,
                     onConnect = ::connectToDevice
                 )
+                } else {
+                    NeaRerOnboarding(
+                        publicId = nearbyTransport?.localIdentityId().orEmpty(),
+                        onComplete = ::completeOnboarding
+                    )
+                }
             }
         }
     }
@@ -766,6 +785,77 @@ class MainActivity : ComponentActivity() {
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", enabled).apply()
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", false).apply()
         statusMessage = "Community relay is temporarily paused while recipient routing and end-to-end encryption are being built."
+    }
+
+    private fun completeOnboarding(rawName: String, avatarId: String, photoUri: Uri?, answers: Map<String, String>) {
+        val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
+        if (cleanName.isBlank()) return
+        val savedPhotoPath = photoUri?.let(::storeProfilePhoto)
+        val answerJson = JSONObject().apply { answers.forEach { (key, value) -> put(key, value) } }
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("onboarding_complete", true)
+            .putString("display_name", cleanName)
+            .putString("profile_avatar_id", avatarId)
+            .putString("profile_photo_path", savedPhotoPath)
+            .putString("onboarding_answers", answerJson.toString())
+            .apply()
+        displayName = cleanName
+        profileAvatarId = avatarId
+        profilePhotoPath = savedPhotoPath
+        runCatching { nearbyTransport?.setDisplayName(cleanName) }
+        onboardingComplete = true
+        statusMessage = "Welcome to NeaRer, $cleanName."
+    }
+
+    private fun storeProfilePhoto(uri: Uri): String? = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / sample > 1024 || bounds.outHeight / sample > 1024) sample *= 2
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+        }
+        val decoded = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) } ?: return null
+        val scale = minOf(1f, 512f / maxOf(decoded.width, decoded.height).toFloat())
+        val outputBitmap = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(
+            decoded, (decoded.width * scale).toInt().coerceAtLeast(1),
+            (decoded.height * scale).toInt().coerceAtLeast(1), true
+        ) else decoded
+        val profileDirectory = File(filesDir, "profile").apply { mkdirs() }
+        val destination = File(profileDirectory, "profile-photo-${System.currentTimeMillis()}.jpg")
+        FileOutputStream(destination).use { output ->
+            outputBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 86, output)
+        }
+        if (outputBitmap !== decoded) outputBitmap.recycle()
+        decoded.recycle()
+        destination.absolutePath.takeIf { destination.exists() && destination.length() > 0L }
+    }.getOrNull()
+
+    private fun saveProfileEdits(rawName: String, avatarId: String, photoUri: Uri?, removePhoto: Boolean) {
+        val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
+        if (cleanName.isBlank()) return
+        val oldPhotoPath = profilePhotoPath
+        val newPhotoPath = when {
+            photoUri != null -> storeProfilePhoto(photoUri) ?: oldPhotoPath
+            removePhoto -> null
+            else -> oldPhotoPath
+        }
+        if ((removePhoto && photoUri == null || photoUri != null && newPhotoPath != oldPhotoPath) &&
+            oldPhotoPath != null && oldPhotoPath != newPhotoPath) {
+            runCatching { File(oldPhotoPath).delete() }
+        }
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putString("display_name", cleanName)
+            .putString("profile_avatar_id", avatarId)
+            .putString("profile_photo_path", newPhotoPath)
+            .apply()
+        displayName = cleanName
+        profileAvatarId = avatarId
+        profilePhotoPath = newPhotoPath
+        runCatching { nearbyTransport?.setDisplayName(cleanName) }
+        statusMessage = "Your NeaRer profile has been updated."
     }
 
     private fun saveDisplayName(rawName: String) {
@@ -2796,6 +2886,9 @@ private fun NeaRerHome(
     hybridPeers: Map<String, String>,
     recentlySeenPeers: Map<String, NearbyPerson>,
     displayName: String,
+    profileAvatarId: String,
+    profilePhotoPath: String?,
+    onSaveProfile: (String, String, Uri?, Boolean) -> Unit,
     nearbyIdentityId: String,
     ultraSpeedMode: Boolean,
     ultraSpeedRestartRequired: Boolean,
@@ -2809,6 +2902,8 @@ private fun NeaRerHome(
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     val context = LocalContext.current
+    var showProfileEditor by remember { mutableStateOf(false) }
+    val profileBitmap = remember(profilePhotoPath) { profilePhotoPath?.let { path -> runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull() } }
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
     LaunchedEffect(externalShareUris) { if (externalShareUris.isNotEmpty()) selectedTab = "Share" }
@@ -3482,6 +3577,21 @@ private fun NeaRerHome(
 
             if (selectedTab == "More") {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        if (profileBitmap != null) {
+                            androidx.compose.foundation.Image(profileBitmap, contentDescription = "Your profile photo", modifier = Modifier.size(66.dp).clip(CircleShape))
+                        } else {
+                            NeaRerAvatarBadge(profileAvatarId, Modifier.size(66.dp))
+                        }
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("YOUR NEARER PROFILE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                            Text(displayName, color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Text("ID  NR-$nearbyIdentityId", color = Muted, fontSize = 11.sp)
+                        }
+                        Button(onClick = { showProfileEditor = true }, colors = ButtonDefaults.buttonColors(containerColor = BrandBlue, contentColor = White)) { Text("Edit") }
+                    }
+                }
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
                     Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("YOUR NEARER", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
                         Text("Everything closer, even without mobile data.", color = White, fontSize = 23.sp, lineHeight = 29.sp, fontWeight = FontWeight.ExtraBold)
@@ -3544,7 +3654,7 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Chats" to "▤", "Share" to "⇧", "Games" to "♟").forEach { item ->
+                    listOf("Chats" to "▤", "Share" to "⇧", "Games" to "♟", "More" to "⋯").forEach { item ->
                         val selected = selectedTab == item.first
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
@@ -3569,6 +3679,16 @@ private fun NeaRerHome(
                 }
             }
         }
+    }
+
+    if (showProfileEditor) {
+        NeaRerProfileEditor(
+            currentName = displayName,
+            currentAvatarId = profileAvatarId,
+            currentPhotoPath = profilePhotoPath,
+            onSave = { name, avatar, photo, remove -> onSaveProfile(name, avatar, photo, remove); showProfileEditor = false },
+            onDismiss = { showProfileEditor = false }
+        )
     }
 
     // Connection approval is global: users must not miss a request just because
