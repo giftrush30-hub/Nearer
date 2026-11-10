@@ -343,6 +343,11 @@ internal object IncomingFilePayloadPolicy {
 
     private val payloads = object : PayloadCallback() {
         override fun onPayloadReceived(id: String, payload: Payload) {
+            if (!authenticatedEndpoints.contains(id)) {
+                try { payload.close() } catch (_: Exception) { }
+                listener.onFileStatus("An unverified nearby phone tried to send a file. The payload was rejected.")
+                return
+            }
             when (payload.type) {
                 Payload.Type.BYTES -> handleBytes(id, payload.asBytes())
                 Payload.Type.FILE -> {
