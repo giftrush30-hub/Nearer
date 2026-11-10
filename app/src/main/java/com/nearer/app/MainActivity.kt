@@ -3276,7 +3276,8 @@ private fun NeaRerHome(
                 routeCount = meshRouteTable.snapshot(System.currentTimeMillis()).size,
                 queuedPacketCount = meshDeadDropStore.count(System.currentTimeMillis()),
                 relayEnabled = false,
-                identityFingerprint = meshIdentityFingerprint
+                identityFingerprint = meshIdentityFingerprint,
+                identityError = meshIdentityError
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
