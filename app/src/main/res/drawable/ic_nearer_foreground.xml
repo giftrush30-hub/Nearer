@@ -1,10 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FFFFFF" android:pathData="M20,27 L34,27 L34,82 L20,82 Z M73,27 L87,27 L87,82 L73,82 Z"/>
-    <path android:fillColor="#00000000" android:strokeColor="#FFD21F" android:strokeWidth="5.2"
-        android:strokeLineCap="round" android:pathData="M12,23 C35,17 70,28 90,78"/>
-    <path android:fillColor="#00000000" android:strokeColor="#FFC928" android:strokeWidth="4.4"
-        android:strokeLineCap="round" android:pathData="M10,31 C34,25 65,37 82,88"/>
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Keep all artwork inside the adaptive-icon safe zone so launcher masks
+         (including Samsung One UI rounded squares) never crop the emblem. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M29,29 L42,29 L42,79 L29,79 Z M66,29 L79,29 L79,79 L66,79 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFD21F"
+        android:strokeWidth="5.0"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M19,31 C39,23 66,27 88,76" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFC928"
+        android:strokeWidth="4.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M18,41 C40,33 63,39 80,86" />
 </vector>
