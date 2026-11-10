@@ -1,6 +1,6 @@
 package com.nearer.app
 
-import org.json.JSONObject
+import org.json.JSONObject\nimport org.json.JSONArray
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.security.KeyFactory
@@ -26,6 +26,11 @@ internal object MeshWireProtocol {
     ) {
         val fingerprint: String get() = fingerprintOf(signingPublicKey)
     }
+
+    data class RelayFrame(
+        val envelope: MeshRelayEnvelope,
+        val packet: MeshCryptoPacket
+    )
 
     data class RouteAdvertisement(
         val originPeerId: String,
@@ -97,6 +102,70 @@ internal object MeshWireProtocol {
                     json.getString("signature")
                 ).takeIf(::verifyIdentityHello)
             }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun encodeRelayFrame(envelope: MeshRelayEnvelope, packet: MeshCryptoPacket): ByteArray {
+        require(envelope.messageId == packet.messageId)
+        require(envelope.originPeerId == packet.originPeerId)
+        require(envelope.destinationPeerId == packet.destinationPeerId)
+        require(envelope.ciphertext.isNotBlank())
+        val json = JSONObject()
+            .put("kind", "mesh_relay")
+            .put("version", VERSION)
+            .put("id", envelope.messageId)
+            .put("origin", envelope.originPeerId)
+            .put("destination", envelope.destinationPeerId)
+            .put("ttl", envelope.ttlRemaining)
+            .put("hops", envelope.hopCount)
+            .put("visited", JSONArray(envelope.visitedPeerIds))
+            .put("createdAt", envelope.createdAtMillis)
+            .put("packet", JSONObject()
+                .put("ephemeralKey", packet.ephemeralPublicKey)
+                .put("senderKey", packet.senderSigningPublicKey)
+                .put("salt", packet.salt)
+                .put("nonce", packet.nonce)
+                .put("ciphertext", packet.ciphertext)
+                .put("signature", packet.signature))
+        return json.toString().toByteArray(Charsets.UTF_8).also {
+            require(it.size <= MAX_FRAME_BYTES)
+        }
+    }
+
+    fun decodeRelayFrame(json: JSONObject): RelayFrame? {
+        return try {
+            if (json.optString("kind") != "mesh_relay" ||
+                json.optInt("version", -1) != VERSION
+            ) return null
+            val packetJson = json.getJSONObject("packet")
+            val visitedJson = json.getJSONArray("visited")
+            if (visitedJson.length() > MeshRelayPolicy.MAX_HOPS) return null
+            val visited = (0 until visitedJson.length()).map { visitedJson.getString(it) }
+            val id = json.getString("id")
+            val origin = json.getString("origin")
+            val destination = json.getString("destination")
+            val packet = MeshCryptoPacket(
+                id, origin, destination,
+                packetJson.getString("ephemeralKey"),
+                packetJson.getString("senderKey"),
+                packetJson.getString("salt"),
+                packetJson.getString("nonce"),
+                packetJson.getString("ciphertext"),
+                packetJson.getString("signature")
+            )
+            val envelope = MeshRelayEnvelope(
+                id, origin, destination, MeshCrypto.encode(packet.ciphertext.toByteArray(Charsets.UTF_8)),
+                json.getInt("ttl"), json.getInt("hops"), visited, json.getLong("createdAt")
+            )
+            if (id.isBlank() || origin.isBlank() || destination.isBlank() ||
+                id.length > MeshRelayPolicy.MAX_MESSAGE_ID_LENGTH ||
+                origin.length > MeshRelayPolicy.MAX_PEER_ID_LENGTH ||
+                destination.length > MeshRelayPolicy.MAX_PEER_ID_LENGTH ||
+                packet.ciphertext.length !in 1..MeshRelayPolicy.MAX_CIPHERTEXT_LENGTH * 2 ||
+                visited.any { it.isBlank() || it.length > MeshRelayPolicy.MAX_PEER_ID_LENGTH }
+            ) null else RelayFrame(envelope, packet)
         } catch (_: Exception) {
             null
         }
