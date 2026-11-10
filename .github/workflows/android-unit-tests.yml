@@ -41,7 +41,7 @@ jobs:
             echo "Android SDK command-line tools were not found."
             exit 1
           fi
-          yes | "$SDKMANAGER" --licenses
+          yes | "$SDKMANAGER" --licenses || true
           "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
 
       - name: Install compatible Gradle
