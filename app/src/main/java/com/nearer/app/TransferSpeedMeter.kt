@@ -22,17 +22,20 @@ internal class TransferSpeedMeter(
     private val samples = ArrayDeque<Sample>()
     private var startedAtMillis: Long? = null
     private var transferredBytes = 0L
+    private var baselineBytes = 0L
     private var totalBytes = -1L
     private var peakWindowBytesPerSecond = 0.0
 
     @Synchronized
     fun record(bytesTransferred: Long, expectedTotalBytes: Long = -1L): TransferSpeedSnapshot {
         val now = clockMillis()
-        if (startedAtMillis == null) startedAtMillis = now
-
         // SDK progress should be monotonic, but ignore regressions rather than
         // producing negative speeds if a callback is duplicated or reordered.
         transferredBytes = maxOf(transferredBytes, bytesTransferred.coerceAtLeast(0L))
+        if (startedAtMillis == null) {
+            startedAtMillis = now
+            baselineBytes = transferredBytes
+        }
         if (expectedTotalBytes >= 0L) totalBytes = expectedTotalBytes
 
         samples.addLast(Sample(now, transferredBytes))
@@ -49,6 +52,7 @@ internal class TransferSpeedMeter(
         samples.clear()
         startedAtMillis = null
         transferredBytes = 0L
+        baselineBytes = 0L
         totalBytes = -1L
         peakWindowBytesPerSecond = 0.0
     }
@@ -79,7 +83,8 @@ internal class TransferSpeedMeter(
     private fun snapshotAt(now: Long): TransferSpeedSnapshot {
         val started = startedAtMillis
         val elapsed = if (started == null) 0L else (now - started).coerceAtLeast(0L)
-        val averageRate = if (elapsed > 0L) transferredBytes * 1000.0 / elapsed else 0.0
+        val bytesDuringMeasurement = (transferredBytes - baselineBytes).coerceAtLeast(0L)
+        val averageRate = if (elapsed > 0L) bytesDuringMeasurement * 1000.0 / elapsed else 0.0
 
         val recentRate = rateWithinWindow(now)
 
