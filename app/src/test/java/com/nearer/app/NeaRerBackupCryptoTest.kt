@@ -10,6 +10,21 @@ import org.junit.Test
 class NeaRerBackupCryptoTest {
     private val password = "correct horse battery staple".toCharArray()
 
+    @Test fun clearsPasswordEvenWhenInputValidationFails() {
+        val folder = Files.createTempDirectory("nearer-backup-password-clear").toFile()
+        try {
+            val missingSource = File(folder, "missing.bin")
+            val secret = "correct horse battery staple".toCharArray()
+            val failure = runCatching {
+                NeaRerBackupCrypto.encryptFile(missingSource, File(folder, "backup.nearer"), secret)
+            }
+            assertTrue(failure.isFailure)
+            assertTrue(secret.all { it == '\\u0000' })
+        } finally {
+            folder.deleteRecursively()
+        }
+    }
+
     @Test fun encryptedBackupRoundTripsWithoutLeavingPlaintextInContainer() {
         val folder = Files.createTempDirectory("nearer-backup-test").toFile()
         try {
