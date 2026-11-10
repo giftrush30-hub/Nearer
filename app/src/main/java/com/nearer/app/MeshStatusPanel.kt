@@ -23,8 +23,8 @@ import androidx.compose.ui.unit.sp
 @Composable
 internal fun MeshStatusPanel(
     activePeerCount: Int,
-    routeCount: Int,
-    queuedPacketCount: Int,
+    routeCount: Int?,
+    queuedPacketCount: Int?,
     relayEnabled: Boolean
 ) {
     Surface(
@@ -53,8 +53,8 @@ internal fun MeshStatusPanel(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 MeshMetric("NEARBY PEERS", activePeerCount.toString(), Modifier.weight(1f))
-                MeshMetric("KNOWN ROUTES", routeCount.toString(), Modifier.weight(1f))
-                MeshMetric("DEAD DROPS", queuedPacketCount.toString(), Modifier.weight(1f))
+                MeshMetric("KNOWN ROUTES", routeCount?.toString() ?: "—", Modifier.weight(1f))
+                MeshMetric("DEAD DROPS", queuedPacketCount?.toString() ?: "—", Modifier.weight(1f))
             }
             Text(
                 if (relayEnabled) "Encrypted relay is enabled for this device."
@@ -64,10 +64,10 @@ internal fun MeshStatusPanel(
                 lineHeight = 17.sp
             )
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                MeshStage("01", "Encrypt", true)
-                MeshStage("02", "Route", true)
-                MeshStage("03", "Forward", relayEnabled)
-                MeshStage("04", "Deliver", relayEnabled)
+                MeshStage("01", "Keys", false)
+                MeshStage("02", "Encrypt", false)
+                MeshStage("03", "Routes", false)
+                MeshStage("04", "Relay", relayEnabled)
             }
         }
     }
