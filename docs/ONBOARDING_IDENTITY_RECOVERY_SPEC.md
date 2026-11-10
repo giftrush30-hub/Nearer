@@ -102,17 +102,17 @@ If a phone is lost or destroyed, no backup exists, and the old phone cannot be a
 ## Restore-plan boundary (implemented groundwork)
 
 - `NeaRerBackupRestorePlan.fromPreparedRestore` re-validates the verified staging directory and checks that its preview has not changed.
-- The plan exposes only allow-listed portable preference strings, onboarding completion, a contained profile-photo file when present, and sorted contained received-file references.
+- The plan exposes only allow-listed portable preference strings, onboarding completion, a contained profile-photo file when present, the validated portable chat archive, and sorted contained received-file references.
 - File references remain valid only while the caller keeps the owning `PreparedRestore` open. Closing it deletes the plaintext staging directory.
 - Planning is read-only: it does not change SharedPreferences, SQLite, the active profile, received files or transport state.
 - Device-specific identity, Android permissions/nearby consent, active mesh-relay consent, pending Android content-URI selections and live Bluetooth/Wi-Fi sessions are excluded and must be re-established locally.
-- This is not yet a restore/apply feature. A confirmed apply path still needs a tested rollback coordinator across SQLite, preferences, profile media and received files, followed by a controlled app-state/transport restart.
+- The plan itself remains read-only. The separate confirmed apply coordinator is now implemented as groundwork; it still needs compilation, transaction tests and a controlled app-state/transport restart before it can be safely exposed.
 
 
 ## Coordinated restore transaction (implementation groundwork)
 
 - `NeaRerBackupRestoreTransaction.apply` refuses to run unless the caller passes an explicit-confirmation flag.
-- Before modifying live data it exports the current complete SQLite chat archive, snapshots all supported SharedPreferences value types, and stages received files/profile photo inside app-private storage.
+- Before modifying live data it exports the current complete SQLite chat archive, validates and defensively copies all supported SharedPreferences values (including String sets), and stages received files/profile photo inside app-private storage.
 - Received files are installed by same-filesystem directory rename after preserving the current folder. The chat archive is replaced through SQLite's transaction. Portable profile/community/queue preferences and onboarding state are committed only after the file and database steps succeed.
 - If a later step fails, the transaction attempts to restore the original preferences, SQLite archive and received-files folder. If any rollback step itself fails, it deliberately retains the private rollback workspace and reports its location in the error's suppressed details rather than deleting the last recovery copy.
 - Existing profile photos are kept until the new preferences commit succeeds; only then is an old photo inside app-private storage eligible for cleanup.
