@@ -600,14 +600,7 @@ private class FastShareHttpServer(
             }
             val sha256 = digest.finishHex()
             synchronized(uploadPublishLock) {
-                var destination = File(directory, safeName)
-                var suffix = 2
-                val extension = safeName.substringAfterLast('.', "").takeIf { it.isNotEmpty() }
-                val stem = if (extension == null) safeName else safeName.removeSuffix(".$extension")
-                while (destination.exists()) {
-                    destination = File(directory, if (extension == null) "$stem ($suffix)" else "$stem ($suffix).$extension")
-                    suffix++
-                }
+                val destination = FastShareUploadDestination.nextAvailable(directory, safeName)
                 if (!temporary.renameTo(destination)) throw java.io.IOException("Could not publish file")
                 published = true
             }
