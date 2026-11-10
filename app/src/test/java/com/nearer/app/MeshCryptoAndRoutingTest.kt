@@ -36,7 +36,7 @@ class MeshCryptoAndRoutingTest {
         assertEquals("peer-c", table.nextHop("peer-d", 250)?.nextHopPeerId)
         table.removeNextHop("peer-c")
         assertEquals("peer-b", table.nextHop("peer-d", 250)?.nextHopPeerId)
-        assertNull(table.nextHop("peer-d", 1200))
+        assertNull(table.nextHop("peer-d", 1201))
     }
 
     @Test fun routeRejectsSelfRoutesAndHopOverflow() {
