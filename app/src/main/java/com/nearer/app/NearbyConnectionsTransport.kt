@@ -442,7 +442,9 @@ class NearbyConnectionsTransport(context: Context, private val listener: Listene
                     val uri: Uri = receivedFile.asUri() ?: throw IllegalStateException("Nearby file content is unavailable")
                     appContext.contentResolver.openInputStream(uri)?.use { input ->
                         FileOutputStream(target).use { output ->
-                            val buffer = ByteArray(256 * 1024)
+                            // The SDK payload is already on disk; use a larger bounded copy buffer for providers
+                            // that cannot expose a renameable file path.
+                            val buffer = ByteArray(1024 * 1024)
                             while (true) {
                                 val count = input.read(buffer)
                                 if (count < 0) break
