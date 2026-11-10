@@ -66,7 +66,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 internal enum class FileCentreCategory(val label: String) {
-    PICTURES("Pictures"), VIDEOS("Videos"), MUSIC("Music"), APPS("Apps"),
+    ALL("All files"), PICTURES("Pictures"), VIDEOS("Videos"), MUSIC("Music"), APPS("Apps"),
     DOCUMENTS("Documents"), DOWNLOADS("Downloads"), OTHER("Other files"), CONTACTS("Contacts"), FAVOURITES("Favourites"), RECENT("Recent files")
 }
 
@@ -99,6 +99,9 @@ internal object AndroidFileCatalog {
     }
 
     fun hasMediaAccess(context: Context, category: FileCentreCategory): Boolean {
+        if (category == FileCentreCategory.ALL) {
+            return mediaPermissions().any { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+        }
         if (category == FileCentreCategory.APPS || category == FileCentreCategory.DOCUMENTS || category == FileCentreCategory.DOWNLOADS || category == FileCentreCategory.OTHER || category == FileCentreCategory.CONTACTS) return true
         if (Build.VERSION.SDK_INT < 33) {
             return context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
@@ -432,7 +435,7 @@ internal fun FileCentreScreen(
     val selected = remember { mutableStateListOf<String>() }
     val favouriteIds = remember { mutableStateListOf<String>() }
     val recentIds = remember { mutableStateListOf<String>() }
-    var category by remember { mutableStateOf(FileCentreCategory.PICTURES) }
+    var category by remember { mutableStateOf(FileCentreCategory.ALL) }
     var search by remember { mutableStateOf("") }
     var gridMode by remember { mutableStateOf(true) }
     var sortMode by remember { mutableStateOf("Recent") }
@@ -729,7 +732,12 @@ internal fun FileCentreScreen(
     }
 
     val visible = items.filter { item ->
-        (when (category) { FileCentreCategory.FAVOURITES -> item.id in favouriteIds; FileCentreCategory.RECENT -> item.id in recentIds; else -> item.category == category }) &&
+        (when (category) {
+            FileCentreCategory.ALL -> item.category != FileCentreCategory.CONTACTS
+            FileCentreCategory.FAVOURITES -> item.id in favouriteIds
+            FileCentreCategory.RECENT -> item.id in recentIds
+            else -> item.category == category
+        }) &&
             (search.isBlank() || item.name.contains(search.trim(), ignoreCase = true))
     }.let { matches ->
         when (sortMode) {
@@ -809,11 +817,11 @@ internal fun FileCentreScreen(
             ) { Text(if (allVisibleSelected) "Deselect visible" else "Select visible", fontSize = 10.sp) }
         }
         if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = BlueAccent)
-        if (!hasAccess && category in listOf(FileCentreCategory.PICTURES, FileCentreCategory.VIDEOS, FileCentreCategory.MUSIC)) {
+        if (!hasAccess && category in listOf(FileCentreCategory.ALL, FileCentreCategory.PICTURES, FileCentreCategory.VIDEOS, FileCentreCategory.MUSIC)) {
             Surface(color = Panel, shape = RoundedCornerShape(16.dp)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Let NeaRer organise your media", color = White, fontWeight = FontWeight.Bold)
-                    Text("Android asks permission before NeaRer can list your photos, videos and music. You stay in control.", color = Muted, fontSize = 12.sp)
+                    Text("Let NeaRer organise your phone files", color = White, fontWeight = FontWeight.Bold)
+                    Text("Android asks permission before NeaRer can list your accessible photos, videos and music. Documents and protected folders open through Android's file browser, so you choose what NeaRer can access.", color = Muted, fontSize = 12.sp)
                     Button(
                         onClick = { permissionLauncher.launch(AndroidFileCatalog.mediaPermissions()) },
                         colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
