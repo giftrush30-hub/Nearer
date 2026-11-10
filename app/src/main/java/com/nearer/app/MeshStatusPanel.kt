@@ -25,7 +25,8 @@ internal fun MeshStatusPanel(
     activePeerCount: Int,
     routeCount: Int?,
     queuedPacketCount: Int?,
-    relayEnabled: Boolean
+    relayEnabled: Boolean,
+    identityFingerprint: String?
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -63,6 +64,10 @@ internal fun MeshStatusPanel(
                 fontSize = 11.sp,
                 lineHeight = 17.sp
             )
+            identityFingerprint?.let {
+                Text("THIS DEVICE KEY", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text(it, color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 MeshStage("01", "Keys", false)
                 MeshStage("02", "Encrypt", false)
