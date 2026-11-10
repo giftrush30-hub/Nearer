@@ -1,6 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#005091"/>
-  <path d="M150 166h70v260h-70zM378 166h70v260h-70z" fill="#FFFFFF"/>
-  <path d="M54 132C174 104 337 153 455 408" fill="none" stroke="#FFC928" stroke-width="31" stroke-linecap="butt"/>
-  <path d="M54 164C183 137 321 190 409 438" fill="none" stroke="#FFC928" stroke-width="18" stroke-linecap="butt"/>
+  <rect width="512" height="512" rx="112" fill="#004B90"/>
+  <!-- White pillars sit behind the two gold ribbons, as in the approved reference. -->
+  <path d="M96 146H174V420H96Z M370 132H448V420H370Z" fill="#FFFFFF"/>
+  <!-- Upper, broader sweep: a tapered ribbon, not a round-ended stroke. -->
+  <path d="M16 76
+           C170 70 352 150 486 444
+           C434 355 368 275 291 218
+           C202 151 108 111 16 99Z" fill="#FFC928"/>
+  <!-- Lower, finer sweep, ending earlier with a sharp point. -->
+  <path d="M16 111
+           C160 111 304 194 386 456
+           C350 365 298 289 231 233
+           C160 174 83 139 16 133Z" fill="#FFC928"/>
 </svg>
