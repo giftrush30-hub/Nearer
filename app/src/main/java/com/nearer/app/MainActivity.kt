@@ -3132,7 +3132,7 @@ private fun NeaRerHome(
                             Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         } else {
                             Column(
-                                modifier = Modifier.fillMaxWidth().height(150.dp).verticalScroll(rememberScrollState()),
+                                modifier = Modifier.fillMaxWidth().height(220.dp).verticalScroll(rememberScrollState()),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
                                 messages.forEach { message ->
@@ -3141,12 +3141,12 @@ private fun NeaRerHome(
                                         horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
                                     ) {
                                         Surface(
-                                            color = if (message.outgoing) Color(0xFF24564F) else Panel,
-                                            shape = RoundedCornerShape(14.dp)
+                                            color = if (message.outgoing) BrandBlue.copy(alpha = 0.72f) else Midnight,
+                                            shape = RoundedCornerShape(18.dp)
                                         ) {
                                             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                                                 Text(message.body, color = White, fontSize = 14.sp)
-                                                Text(if (message.outgoing) message.delivery else "Received", color = BlueAccent, fontSize = 9.sp)
+                                                Text(if (message.outgoing) message.delivery else "Received", color = if (message.outgoing) Gold else BlueAccent, fontSize = 9.sp)
                                             }
                                         }
                                     }
