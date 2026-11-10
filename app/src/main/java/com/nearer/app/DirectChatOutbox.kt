@@ -21,7 +21,7 @@ internal class DirectChatOutbox(context: Context) {
     init { restore() }
 
     fun enqueue(id: String, peerId: String, body: String): Boolean = synchronized(lock) {
-        if (restoreFailed || !validId(id) || !NeaRerIdentity.normalize(peerId) != null || body.isBlank() || body.length > 4000) return false
+        if (restoreFailed || !validId(id) || NeaRerIdentity.normalize(peerId) == null || body.isBlank() || body.length > 4000) return false
         if (entries.containsKey(id)) return entries[id] == Entry(id, peerId, body)
         if (entries.size >= 500) return false
         entries[id] = Entry(id, peerId, body)
@@ -56,7 +56,7 @@ internal class DirectChatOutbox(context: Context) {
                 val id = item.optString("id")
                 val peer = item.optString("peerId")
                 val body = item.optString("body")
-                if (validId(id) && NeaRerIdentity.isValid(peer) && body.isNotBlank() && body.length <= 4000 && entries.size < 500) {
+                if (validId(id) && NeaRerIdentity.normalize(peer) != null && body.isNotBlank() && body.length <= 4000 && entries.size < 500) {
                     entries[id] = Entry(id, peer, body)
                 }
             }
