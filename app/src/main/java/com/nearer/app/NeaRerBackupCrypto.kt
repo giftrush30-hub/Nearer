@@ -37,68 +37,74 @@ internal object NeaRerBackupCrypto {
 
     @Throws(IOException::class, GeneralSecurityException::class)
     fun encryptFile(source: File, destination: File, password: CharArray) {
-        requirePassword(password)
-        require(source.isFile && source.canRead()) { "Backup source is not a readable file" }
-        require(source.canonicalFile != destination.canonicalFile) { "Source and destination must differ" }
-        val temporary = createTemporary(destination)
         try {
-            val salt = ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes)
-            val nonce = ByteArray(NONCE_BYTES).also(SecureRandom()::nextBytes)
-            val header = makeHeader(ITERATIONS, salt, nonce)
-            val cipher = cipher(Cipher.ENCRYPT_MODE, password, ITERATIONS, salt, nonce, header)
-            FileOutputStream(temporary).use { output ->
-                output.write(header)
-                FileInputStream(source).use { input ->
-                    val buffer = ByteArray(BUFFER_BYTES)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        cipher.update(buffer, 0, count)?.let(output::write)
+            requirePassword(password)
+            require(source.isFile && source.canRead()) { "Backup source is not a readable file" }
+            require(source.canonicalFile != destination.canonicalFile) { "Source and destination must differ" }
+            val temporary = createTemporary(destination)
+            try {
+                val salt = ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes)
+                val nonce = ByteArray(NONCE_BYTES).also(SecureRandom()::nextBytes)
+                val header = makeHeader(ITERATIONS, salt, nonce)
+                val cipher = cipher(Cipher.ENCRYPT_MODE, password, ITERATIONS, salt, nonce, header)
+                FileOutputStream(temporary).use { output ->
+                    output.write(header)
+                    FileInputStream(source).use { input ->
+                        val buffer = ByteArray(BUFFER_BYTES)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            cipher.update(buffer, 0, count)?.let(output::write)
+                        }
                     }
+                    cipher.doFinal().let(output::write)
+                    output.fd.sync()
                 }
-                cipher.doFinal().let(output::write)
-                output.fd.sync()
+                publish(temporary, destination)
+            } catch (failure: Exception) {
+                temporary.delete()
+                throw failure
             }
-            publish(temporary, destination)
-        } catch (failure: Exception) {
-            temporary.delete()
-            throw failure
         } finally {
-            password.fill('\u0000')
+            // Clear caller-owned password memory even when validation or destination
+            // preparation fails before encryption starts.
+            password.fill('\\u0000')
         }
     }
 
     @Throws(IOException::class, GeneralSecurityException::class)
     fun decryptFile(source: File, destination: File, password: CharArray) {
-        requirePassword(password)
-        require(source.isFile && source.canRead()) { "Backup file is not readable" }
-        require(source.canonicalFile != destination.canonicalFile) { "Source and destination must differ" }
-        require(source.length() > HEADER_BYTES + 16L) { "Backup file is incomplete" }
-        val temporary = createTemporary(destination)
         try {
-            FileInputStream(source).use { input ->
-                val header = ByteArray(HEADER_BYTES)
-                DataInputStream(input).readFully(header)
-                val parsed = parseHeader(header)
-                val cipher = cipher(Cipher.DECRYPT_MODE, password, parsed.iterations, parsed.salt, parsed.nonce, header)
-                FileOutputStream(temporary).use { output ->
-                    val buffer = ByteArray(BUFFER_BYTES)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        cipher.update(buffer, 0, count)?.let(output::write)
+            requirePassword(password)
+            require(source.isFile && source.canRead()) { "Backup file is not readable" }
+            require(source.canonicalFile != destination.canonicalFile) { "Source and destination must differ" }
+            require(source.length() > HEADER_BYTES + 16L) { "Backup file is incomplete" }
+            val temporary = createTemporary(destination)
+            try {
+                FileInputStream(source).use { input ->
+                    val header = ByteArray(HEADER_BYTES)
+                    DataInputStream(input).readFully(header)
+                    val parsed = parseHeader(header)
+                    val cipher = cipher(Cipher.DECRYPT_MODE, password, parsed.iterations, parsed.salt, parsed.nonce, header)
+                    FileOutputStream(temporary).use { output ->
+                        val buffer = ByteArray(BUFFER_BYTES)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            cipher.update(buffer, 0, count)?.let(output::write)
+                        }
+                        // GCM authenticates the entire backup here. Do not publish before this succeeds.
+                        cipher.doFinal().let(output::write)
+                        output.fd.sync()
                     }
-                    // GCM authenticates the entire backup here. Do not publish before this succeeds.
-                    cipher.doFinal().let(output::write)
-                    output.fd.sync()
                 }
+                publish(temporary, destination)
+            } catch (failure: Exception) {
+                temporary.delete()
+                throw failure
             }
-            publish(temporary, destination)
-        } catch (failure: Exception) {
-            temporary.delete()
-            throw failure
         } finally {
-            password.fill('\u0000')
+            password.fill('\\u0000')
         }
     }
 
