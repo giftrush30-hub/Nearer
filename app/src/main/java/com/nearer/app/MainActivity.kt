@@ -1,6 +1,8 @@
 package com.nearer.app
 
 import android.Manifest
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -18,12 +20,17 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import android.os.Build
+import android.app.role.RoleManager
 import android.os.Bundle
 import android.os.Looper
+import android.media.MediaRecorder
 import android.os.Handler
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
+import java.io.FileInputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.net.InetSocketAddress
@@ -37,14 +44,17 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import javax.crypto.SecretKey
 import java.util.concurrent.LinkedBlockingQueue
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -52,21 +62,35 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -77,6 +101,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -85,28 +110,47 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.nearer.app.games.ludo.LudoGameScreen
+import com.nearer.app.games.ludo.LudoRoomSession
+import com.nearer.app.games.ludo.LudoRoomRole
+import com.nearer.app.games.ludo.LudoRoomAction
+import com.nearer.app.games.ludo.LudoRoomActionType
+import com.nearer.app.games.ludo.LudoRoomActionRequest
+import com.nearer.app.games.ludo.LudoRoomActionCodec
+import com.nearer.app.games.ludo.LudoRoomEnvelopeCodec
+import com.nearer.app.games.ludo.LudoDoubleDiceState
 
-private val Midnight = Color(0xFF081426)
-private val Panel = Color(0xFF112746)
-private val Mint = Color(0xFFFFD34E)
-private val Muted = Color(0xFFAABBD4)
-private val White = Color(0xFFF6F8FF)
-private val BrandBlue = Color(0xFF2868E8)
-private val Gold = Color(0xFFFFD34E)
+// NeaRer Royal Neutral palette: blue is the signature accent, not the page background.
+private val Midnight = NeaRerPalette.Midnight
+private val Panel = NeaRerPalette.Panel
+private val AccentBlue = NeaRerPalette.AccentBlue
+private val Muted = NeaRerPalette.TextMuted
+private val White = NeaRerPalette.TextPrimary
+private val BrandBlue = NeaRerPalette.AccentBlue
+private val Gold = NeaRerPalette.Gold
 
 class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
@@ -114,6 +158,7 @@ class MainActivity : ComponentActivity() {
     private var receiverRegistered = false
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
+    private val chatTransportRouter = ChatTransportRouter()
     private val hybridPeers = mutableStateMapOf<String, String>()
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
@@ -121,14 +166,23 @@ class MainActivity : ComponentActivity() {
     private var pendingHybridEndpoint: String? = null
     private var hybridConnected = false
     private var hybridConnectedEndpoint: String? = null
+    private var activeChatPeerId: String = "legacy"
+    private var connectedChatPeerId: String? = null
+    private var connectedChatPeerName: String? = null
+    private var activeChatPeerName: String = "Nearby person"
     private var meshRelayEnabled by mutableStateOf(false)
+    private var anonymousDiscovery by mutableStateOf(false)
     private val discoveryHandler = Handler(Looper.getMainLooper())
     private var discoveryTimeout: Runnable? = null
     private var discoveryGeneration = 0
+    private var nearbySearchTimeout: Runnable? = null
+    private var nearbySearchGeneration = 0
     private var connectingAddress by mutableStateOf<String?>(null)
     private var connectedDeviceName by mutableStateOf<String?>(null)
     private var connectionMessage by mutableStateOf("Not connected")
     private var incomingRequesterName by mutableStateOf<String?>(null)
+    private var pendingHybridStableId: String = ""
+    private val blockedPeerIds = ConcurrentHashMap.newKeySet<String>()
     private var approvalMessage by mutableStateOf("Waiting for app approval")
     private var pairingCode by mutableStateOf<String?>(null)
     private var chatReady by mutableStateOf(false)
@@ -136,11 +190,20 @@ class MainActivity : ComponentActivity() {
     private var serverSocket: ServerSocket? = null
     private var peerSocket: Socket? = null
     private var peerWriter: PrintWriter? = null
+    @Volatile private var peerSessionKey: SecretKey? = null
     private val writerLock = Any()
     private val receivedMessageIds = ConcurrentHashMap.newKeySet<String>()
+    private val persistedMessageIds = ConcurrentHashMap.newKeySet<String>()
+    // A queued outgoing message must finish its disk write before any transport can send it.
+    private val pendingOutgoingMessageSaves = ConcurrentHashMap.newKeySet<String>()
+    private val messagePersistence = Executors.newSingleThreadExecutor()
     private val io = Executors.newCachedThreadPool()
     private val approvalDecision = LinkedBlockingQueue<Boolean>()
     private val chatMessages = mutableStateListOf<ChatMessage>()
+    private val pendingChatFileUris = mutableStateListOf<String>()
+    // The head item stays in the durable queue while in flight. It is removed
+    // only after the receiver confirms that the verified file was saved.
+    private var activeQueuedFileUri: String? = null
     private val communityGroups = mutableStateListOf<CommunityGroup>()
     private val communityMessages = mutableStateListOf<CommunityChatMessage>()
     private var selectedCommunityCode by mutableStateOf<String?>(null)
@@ -148,20 +211,87 @@ class MainActivity : ComponentActivity() {
     private var incomingGameInvite by mutableStateOf<GameInvite?>(null)
     private var activeGame by mutableStateOf<TicTacToeMatch?>(null)
     private val gameChatMessages = mutableStateListOf<String>()
+    private data class LudoPendingInvite(val roomId: String, val senderName: String, val senderStableId: String)
+    private var ludoRoomId by mutableStateOf<String?>(null)
+    private var ludoRoomPeerName by mutableStateOf<String?>(null)
+    private var ludoRoomPeerStableId: String = ""
+    private var ludoRoomReady by mutableStateOf(false)
+    private var ludoRoomStatus by mutableStateOf("Connect to a nearby player to invite them.")
+    private var incomingLudoInvite by mutableStateOf<LudoPendingInvite?>(null)
+    private val ludoRoomMessages = mutableStateListOf<String>()
+    private var ludoRoomSession: LudoRoomSession? = null
+    private var ludoRoomGame by mutableStateOf<LudoDoubleDiceState?>(null)
+    private var ludoRoomIsHost by mutableStateOf(false)
+    private var ludoRoomCanAct by mutableStateOf(false)
     private val receivedFiles = mutableStateListOf<ReceivedFile>()
+    private val sentFiles = mutableStateListOf<SentFile>()
+    private var pendingSentFileName: String? = null
+    private var pendingSentFileUri: String? = null
+    private var pendingSentFileSize: Long = 0L
     private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
     private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
     private var outgoingTransferId by mutableStateOf<String?>(null)
     private var outgoingProgress by mutableStateOf(0f)
+    private var outgoingTransferredBytes by mutableStateOf(0L)
+    private var outgoingTotalBytes by mutableStateOf(0L)
+    private var outgoingSpeedBytesPerSecond by mutableStateOf(0L)
+    private var incomingSpeedBytesPerSecond by mutableStateOf(0L)
+    private var outgoingRateSampleAt = 0L
+    private var incomingRateSampleAt = 0L
+    private var outgoingRateSampleBytes = 0L
+    private var incomingRateSampleBytes = 0L
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
+    private var incomingTransferredBytes by mutableStateOf(0L)
+    private var incomingTotalBytes by mutableStateOf(0L)
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
+    private var isRecordingVoiceNote by mutableStateOf(false)
+    private var voiceNoteRecorder: MediaRecorder? = null
+    private var activeVoiceNoteFile: File? = null
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
+    private var flashRoleReady by mutableStateOf(false)
+    private var flashLastSignal by mutableStateOf<String?>(null)
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
+
+    private fun updateTransferRate(incoming: Boolean, bytes: Long) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (incoming) {
+            if (incomingRateSampleAt > 0L && bytes < incomingRateSampleBytes) {
+                incomingSpeedBytesPerSecond = 0L
+                incomingRateSampleAt = now
+                incomingRateSampleBytes = bytes
+                return
+            }
+            val elapsed = now - incomingRateSampleAt
+            if (incomingRateSampleAt > 0L && elapsed >= 700L && bytes >= incomingRateSampleBytes) {
+                val rate = ((bytes - incomingRateSampleBytes) * 1000L / elapsed).coerceAtLeast(0L)
+                incomingSpeedBytesPerSecond = if (incomingSpeedBytesPerSecond == 0L) rate else (incomingSpeedBytesPerSecond * 0.65 + rate * 0.35).toLong()
+                incomingRateSampleAt = now; incomingRateSampleBytes = bytes
+            } else if (incomingRateSampleAt == 0L) { incomingRateSampleAt = now; incomingRateSampleBytes = bytes }
+        } else {
+            if (outgoingRateSampleAt > 0L && bytes < outgoingRateSampleBytes) {
+                outgoingSpeedBytesPerSecond = 0L
+                outgoingRateSampleAt = now
+                outgoingRateSampleBytes = bytes
+                return
+            }
+            val elapsed = now - outgoingRateSampleAt
+            if (outgoingRateSampleAt > 0L && elapsed >= 700L && bytes >= outgoingRateSampleBytes) {
+                val rate = ((bytes - outgoingRateSampleBytes) * 1000L / elapsed).coerceAtLeast(0L)
+                outgoingSpeedBytesPerSecond = if (outgoingSpeedBytesPerSecond == 0L) rate else (outgoingSpeedBytesPerSecond * 0.65 + rate * 0.35).toLong()
+                outgoingRateSampleAt = now; outgoingRateSampleBytes = bytes
+            } else if (outgoingRateSampleAt == 0L) { outgoingRateSampleAt = now; outgoingRateSampleBytes = bytes }
+        }
+    }
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
+                NeaRerFlashScreeningService.ACTION_FLASH_MESSAGE_RECEIVED -> {
+                    // The screening service has already persisted the event. Import it
+                    // through the same idempotent path used when the app resumes.
+                    importPendingFlashMessages()
+                }
                 WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> {
                     val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1)
                     if (state == WifiP2pManager.WIFI_P2P_STATE_DISABLED) {
@@ -173,14 +303,20 @@ class MainActivity : ComponentActivity() {
                 }
                 WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
                     if (hasDiscoveryPermission()) {
+                        val requestGeneration = discoveryGeneration
                         wifiManager?.requestPeers(channel) { peers ->
+                            // Ignore delayed results from a scan that has since been stopped or restarted.
+                            if (requestGeneration != discoveryGeneration) return@requestPeers
                             nearbyDevices.clear()
                             nearbyDevices.addAll(peers.deviceList)
-                            finishDiscovery()
-                            statusMessage = if (nearbyDevices.isEmpty()) {
-                                "No nearby Wi-Fi Direct devices found yet. Keep both phones nearby and scan again."
-                            } else {
-                                "${nearbyDevices.size} nearby device(s) found. Select one to request a connection."
+                            if (scanning) {
+                                statusMessage = if (nearbyDevices.isEmpty()) {
+                                    "Searching… keep NeaRer open on both phones."
+                                } else {
+                                    "${nearbyDevices.size} nearby device(s) found. You can select one now or keep searching."
+                                }
+                            } else if (nearbyDevices.isNotEmpty()) {
+                                statusMessage = "${nearbyDevices.size} nearby Wi-Fi Direct device(s) found."
                             }
                         }
                     }
@@ -191,20 +327,24 @@ class MainActivity : ComponentActivity() {
                         scanning = true
                         statusMessage = "Searching nearby…"
                     } else if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STOPPED && scanning) {
+                        val stoppedGeneration = discoveryGeneration
                         if (hasDiscoveryPermission()) {
                             wifiManager?.requestPeers(channel) { peers ->
+                                if (stoppedGeneration != discoveryGeneration || !scanning) return@requestPeers
                                 nearbyDevices.clear()
                                 nearbyDevices.addAll(peers.deviceList)
                                 finishDiscovery()
                                 if (nearbyDevices.isEmpty() && hybridPeers.isEmpty()) {
-                                    statusMessage = "No nearby phones found yet. Keep Bluetooth and Wi-Fi ON on both phones, then search again."
+                                    statusMessage = "Wi-Fi Direct search ended. Bluetooth discovery can continue; check both phones and search again if needed."
                                 } else {
-                                    statusMessage = "Nearby search finished. Select a phone below to connect."
+                                    statusMessage = "Wi-Fi Direct search finished. Select a phone below; Bluetooth discovery can continue."
                                 }
                             }
                         } else {
-                            finishDiscovery()
-                            statusMessage = "Nearby search finished. Check the Nearby devices permission if no phones appear."
+                            if (stoppedGeneration == discoveryGeneration) {
+                                finishDiscovery()
+                                statusMessage = "Wi-Fi Direct search finished. Check Nearby devices permission if no phones appear."
+                            }
                         }
                     }
                 }
@@ -219,19 +359,45 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun requestFlashScreeningRole() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            statusMessage = "NeaRer Flash call signalling requires Android 10 or newer."
+            return
+        }
+        val roles = getSystemService(RoleManager::class.java) ?: return
+        if (roles.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) {
+            flashRoleReady = true
+            return
+        }
+        if (!roles.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) {
+            statusMessage = "This Android device does not offer the call-screening role."
+            return
+        }
+        startActivityForResult(roles.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING), 7041)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = android.graphics.Color.rgb(8, 20, 38)
-        window.navigationBarColor = android.graphics.Color.rgb(8, 20, 38)
+        window.statusBarColor = android.graphics.Color.rgb(16, 26, 43)
+        window.navigationBarColor = android.graphics.Color.rgb(16, 26, 43)
         window.decorView.systemUiVisibility = 0
         wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
         channel = wifiManager?.initialize(this, mainLooper, null)
         nearbyTransport = NearbyConnectionsTransport(this, object : NearbyConnectionsTransport.Listener {
             override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
-            override fun onFound(id: String, name: String, stableId: String) { runOnUiThread { hybridPeers[id] = name; if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId) } }
+            override fun onFound(id: String, name: String, stableId: String) { runOnUiThread {
+                val normalizedId = BlockedPeerPolicy.normalize(stableId)
+                if (normalizedId != null && normalizedId in blockedPeerIds) {
+                    hybridPeers.remove(id)
+                } else {
+                    hybridPeers[id] = name
+                    if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId)
+                }
+            } }
             override fun onLost(id: String, stableId: String) { runOnUiThread {
                 val name = hybridPeers.remove(id)
-                if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
+                val normalizedId = BlockedPeerPolicy.normalize(stableId)
+                if (name != null && (normalizedId == null || normalizedId !in blockedPeerIds)) recordRecentlySeen(stableId.ifBlank { id }, name)
                 if (hybridConnectedEndpoint == id) {
                     hybridConnected = false
                     hybridConnectedEndpoint = null
@@ -244,9 +410,16 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             } }
-            override fun onRequest(id: String, name: String, token: String) {
+            override fun onRequest(id: String, name: String, token: String, stableId: String) {
                 runOnUiThread {
+                    val normalizedId = BlockedPeerPolicy.normalize(stableId)
+                    if (normalizedId != null && normalizedId in blockedPeerIds) {
+                        nearbyTransport?.reject(id)
+                        statusMessage = "A connection request from a blocked nearby device was automatically declined."
+                        return@runOnUiThread
+                    }
                     pendingHybridEndpoint = id
+                    pendingHybridStableId = normalizedId.orEmpty()
                     incomingRequesterName = name
                     pairingCode = token
                     approvalMessage = "Compare the security code on both phones before accepting"
@@ -257,7 +430,12 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     hybridConnected = true
                     hybridConnectedEndpoint = id
+                    activeChatPeerId = stableId.ifBlank { "nearby:$id" }
+                    connectedChatPeerId = activeChatPeerId
+                    connectedChatPeerName = name
+                    activeChatPeerName = name
                     pendingHybridEndpoint = null
+                    pendingHybridStableId = ""
                     incomingRequesterName = null
                     connectedDeviceName = name
                     chatReady = true
@@ -265,28 +443,111 @@ class MainActivity : ComponentActivity() {
                     approvalMessage = "Connection approved"
                     chatNotice = "Connected to $name. Offline chat is ready."
                     statusMessage = "Connected to $name using Bluetooth / nearby Wi-Fi."
+                    // Retry only messages addressed to this exact peer. Their IDs stay
+                    // unchanged, so a recipient that already saved one can ACK the retry
+                    // without showing a duplicate bubble.
+                    flushQueuedChatMessages()
+                    // Resume the durable attachment queue only after this peer's
+                    // connection has been accepted again.
+                    flushPendingChatFiles()
                 }
             }
             override fun onDisconnected(id: String, stableId: String, name: String) {
                 runOnUiThread {
+                    val peerId = stableId.ifBlank { "nearby:$id" }
+                    if ((ludoRoomPeerStableId.isNotBlank() && ludoRoomPeerStableId == stableId) || (ludoRoomPeerStableId.isBlank() && ludoRoomPeerName == name)) {
+                        ludoRoomStatus = "Nearby player disconnected. Your match room has ended."
+                        ludoRoomId = null
+                        ludoRoomPeerName = null
+                        ludoRoomPeerStableId = ""
+                        ludoRoomReady = false
+                    }
+                    val lastName = hybridPeers.remove(id) ?: name
+                    recordRecentlySeen(peerId, lastName)
+                    // A second nearby endpoint can disconnect while the selected chat
+                    // remains connected. Queue only that peer's unconfirmed messages.
+                    if (hybridConnectedEndpoint != id) {
+                        queueUnconfirmedMessagesForPeer(peerId)
+                        return@runOnUiThread
+                    }
                     hybridConnected = false
                     hybridConnectedEndpoint = null
-                    val lastName = hybridPeers.remove(id) ?: name
-                    recordRecentlySeen(stableId.ifBlank { id }, lastName)
+                    if (connectedChatPeerId == stableId || connectedChatPeerId == "nearby:$id") {
+                        connectedChatPeerId = null
+                        connectedChatPeerName = null
+                    }
                     pendingHybridEndpoint = null
-                    connectedDeviceName = null
-                    chatReady = false
-                    connectionMessage = "Not connected"
-                    chatNotice = "Nearby connection ended. Search again to reconnect."
+                    val legacyLinkAlive = peerSocket?.isConnected == true && peerSocket?.isClosed == false
+                    chatReady = legacyLinkAlive
+                    if (!legacyLinkAlive) queueUnconfirmedMessagesForPeer(peerId)
+                    if (legacyLinkAlive) {
+                        connectionMessage = "Wi-Fi Direct chat link still active"
+                        chatNotice = "Nearby Bluetooth/Wi-Fi link ended. Your chat is continuing over Wi-Fi Direct."
+                    } else {
+                        connectedDeviceName = null
+                        connectionMessage = "Not connected"
+                        chatNotice = "Nearby connection ended. Your messages remain safely queued."
+                    }
                 }
             }
             override fun onMessage(id: String, senderName: String, senderStableId: String, body: String) {
+                // Compatibility path for older NeaRer builds that do not preserve message IDs.
                 runOnUiThread {
-                    if (body.startsWith("NR_COMMUNITY:")) handleCommunityPacket(senderName, senderStableId, body.removePrefix("NR_COMMUNITY:"))
+                    if (body.startsWith("NR_LUDO:")) handleLudoRoomPacket(senderName, senderStableId, body.removePrefix("NR_LUDO:"))
+                    else if (body.startsWith("NR_COMMUNITY:")) handleCommunityPacket(senderName, senderStableId, body.removePrefix("NR_COMMUNITY:"))
                     else {
-                        chatMessages.add(ChatMessage("hybrid-" + System.currentTimeMillis(), body, outgoing = false, delivery = "Received"))
+                        chatMessages.add(ChatMessage("legacy-" + System.currentTimeMillis(), body, outgoing = false, delivery = "Received"))
                         persistMessages()
                         chatNotice = "New offline message received from $senderName."
+                    }
+                }
+            }
+            override fun onMessageWithId(id: String, senderName: String, senderStableId: String, messageId: String, body: String) {
+                runOnUiThread {
+                    if (body.startsWith("NR_LUDO:")) {
+                        handleLudoRoomPacket(senderName, senderStableId, body.removePrefix("NR_LUDO:"))
+                    } else if (body.startsWith("NR_COMMUNITY:")) {
+                        handleCommunityPacket(senderName, senderStableId, body.removePrefix("NR_COMMUNITY:"))
+                    } else {
+                        if (receivedMessageIds.add(messageId)) {
+                            chatMessages.add(ChatMessage(
+                                messageId, body, outgoing = false, delivery = "Received",
+                                conversationId = senderStableId.ifBlank { "nearby:$id" },
+                                conversationName = senderName
+                            ))
+                            chatNotice = "Saving message from $senderName before confirming delivery…"
+                            persistReceivedMessageThenAcknowledge(messageId, nearbyEndpointId = id)
+                        } else if (persistedMessageIds.contains(messageId)) {
+                            // Re-send receipts for already-saved duplicates if an earlier ACK was lost.
+                            nearbyTransport?.sendDeliveryAck(id, messageId)
+                        } else {
+                            // A previous disk write may have failed; retry saving before acknowledging.
+                            persistReceivedMessageThenAcknowledge(messageId, nearbyEndpointId = id)
+                        }
+                    }
+                }
+            }
+            override fun onDeliveryAck(id: String, messageId: String, senderStableId: String) {
+                runOnUiThread {
+                    val expectedPeerId = senderStableId.ifBlank { "nearby:$id" }
+                    val index = chatMessages.indexOfFirst {
+                        it.id == messageId && it.outgoing &&
+                            it.conversationId.ifBlank { "legacy" } == expectedPeerId
+                    }
+                    if (index >= 0 && chatMessages[index].delivery != "Delivered") {
+                        chatMessages[index] = chatMessages[index].copy(delivery = "Delivered")
+                        persistMessages()
+                        chatNotice = "Your message was delivered and saved on the other phone."
+                    }
+                }
+            }
+            override fun onMessageSendFailed(messageId: String) {
+                runOnUiThread {
+                    val index = chatMessages.indexOfFirst { it.id == messageId && it.outgoing }
+                    if (index >= 0 && chatMessages[index].delivery != "Delivered") {
+                        chatMessages[index] = chatMessages[index].copy(delivery = "Queued")
+                        persistMessages()
+                        chatNotice = "Connection interrupted. Your message is safely queued on this phone."
                     }
                 }
             }
@@ -296,10 +557,16 @@ class MainActivity : ComponentActivity() {
                     if (incoming) {
                         incomingTransferName = name
                         incomingProgress = fraction
+                        incomingTransferredBytes = transferred.coerceAtLeast(0L)
+                        updateTransferRate(true, transferred.coerceAtLeast(0L))
+                        incomingTotalBytes = total.coerceAtLeast(0L)
                         chatNotice = if (total > 0L) "Receiving $name • ${(fraction * 100).toInt()}%" else "Receiving $name…"
                     } else {
                         outgoingTransferId = "nearby:$payloadId"
                         outgoingProgress = fraction
+                        outgoingTransferredBytes = transferred.coerceAtLeast(0L)
+                        updateTransferRate(false, transferred.coerceAtLeast(0L))
+                        outgoingTotalBytes = total.coerceAtLeast(0L)
                         chatNotice = if (total > 0L) "Sending $name • ${(fraction * 100).toInt()}%" else "Sending $name…"
                     }
                 }
@@ -308,6 +575,11 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     incomingTransferName = null
                     incomingProgress = 0f
+                    incomingTransferredBytes = 0L
+                    incomingTotalBytes = 0L
+                    incomingSpeedBytesPerSecond = 0L
+                    incomingRateSampleAt = 0L
+                    incomingRateSampleBytes = 0L
                     receivedFiles.add(0, ReceivedFile(name, file))
                     chatNotice = "Received and saved: $name. Tap it below to open."
                 }
@@ -315,26 +587,94 @@ class MainActivity : ComponentActivity() {
             override fun onFileStatus(message: String) {
                 runOnUiThread {
                     chatNotice = message
+                    if (message.startsWith("File sent to the nearby phone")) {
+                        val savedUri = pendingSentFileUri
+                        val savedName = pendingSentFileName
+                        if (!savedUri.isNullOrBlank() && !savedName.isNullOrBlank()) {
+                            sentFiles.add(0, SentFile(savedName, savedUri, pendingSentFileSize, System.currentTimeMillis()))
+                            persistSentFiles()
+                        }
+                        pendingSentFileUri = null
+                        pendingSentFileName = null
+                        pendingSentFileSize = 0L
+                    }
                     if (message.startsWith("File sent to the nearby phone") ||
                         message.startsWith("Nearby file transfer failed") ||
+                        message.startsWith("Nearby file transfer cancelled") ||
                         message.startsWith("Could not start file transfer") ||
                         message.startsWith("Could not send file details") ||
                         message.startsWith("File could not be prepared")) {
                         outgoingTransferId = null
                         outgoingProgress = 0f
+            outgoingTransferredBytes = 0L
+            outgoingTotalBytes = 0L
+            outgoingSpeedBytesPerSecond = 0L
+            outgoingRateSampleAt = 0L
+            outgoingRateSampleBytes = 0L
                     }
-                    if (message.startsWith("Nearby file transfer failed")) {
+                    if (message.startsWith("Nearby file transfer failed") ||
+                        message.startsWith("Nearby file transfer cancelled")) {
                         incomingTransferName = null
                         incomingProgress = 0f
+                        incomingTransferredBytes = 0L
+                        incomingTotalBytes = 0L
+                        incomingSpeedBytesPerSecond = 0L
+                        incomingRateSampleAt = 0L
+                        incomingRateSampleBytes = 0L
+                    }
+                    if (message.startsWith("File sent to the nearby phone")) {
+                        stopNearbyTransferKeepAlive()
+                        activeQueuedFileUri?.let { completedUri ->
+                            pendingChatFileUris.remove(completedUri)
+                            if (!persistPendingChatFiles()) {
+                                // The receiver has saved the file, but keep its queue
+                                // record if local cleanup cannot be made durable. Do not
+                                // silently lose the user's transfer history.
+                                pendingChatFileUris.add(0, completedUri)
+                                chatNotice = "File delivered, but NeaRer could not update the local queue. Remove the delivered item from prepared files to avoid resending it."
+                            }
+                        }
+                        activeQueuedFileUri = null
+                        if (chatNotice != "File delivered, but NeaRer could not update the local queue. Remove the delivered item from prepared files to avoid resending it.") {
+                            flushPendingChatFiles()
+                        }
+                    }
+                    if (message.startsWith("Nearby file transfer failed") ||
+                        message.startsWith("Nearby file transfer cancelled") ||
+                        message.startsWith("Could not start file transfer") ||
+                        message.startsWith("Could not send file details") ||
+                        message.startsWith("File could not be prepared") ||
+                        message.startsWith("Connection lost before the other phone confirmed saving") ||
+                        message.startsWith("file transfers lost their connection before recipient confirmation")) {
+                        stopNearbyTransferKeepAlive()
+                        // A disconnected recipient cannot ACK this transfer. Clear the
+                        // spinner but keep the prepared item; reconnecting will retry it.
+                        outgoingTransferId = null
+                        outgoingProgress = 0f
+                        outgoingTransferredBytes = 0L
+                        outgoingTotalBytes = 0L
+                        outgoingSpeedBytesPerSecond = 0L
+                        outgoingRateSampleAt = 0L
+                        outgoingRateSampleBytes = 0L
+                        activeQueuedFileUri = null
                     }
                 }
             }
         })
         if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
         restoreLocalData()
+        restoreReceivedFiles()
+        restoreSentFiles()
         displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
+        anonymousDiscovery = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            .getBoolean("anonymous_discovery_enabled", false)
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            .getStringSet("blocked_nearby_peer_ids", emptySet())
+            ?.mapNotNull(BlockedPeerPolicy::normalize)
+            ?.forEach { blockedPeerIds.add(it) }
         restoreCommunityData()
         nearbyTransport?.setDisplayName(displayName)
+        nearbyTransport?.setAnonymousDiscovery(anonymousDiscovery)
         restoreRecentlySeen()
         meshRelayEnabled = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getBoolean("mesh_relay_enabled", false)
         nearbyTransport?.setRelayEnabled(meshRelayEnabled)
@@ -342,10 +682,14 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme(
                 background = Midnight,
                 surface = Panel,
-                primary = Mint,
-                onPrimary = Midnight,
-                onBackground = White,
-                onSurface = White
+                surfaceVariant = NeaRerPalette.RaisedPanel,
+                primary = AccentBlue,
+                secondary = NeaRerPalette.Mint,
+                tertiary = Color(0xFF2563EB),
+                onPrimary = White,
+                onBackground = Color(0xFFF6F8FC),
+                onSurface = Color(0xFFF6F8FC),
+                onSurfaceVariant = Color(0xFFA8B6C9)
             )) {
                 NeaRerHome(
                     playerName = displayName,
@@ -354,6 +698,7 @@ class MainActivity : ComponentActivity() {
                     devices = nearbyDevices,
                     connectingAddress = connectingAddress,
                     connectedDeviceName = connectedDeviceName,
+                    connectedNearbyEndpoint = hybridConnectedEndpoint,
                     connectionMessage = connectionMessage,
                     incomingRequesterName = incomingRequesterName,
                     approvalMessage = approvalMessage,
@@ -363,7 +708,32 @@ class MainActivity : ComponentActivity() {
                     messages = chatMessages,
                     chatNotice = chatNotice,
                     receivedFiles = receivedFiles,
-                    onSendMessage = ::sendChatMessage,
+                    sentFiles = sentFiles,
+                    onSendMessage = { message, onSaved -> sendChatMessage(message, onSaved) },
+                    onSelectConversation = { peerId, peerName ->
+                        val connectedPeerId = connectedChatPeerId
+                        activeChatPeerId = peerId
+                        activeChatPeerName = peerName
+                        chatNotice = if (chatReady && peerId != connectedPeerId) "This is a different conversation. Reconnect to ${peerName} before sending; nothing will be sent to the currently connected person." else "Conversation opened: $peerName."
+                    },
+                    isRecordingVoiceNote = isRecordingVoiceNote,
+                    onVoiceNoteAction = ::toggleVoiceNoteRecording,
+                    onSendQueuedMessages = ::flushQueuedChatMessages,
+                    pendingChatFilesCount = pendingChatFileUris.size,
+                    pendingChatFiles = pendingChatFileUris.toList(),
+                    onRemoveQueuedFile = { queuedUri ->
+                        val index = pendingChatFileUris.indexOf(queuedUri)
+                        if (index >= 0) {
+                            pendingChatFileUris.removeAt(index)
+                            if (persistPendingChatFiles()) {
+                                chatNotice = "Removed from prepared files."
+                            } else {
+                                pendingChatFileUris.add(index.coerceAtMost(pendingChatFileUris.size), queuedUri)
+                                chatNotice = "NeaRer could not update the prepared queue. The file is still listed."
+                            }
+                        }
+                    },
+                    onSendQueuedFiles = ::flushPendingChatFiles,
                     groups = communityGroups.toList(),
                     groupMessages = communityMessages.toList(),
                     selectedGroupCode = selectedCommunityCode,
@@ -372,6 +742,20 @@ class MainActivity : ComponentActivity() {
                     incomingGameInvite = incomingGameInvite,
                     activeGame = activeGame,
                     gameChatMessages = gameChatMessages.toList(),
+                    ludoRoomStatus = ludoRoomStatus,
+                    incomingLudoInviteName = incomingLudoInvite?.senderName,
+                    ludoRoomPeerName = ludoRoomPeerName,
+                    ludoRoomReady = ludoRoomReady,
+                    ludoRoomMessages = ludoRoomMessages.toList(),
+                    ludoRoomGame = ludoRoomGame,
+                    ludoRoomIsHost = ludoRoomIsHost,
+                    ludoRoomCanAct = ludoRoomCanAct,
+                    onLudoRoomAction = ::submitLudoRoomAction,
+                    onInviteLudoPeer = ::inviteLudoPeer,
+                    onAcceptLudoInvite = ::acceptLudoInvite,
+                    onDeclineLudoInvite = ::declineLudoInvite,
+                    onSendLudoRoomChat = ::sendLudoRoomChat,
+                    onLeaveLudoRoom = ::leaveLudoRoom,
                     onCreateGroup = ::createCommunityGroup,
                     onJoinGroup = ::joinCommunityGroup,
                     onSelectGroup = { selectedCommunityCode = it },
@@ -389,25 +773,58 @@ class MainActivity : ComponentActivity() {
                     onGameChat = ::sendGameChat,
                     onEndGame = ::endGame,
                     onSendFile = ::sendFile,
+                    onLoadShareableApps = ::getShareableApps,
+                    onPrepareAppForSharing = { app, onPrepared ->
+                        io.execute {
+                            val uri = prepareAppForSharing(app)
+                            runOnUiThread { onPrepared(uri) }
+                        }
+                    },
                     onCancelTransfer = ::cancelOutgoingFileTransfer,
                     outgoingTransferId = outgoingTransferId,
                     outgoingProgress = outgoingProgress,
                     incomingTransferName = incomingTransferName,
                     incomingProgress = incomingProgress,
+                    incomingTransferredBytes = incomingTransferredBytes,
+                    incomingTotalBytes = incomingTotalBytes,
+                    incomingSpeedBytesPerSecond = incomingSpeedBytesPerSecond,
+                    outgoingTransferredBytes = outgoingTransferredBytes,
+                    outgoingTotalBytes = outgoingTotalBytes,
+                    outgoingSpeedBytesPerSecond = outgoingSpeedBytesPerSecond,
                     onOpenFile = ::openReceivedFile,
+                    onOpenSentFile = ::openSentFile,
+                    onShareReceivedFile = ::shareReceivedFile,
+                    onResendSentFile = { sendFile(Uri.parse(it.uri)) },
+                    onShareSentFile = { shareFileUri(Uri.parse(it.uri), it.name) },
                     onDisconnect = ::disconnectFromPeer,
                     onAccept = ::approveIncoming,
                     onReject = ::rejectIncoming,
+                    onBlockIncoming = ::blockIncomingPeer,
+                    blockedPeerIds = blockedPeerIds.toList().sorted(),
+                    onUnblockPeer = ::unblockPeer,
                     hybridPeers = hybridPeers.toMap(),
                     recentlySeenPeers = recentlySeenPeers.toMap(),
                     displayName = displayName,
                     onSaveDisplayName = ::saveDisplayName,
+                    anonymousDiscovery = anonymousDiscovery,
+                    onAnonymousDiscoveryChange = ::updateAnonymousDiscovery,
                     meshRelayEnabled = meshRelayEnabled,
                     onMeshRelayChange = ::updateMeshRelayEnabled,
-                    onHybridConnect = { id -> nearbyTransport?.request(id) },
+                    onHybridConnect = { id ->
+                        val stableId = BlockedPeerPolicy.normalize(nearbyTransport?.stableIdForEndpoint(id))
+                        if (stableId != null && stableId in blockedPeerIds) {
+                            hybridPeers.remove(id)
+                            statusMessage = "This nearby device is blocked on your phone."
+                        } else {
+                            nearbyTransport?.request(id)
+                        }
+                    },
                     onFindNearby = ::startDiscovery,
                     onStopSearch = ::stopDiscovery,
-                    onConnect = ::connectToDevice
+                    onConnect = ::connectToDevice,
+                    flashRoleReady = flashRoleReady,
+                    flashLastSignal = flashLastSignal,
+                    onRequestFlashScreeningRole = ::requestFlashScreeningRole
                 )
             }
         }
@@ -420,6 +837,11 @@ class MainActivity : ComponentActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_RECORD_AUDIO) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) beginVoiceNoteRecording()
+            else chatNotice = "Microphone permission was not granted. You can still send text and files."
+            return
+        }
         if (requestCode == REQUEST_DISCOVERY_PERMISSION) {
             if (hasNearbyPermissions()) {
                 statusMessage = "Permissions granted. Starting nearby search…"
@@ -432,11 +854,135 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun importPendingFlashMessages() {
+        val flashPrefs = getSharedPreferences(NeaRerFlashScreeningService.PREFS, Context.MODE_PRIVATE)
+        val rawEvents = flashPrefs.getString(NeaRerFlashScreeningService.PENDING_EVENTS, "[]") ?: "[]"
+        val localPrefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val importedIds = localPrefs.getStringSet("flash_imported_event_ids", emptySet())
+            .orEmpty().toMutableSet()
+        var changed = false
+        var importedIdsChanged = false
+        var flashMessagesNeedCommit = false
+        val flashMessageIdsToMarkPersisted = mutableSetOf<String>()
+        val flashEventIdsToMarkImported = mutableSetOf<String>()
+
+        try {
+            val events = JSONArray(rawEvents)
+            for (index in 0 until events.length()) {
+                val event = events.optJSONObject(index) ?: continue
+                val eventId = event.optString("id").takeIf { it.isNotBlank() } ?: continue
+
+                // A completed multi-call preset can supersede provisional single-call
+                // bubbles that were already imported while the sequence was in progress.
+                val replacedIds = event.optJSONArray("replaces")
+                if (replacedIds != null && replacedIds.length() > 0) {
+                    val replacedMessageIds = (0 until replacedIds.length())
+                        .mapNotNull { index -> replacedIds.optString(index).takeIf { it.isNotBlank() } }
+                        .map { "flash:$it" }
+                        .toSet()
+                    if (replacedMessageIds.isNotEmpty()) {
+                        val removed = chatMessages.removeAll { it.id in replacedMessageIds }
+                        if (removed) changed = true
+                        replacedMessageIds.forEach { messageId ->
+                            receivedMessageIds.remove(messageId)
+                            persistedMessageIds.remove(messageId)
+                        }
+                    }
+                }
+                if (eventId in importedIds) continue
+
+                val signal = event.optString("signal").takeIf { it.isNotBlank() } ?: continue
+                // Even if the bubble is already in memory, an earlier disk write may
+                // have failed. Retry the full message snapshot before marking this
+                // event imported so a process restart cannot lose the Flash message.
+                flashMessagesNeedCommit = true
+                // Keep each trusted sender in a separate chat thread. The service stores
+                // only a short fingerprint tag here, never the sender's raw phone number.
+                val senderTag = event.optString("senderTag")
+                    .filter { it.isLetterOrDigit() }
+                    .takeLast(8)
+                    .ifBlank { "unknown" }
+                val flashConversationId = "nearer-flash:$senderTag"
+                val senderName = event.optString("senderName").trim().take(32)
+                val flashConversationName = when {
+                    senderName.isNotBlank() -> senderName
+                    senderTag == "unknown" -> "NeaRer Flash"
+                    else -> "Flash • $senderTag"
+                }
+                val messageId = "flash:$eventId"
+                val numberVerification = event.optString("numberVerification", "NOT_VERIFIED")
+                val deliveryLabel = if (numberVerification == "NETWORK_VERIFIED") {
+                    "Flash • Received • Network verified"
+                } else {
+                    "Flash • Received • Caller ID unverified"
+                }
+                if (chatMessages.none { it.id == messageId }) {
+                    chatMessages.add(
+                        ChatMessage(
+                            id = messageId,
+                            body = FlashSignalPattern.toChatMessage(signal),
+                            outgoing = false,
+                            delivery = deliveryLabel,
+                            timestamp = event.optLong("timestamp", System.currentTimeMillis())
+                                .takeIf { it > 0L } ?: System.currentTimeMillis(),
+                            conversationId = flashConversationId,
+                            conversationName = flashConversationName
+                        )
+                    )
+                    receivedMessageIds.add(messageId)
+                    changed = true
+                }
+                flashMessageIdsToMarkPersisted.add(messageId)
+                if (eventId !in importedIds) {
+                    flashEventIdsToMarkImported.add(eventId)
+                    importedIdsChanged = true
+                }
+            }
+        } catch (_: Exception) {
+            // Leave malformed or unavailable event data untouched; normal chat remains usable.
+        }
+
+        if (changed || flashMessagesNeedCommit || importedIdsChanged) {
+            // Save the imported chat bubbles before recording their event IDs. If the
+            // message write fails or the app is interrupted, the same Flash event can
+            // be imported again on the next launch instead of silently disappearing.
+            val messageSnapshot = if (changed || flashMessagesNeedCommit) {
+                try { serializeChatMessages() } catch (_: Exception) { null }
+            } else null
+            val canCommit = !(changed || flashMessagesNeedCommit) || messageSnapshot != null
+            val importedIdSnapshot = (importedIds + flashEventIdsToMarkImported)
+                .toList().takeLast(150).toSet()
+            messagePersistence.execute {
+                val messagesSaved = canCommit && (
+                    messageSnapshot == null ||
+                        localPrefs.edit().putString("messages", messageSnapshot).commit()
+                    )
+                if (messagesSaved) flashMessageIdsToMarkPersisted.forEach { persistedMessageIds.add(it) }
+                if (messagesSaved && importedIdsChanged) {
+                    val idsSaved = localPrefs.edit()
+                        .putStringSet("flash_imported_event_ids", importedIdSnapshot)
+                        .commit()
+                    if (idsSaved) importedIds.addAll(flashEventIdsToMarkImported)
+                }
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        importPendingFlashMessages()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roles = getSystemService(RoleManager::class.java)
+            flashRoleReady = roles?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
+        } else {
+            flashRoleReady = false
+        }
+        flashLastSignal = getSharedPreferences(NeaRerFlashScreeningService.PREFS, MODE_PRIVATE)
+            .getString(NeaRerFlashScreeningService.LAST_SIGNAL, null)
         val filter = IntentFilter().apply {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
+            addAction(NeaRerFlashScreeningService.ACTION_FLASH_MESSAGE_RECEIVED)
             addAction(WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
         }
@@ -452,6 +998,12 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        try { voiceNoteRecorder?.stop() } catch (_: Exception) { }
+        try { voiceNoteRecorder?.release() } catch (_: Exception) { }
+        voiceNoteRecorder = null
+        activeVoiceNoteFile?.delete()
+        activeVoiceNoteFile = null
+        isRecordingVoiceNote = false
         finishDiscovery()
         nearbyTransport?.stop()
         closePeerTransport()
@@ -460,11 +1012,20 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        if (isRecordingVoiceNote) finishVoiceNoteRecording(queueOnly = true)
         if (receiverRegistered) {
             unregisterReceiver(receiver)
             receiverRegistered = false
         }
         super.onPause()
+    }
+
+    override fun onStop() {
+        // Discovery is user-initiated. Stop advertising/scanning when the app
+        // leaves the foreground to avoid wasting battery; keep an established
+        // peer session alive for an active user-visible transfer.
+        if (NearbyDiscoveryBudgetPolicy.shouldStopWhenActivityStops(scanning || hybridSearching)) stopDiscovery()
+        super.onStop()
     }
 
     private fun hasDiscoveryPermission(): Boolean {
@@ -501,6 +1062,9 @@ class MainActivity : ComponentActivity() {
 
     private fun stopDiscovery() {
         finishDiscovery()
+        nearbySearchGeneration += 1
+        nearbySearchTimeout?.let(discoveryHandler::removeCallbacks)
+        nearbySearchTimeout = null
         hybridSearching = false
         nearbyTransport?.stopSearching()
         val manager = wifiManager
@@ -515,6 +1079,21 @@ class MainActivity : ComponentActivity() {
         } else statusMessage = "Search stopped."
     }
 
+    private fun updateAnonymousDiscovery(enabled: Boolean) {
+        val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        if (!prefs.edit().putBoolean("anonymous_discovery_enabled", enabled).commit()) {
+            statusMessage = "Your privacy setting could not be saved. Please try again."
+            return
+        }
+        anonymousDiscovery = enabled
+        nearbyTransport?.setAnonymousDiscovery(enabled)
+        statusMessage = if (enabled) {
+            "Anonymous-name discovery is on. Nearby people see “Nearby NeaRer user” instead of your chosen name. Your persistent device ID is still visible."
+        } else {
+            "Your chosen nearby name is visible again."
+        }
+    }
+
     private fun updateMeshRelayEnabled(enabled: Boolean) {
         meshRelayEnabled = enabled
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", enabled).apply()
@@ -522,13 +1101,23 @@ class MainActivity : ComponentActivity() {
         statusMessage = if (enabled) "Community relay is ON. Your phone may forward nearby NeaRer text messages while connected." else "Community relay is OFF. Your phone only receives messages from its direct connections."
     }
 
-    private fun saveDisplayName(rawName: String) {
+    private fun saveDisplayName(rawName: String): Boolean {
         val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
-        if (cleanName.isBlank()) { statusMessage = "Choose a name so nearby people know what to call you."; return }
+        if (cleanName.isBlank()) {
+            statusMessage = "Choose a name so nearby people know what to call you."
+            return false
+        }
+        val preferences = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val saved = preferences.edit().putString("display_name", cleanName).commit()
+        val verified = saved && preferences.getString("display_name", null) == cleanName
+        if (!verified) {
+            statusMessage = "Your name could not be saved. Please try again."
+            return false
+        }
         displayName = cleanName
-        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("display_name", cleanName).apply()
         nearbyTransport?.setDisplayName(cleanName)
-        statusMessage = "Your nearby name is now $cleanName."
+        statusMessage = "Your nearby name is saved as $cleanName."
+        return true
     }
 
     private fun recordRecentlySeen(id: String, name: String) {
@@ -582,14 +1171,27 @@ class MainActivity : ComponentActivity() {
         }
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val bluetoothOn = try { bluetoothManager?.adapter?.isEnabled == true } catch (_: SecurityException) { false }
-        if (!bluetoothOn) {
+        val wifiOn = isWifiEnabled()
+        if (!NearbyRadioReadinessPolicy.canStartNearby(bluetoothOn, wifiOn)) {
             finishDiscovery()
-            statusMessage = "Turn Bluetooth ON on both phones. Wi-Fi ON also helps with faster connections; hotspot and mobile data are not required."
+            statusMessage = "Turn Bluetooth or Wi-Fi ON in Quick Settings on both phones, then search again. Hotspot and mobile data are not required."
             return
         }
+        nearbySearchTimeout?.let(discoveryHandler::removeCallbacks)
+        val searchGeneration = ++nearbySearchGeneration
         nearbyTransport?.start()
         hybridSearching = true
-        if (!isWifiEnabled()) {
+        val nearbyTimeout = Runnable {
+            if (searchGeneration == nearbySearchGeneration && hybridSearching) {
+                nearbyTransport?.stopSearching()
+                hybridSearching = false
+                nearbySearchTimeout = null
+                statusMessage = "Nearby search paused after 60 seconds to save battery. Tap Find people nearby to search again; connected chats and transfers stay active."
+            }
+        }
+        nearbySearchTimeout = nearbyTimeout
+        discoveryHandler.postDelayed(nearbyTimeout, NearbyDiscoveryBudgetPolicy.FOREGROUND_SEARCH_TIMEOUT_MS)
+        if (!NearbyRadioReadinessPolicy.shouldStartWifiDirect(wifiOn)) {
             finishDiscovery()
             statusMessage = "Bluetooth discovery is active. Turn Wi-Fi ON on both phones for faster connections and file sharing. Hotspot and mobile data are not required."
             return
@@ -600,9 +1202,12 @@ class MainActivity : ComponentActivity() {
         }
         val manager = wifiManager ?: run { finishDiscovery(); statusMessage = "This phone does not provide Wi-Fi Direct."; return }
         val activeChannel = channel ?: run { finishDiscovery(); statusMessage = "Bluetooth discovery is active, but Wi-Fi Direct is unavailable."; return }
-        if (!isLocationEnabled()) {
+        // Android 13+ has NEARBY_WIFI_DEVICES for Wi-Fi Direct operations.
+        // Requiring the device-wide Location toggle there would block valid nearby
+        // discovery even when the user has granted the correct Nearby devices permission.
+        if (DiscoveryReadinessPolicy.requiresLocationServices(Build.VERSION.SDK_INT) && !isLocationEnabled()) {
             finishDiscovery()
-            statusMessage = "Bluetooth discovery is active. Turn Location ON if you also want Wi-Fi Direct discovery on this Android version."
+            statusMessage = "Bluetooth discovery is active. On Android 12 and older, turn Location ON as well for Wi-Fi Direct discovery."
             return
         }
         finishDiscovery()
@@ -617,7 +1222,11 @@ class MainActivity : ComponentActivity() {
                         nearbyDevices.clear()
                         nearbyDevices.addAll(peers.deviceList)
                         finishDiscovery()
-                        statusMessage = if (nearbyDevices.isEmpty()) "No Wi-Fi Direct phones found in 20 seconds. Check Wi-Fi on both phones, Location for Wi-Fi Direct, and keep NeaRer open." else "${nearbyDevices.size} nearby phone(s) found. Choose one to connect."
+                        manager.stopPeerDiscovery(activeChannel, object : WifiP2pManager.ActionListener {
+                            override fun onSuccess() = Unit
+                            override fun onFailure(reason: Int) = Unit
+                        })
+                        statusMessage = if (nearbyDevices.isEmpty()) "No Wi-Fi Direct phones found in 20 seconds. Bluetooth discovery can continue; check Wi-Fi on both phones and Location for Wi-Fi Direct." else "${nearbyDevices.size} nearby phone(s) found. Choose one to connect. Bluetooth discovery can continue while NeaRer stays open."
                     }
                 } catch (_: SecurityException) {
                     finishDiscovery()
@@ -668,7 +1277,7 @@ class MainActivity : ComponentActivity() {
         }
 
         connectingAddress = device.deviceAddress
-        statusMessage = "Sending a connection invitation to ${"nearby device"}…"
+        statusMessage = "Sending a connection invitation to ${device.deviceName.takeIf { it.isNotBlank() } ?: "nearby phone"}…"
         connectionMessage = "Waiting for the other phone to approve"
 
         val config = WifiP2pConfig().apply {
@@ -695,7 +1304,7 @@ class MainActivity : ComponentActivity() {
     private fun updateConnectionState(info: WifiP2pInfo) {
         if (info.groupFormed) {
             val active = nearbyDevices.firstOrNull { it.deviceAddress == connectingAddress }
-            connectedDeviceName = "Nearby device"
+            connectedDeviceName = active?.deviceName?.takeIf { it.isNotBlank() } ?: connectedDeviceName ?: "Nearby device"
             connectingAddress = null
             connectionMessage = if (info.isGroupOwner) {
                 "Connected • this phone hosts the local link"
@@ -708,14 +1317,20 @@ class MainActivity : ComponentActivity() {
                 if (info.isGroupOwner) startApprovalServer(info) else connectToApprovalServer(info)
             }
         } else {
-            connectedDeviceName = null
             connectingAddress = null
-            connectionMessage = "Not connected"
-            chatReady = false
             incomingRequesterName = null
             transportStarted = false
             closePeerTransport()
-            statusMessage = "The Wi-Fi Direct connection is not active. You can scan and connect again."
+            val nearbyLinkAlive = hybridConnected && !hybridConnectedEndpoint.isNullOrBlank()
+            chatReady = nearbyLinkAlive
+            if (nearbyLinkAlive) {
+                connectionMessage = "Nearby Connections chat link still active"
+                statusMessage = "Wi-Fi Direct ended. NeaRer chat remains connected through Nearby Connections."
+            } else {
+                connectedDeviceName = null
+                connectionMessage = "Not connected"
+                statusMessage = "The Wi-Fi Direct connection is not active. You can scan and connect again."
+            }
         }
     }
 
@@ -735,26 +1350,56 @@ class MainActivity : ComponentActivity() {
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 peerWriter = writer
                 val hello = reader.readLine().orEmpty()
-                if (!hello.startsWith("NEARER_HELLO|")) {
+                if (hello.length > 2048 || !hello.startsWith("NEARER_HELLO|")) {
                     writer.println("REJECT")
-                    runOnUiThread { statusMessage = "A device connected, but it did not identify as NeaRer." }
+                    runOnUiThread { statusMessage = "A device connected, but it did not identify as a secure NeaRer peer." }
                     closePeerTransport()
                     return@execute
                 }
-                val name = hello.substringAfter("|").take(40).ifBlank { "Nearby NeaRer user" }
-                val code = (100000 + SecureRandom().nextInt(900000)).toString()
-                writer.println("PAIR|$code")
+                val helloParts = hello.split("|", limit = 4)
+                val name = helloParts.getOrNull(1).orEmpty().take(40).ifBlank { "Nearby NeaRer user" }
+                val remoteStableId = helloParts.getOrNull(2).orEmpty().ifBlank { "wifi:${name.lowercase(java.util.Locale.ROOT)}" }
+                val remotePublicKey = helloParts.getOrNull(3).orEmpty()
+                require(remotePublicKey.isNotBlank()) { "The other phone does not support encrypted NeaRer sessions. Update both phones." }
+                val localStableId = nearbyTransport?.localMemberId.orEmpty().ifBlank { "wifi:${displayName.lowercase(java.util.Locale.ROOT)}" }
+                val localEphemeral = PeerSessionCrypto.createEphemeralKeyPair()
+                val identityTranscript = listOf(localStableId, remoteStableId).sorted().joinToString("|")
+                val sessionKey = PeerSessionCrypto.deriveSessionKey(
+                    localEphemeral.privateKey, remotePublicKey, identityTranscript
+                )
+                val code = PeerSessionCrypto.authenticationCode(sessionKey, identityTranscript)
+                writer.println("PAIR|$code|$localStableId|${localEphemeral.publicKeyBase64}")
+                // Do not show an approval prompt or mark the host connected until the
+                // connecting phone has independently derived and confirmed the same SAS.
+                val pairingConfirmation = reader.readLine()
+                if (pairingConfirmation != "PAIR_MATCH|$code") {
+                    writer.println("REJECT")
+                    runOnUiThread {
+                        pairingCode = null
+                        incomingRequesterName = null
+                        approvalMessage = "Security code could not be confirmed"
+                        statusMessage = "The security code was not confirmed on both phones. Connection declined."
+                    }
+                    closePeerTransport()
+                    return@execute
+                }
+                approvalDecision.clear()
                 runOnUiThread {
                     pairingCode = code
                     incomingRequesterName = name
-                    approvalMessage = "Compare the six-digit code before accepting"
+                    approvalMessage = "Compare the verification code on both phones. Accept only if they match."
                     statusMessage = "$name wants to connect on NeaRer."
                 }
                 val accepted = approvalDecision.poll(60, java.util.concurrent.TimeUnit.SECONDS) ?: false
                 writer.println(if (accepted) "ACCEPT" else "REJECT")
                 if (accepted) {
+                    peerSessionKey = sessionKey
                     runOnUiThread {
                         chatReady = true
+                        connectedChatPeerId = remoteStableId
+                        connectedChatPeerName = name
+                        activeChatPeerId = remoteStableId
+                        activeChatPeerName = name
                         incomingRequesterName = null
                         approvalMessage = "Connection approved. Private chat can now be opened."
                         connectionMessage = "NeaRer connection approved"
@@ -806,18 +1451,39 @@ class MainActivity : ComponentActivity() {
                 peerWriter = writer
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
                 val localName = displayName.trim().replace("|", " ").take(40).ifBlank { "NeaRer User" }
-                writer.println("NEARER_HELLO|$localName")
+                val localStableId = nearbyTransport?.localMemberId.orEmpty().ifBlank { "wifi:${localName.lowercase(java.util.Locale.ROOT)}" }
+                val localEphemeral = PeerSessionCrypto.createEphemeralKeyPair()
+                writer.println("NEARER_HELLO|$localName|$localStableId|${localEphemeral.publicKeyBase64}")
                 val pairingLine = reader.readLine().orEmpty()
                 if (!pairingLine.startsWith("PAIR|")) throw IllegalStateException("The other phone did not provide a pairing code")
-                val code = pairingLine.substringAfter("PAIR|").take(6)
+                val pairingParts = pairingLine.split("|", limit = 4)
+                val remoteCode = pairingParts.getOrNull(1).orEmpty()
+                require(Regex("\\d{6}").matches(remoteCode)) { "The other phone provided an invalid security code." }
+                val remoteStableId = pairingParts.getOrNull(2).orEmpty()
+                require(remoteStableId.matches(Regex("[A-Za-z0-9:_-]{6,64}"))) { "The other phone provided an invalid device identity." }
+                val remotePublicKey = pairingParts.getOrNull(3).orEmpty()
+                require(remotePublicKey.isNotBlank()) { "The other phone did not provide an encryption key." }
+                val identityTranscript = listOf(localStableId, remoteStableId).sorted().joinToString("|")
+                val sessionKey = PeerSessionCrypto.deriveSessionKey(
+                    localEphemeral.privateKey, remotePublicKey, identityTranscript
+                )
+                val code = PeerSessionCrypto.authenticationCode(sessionKey, identityTranscript)
+                require(remoteCode == code) { "Security code mismatch. Disconnect and decline this connection." }
+                // The host waits for this proof before presenting its approval prompt.
+                writer.println("PAIR_MATCH|$code")
                 runOnUiThread {
                     pairingCode = code
-                    statusMessage = "Compare code $code with the other phone before approving."
+                    statusMessage = "Security code $code. Compare it on both phones; decline if the codes differ."
                 }
                 when (reader.readLine()) {
                     "ACCEPT" -> {
+                        peerSessionKey = sessionKey
                         runOnUiThread {
                             chatReady = true
+                            connectedChatPeerId = remoteStableId
+                            connectedChatPeerName = connectedDeviceName ?: "Nearby NeaRer user"
+                            activeChatPeerId = remoteStableId
+                            activeChatPeerName = connectedChatPeerName ?: "Nearby NeaRer user"
                             approvalMessage = "Your connection request was approved."
                             connectionMessage = "NeaRer connection approved"
                             chatNotice = "Connected directly to the other phone. Say hello."
@@ -847,6 +1513,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun disconnectFromPeer() {
+        stopNearbyTransferKeepAlive()
         nearbyTransport?.disconnect()
         hybridConnected = false
         val activeChannel = channel
@@ -875,6 +1542,46 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun blockIncomingPeer() {
+        val stableId = BlockedPeerPolicy.normalize(pendingHybridStableId)
+        val endpoint = pendingHybridEndpoint
+        if (stableId == null) {
+            statusMessage = "NeaRer cannot safely block this device because it did not provide a valid nearby identity."
+            rejectIncoming()
+            return
+        }
+        val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val updated = (prefs.getStringSet("blocked_nearby_peer_ids", emptySet()) ?: emptySet()).toMutableSet()
+        updated.add(stableId)
+        if (!prefs.edit().putStringSet("blocked_nearby_peer_ids", updated).commit()) {
+            statusMessage = "The block could not be saved. Please try again."
+            return
+        }
+        blockedPeerIds.add(stableId)
+        hybridPeers.keys.filter { nearbyTransport?.stableIdForEndpoint(it) == stableId }.forEach { hybridPeers.remove(it) }
+        endpoint?.let { nearbyTransport?.reject(it) }
+        pendingHybridEndpoint = null
+        pendingHybridStableId = ""
+        pairingCode = null
+        incomingRequesterName = null
+        approvalMessage = "Nearby device blocked"
+        statusMessage = "This device is blocked. Future nearby requests using this device ID will be declined."
+    }
+
+    private fun unblockPeer(stableId: String) {
+        val normalized = BlockedPeerPolicy.normalize(stableId) ?: return
+        val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val updated = (prefs.getStringSet("blocked_nearby_peer_ids", emptySet()) ?: emptySet())
+            .mapNotNull(BlockedPeerPolicy::normalize).toMutableSet()
+        updated.remove(normalized)
+        if (prefs.edit().putStringSet("blocked_nearby_peer_ids", updated).commit()) {
+            blockedPeerIds.remove(normalized)
+            statusMessage = "Nearby device unblocked. It can appear in discovery again."
+        } else {
+            statusMessage = "Could not update the blocked-device list. Please try again."
+        }
+    }
+
     private fun approveIncoming() {
         val endpoint = pendingHybridEndpoint
         if (endpoint != null) {
@@ -892,6 +1599,7 @@ class MainActivity : ComponentActivity() {
         if (endpoint != null) {
             nearbyTransport?.reject(endpoint)
             pendingHybridEndpoint = null
+            pendingHybridStableId = ""
             pairingCode = null
             approvalMessage = "Nearby connection declined"
         } else {
@@ -906,7 +1614,12 @@ class MainActivity : ComponentActivity() {
         try { serverSocket?.close() } catch (_: Exception) { }
         peerSocket = null
         peerWriter = null
+        peerSessionKey = null
         serverSocket = null
+        if (!hybridConnected) {
+            connectedChatPeerId = null
+            connectedChatPeerName = null
+        }
         incomingTransfers.values.forEach {
             it.close()
             it.file.delete()
@@ -917,10 +1630,83 @@ class MainActivity : ComponentActivity() {
             incomingTransferName = null
             incomingProgress = 0f
             outgoingTransferId = null
+            stopNearbyTransferKeepAlive()
+            activeQueuedFileUri = null
             outgoingProgress = 0f
+            outgoingTransferredBytes = 0L
+            outgoingTotalBytes = 0L
+            outgoingSpeedBytesPerSecond = 0L
+            outgoingRateSampleAt = 0L
+            outgoingRateSampleBytes = 0L
             chatReady = false
         }
         if (Looper.myLooper() == Looper.getMainLooper()) resetUi() else runOnUiThread { resetUi() }
+    }
+
+    private fun restoreSentFiles() {
+        val raw = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("sent_file_history", null) ?: return
+        try {
+            val array = JSONArray(raw)
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                val uri = item.optString("uri")
+                if (uri.isNotBlank()) sentFiles.add(SentFile(item.optString("name", "Shared file"), uri, item.optLong("size"), item.optLong("time")))
+            }
+        } catch (_: Exception) { sentFiles.clear() }
+    }
+
+    private fun persistSentFiles() {
+        val array = JSONArray()
+        sentFiles.take(100).forEach { item -> array.put(JSONObject().put("name", item.name).put("uri", item.uri).put("size", item.sizeBytes).put("time", item.timestamp)) }
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("sent_file_history", array.toString()).apply()
+    }
+
+    private fun openSentFile(item: SentFile) {
+        try {
+            val uri = Uri.parse(item.uri)
+            contentResolver.openFileDescriptor(uri, "r")?.close() ?: throw IllegalStateException("Original file is unavailable")
+            val mime = contentResolver.getType(uri) ?: "*/*"
+            startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        } catch (_: Exception) {
+            chatNotice = "The original sent file is no longer available. It may have been moved or deleted."
+        }
+    }
+
+    private fun shareReceivedFile(item: ReceivedFile) {
+        if (!item.file.exists()) { chatNotice = "This received file is no longer available."; return }
+        try {
+            val uri = FileProvider.getUriForFile(this, "${packageName}.files", item.file)
+            shareFileUri(uri, item.displayName)
+        } catch (_: Exception) { chatNotice = "NeaRer could not prepare this file for sharing." }
+    }
+
+    private fun shareFileUri(uri: Uri, name: String) {
+        try {
+            val extension = name.substringAfterLast(".", "").lowercase()
+            val mime = contentResolver.getType(uri) ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "*/*"
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = mime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = android.content.ClipData.newUri(contentResolver, name, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Share $name"))
+        } catch (_: Exception) { chatNotice = "No compatible app could open the Android share menu." }
+    }
+
+    private fun restoreReceivedFiles() {
+        val folder = File(filesDir, "received")
+        if (!folder.exists() || !folder.isDirectory) return
+        val restored = folder.listFiles()
+            ?.filter { it.isFile && it.length() > 0L }
+            ?.sortedByDescending { it.lastModified() }
+            ?.take(30)
+            .orEmpty()
+        receivedFiles.clear()
+        restored.forEach { file ->
+            val visibleName = file.name.replaceFirst(Regex("^\\d{10,}-"), "").ifBlank { file.name }
+            receivedFiles.add(ReceivedFile(visibleName, file))
+        }
     }
 
     private fun restoreLocalData() {
@@ -935,36 +1721,92 @@ class MainActivity : ComponentActivity() {
                         id = item.getString("id"),
                         body = item.getString("body"),
                         outgoing = item.getBoolean("outgoing"),
-                        delivery = item.optString("delivery", "Sent")
+                        delivery = item.optString("delivery", "Sent"),
+                        timestamp = item.optLong("timestamp", 0L).takeIf { it > 0L } ?: System.currentTimeMillis(),
+                        conversationId = item.optString("conversationId", "legacy"),
+                        conversationName = item.optString("conversationName", "Previous chat")
                     )
-                    chatMessages.add(message)
-                    if (!message.outgoing) receivedMessageIds.add(message.id)
+                    // A process may die after Nearby accepted a packet but before
+                    // its ACK arrived. Treat that uncertain state as retryable on reconnect.
+                    val restoredMessage = message.copy(
+                        delivery = ChatDeliveryRecoveryPolicy.restoreDelivery(message.outgoing, message.delivery)
+                    )
+                    chatMessages.add(restoredMessage)
+                    if (!message.outgoing) {
+                        receivedMessageIds.add(message.id)
+                        persistedMessageIds.add(message.id)
+                    }
                 }
             } catch (_: Exception) {
                 chatMessages.clear()
             }
         }
-        val folder = File(filesDir, "received")
-        if (folder.exists()) {
-            folder.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }?.forEach {
-                receivedFiles.add(ReceivedFile(it.name.substringAfter('-', it.name), it))
-            }
+        val pendingFiles = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("pending_chat_files", null)
+        if (!pendingFiles.isNullOrBlank()) {
+            try {
+                val queued = JSONArray(pendingFiles)
+                for (i in 0 until queued.length()) pendingChatFileUris.add(queued.getString(i))
+            } catch (_: Exception) { pendingChatFileUris.clear() }
         }
     }
 
+    private fun persistPendingChatFiles(): Boolean {
+        val array = JSONArray()
+        pendingChatFileUris.forEach { array.put(it) }
+        // Prepared files are user work: report failure rather than silently
+        // presenting an attachment as safely queued when disk persistence failed.
+        return getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            .edit().putString("pending_chat_files", array.toString()).commit()
+    }
+
+    // Capture message state on the UI thread, then serialize every write through one
+    // executor. This prevents an older asynchronous apply() from overwriting a newer
+    // durable snapshot after a delivery receipt has already been sent.
+    private fun serializeChatMessages(): String {
+        val array = JSONArray()
+        chatMessages.takeLast(500).forEach { message ->
+            array.put(JSONObject()
+                .put("id", message.id)
+                .put("body", message.body)
+                .put("outgoing", message.outgoing)
+                .put("delivery", message.delivery)
+                .put("timestamp", message.timestamp)
+                .put("conversationId", message.conversationId)
+                .put("conversationName", message.conversationName))
+        }
+        return array.toString()
+    }
+
     private fun persistMessages() {
-        try {
-            val array = JSONArray()
-            chatMessages.takeLast(500).forEach { message ->
-                array.put(JSONObject()
-                    .put("id", message.id)
-                    .put("body", message.body)
-                    .put("outgoing", message.outgoing)
-                    .put("delivery", message.delivery))
-            }
+        val snapshot = try { serializeChatMessages() } catch (_: Exception) { return }
+        messagePersistence.execute {
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-                .edit().putString("messages", array.toString()).apply()
-        } catch (_: Exception) { }
+                .edit().putString("messages", snapshot).commit()
+        }
+    }
+
+    private fun persistReceivedMessageThenAcknowledge(messageId: String, nearbyEndpointId: String? = null, socket: Socket? = null) {
+        val snapshot = try { serializeChatMessages() } catch (_: Exception) {
+            chatNotice = "NeaRer could not prepare this message for saving. Please retry."
+            return
+        }
+        messagePersistence.execute {
+            val saved = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .edit().putString("messages", snapshot).commit()
+            if (saved) persistedMessageIds.add(messageId)
+            runOnUiThread {
+                if (saved) {
+                    nearbyEndpointId?.let { nearbyTransport?.sendDeliveryAck(it, messageId) }
+                    socket?.let { source ->
+                        synchronized(writerLock) {
+                            if (peerSocket === source) sendWireLine("ACK|$messageId")
+                        }
+                    }
+                } else {
+                    chatNotice = "Message received, but NeaRer could not confirm it was saved. Please keep the connection open and retry."
+                }
+            }
+        }
     }
 
     private fun sha256(file: File): String {
@@ -982,35 +1824,233 @@ class MainActivity : ComponentActivity() {
 
     private fun sendWireLine(line: String): Boolean {
         val writer = peerWriter ?: return false
+        val key = peerSessionKey ?: return false
+        val encryptedLine = try {
+            "ENC|" + PeerSessionCrypto.encrypt(line, key)
+        } catch (_: Exception) {
+            return false
+        }
         synchronized(writerLock) {
-            writer.println(line)
+            writer.println(encryptedLine)
             return !writer.checkError()
         }
     }
 
-    private fun sendChatMessage(rawText: String) {
-        val body = rawText.trim()
-        if (body.isEmpty() || !chatReady) return
-        val id = UUID.randomUUID().toString()
-        if (hybridConnected) {
-            val endpoint = hybridConnectedEndpoint
-            if (endpoint.isNullOrBlank() || nearbyTransport?.sendToEndpoint(endpoint, body) != true) {
-                chatNotice = "Message could not be sent to the selected nearby person. Check the connection."
+    private fun deliverQueuedChatMessage(message: ChatMessage): Boolean {
+        if (pendingOutgoingMessageSaves.contains(message.id)) return false
+        if (!chatReady) return false
+        val intendedPeer = message.conversationId.ifBlank { "legacy" }
+        if (connectedChatPeerId != intendedPeer) {
+            chatNotice = "This message belongs to ${message.conversationName}. Reconnect to that person before sending."
+            return false
+        }
+        val endpoint = hybridConnectedEndpoint
+        val wifiDirectReady = peerSocket?.isConnected == true && peerSocket?.isClosed == false && peerWriter != null
+        val route = chatTransportRouter.send(
+            nearbyReady = hybridConnected && !endpoint.isNullOrBlank(),
+            wifiDirectReady = wifiDirectReady,
+            sendNearby = {
+                !endpoint.isNullOrBlank() &&
+                    nearbyTransport?.sendChatToEndpoint(endpoint, message.id, message.body) == true
+            },
+            sendWifiDirect = {
+                val encoded = Base64.getEncoder().encodeToString(message.body.toByteArray(Charsets.UTF_8))
+                sendWireLine("MSG|${message.id}|$encoded")
+            }
+        )
+        if (route != null) {
+            val index = chatMessages.indexOfFirst { it.id == message.id }
+            // sendPayload acceptance is not recipient delivery. Keep this message
+            // pending until the receiving app saves it and returns chat_ack.
+            if (index >= 0) chatMessages[index] = message.copy(delivery = "Awaiting delivery")
+            persistMessages()
+            chatNotice = when (route) {
+                ChatTransportRoute.NEARBY_CONNECTIONS -> "Message sent through Nearby Connections (Bluetooth / nearby Wi-Fi)."
+                ChatTransportRoute.WIFI_DIRECT -> "Message sent through the direct Wi-Fi link."
+            }
+            return true
+        }
+        return false
+    }
+
+    private fun queueUnconfirmedMessagesForPeer(peerId: String) {
+        if (peerId.isBlank()) return
+        var changed = false
+        chatMessages.indices.forEach { index ->
+            val message = chatMessages[index]
+            if (ChatDeliveryRecoveryPolicy.shouldQueueAfterDisconnect(
+                    outgoing = message.outgoing,
+                    delivery = message.delivery,
+                    conversationId = message.conversationId,
+                    disconnectedPeerId = peerId
+                )
+            ) {
+                chatMessages[index] = message.copy(delivery = "Queued")
+                changed = true
+            }
+        }
+        if (changed) persistMessages()
+    }
+
+    private fun flushQueuedChatMessages() {
+        if (!chatReady) return
+        val queuedMessages = chatMessages.filter { message ->
+            ChatDeliveryRecoveryPolicy.canRetryOnReconnect(
+                outgoing = message.outgoing,
+                delivery = message.delivery,
+                conversationId = message.conversationId,
+                connectedPeerId = connectedChatPeerId.orEmpty(),
+                persistenceInProgress = pendingOutgoingMessageSaves.contains(message.id)
+            )
+        }
+        if (queuedMessages.isEmpty()) return
+        queuedMessages.forEach { message ->
+            if (!deliverQueuedChatMessage(message)) {
+                chatNotice = "Your message is saved on this phone. It is still waiting for a working nearby connection."
                 return
             }
-            chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sent"))
-            persistMessages()
-            chatNotice = "Sent securely over the offline nearby connection."
+        }
+        if (chatMessages.none { it.outgoing && it.delivery == "Queued" }) chatNotice = "Queued messages sent to the nearby connection."
+    }
+
+    private fun flushPendingChatFiles() {
+        if (!chatReady || outgoingTransferId != null || activeQueuedFileUri != null || pendingChatFileUris.isEmpty()) return
+        // Keep the head item persisted while it is in flight. A Nearby SUCCESS
+        // only means bytes reached the peer's Nearby stack; the receiver's
+        // file_ack is the event that proves the file was actually saved.
+        val next = pendingChatFileUris.first()
+        activeQueuedFileUri = next
+        try {
+            sendFile(Uri.parse(next))
+            if (outgoingTransferId == null) {
+                // sendFile may have had to re-queue the item because the peer
+                // disappeared between the readiness check and payload creation.
+                activeQueuedFileUri = null
+            }
+        } catch (_: Exception) {
+            activeQueuedFileUri = null
+            chatNotice = "This prepared attachment could not be opened. It remains in your queue; choose it again if Android revoked access."
+        }
+    }
+
+    private fun toggleVoiceNoteRecording() {
+        if (isRecordingVoiceNote) {
+            finishVoiceNoteRecording()
             return
         }
-        val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
-        if (!sendWireLine("MSG|$id|$encoded")) {
-            chatNotice = "Message could not be sent. Check the nearby connection."
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
+            chatNotice = "Allow microphone access to record a voice note."
             return
         }
-        chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sent"))
-        persistMessages()
-        chatNotice = "Sent directly • waiting for delivery confirmation"
+        beginVoiceNoteRecording()
+    }
+
+    private fun beginVoiceNoteRecording() {
+        try {
+            val folder = File(filesDir, "voice_notes").apply { if (!exists()) mkdirs() }
+            val output = File(folder, "NeaRer-voice-${System.currentTimeMillis()}.m4a")
+            @Suppress("DEPRECATION") val recorder = MediaRecorder()
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            recorder.setAudioEncodingBitRate(96000)
+            recorder.setAudioSamplingRate(44100)
+            recorder.setOutputFile(output.absolutePath)
+            recorder.prepare()
+            recorder.start()
+            voiceNoteRecorder = recorder
+            activeVoiceNoteFile = output
+            isRecordingVoiceNote = true
+            chatNotice = "Recording voice note… Tap the microphone again to finish and prepare it for sharing."
+        } catch (error: Exception) {
+            try { voiceNoteRecorder?.release() } catch (_: Exception) { }
+            voiceNoteRecorder = null
+            isRecordingVoiceNote = false
+            activeVoiceNoteFile?.delete()
+            activeVoiceNoteFile = null
+            chatNotice = "Voice recording could not start. Check microphone permission and available storage."
+        }
+    }
+
+    private fun finishVoiceNoteRecording(queueOnly: Boolean = false) {
+        val recorder = voiceNoteRecorder
+        val file = activeVoiceNoteFile
+        try { recorder?.stop() } catch (_: Exception) {
+            file?.delete()
+            chatNotice = "That recording was too short or could not be saved. Please try again."
+        } finally {
+            try { recorder?.reset(); recorder?.release() } catch (_: Exception) { }
+            voiceNoteRecorder = null
+            activeVoiceNoteFile = null
+            isRecordingVoiceNote = false
+        }
+        if (file != null && file.exists() && file.length() > 0L) {
+            try {
+                val uri = FileProvider.getUriForFile(this, "${packageName}.files", file)
+                if (queueOnly) {
+                    queueChatFile(uri, "Voice note saved safely on this phone • it will wait until you return and choose to send it.")
+                } else {
+                    chatNotice = "Voice note saved • ${formatTransferSize(file.length())}. Preparing it for nearby sharing."
+                    sendFile(uri)
+                }
+            } catch (_: Exception) {
+                chatNotice = "Voice note was recorded but could not be prepared for sharing."
+            }
+        }
+    }
+
+    private fun persistOutgoingMessageThenDeliver(message: ChatMessage, onSaved: (Boolean) -> Unit) {
+        val snapshot = try { serializeChatMessages() } catch (_: Exception) {
+            chatNotice = "NeaRer could not prepare your message for saving. It has not been sent."
+            onSaved(false)
+            return
+        }
+        pendingOutgoingMessageSaves.add(message.id)
+        messagePersistence.execute {
+            val saved = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .edit().putString("messages", snapshot).commit()
+            runOnUiThread {
+                // Keep the pending marker until this main-thread callback runs so a
+                // reconnect callback cannot flush this message in the meantime.
+                pendingOutgoingMessageSaves.remove(message.id)
+                if (!saved) {
+                    val failedIndex = chatMessages.indexOfFirst { it.id == message.id && it.outgoing }
+                    if (failedIndex >= 0) chatMessages[failedIndex] = chatMessages[failedIndex].copy(delivery = "Save failed")
+                    chatNotice = "NeaRer could not save this message, so it was not sent. Please copy it and try again."
+                    onSaved(false)
+                    return@runOnUiThread
+                }
+                val index = chatMessages.indexOfFirst { it.id == message.id && it.outgoing }
+                if (index < 0) return@runOnUiThread
+                val current = chatMessages[index]
+                onSaved(true)
+                if (!chatReady) {
+                    chatNotice = "Saved on this phone • waiting for your next nearby connection. Not delivered yet."
+                    return@runOnUiThread
+                }
+                if (!deliverQueuedChatMessage(current)) {
+                    val currentIndex = chatMessages.indexOfFirst { it.id == message.id }
+                    if (currentIndex >= 0) chatMessages[currentIndex] = current.copy(delivery = "Queued")
+                    persistMessages()
+                    chatNotice = "Message saved here. It will retry when the nearby link is ready."
+                }
+            }
+        }
+    }
+
+    private fun sendChatMessage(rawText: String, onSaved: (Boolean) -> Unit = {}) {
+        val body = rawText.trim()
+        if (body.isEmpty()) return
+        val message = ChatMessage(
+            UUID.randomUUID().toString(), body, outgoing = true,
+            // Do not expose a sending state until the local copy is safely committed.
+            delivery = "Queued",
+            conversationId = activeChatPeerId,
+            conversationName = activeChatPeerName
+        )
+        chatMessages.add(message)
+        persistOutgoingMessageThenDeliver(message, onSaved)
     }
 
 
@@ -1216,15 +2256,19 @@ class MainActivity : ComponentActivity() {
         val body = raw.trim().take(1500)
         if (body.isBlank()) return
         val id = UUID.randomUUID().toString()
+        val message = CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis())
+        communityMessages.add(message)
+        while (communityMessages.size > 300) communityMessages.removeAt(0)
+        persistCommunityData()
+
         val packet = JSONObject().put("type", "group_message").put("code", code)
             .put("sender", displayName).put("senderId", localId).put("body", body).put("id", id)
-        if (nearbyTransport?.sendToStableIds("NR_COMMUNITY:$packet", group.memberIds.keys - localId) == true) {
-            communityMessages.add(CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis()))
-            persistCommunityData()
-        } else if (group.members.size == 1) {
-            communityMessages.add(CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis()))
-            persistCommunityData()
-        } else communityNotice = "No connected member of this group is available right now."
+        val submitted = nearbyTransport?.sendToStableIds("NR_COMMUNITY:$packet", group.memberIds.keys - localId) == true
+        communityNotice = when {
+            submitted -> "Message saved here and submitted to connected group devices. Offline members have not received it."
+            group.members.size == 1 -> "Message saved in this community on this phone."
+            else -> "Message saved on this phone. No group members are connected, so it has not been sent."
+        }
     }
 
     private fun sendCommunityBroadcast(raw: String) {
@@ -1235,12 +2279,40 @@ class MainActivity : ComponentActivity() {
     }
     private fun handleCommunityPacket(sender: String, senderStableId: String, raw: String) {
         try {
+            if (raw.length > 8_192 || !CommunityPacketPolicy.isValidStableId(senderStableId)) {
+                communityNotice = "A community packet was invalid and ignored."
+                return
+            }
             val packet = JSONObject(raw)
             val type = packet.optString("type")
             val code = packet.optString("code")
             val senderId = packet.optString("senderId").ifBlank { senderStableId }
-            if (senderId.isBlank() || senderId != senderStableId ||
-                !senderStableId.matches(Regex("([A-F0-9]{6}|[A-F0-9]{32})"))) return
+            val memberArray = packet.optJSONArray("members")
+            val pendingArray = packet.optJSONArray("pendingMembers")
+            val moderatorsArray = packet.optJSONArray("moderators")
+            val descriptor = CommunityPacketDescriptor(
+                rawLength = raw.length,
+                type = type,
+                senderId = senderId,
+                authenticatedSenderId = senderStableId,
+                code = code,
+                senderName = packet.optString("sender"),
+                ownerId = packet.optString("ownerId"),
+                name = packet.optString("name"),
+                messageId = packet.optString("id"),
+                body = packet.optString("body"),
+                memberCount = memberArray?.length() ?: 0,
+                pendingMemberCount = pendingArray?.length() ?: 0,
+                moderatorCount = moderatorsArray?.length() ?: 0,
+                memberId = packet.optString("memberId"),
+                matchId = packet.optString("matchId"),
+                symbol = packet.optString("symbol"),
+                moveIndex = packet.optInt("index", -1)
+            )
+            if (!CommunityPacketPolicy.isValid(descriptor)) {
+                communityNotice = "A community packet was invalid and ignored."
+                return
+            }
             when (type) {
                 "group_created" -> {
                     val ownerId = packet.optString("ownerId").ifBlank { senderId }
@@ -1458,18 +2530,351 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun sendLudoRoomPacket(peerName: String, type: String, roomId: String, body: String = "", sequence: Long = 0L): Boolean {
+        val encoded = LudoRoomProtocol.encode(type, roomId, body, sequence) ?: return false
+        if (!hybridConnected || connectedDeviceName != peerName) return false
+        val endpoint = hybridConnectedEndpoint ?: return false
+        return nearbyTransport?.sendToEndpoint(endpoint, "NR_LUDO:" + encoded) == true
+    }
+
+    private fun inviteLudoPeer() {
+        val peer = connectedDeviceName?.takeIf { hybridConnected && !it.isBlank() }
+        if (peer == null) {
+            ludoRoomStatus = "Connect to a nearby NeaRer player first."
+            return
+        }
+        if (ludoRoomId != null) {
+            ludoRoomStatus = "Leave your current room before inviting another player."
+            return
+        }
+        val roomId = UUID.randomUUID().toString()
+        ludoRoomPeerStableId = connectedChatPeerId.orEmpty()
+        if (ludoRoomPeerStableId.isBlank()) {
+            ludoRoomStatus = "The nearby connection has no verified device identity. Reconnect and try again."
+            return
+        }
+        if (sendLudoRoomPacket(peer, "invite", roomId, displayName)) {
+            ludoRoomId = roomId
+            ludoRoomPeerName = peer
+            ludoRoomReady = false
+            ludoRoomStatus = "Invitation sent to " + peer + ". Waiting for acceptance…"
+            ludoRoomMessages.clear()
+        } else {
+            ludoRoomStatus = "Could not send the invitation. Check that " + peer + " is still connected."
+        }
+    }
+
+    private fun acceptLudoInvite() {
+        val invite = incomingLudoInvite ?: return
+        if (invite.senderStableId != connectedChatPeerId) {
+            ludoRoomStatus = "Reconnect to the same player who sent this invitation before accepting."
+            return
+        }
+        if (!sendLudoRoomPacket(invite.senderName, "accept", invite.roomId, displayName)) {
+            ludoRoomStatus = "Could not accept. Reconnect to " + invite.senderName + " and try again."
+            return
+        }
+        ludoRoomId = invite.roomId
+        ludoRoomPeerName = invite.senderName
+        ludoRoomPeerStableId = invite.senderStableId
+        ludoRoomReady = true
+        ludoRoomSession = null
+        ludoRoomGame = null
+        ludoRoomIsHost = false
+        ludoRoomCanAct = false
+        incomingLudoInvite = null
+        ludoRoomStatus = "Accepted. Waiting for the host's official Ludo board…"
+        ludoRoomMessages.clear()
+    }
+
+    private fun declineLudoInvite() {
+        val invite = incomingLudoInvite
+        if (invite != null && invite.senderStableId == connectedChatPeerId) {
+            sendLudoRoomPacket(invite.senderName, "decline", invite.roomId, displayName)
+        }
+        incomingLudoInvite = null
+        ludoRoomStatus = "Invitation declined."
+    }
+
+    private fun leaveLudoRoom() {
+        val room = ludoRoomId
+        val peer = ludoRoomPeerName
+        if (room != null && peer != null) sendLudoRoomPacket(peer, "leave", room)
+        ludoRoomId = null
+        ludoRoomPeerName = null
+        ludoRoomPeerStableId = ""
+        ludoRoomReady = false
+        ludoRoomSession = null
+        ludoRoomGame = null
+        ludoRoomIsHost = false
+        ludoRoomCanAct = false
+        ludoRoomMessages.clear()
+        ludoRoomStatus = "You left the Ludo room."
+    }
+
+    private fun sendLudoRoomChat(raw: String) {
+        if (!ludoRoomReady) return
+        val room = ludoRoomId ?: return
+        val peer = ludoRoomPeerName ?: return
+        val body = raw.trim().take(300)
+        if (body.isBlank()) return
+        if (sendLudoRoomPacket(peer, "chat", room, body)) {
+            ludoRoomMessages.add("You: " + body)
+            while (ludoRoomMessages.size > 40) ludoRoomMessages.removeAt(0)
+        } else {
+            ludoRoomStatus = "Message not sent. Check your nearby connection."
+        }
+    }
+
+    private fun sendLudoRoomSnapshot() {
+        val session = ludoRoomSession ?: return
+        if (session.role != LudoRoomRole.HOST || !ludoRoomReady) return
+        val snapshot = session.snapshot
+        val body = LudoRoomEnvelopeCodec.encode(session.envelope()) ?: run {
+            ludoRoomStatus = "The official Ludo board could not be prepared."
+            return
+        }
+        ludoRoomGame = snapshot.game
+        ludoRoomCanAct = snapshot.game.game.activePlayer.id == session.localPeerId
+        val peer = ludoRoomPeerName ?: return
+        if (!sendLudoRoomPacket(peer, "state", snapshot.roomId, body, snapshot.sequence)) {
+            ludoRoomStatus = "Board update not sent. Check the nearby connection."
+        }
+    }
+
+    private fun submitLudoRoomAction(action: LudoRoomAction) {
+        if (!ludoRoomReady) return
+        val session = ludoRoomSession ?: return
+        if (session.role == LudoRoomRole.HOST) {
+            val updated = session.applyLocalHostAction(action) ?: return
+            ludoRoomGame = updated.game
+            ludoRoomCanAct = updated.game.game.activePlayer.id == session.localPeerId
+            sendLudoRoomSnapshot()
+        } else {
+            val request = session.createGuestRequest(action) ?: return
+            val body = LudoRoomActionCodec.encode(request.action) ?: return
+            val peer = ludoRoomPeerName ?: return
+            if (!sendLudoRoomPacket(peer, "intent", request.roomId, body, request.expectedSequence)) {
+                ludoRoomStatus = "Move request not sent. Check the nearby connection."
+            } else ludoRoomStatus = "Move request sent to the room host…"
+        }
+    }
+
+    private fun handleLudoRoomPacket(sender: String, senderStableId: String, raw: String) {
+        val packet = LudoRoomProtocol.parse(raw)
+        if (packet == null || senderStableId.isBlank()) {
+            ludoRoomStatus = "An invalid Ludo room message was ignored."
+            return
+        }
+        when (packet.type) {
+            "invite" -> {
+                if (ludoRoomId != null || incomingLudoInvite != null) return
+                incomingLudoInvite = LudoPendingInvite(packet.roomId, sender, senderStableId)
+                ludoRoomStatus = sender + " invited you to a Ludo match."
+            }
+            "accept" -> {
+                if (packet.roomId == ludoRoomId && ludoRoomPeerName == sender &&
+                    (ludoRoomPeerStableId.isBlank() || ludoRoomPeerStableId == senderStableId)) {
+                    ludoRoomPeerStableId = senderStableId
+                    val localId = nearbyTransport?.localMemberId.orEmpty()
+                    val hostSession = LudoRoomSession.host(packet.roomId, localId, senderStableId, displayName, sender)
+                    if (hostSession == null) {
+                        ludoRoomStatus = "Could not create a verified Ludo board. Reconnect and invite again."
+                        return
+                    }
+                    ludoRoomSession = hostSession
+                    ludoRoomGame = hostSession.snapshot.game
+                    ludoRoomIsHost = true
+                    ludoRoomCanAct = hostSession.snapshot.game.game.activePlayer.id == localId
+                    ludoRoomReady = true
+                    ludoRoomStatus = sender + " joined. Sending the official Ludo board…"
+                    sendLudoRoomSnapshot()
+                }
+            }
+            "state" -> {
+                if (packet.roomId != ludoRoomId || ludoRoomPeerName != sender || ludoRoomPeerStableId != senderStableId || ludoRoomIsHost) return
+                val envelope = LudoRoomEnvelopeCodec.decode(packet.body) ?: return
+                val localId = nearbyTransport?.localMemberId.orEmpty()
+                val session = ludoRoomSession
+                val accepted = if (session == null) {
+                    val created = LudoRoomSession.guest(envelope, localId)
+                    if (created != null) ludoRoomSession = created
+                    created != null
+                } else session.acceptHostSnapshot(envelope)
+                if (accepted) {
+                    val synced = ludoRoomSession?.snapshot?.game
+                    ludoRoomGame = synced
+                    ludoRoomCanAct = synced?.game?.activePlayer?.id == localId
+                    ludoRoomReady = true
+                    ludoRoomStatus = "Official board synced with " + sender + "."
+                }
+            }
+            "intent" -> {
+                if (packet.roomId != ludoRoomId || ludoRoomPeerName != sender || ludoRoomPeerStableId != senderStableId || !ludoRoomIsHost) return
+                val action = LudoRoomActionCodec.decode(packet.body) ?: return
+                val session = ludoRoomSession ?: return
+                val updated = session.applyGuestRequest(LudoRoomActionRequest(packet.roomId, senderStableId, packet.sequence, action)) ?: return
+                ludoRoomGame = updated.game
+                ludoRoomCanAct = updated.game.game.activePlayer.id == session.localPeerId
+                sendLudoRoomSnapshot()
+            }
+            "chat" -> {
+                if (packet.roomId == ludoRoomId && ludoRoomPeerName == sender &&
+                    ludoRoomPeerStableId == senderStableId) {
+                    ludoRoomMessages.add(sender + ": " + packet.body)
+                    while (ludoRoomMessages.size > 40) ludoRoomMessages.removeAt(0)
+                }
+            }
+            "decline" -> {
+                if (packet.roomId == ludoRoomId && ludoRoomPeerName == sender &&
+                    ludoRoomPeerStableId == senderStableId && !ludoRoomReady) {
+                    ludoRoomId = null
+                    ludoRoomPeerName = null
+                    ludoRoomPeerStableId = ""
+                    ludoRoomReady = false
+                    ludoRoomStatus = sender + " declined the Ludo invitation."
+                    ludoRoomSession = null
+                    ludoRoomGame = null
+                    ludoRoomIsHost = false
+                    ludoRoomCanAct = false
+                }
+            }
+            "leave" -> {
+                if (packet.roomId == ludoRoomId && ludoRoomPeerName == sender &&
+                    ludoRoomPeerStableId == senderStableId) {
+                    ludoRoomId = null
+                    ludoRoomPeerName = null
+                    ludoRoomPeerStableId = ""
+                    ludoRoomReady = false
+                    ludoRoomMessages.clear()
+                    ludoRoomSession = null
+                    ludoRoomGame = null
+                    ludoRoomIsHost = false
+                    ludoRoomCanAct = false
+                    ludoRoomStatus = sender + " left the Ludo room."
+                }
+            }
+            else -> ludoRoomStatus = "This Ludo room action is not available yet."
+        }
+    }
+
+    private fun getShareableApps(): List<ShareableApp> {
+        return try {
+            packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+                .asSequence()
+                // Include user-installed and preinstalled system apps whenever Android exposes
+                // a readable APK path. The receiver still decides whether Android allows installation.
+                .filter { appInfo -> appInfo.packageName != packageName }
+                .mapNotNull { appInfo ->
+                    try {
+                        val base = appInfo.sourceDir?.takeIf { File(it).isFile } ?: return@mapNotNull null
+                        val splits = appInfo.splitSourceDirs?.filter { File(it).isFile } ?: emptyList()
+                        val drawable = packageManager.getApplicationIcon(appInfo)
+                        val iconSize = 96
+                        val bitmap = Bitmap.createBitmap(iconSize, iconSize, Bitmap.Config.ARGB_8888)
+                        val canvas = Canvas(bitmap)
+                        drawable.setBounds(0, 0, iconSize, iconSize)
+                        drawable.draw(canvas)
+                        val label = packageManager.getApplicationLabel(appInfo).toString()
+                        ShareableApp(label, appInfo.packageName, listOf(base) + splits, bitmap.asImageBitmap())
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+                .distinctBy { it.packageName }
+                .sortedBy { it.label.lowercase() }
+                .toList()
+        } catch (_: Exception) { emptyList() }
+    }
+
+    private fun prepareAppForSharing(app: ShareableApp): Uri? {
+        return try {
+            val outputDir = File(cacheDir, "nearer-apps").apply { mkdirs() }
+            val safeName = app.label.replace(Regex("[^A-Za-z0-9._-]"), "_").take(55).ifBlank { "Android-app" }
+            val output = if (app.apkPaths.size == 1) File(outputDir, safeName + ".apk") else File(outputDir, safeName + ".nearer-app.zip")
+            if (output.exists()) output.delete()
+            if (app.apkPaths.size == 1) {
+                FileInputStream(app.apkPaths.first()).use { input ->
+                    FileOutputStream(output).use { target -> input.copyTo(target) }
+                }
+            } else {
+                ZipOutputStream(FileOutputStream(output)).use { zip ->
+                    app.apkPaths.forEachIndexed { index, path ->
+                        zip.putNextEntry(ZipEntry(if (index == 0) "base.apk" else "split_" + index + ".apk"))
+                        FileInputStream(path).use { input -> input.copyTo(zip) }
+                        zip.closeEntry()
+                    }
+                    zip.putNextEntry(ZipEntry("README.txt"))
+                    zip.write(("NeaRer app package for " + app.label + " (" + app.packageName + "). Keep base.apk and every split_*.apk together. NeaRer can hand this package to Android's built-in split-app installer. Android will ask the recipient to approve installation.").toByteArray(Charsets.UTF_8))
+                    zip.closeEntry()
+                }
+            }
+            FileProvider.getUriForFile(this, packageName + ".files", output)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun openReceivedFile(item: ReceivedFile) {
+        val extension = item.file.extension.lowercase()
+        if (item.file.name.endsWith(".nearer-app.zip", ignoreCase = true)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+                chatNotice = "Allow NeaRer to install apps from this source in Android settings, then tap this app package again."
+                val settingsIntent = Intent(
+                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName")
+                )
+                try {
+                    startActivity(settingsIntent)
+                } catch (_: android.content.ActivityNotFoundException) {
+                    chatNotice = "Android could not open the install-permission settings. Open Settings manually, find NeaRer under Install unknown apps, and allow it."
+                } catch (_: SecurityException) {
+                    chatNotice = "Android blocked the install-permission settings. Open Settings manually and allow NeaRer to install apps from this source."
+                }
+                return
+            }
+            try {
+                SplitApkInstaller.install(this, item.file)
+                chatNotice = "The split app package has been handed to Android. Review and approve the installation prompt."
+            } catch (error: Exception) {
+                chatNotice = error.message ?: "Android could not prepare this split app for installation."
+            }
+            return
+        }
         try {
             val uri = FileProvider.getUriForFile(this, "${packageName}.files", item.file)
-            val extension = item.file.extension.lowercase()
+            if (extension == "apk") {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+                    chatNotice = "Allow NeaRer to install apps in Android settings, then tap this APK again. Android will still ask you to confirm installation."
+                    val settingsIntent = Intent(
+                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivity(settingsIntent)
+                    return
+                }
+                val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(installIntent)
+                chatNotice = "Opening Android's app installer. Review the app details and approve installation there."
+                return
+            }
             val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "*/*"
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, mime)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(intent)
+        } catch (_: android.content.ActivityNotFoundException) {
+            chatNotice = if (extension == "apk") {
+                "Android could not open the package installer for this APK."
+            } else {
+                "No app is available to open this file."
+            }
         } catch (_: Exception) {
-            chatNotice = "No app is available to open this file, or the file could not be accessed."
+            chatNotice = "The file could not be opened. Check that it was received completely and try again."
         }
     }
 
@@ -1480,24 +2885,65 @@ class MainActivity : ComponentActivity() {
             val endpoint = hybridConnectedEndpoint
             if (payloadId != null && endpoint != null) nearbyTransport?.cancelFile(payloadId)
             outgoingTransferId = null
+            activeQueuedFileUri = null
             outgoingProgress = 0f
-            chatNotice = "Cancelling nearby file transfer…"
+            outgoingTransferredBytes = 0L
+            outgoingTotalBytes = 0L
+            outgoingSpeedBytesPerSecond = 0L
+            outgoingRateSampleAt = 0L
+            outgoingRateSampleBytes = 0L
+            chatNotice = "File transfer cancelled."
             return
         }
         cancelledOutgoingTransfers.add(id)
+        activeQueuedFileUri = null
         sendWireLine("FILE_CANCEL|$id")
+        stopNearbyTransferKeepAlive()
         chatNotice = "Cancelling file transfer…"
+        // The prepared item remains in the queue for a later manual retry.
+    }
+
+    private fun queueChatFile(uri: Uri, notice: String) {
+        try { contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
+        val value = uri.toString()
+        val alreadyQueued = value in pendingChatFileUris
+        if (!alreadyQueued) pendingChatFileUris.add(value)
+        if (!persistPendingChatFiles()) {
+            if (!alreadyQueued) pendingChatFileUris.remove(value)
+            chatNotice = "NeaRer could not save this attachment to your prepared queue. Check phone storage and try again."
+            return
+        }
+        chatNotice = notice
+    }
+
+    private fun startNearbyTransferKeepAlive() {
+        try {
+            ContextCompat.startForegroundService(this, Intent(this, NearbyTransferForegroundService::class.java))
+        } catch (_: Exception) {
+            // The durable prepared-file queue remains the recovery path if Android
+            // refuses a foreground-service start on this device or OS version.
+            chatNotice = "Transfer is running, but Android did not allow background protection. Keep NeaRer open until it finishes."
+        }
+    }
+
+    private fun stopNearbyTransferKeepAlive() {
+        try { stopService(Intent(this, NearbyTransferForegroundService::class.java)) } catch (_: Exception) { }
     }
 
     private fun sendFile(uri: Uri) {
+        try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
+        if (!chatReady) {
+            queueChatFile(uri, "Attachment saved on this phone • it will wait here until you connect to someone nearby.")
+            return
+        }
+        if (outgoingTransferId != null) {
+            queueChatFile(uri, "Added to your prepared attachments. It will send after the current transfer finishes.")
+            return
+        }
         if (hybridConnected) {
             val endpoint = hybridConnectedEndpoint
             if (endpoint == null) {
-                chatNotice = "The nearby connection is not ready. Reconnect and try again."
-                return
-            }
-            if (outgoingTransferId != null) {
-                chatNotice = "Finish or cancel the current file transfer first."
+                queueChatFile(uri, "The nearby connection is not ready. This file remains prepared; reconnect and try again.")
                 return
             }
             var fileName = "shared-file"
@@ -1509,22 +2955,39 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             } catch (_: Exception) { }
+            val fileSize = try { contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: 0L } catch (_: Exception) { 0L }
+            pendingSentFileName = fileName
+            pendingSentFileUri = uri.toString()
+            pendingSentFileSize = fileSize
             val payloadId = nearbyTransport?.sendFile(endpoint, uri, fileName)
             if (payloadId != null) {
                 outgoingTransferId = "nearby:$payloadId"
+                startNearbyTransferKeepAlive()
                 outgoingProgress = 0f
+                outgoingTransferredBytes = 0L
+                outgoingTotalBytes = 0L
+                outgoingSpeedBytesPerSecond = 0L
+                outgoingRateSampleAt = 0L
+                outgoingRateSampleBytes = 0L
                 chatNotice = "Preparing to send $fileName over Nearby Connections…"
+            } else {
+                queueChatFile(uri, "Could not start this transfer. Your file remains prepared; reconnect and try again.")
             }
             return
         }
         if (!chatReady) return
-        if (outgoingTransferId != null) {
-            chatNotice = "Finish or cancel the current file transfer first."
-            return
-        }
         val transferId = UUID.randomUUID().toString()
+        pendingSentFileUri = uri.toString()
+        pendingSentFileName = null
+        pendingSentFileSize = 0L
         outgoingTransferId = transferId
+        startNearbyTransferKeepAlive()
         outgoingProgress = 0f
+            outgoingTransferredBytes = 0L
+            outgoingTotalBytes = 0L
+            outgoingSpeedBytesPerSecond = 0L
+            outgoingRateSampleAt = 0L
+            outgoingRateSampleBytes = 0L
         io.execute {
             var fileName = "shared-file"
             var fileSize = 0L
@@ -1536,6 +2999,12 @@ class MainActivity : ComponentActivity() {
                         if (nameIndex >= 0) fileName = cursor.getString(nameIndex) ?: fileName
                         if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) fileSize = cursor.getLong(sizeIndex)
                     }
+                }
+                runOnUiThread {
+                    pendingSentFileName = fileName
+                    pendingSentFileSize = fileSize.coerceAtLeast(0L)
+                    outgoingTransferredBytes = 0L
+                    outgoingTotalBytes = fileSize.coerceAtLeast(0L)
                 }
                 val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("Cannot open selected file")
                 input.use { stream ->
@@ -1562,6 +3031,9 @@ class MainActivity : ComponentActivity() {
                             val progress = if (fileSize > 0L) " • ${(fraction * 100).toInt()}%" else " • ${sentBytes / 1024} KB"
                             runOnUiThread {
                                 outgoingProgress = fraction
+                                outgoingTransferredBytes = sentBytes
+                                outgoingTotalBytes = fileSize.coerceAtLeast(0L)
+                                updateTransferRate(false, sentBytes)
                                 chatNotice = "Sending $fileName$progress"
                             }
                         }
@@ -1578,7 +3050,18 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     outgoingTransferId = null
                     outgoingProgress = 0f
-                    chatNotice = "File transfer failed: ${e.message ?: "connection problem"}"
+            outgoingTransferredBytes = 0L
+            outgoingTotalBytes = 0L
+            outgoingSpeedBytesPerSecond = 0L
+            outgoingRateSampleAt = 0L
+            outgoingRateSampleBytes = 0L
+                    val wasCancelled = e.message?.contains("cancel", ignoreCase = true) == true
+                    chatNotice = if (wasCancelled) {
+                        "File transfer cancelled."
+                    } else {
+                        queueChatFile(uri, "Transfer interrupted. This file has been returned to your prepared files.")
+                        "File transfer failed: ${e.message ?: "connection problem"} • file kept in your prepared files"
+                    }
                 }
             } finally {
                 cancelledOutgoingTransfers.clear()
@@ -1592,7 +3075,12 @@ class MainActivity : ComponentActivity() {
                 socket.soTimeout = 0
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
                 while (!socket.isClosed) {
-                    val line = reader.readLine() ?: break
+                    val rawLine = reader.readLine() ?: break
+                    if (rawLine.length > 96 * 1024 || !rawLine.startsWith("ENC|")) {
+                        throw IllegalStateException("An unencrypted or oversized NeaRer frame was rejected")
+                    }
+                    val sessionKey = peerSessionKey ?: throw IllegalStateException("Encrypted session is not ready")
+                    val line = PeerSessionCrypto.decrypt(rawLine.substringAfter("ENC|"), sessionKey)
                     if (line.length > 24 * 1024) throw IllegalStateException("NeaRer message frame exceeded the allowed size")
                     when {
                         line.startsWith("MSG|") -> {
@@ -1604,12 +3092,21 @@ class MainActivity : ComponentActivity() {
                                 } catch (_: Exception) { "" }
                                 if (body.isNotBlank() && receivedMessageIds.add(id)) {
                                     runOnUiThread {
-                                        chatMessages.add(ChatMessage(id, body, outgoing = false, delivery = "Received"))
-                                        persistMessages()
-                                        chatNotice = "New message received directly."
+                                        chatMessages.add(ChatMessage(
+                                            id, body, outgoing = false, delivery = "Received",
+                                            conversationId = connectedChatPeerId ?: activeChatPeerId,
+                                            conversationName = connectedChatPeerName ?: activeChatPeerName
+                                        ))
+                                        chatNotice = "Saving your received message before confirming delivery…"
+                                        persistReceivedMessageThenAcknowledge(id, socket = socket)
                                     }
+                                } else if (body.isNotBlank() && persistedMessageIds.contains(id)) {
+                                    synchronized(writerLock) {
+                                        if (peerSocket === socket) sendWireLine("ACK|$id")
+                                    }
+                                } else if (body.isNotBlank()) {
+                                    persistReceivedMessageThenAcknowledge(id, socket = socket)
                                 }
-                                synchronized(writerLock) { peerWriter?.println("ACK|$id") }
                             }
                         }
                         line.startsWith("ACK|") -> {
@@ -1630,7 +3127,7 @@ class MainActivity : ComponentActivity() {
                                 val safeName = name.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100).ifBlank { "shared-file" }
                                 val expected = parts[3].toLongOrNull() ?: 0L
                                 if (expected < 0L) {
-                                    synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|ERROR") }
+                                    synchronized(writerLock) { sendWireLine("FILE_DONE|$id|ERROR") }
                                 } else {
                                     val folder = File(filesDir, "received").apply { mkdirs() }
                                     val target = File(folder, "${System.currentTimeMillis()}-$safeName")
@@ -1638,6 +3135,8 @@ class MainActivity : ComponentActivity() {
                                     runOnUiThread {
                                         incomingTransferName = safeName
                                         incomingProgress = 0f
+                                        incomingTransferredBytes = 0L
+                                        incomingTotalBytes = expected
                                     }
                                 }
                             }
@@ -1656,9 +3155,14 @@ class MainActivity : ComponentActivity() {
                                             runOnUiThread {
                                                 incomingTransferName = null
                                                 incomingProgress = 0f
+                                                incomingTransferredBytes = 0L
+                                                incomingTotalBytes = 0L
+                                                incomingSpeedBytesPerSecond = 0L
+                                                incomingRateSampleAt = 0L
+                                                incomingRateSampleBytes = 0L
                                                 chatNotice = "The received file was larger than its declared size. Transfer stopped."
                                             }
-                                            synchronized(writerLock) { peerWriter?.println("FILE_DONE|${parts[1]}|ERROR") }
+                                            synchronized(writerLock) { sendWireLine("FILE_DONE|${parts[1]}|ERROR") }
                                         } else {
                                             transfer.output.write(bytes)
                                             val fraction = if (transfer.expectedBytes > 0L) {
@@ -1666,6 +3170,9 @@ class MainActivity : ComponentActivity() {
                                             } else 0f
                                             runOnUiThread {
                                                 incomingProgress = fraction
+                                                incomingTransferredBytes = transfer.receivedBytes
+                                                incomingTotalBytes = transfer.expectedBytes
+                                                updateTransferRate(true, transfer.receivedBytes)
                                                 chatNotice = if (transfer.expectedBytes > 0L) {
                                                     "Receiving ${transfer.name} • ${(fraction * 100).toInt()}%"
                                                 } else {
@@ -1674,7 +3181,20 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     } catch (_: Exception) {
-                                        incomingTransfers.remove(parts[1])?.close()
+                                        val failedTransfer = incomingTransfers.remove(parts[1])
+                                        failedTransfer?.close()
+                                        failedTransfer?.file?.delete()
+                                        synchronized(writerLock) { sendWireLine("FILE_DONE|${parts[1]}|ERROR") }
+                                        runOnUiThread {
+                                            incomingTransferName = null
+                                            incomingProgress = 0f
+                                            incomingTransferredBytes = 0L
+                                            incomingTotalBytes = 0L
+                                            incomingSpeedBytesPerSecond = 0L
+                                            incomingRateSampleAt = 0L
+                                            incomingRateSampleBytes = 0L
+                                            chatNotice = "The received file could not be written. Transfer stopped."
+                                        }
                                     }
                                 }
                             }
@@ -1692,16 +3212,26 @@ class MainActivity : ComponentActivity() {
                                         runOnUiThread {
                                             incomingTransferName = null
                                             incomingProgress = 0f
+                                            incomingTransferredBytes = 0L
+                                            incomingTotalBytes = 0L
+                                            incomingSpeedBytesPerSecond = 0L
+                                            incomingRateSampleAt = 0L
+                                            incomingRateSampleBytes = 0L
                                             receivedFiles.add(0, ReceivedFile(transfer.name, transfer.file))
                                             chatNotice = "Received and verified: ${transfer.name}. Tap it below to open."
                                         }
-                                        synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|OK") }
+                                        synchronized(writerLock) { sendWireLine("FILE_DONE|$id|OK") }
                                     } else {
                                         transfer.file.delete()
-                                        synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|ERROR") }
+                                        synchronized(writerLock) { sendWireLine("FILE_DONE|$id|ERROR") }
                                         runOnUiThread {
                                             incomingTransferName = null
                                             incomingProgress = 0f
+                                            incomingTransferredBytes = 0L
+                                            incomingTotalBytes = 0L
+                                            incomingSpeedBytesPerSecond = 0L
+                                            incomingRateSampleAt = 0L
+                                            incomingRateSampleBytes = 0L
                                             chatNotice = "The received file failed its integrity check and was discarded."
                                         }
                                     }
@@ -1719,6 +3249,26 @@ class MainActivity : ComponentActivity() {
                                 if (outgoingTransferId == transferId) {
                                     outgoingTransferId = null
                                     outgoingProgress = 0f
+            outgoingTransferredBytes = 0L
+            outgoingTotalBytes = 0L
+            outgoingSpeedBytesPerSecond = 0L
+            outgoingRateSampleAt = 0L
+            outgoingRateSampleBytes = 0L
+                                }
+                                if (ok) {
+                                    val savedUri = pendingSentFileUri
+                                    val savedName = pendingSentFileName
+                                    if (!savedUri.isNullOrBlank() && !savedName.isNullOrBlank()) {
+                                        sentFiles.add(0, SentFile(savedName, savedUri, pendingSentFileSize, System.currentTimeMillis()))
+                                        persistSentFiles()
+                                    }
+                                    pendingSentFileUri = null
+                                    pendingSentFileName = null
+                                    pendingSentFileSize = 0L
+                                } else {
+                                    pendingSentFileUri = null
+                                    pendingSentFileName = null
+                                    pendingSentFileSize = 0L
                                 }
                                 chatNotice = if (ok) "File delivered and verified by the nearby phone." else "The other phone could not verify the file."
                             }
@@ -1732,10 +3282,15 @@ class MainActivity : ComponentActivity() {
                             runOnUiThread {
                                 incomingTransferName = null
                                 incomingProgress = 0f
+                                incomingTransferredBytes = 0L
+                                incomingTotalBytes = 0L
+                                incomingSpeedBytesPerSecond = 0L
+                                incomingRateSampleAt = 0L
+                                incomingRateSampleBytes = 0L
                                 chatNotice = "The other phone cancelled the file transfer."
                             }
                         }
-                        line == "PING" -> synchronized(writerLock) { peerWriter?.println("PONG") }
+                        line == "PING" -> synchronized(writerLock) { sendWireLine("PONG") }
                     }
                 }
             } catch (_: Exception) {
@@ -1749,8 +3304,17 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     val wasReady = chatReady
                     closePeerTransport()
+                    if (incomingTransferName != null) {
+                        incomingTransferName = null
+                        incomingProgress = 0f
+                        incomingTransferredBytes = 0L
+                        incomingTotalBytes = 0L
+                        incomingSpeedBytesPerSecond = 0L
+                        incomingRateSampleAt = 0L
+                        incomingRateSampleBytes = 0L
+                    }
                     if (wasReady) {
-                        chatNotice = "The nearby connection ended. Reconnect to continue chatting."
+                        chatNotice = "The nearby connection ended. Any unfinished incoming file was discarded. Reconnect to continue chatting."
                         connectionMessage = "Connection ended"
                     }
                 }
@@ -1760,6 +3324,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val REQUEST_DISCOVERY_PERMISSION = 410
+    private const val REQUEST_RECORD_AUDIO = 411
     }
 }
 
@@ -1771,6 +3336,7 @@ private fun NeaRerHome(
     devices: List<WifiP2pDevice>,
     connectingAddress: String?,
     connectedDeviceName: String?,
+    connectedNearbyEndpoint: String?,
     connectionMessage: String,
     incomingRequesterName: String?,
     approvalMessage: String,
@@ -1780,7 +3346,16 @@ private fun NeaRerHome(
     messages: List<ChatMessage>,
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
-    onSendMessage: (String) -> Unit,
+    sentFiles: List<SentFile>,
+    onSendMessage: (String, (Boolean) -> Unit) -> Unit,
+    onSelectConversation: (String, String) -> Unit,
+    isRecordingVoiceNote: Boolean,
+    onVoiceNoteAction: () -> Unit,
+    onSendQueuedMessages: () -> Unit,
+    pendingChatFilesCount: Int,
+    pendingChatFiles: List<String>,
+    onRemoveQueuedFile: (String) -> Unit,
+    onSendQueuedFiles: () -> Unit,
     groups: List<CommunityGroup>,
     groupMessages: List<CommunityChatMessage>,
     selectedGroupCode: String?,
@@ -1789,6 +3364,20 @@ private fun NeaRerHome(
     incomingGameInvite: GameInvite?,
     activeGame: TicTacToeMatch?,
     gameChatMessages: List<String>,
+    ludoRoomStatus: String,
+    incomingLudoInviteName: String?,
+    ludoRoomPeerName: String?,
+    ludoRoomReady: Boolean,
+    ludoRoomMessages: List<String>,
+    ludoRoomGame: LudoDoubleDiceState?,
+    ludoRoomIsHost: Boolean,
+    ludoRoomCanAct: Boolean,
+    onLudoRoomAction: (LudoRoomAction) -> Unit,
+    onInviteLudoPeer: () -> Unit,
+    onAcceptLudoInvite: () -> Unit,
+    onDeclineLudoInvite: () -> Unit,
+    onSendLudoRoomChat: (String) -> Unit,
+    onLeaveLudoRoom: () -> Unit,
     onCreateGroup: (String) -> Unit,
     onJoinGroup: (String) -> Unit,
     onSelectGroup: (String) -> Unit,
@@ -1806,217 +3395,2053 @@ private fun NeaRerHome(
     onGameChat: (String) -> Unit,
     onEndGame: () -> Unit,
     onSendFile: (Uri) -> Unit,
+    onLoadShareableApps: () -> List<ShareableApp>,
+    onPrepareAppForSharing: (ShareableApp, (Uri?) -> Unit) -> Unit,
     onCancelTransfer: () -> Unit,
     outgoingTransferId: String?,
     outgoingProgress: Float,
     incomingTransferName: String?,
     incomingProgress: Float,
+    incomingTransferredBytes: Long,
+    incomingTotalBytes: Long,
+    incomingSpeedBytesPerSecond: Long,
+    outgoingTransferredBytes: Long,
+    outgoingTotalBytes: Long,
+    outgoingSpeedBytesPerSecond: Long,
     onOpenFile: (ReceivedFile) -> Unit,
+    onOpenSentFile: (SentFile) -> Unit,
+    onShareReceivedFile: (ReceivedFile) -> Unit,
+    onResendSentFile: (SentFile) -> Unit,
+    onShareSentFile: (SentFile) -> Unit,
     onDisconnect: () -> Unit,
     onAccept: () -> Unit,
     onReject: () -> Unit,
+    onBlockIncoming: () -> Unit,
+    blockedPeerIds: List<String>,
+    onUnblockPeer: (String) -> Unit,
     hybridPeers: Map<String, String>,
     recentlySeenPeers: Map<String, NearbyPerson>,
     displayName: String,
-    onSaveDisplayName: (String) -> Unit,
+    onSaveDisplayName: (String) -> Boolean,
+    anonymousDiscovery: Boolean,
+    onAnonymousDiscoveryChange: (Boolean) -> Unit,
     meshRelayEnabled: Boolean,
     onMeshRelayChange: (Boolean) -> Unit,
     onHybridConnect: (String) -> Unit,
     onFindNearby: () -> Unit,
     onStopSearch: () -> Unit,
-    onConnect: (WifiP2pDevice) -> Unit
+    onConnect: (WifiP2pDevice) -> Unit,
+    flashRoleReady: Boolean,
+    flashLastSignal: String?,
+    onRequestFlashScreeningRole: () -> Unit
 ) {
-    var draft by remember { mutableStateOf("") }
-    val messageScrollState = rememberScrollState()
-    androidx.compose.runtime.LaunchedEffect(messages.size) {
-        messageScrollState.animateScrollTo(messageScrollState.maxValue)
+    val flashContext = androidx.compose.ui.platform.LocalContext.current
+    var flashRecipientNumber by remember { mutableStateOf("") }
+    var flashCustomMessage by remember { mutableStateOf("") }
+    var flashPresetName by remember { mutableStateOf("PING") }
+    var flashCallStep by remember { mutableStateOf(0) }
+    var flashSenderNotice by remember { mutableStateOf("Choose a signal and enter the recipient's phone number.") }
+    var flashTrustedNumber by remember { mutableStateOf("") }
+    var flashTrustedName by remember { mutableStateOf("") }
+    var flashTrustedCount by remember { mutableStateOf(FlashTrustedSenders.trustedCount(flashContext)) }
+    var flashContactsPermission by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(flashContext, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED)
+    }
+    val flashContactsPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        flashContactsPermission = granted
+        flashSenderNotice = if (granted) {
+            "Saved-contact Flash access enabled. NeaRer can now receive screening events for paired numbers saved in your contacts."
+        } else {
+            "Contacts access was declined. Flash can still work with paired numbers that are not saved in your contacts."
+        }
+    }
+    val flashPresets = remember { FlashSignalPattern.presets() }
+    val selectedFlashPreset = flashPresets.firstOrNull { it.name == flashPresetName } ?: flashPresets.first()
+    val flashCallCount = selectedFlashPreset.gapsMillis.size + 1
+    val flashStepGap = selectedFlashPreset.gapsMillis.getOrNull(flashCallStep - 1)
+    val localChatPrefs = flashContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+    val welcomeEnergy = remember {
+        localChatPrefs.getString("welcome_answers_v1", "").orEmpty()
+            .split("|").firstOrNull { it.startsWith("0=") }?.substringAfter("=")
+    }
+    val welcomePurpose = remember {
+        localChatPrefs.getString("welcome_answers_v1", "").orEmpty()
+            .split("|").firstOrNull { it.startsWith("1=") }?.substringAfter("=")
+    }
+    var draft by remember { mutableStateOf(localChatPrefs.getString("chat_draft", "") ?: "") }
+    var selectedConversationId by remember { mutableStateOf(messages.lastOrNull()?.conversationId ?: "") }
+    val conversationRows = messages.groupBy { it.conversationId.ifBlank { "legacy" } }
+        .map { (peerId, thread) ->
+            val latest = thread.maxByOrNull { it.timestamp }
+            Triple(peerId, latest?.conversationName?.ifBlank { "Nearby contact" } ?: "Nearby contact", latest)
+        }
+        .sortedByDescending { it.third?.timestamp ?: 0L }
+    val visibleMessages = if (selectedConversationId.isBlank()) messages else messages.filter {
+        (it.conversationId.ifBlank { "legacy" }) == selectedConversationId
+    }
+    LaunchedEffect(messages.size, selectedConversationId) {
+        if (selectedConversationId.isBlank() && conversationRows.isNotEmpty()) {
+            selectedConversationId = conversationRows.first().first
+        }
+        conversationRows.firstOrNull { it.first == selectedConversationId }?.let { row ->
+            onSelectConversation(row.first, row.second)
+        }
+    }
+    var showChatAttachmentMenu by remember { mutableStateOf(false) }
+    val isConnecting = status.contains("connecting", ignoreCase = true) && !chatReady
+    val messageListState = rememberLazyListState()
+    LaunchedEffect(visibleMessages.size, selectedConversationId) {
+        if (visibleMessages.isNotEmpty()) messageListState.animateScrollToItem(visibleMessages.lastIndex)
     }
     var showLudo by remember { mutableStateOf(false) }
     var activeSection by remember { mutableStateOf("home") }
-    val pageScrollState = rememberScrollState()
+    var sectionHistory by remember { mutableStateOf(listOf("home")) }
+    val navigateToSection: (String) -> Unit = { destination ->
+        if (destination != activeSection) {
+            sectionHistory = sectionHistory + destination
+            activeSection = destination
+        }
+    }
+    var hasChosenName by remember { mutableStateOf(displayName != "NeaRer User") }
+    BackHandler(enabled = showLudo || sectionHistory.size > 1) {
+        if (showLudo) {
+            showLudo = false
+        } else {
+            sectionHistory = sectionHistory.dropLast(1)
+            activeSection = sectionHistory.lastOrNull() ?: "home"
+        }
+    }
+    // Keep each destination's scroll position independent when users move between tabs.
+    val pageScrollStates = remember { mutableStateMapOf<String, androidx.compose.foundation.ScrollState>() }
+    val pageScrollState = pageScrollStates.getOrPut(activeSection) { androidx.compose.foundation.ScrollState(0) }
     val sectionPositions = remember { mutableStateMapOf<String, Int>() }
     val navigationScope = rememberCoroutineScope()
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
+    var nameSaveFeedback by remember { mutableStateOf<String?>(null) }
     val searchMotion = rememberInfiniteTransition(label = "nearby-search")
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onSendFile(uri)
+    var receiveMode by remember { mutableStateOf(false) }
+    var showInstalledApps by remember { mutableStateOf(false) }
+    var showReceivedHistory by remember { mutableStateOf(false) }
+    var sharedFilesFilter by remember { mutableStateOf("All") }
+    var sharedFilesSearch by remember { mutableStateOf("") }
+    var sharedFilesSort by remember { mutableStateOf("Recent") }
+    var installedApps by remember { mutableStateOf<List<ShareableApp>>(emptyList()) }
+    var isLoadingApps by remember { mutableStateOf(false) }
+    var appShareNotice by remember { mutableStateOf<String?>(null) }
+    var isPreparingApp by remember { mutableStateOf(false) }
+    var phoneFolderTreeUri by remember {
+        mutableStateOf(flashContext.getSharedPreferences("nearer_folder_browser", Context.MODE_PRIVATE)
+            .getString("tree_uri", null)?.let(Uri::parse))
+    }
+    var showPhoneFolderBrowser by remember { mutableStateOf(false) }
+    val phoneFolderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            try {
+                flashContext.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                phoneFolderTreeUri = uri
+                flashContext.getSharedPreferences("nearer_folder_browser", Context.MODE_PRIVATE)
+                    .edit().putString("tree_uri", uri.toString()).apply()
+                showPhoneFolderBrowser = true
+            } catch (e: SecurityException) {
+                appShareNotice = "NeaRer could not keep access to that folder. Please choose it again."
+            }
+        }
+    }
+    val openPhoneFolderBrowser = {
+        val savedGrantIsValid = phoneFolderTreeUri != null &&
+            flashContext.contentResolver.persistedUriPermissions.any {
+                it.uri == phoneFolderTreeUri && it.isReadPermission
+            }
+        if (savedGrantIsValid) {
+            showPhoneFolderBrowser = true
+        } else {
+            phoneFolderTreeUri = null
+            flashContext.getSharedPreferences("nearer_folder_browser", Context.MODE_PRIVATE)
+                .edit().remove("tree_uri").apply()
+            phoneFolderPicker.launch(null)
+        }
+    }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.forEach(onSendFile)
+    }
+    if (showPhoneFolderBrowser && phoneFolderTreeUri != null) {
+        PhoneFolderBrowser(
+            treeUri = phoneFolderTreeUri!!,
+            onSelectFiles = { uris -> uris.forEach(onSendFile) },
+            onClose = { showPhoneFolderBrowser = false }
+        )
+    }
+    if (showChatAttachmentMenu) {
+        AlertDialog(
+            onDismissRequest = { showChatAttachmentMenu = false },
+            containerColor = Color(0xFF1A2940),
+            title = { Text("Choose what to share", color = Color(0xFFF6F8FC), fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Select files from your phone. NeaRer can queue them while you get connected to another device.", color = Color(0xFFA8B6C9), fontSize = 12.sp, lineHeight = 17.sp)
+                    listOf(Triple("Photos & videos", "Images and clips", "media"), Triple("Documents", "PDF, Word, Excel and more", "docs"), Triple("Audio & music", "Sound files and recordings", "audio"), Triple("Browse phone folders", "Explore a folder inside NeaRer", "folders"), Triple("Any file", "Browse phone storage", "files"), Triple("Installed apps", "Share an app package", "apps")).forEach { item ->
+                        Surface(modifier = Modifier.fillMaxWidth().clickable {
+                            showChatAttachmentMenu = false
+                            when (item.third) {
+                                "media" -> filePicker.launch(arrayOf("image/*", "video/*"))
+                                "docs" -> filePicker.launch(arrayOf("application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "*/*"))
+                                "audio" -> filePicker.launch(arrayOf("audio/*"))
+                                "folders" -> openPhoneFolderBrowser()
+                                "apps" -> {
+                                    showInstalledApps = true
+                                    isLoadingApps = true
+                                    navigationScope.launch {
+                                        installedApps = withContext(Dispatchers.IO) { onLoadShareableApps() }
+                                        isLoadingApps = false
+                                    }
+                                }
+                                else -> filePicker.launch(arrayOf("*/*"))
+                            }
+                        }, color = White, shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, Color(0xFF26364D))) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(item.first, color = Color(0xFFF6F8FC), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text(item.second, color = Color(0xFFA8B6C9), fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showChatAttachmentMenu = false }) { Text("CLOSE", color = Color(0xFF2563EB)) } }
+        )
+    }
+    if (showInstalledApps) {
+        AlertDialog(
+            onDismissRequest = { showInstalledApps = false },
+            containerColor = Color(0xFF1A2940),
+            title = { Text("Share an app", color = Color(0xFFF6F8FC), fontWeight = FontWeight.Black) },
+            text = {
+                Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Your installed apps", color = Color(0xFFF6F8FC), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Choose an app to package and send to the nearby phone.", color = Color(0xFFA8B6C9), fontSize = 11.sp)
+                        }
+                        TextButton(
+                            onClick = {
+                                if (!isLoadingApps) {
+                                    isLoadingApps = true
+                                    navigationScope.launch {
+                                        installedApps = withContext(Dispatchers.IO) { onLoadShareableApps() }
+                                        isLoadingApps = false
+                                    }
+                                }
+                            },
+                            enabled = !isLoadingApps
+                        ) {
+                            Text(if (isLoadingApps) "SCANNING…" else "↻ REFRESH", color = if (isLoadingApps) Muted else Color(0xFF2563EB), fontSize = 10.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                    if (isLoadingApps) {
+                        Text("Scanning installed apps and preparing their icons…", color = Color(0xFF2563EB), fontSize = 11.sp)
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Gold,
+                            trackColor = Color(0xFF26364D)
+                        )
+                    }
+                    var appSearch by remember { mutableStateOf("") }
+                    OutlinedTextField(
+                        value = appSearch,
+                        onValueChange = { appSearch = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Search apps", color = Color(0xFFA8B6C9)) }
+                    )
+                    var appFilter by remember { mutableStateOf("All") }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("All", "Single APK", "Split APK").forEach { filter ->
+                            val selected = appFilter == filter
+                            Surface(
+                                modifier = Modifier.weight(1f).clickable { appFilter = filter },
+                                color = if (selected) Color(0xFF203858) else Color(0xFF203858),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, if (selected) Gold.copy(alpha = 0.8f) else Color(0xFF26364D))
+                            ) {
+                                Text(
+                                    filter,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 9.dp),
+                                    color = Color(0xFFF6F8FC),
+                                    fontSize = 10.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                    val visibleApps = installedApps.filter { app ->
+                        (appSearch.isBlank() || app.label.contains(appSearch, ignoreCase = true) ||
+                            app.packageName.contains(appSearch, ignoreCase = true)) &&
+                            when (appFilter) {
+                                "Single APK" -> app.apkPaths.size == 1
+                                "Split APK" -> app.apkPaths.size > 1
+                                else -> true
+                            }
+                    }
+                    Text(
+                        if (isLoadingApps) "Scanning this phone's app library…" else
+                            "${visibleApps.size} of ${installedApps.size} shareable apps shown • Read on this phone only",
+                        color = if (isLoadingApps) Color(0xFF2563EB) else Color(0xFFA8B6C9),
+                        fontSize = 10.sp
+                    )
+                    if (isLoadingApps) {
+                        Text("Please wait while NeaRer reads the app library on this phone.", color = Color(0xFFF6F8FC), fontSize = 12.sp)
+                    } else if (installedApps.isEmpty()) {
+                        Text("No shareable apps were found. Check that this phone has apps installed.", color = Color(0xFFF6F8FC), fontSize = 13.sp)
+                    } else if (visibleApps.isEmpty()) {
+                        val emptyMessage = when {
+                            appSearch.isNotBlank() && appFilter != "All" -> "No ${appFilter.lowercase()} apps match “${appSearch.trim()}”."
+                            appSearch.isNotBlank() -> "No apps match “${appSearch.trim()}”. Try another name or package ID."
+                            appFilter != "All" -> "No ${appFilter.lowercase()} apps were found on this phone."
+                            else -> "No shareable apps were found on this phone."
+                        }
+                        Text(emptyMessage, color = Color(0xFFF6F8FC), fontSize = 13.sp)
+                    }
+                    if (!isLoadingApps) visibleApps.forEach { app ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                showInstalledApps = false
+                                isPreparingApp = true
+                                appShareNotice = "Preparing " + app.label + " for sharing…"
+                                onPrepareAppForSharing(app) { uri ->
+                                    isPreparingApp = false
+                                    if (uri != null) {
+                                        appShareNotice = app.label + " is prepared. Starting the transfer…"
+                                        onSendFile(uri)
+                                    } else appShareNotice = "Could not prepare " + app.label + " for sharing."
+                                }
+                            },
+                            color = Panel, shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, Color(0xFF26364D))
+                        ) {
+                            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Image(
+                                    bitmap = app.icon,
+                                    contentDescription = app.label,
+                                    modifier = Modifier.size(46.dp).clip(RoundedCornerShape(11.dp))
+                                )
+                                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                                    Text(app.label, color = Color(0xFFF6F8FC), fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(if (app.apkPaths.size > 1) "Split app • " + app.apkPaths.size + " APK parts" else "App • APK ready", color = Color(0xFFA8B6C9), fontSize = 10.sp)
+                                    Text(app.packageName, color = Color(0xFFA8B6C9), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                Text("›", color = Color(0xFF2563EB), fontSize = 23.sp)
+                            }
+                        }
+                    }
+                    if (installedApps.any { it.apkPaths.size > 1 }) {
+                        Text("Some apps contain split APKs. NeaRer sends those together in a ZIP package; the receiver will need a compatible split-APK installer.", color = Color(0xFFFFD12D), fontSize = 11.sp, lineHeight = 15.sp)
+                    }
+                    Text(
+                        "App availability depends on what Android allows NeaRer to access. Some protected system components may not appear.",
+                        color = Color(0xFFA8B6C9),
+                        fontSize = 9.sp,
+                        lineHeight = 14.sp
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { showInstalledApps = false }) { Text("Close", color = Color(0xFF2563EB)) } }
+        )
+    }
+    if (showReceivedHistory) {
+        AlertDialog(
+            onDismissRequest = { showReceivedHistory = false },
+            containerColor = Color(0xFF26364D),
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("SHARED FILES", color = White, fontWeight = FontWeight.Black)
+                    Text("${receivedFiles.size} received • ${sentFiles.size} sent", color = Muted, fontSize = 10.sp)
+                }
+            },
+            text = {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 430.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = sharedFilesSearch,
+                        onValueChange = { sharedFilesSearch = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("Search files by name", color = Muted, fontSize = 12.sp) }
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("All", "Received", "Sent").forEach { filter ->
+                                TextButton(onClick = { sharedFilesFilter = filter }) { Text(filter.uppercase(), color = if (sharedFilesFilter == filter) Gold else Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                            }
+                        }
+                        TextButton(onClick = { sharedFilesSort = when (sharedFilesSort) { "Recent" -> "Oldest"; "Oldest" -> "Name"; "Name" -> "Largest"; else -> "Recent" } }) {
+                            Text("SORT: $sharedFilesSort", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    val searchTerm = sharedFilesSearch.trim()
+                    val sortedReceived = receivedFiles.filter { it.displayName.contains(searchTerm, ignoreCase = true) }.let { files ->
+                        when (sharedFilesSort) { "Oldest" -> files.sortedBy { it.file.lastModified() }; "Name" -> files.sortedBy { it.displayName.lowercase() }; "Largest" -> files.sortedByDescending { it.file.length() }; else -> files.sortedByDescending { it.file.lastModified() } }
+                    }
+                    val sortedSent = sentFiles.filter { it.name.contains(searchTerm, ignoreCase = true) }.let { files ->
+                        when (sharedFilesSort) { "Oldest" -> files.sortedBy { it.timestamp }; "Name" -> files.sortedBy { it.name.lowercase() }; "Largest" -> files.sortedByDescending { it.sizeBytes }; else -> files.sortedByDescending { it.timestamp } }
+                    }
+                    val showReceived = sharedFilesFilter != "Sent"
+                    val showSent = sharedFilesFilter != "Received"
+                    if ((!showReceived || sortedReceived.isEmpty()) && (!showSent || sortedSent.isEmpty())) {
+                        Text("Successfully received and sent files appear here. Sent files can be reopened while their original location remains available.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    }
+                    if (showReceived) sortedReceived.forEach { item ->
+                            val exists = item.file.exists()
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Color(0xFF2563EB),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.45f))
+                            ) {
+                                Row(
+                                    Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                                ) {
+                                    Text(if (exists) "✓" else "!" , color = if (exists) Color(0xFF69E0C0) else Color(0xFFA8B6C9), fontSize = 17.sp, fontWeight = FontWeight.Black)
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(item.displayName, color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(if (exists) "${formatTransferSize(item.file.length())} • ${formatMessageTime(item.file.lastModified())}" else "File is no longer available", color = Muted, fontSize = 9.sp)
+                                    }
+                                    TextButton(onClick = { if (exists) onOpenFile(item) }) { Text(if (exists) "OPEN" else "MISSING", color = if (exists) Gold else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
+                                    if (exists) TextButton(onClick = { onShareReceivedFile(item) }) { Text("SHARE", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
+                                }
+                            }
+                        }
+                    if (showSent) sortedSent.forEach { item ->
+                        Surface(Modifier.fillMaxWidth(), color = Color(0xFF2563EB), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Gold.copy(alpha = 0.25f))) {
+                            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                                Text("↑", color = Gold, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(item.name, color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${formatTransferSize(item.sizeBytes)} • Sent ${formatMessageTime(item.timestamp)}", color = Muted, fontSize = 9.sp)
+                                }
+                                TextButton(onClick = { onOpenSentFile(item) }) { Text("OPEN", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
+                                TextButton(onClick = { onResendSentFile(item) }) { Text("SEND AGAIN", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Bold) }
+                                TextButton(onClick = { onShareSentFile(item) }) { Text("SHARE", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Bold) }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showReceivedHistory = false }) { Text("DONE", color = Gold) } }
+        )
+    }
+    var hasCompletedWelcome by remember {
+        mutableStateOf(localChatPrefs.getBoolean("welcome_completed_v1", false))
+    }
+    if (!hasChosenName || !hasCompletedWelcome) {
+        NeaRerWelcomeFlow(
+            initialName = displayName.takeIf { it != "NeaRer User" }.orEmpty(),
+            onSaveName = onSaveDisplayName,
+            onComplete = { finalName, answers ->
+                onSaveDisplayName(finalName)
+                localChatPrefs.edit()
+                    .putBoolean("welcome_completed_v1", true)
+                    .putString("welcome_answers_v1", answers.entries.joinToString("|") { "${it.key}=${it.value}" })
+                    .apply()
+                hasChosenName = true
+                hasCompletedWelcome = true
+                activeSection = "home"
+            }
+        )
+        return
     }
     if (showLudo) {
-        LudoGameScreen(playerName = playerName, onExit = { showLudo = false })
+        LudoGameScreen(
+            playerName = playerName,
+            onExit = { showLudo = false },
+            connectedPeerName = connectedDeviceName.takeIf { usingNearbyConnections },
+            roomStatus = ludoRoomStatus,
+            incomingInviteName = incomingLudoInviteName,
+            roomPeerName = ludoRoomPeerName,
+            roomReady = ludoRoomReady,
+            roomMessages = ludoRoomMessages,
+            roomGameState = ludoRoomGame,
+            roomIsHost = ludoRoomIsHost,
+            roomCanAct = ludoRoomCanAct,
+            onRoomAction = onLudoRoomAction,
+            onInvitePeer = onInviteLudoPeer,
+            onAcceptInvite = onAcceptLudoInvite,
+            onDeclineInvite = onDeclineLudoInvite,
+            onSendRoomChat = onSendLudoRoomChat,
+            onLeaveRoom = onLeaveLudoRoom
+        )
         return
     }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(pageScrollState).padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.0f to Color(0xFF101A2B),
+                            0.42f to Color(0xFF101A2B),
+                            1.0f to Panel
+                        )
+                    )
+                )
         ) {
+            Column(
+                modifier = Modifier.weight(1f).verticalScroll(pageScrollState).animateContentSize().padding(horizontal = 18.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Nea", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                        Text("R", color = Color(0xFFFFD400), fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                        Text("er", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Text("No Data? We Are NeaRer.", color = Muted, fontSize = 13.sp)
-                }
-                Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(46.dp)) {
-                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                        Text("N", color = Mint, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                listOf("Home" to "home", "Nearby" to "nearby", "Chats" to "chats", "Community" to "community").forEach { (label, key) ->
-                    Button(
-                        onClick = {
-                            activeSection = key
-                            navigationScope.launch {
-                                pageScrollState.animateScrollTo((sectionPositions[key] ?: 0).coerceAtLeast(0))
-                            }
-                        },
-                        modifier = Modifier.height(48.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 15.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(50),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (activeSection == key) Mint else Color(0xFF1C2E47),
-                            contentColor = if (activeSection == key) Midnight else White
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (activeSection == "home") {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Image(
+                                painter = painterResource(R.drawable.ic_nearer),
+                                contentDescription = "NeaRer connected network symbol",
+                                modifier = Modifier.size(34.dp).padding(end = 5.dp)
+                            )
+                            Text("Nea", color = White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("R", color = Gold, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("er", color = White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                        Text("No Data? We Are NeaRer.", color = Muted, fontSize = 12.sp)
+                        Text(
+                            "Welcome back, ${displayName.trim().ifBlank { "friend" }}",
+                            color = Color(0xFFA8B6C9), fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
-                    ) { Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                }
-            }
-
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Text("YOUR NEARER NAME", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                    Text("What should people around you call you?", color = White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(24) }, modifier = Modifier.weight(1f), singleLine = true, placeholder = { Text("e.g. Hope, Jay Flex, Mimi", color = Muted) }, shape = RoundedCornerShape(14.dp))
-                        Button(onClick = { onSaveDisplayName(nameDraft) }, enabled = nameDraft.trim().isNotBlank(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Save") }
+                        Text(
+                            when (welcomeEnergy) {
+                                "Electric" -> "Big energy. Let's make things happen."
+                                "Positive" -> "Good vibes look good on you."
+                                "Creative" -> "Your next great idea starts here."
+                                "Chill" -> "Your space. Your pace."
+                                else -> when (welcomePurpose) {
+                                    "Sharing files" -> "Everything you want to share, closer."
+                                    "Chatting with people" -> "Your conversations are always welcome."
+                                    "Playing games" -> "Ready when your people are."
+                                    else -> "Your NeaRer space is ready."
+                                }
+                            },
+                            color = Color(0xFFFFD12D), fontSize = 10.sp, fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        Text(
+                            when (activeSection) {
+                                "nearby" -> "Nearby"
+                                "chats" -> "Messages"
+                                "community" -> "Communities"
+                                "games" -> "Game Zone"
+                                "flash" -> "NeaRer Flash"
+                                "more" -> "More"
+                                else -> "NeaRer"
+                            },
+                            color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            when (activeSection) {
+                                "nearby" -> "Find people around you"
+                                "chats" -> "Your private conversations"
+                                "community" -> "Your local circles"
+                                "games" -> "Play together, stay closer"
+                                "flash" -> "Short signals through ordinary phone calls"
+                                "more" -> "Games, Flash and extra features"
+                                else -> "No Data? We Are NeaRer."
+                            },
+                            color = Muted, fontSize = 11.sp
+                        )
                     }
-                    Text("This is your public nearby name, not your phone model.", color = Muted, fontSize = 10.sp)
+                }
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF2563EB),
+                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.72f)),
+                    modifier = Modifier.size(46.dp)
+                ) {
+                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            displayName.trim().firstOrNull()?.uppercase() ?: "N",
+                            color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Black
+                        )
+                    }
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
-                sectionPositions["home"] = it.positionInParent().y.toInt()
-            }, shape = RoundedCornerShape(24.dp), color = Color(0xFF142B4E), border = BorderStroke(1.dp, Color(0xFF315987))) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            AnimatedVisibility(visible = activeSection == "home", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
+                // File sharing is the primary purpose of NeaRer: make Send and Receive the first actions.
+                val smoothIncomingProgress by animateFloatAsState(
+                    targetValue = incomingProgress.coerceIn(0f, 1f),
+                    animationSpec = tween(320, easing = FastOutSlowInEasing),
+                    label = "home-incoming-progress"
+                )
+                val smoothOutgoingProgress by animateFloatAsState(
+                    targetValue = outgoingProgress.coerceIn(0f, 1f),
+                    animationSpec = tween(320, easing = FastOutSlowInEasing),
+                    label = "home-outgoing-progress"
+                )
+                val homeMotion = rememberInfiniteTransition(label = "home-transfer-motion")
+                val homePulse by homeMotion.animateFloat(
+                    initialValue = 0.62f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(tween(1250, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                    label = "home-status-pulse"
+                )
+                val transferDotOne by homeMotion.animateFloat(0.22f, 1f, infiniteRepeatable(tween(760, delayMillis = 0), RepeatMode.Reverse), label = "transfer-dot-one")
+                val transferDotTwo by homeMotion.animateFloat(0.22f, 1f, infiniteRepeatable(tween(760, delayMillis = 180), RepeatMode.Reverse), label = "transfer-dot-two")
+                val transferDotThree by homeMotion.animateFloat(0.22f, 1f, infiniteRepeatable(tween(760, delayMillis = 360), RepeatMode.Reverse), label = "transfer-dot-three")
+                val homeGlow by homeMotion.animateFloat(
+                    initialValue = 0.18f,
+                    targetValue = 0.42f,
+                    animationSpec = infiniteRepeatable(tween(1900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                    label = "home-fast-send-glow"
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = NeaRerPalette.RaisedPanel,
+                        shape = RoundedCornerShape(26.dp),
+                        border = BorderStroke(1.dp, NeaRerPalette.Border),
+                        shadowElevation = 12.dp
+                    ) {
+                        Column(
+                            Modifier.fillMaxWidth()
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(NeaRerPalette.Panel, NeaRerPalette.RaisedPanel, NeaRerPalette.Panel)
+                                    )
+                                )
+                                .padding(19.dp),
+                            verticalArrangement = Arrangement.spacedBy(13.dp)
+                        ) {
+                            val homeConnectionLabel = when {
+                                chatReady -> "CONNECTED"
+                                connectingAddress != null -> "CONNECTING"
+                                scanning -> "SEARCHING"
+                                else -> "OFFLINE READY"
+                            }
+                            val homeConnectionColor = when {
+                                chatReady -> Color(0xFF174B43)
+                                connectingAddress != null -> Color(0xFF203858)
+                                scanning -> Color(0xFF26364D)
+                                else -> Color(0xFF2563EB)
+                            }
+                            val homeConnectionTextColor = when {
+                                chatReady -> Color(0xFF69E0C0)
+                                connectingAddress != null -> Gold
+                                scanning -> Color(0xFF69E0C0)
+                                else -> Color(0xFFA8B6C9)
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = BrandBlue.copy(alpha = 0.88f),
+                                    border = BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = homePulse * 0.7f)),
+                                    shadowElevation = 8.dp,
+                                    modifier = Modifier.size(42.dp)
+                                ) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                        Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer network N", modifier = Modifier.size(32.dp))
+                                    }
+                                }
+                                Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                                    Text(
+                                        "YOUR OFFLINE SHARING SPACE",
+                                        color = Color(0xFFFFD12D), fontSize = 9.sp,
+                                        fontWeight = FontWeight.Black, letterSpacing = 1.35.sp
+                                    )
+                                    Text("Fast. Direct. NeaRer.", color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Surface(shape = RoundedCornerShape(30.dp), color = homeConnectionColor) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = homeConnectionTextColor,
+                                            modifier = Modifier.size(5.dp).alpha(if (chatReady) 1f else if (scanning || connectingAddress != null) homePulse else 0.8f)
+                                        ) {}
+                                        Text(homeConnectionLabel, color = homeConnectionTextColor,
+                                            fontSize = 8.sp, fontWeight = FontWeight.Black)
+                                    }
+                                }
+                            }
+                            Text("Share anything.\nStay connected.", color = White, fontSize = 29.sp,
+                                lineHeight = 33.sp, fontWeight = FontWeight.Black,
+                                modifier = Modifier.animateContentSize())
+                            Text("Send photos, videos, music, apps and documents directly to people nearby — without mobile data.",
+                                color = Color(0xFFA8B6C9), fontSize = 12.sp, lineHeight = 18.sp)
+                            appShareNotice?.let { notice ->
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().animateContentSize(),
+                                    color = Color(0xFF2563EB),
+                                    shape = RoundedCornerShape(11.dp),
+                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text("▣", color = Gold, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                        Text(notice, color = Color(0xFFFFD12D), fontSize = 10.sp, lineHeight = 15.sp)
+                                    }
+                                }
+                                if (isPreparingApp) {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = Gold,
+                                        trackColor = Color(0xFF2563EB)
+                                    )
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                                Button(
+                                    onClick = {
+                                        receiveMode = false
+                                        filePicker.launch(arrayOf("*/*"))
+                                    },
+                                    modifier = Modifier.weight(1f).height(52.dp),
+                                    shape = RoundedCornerShape(15.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue, contentColor = White)
+                                ) {
+                                    Text(
+                                        when {
+                                            chatReady -> "↑  SEND NOW"
+                                            connectingAddress != null -> "◌  CONNECTING…"
+                                            scanning -> "◌  SEARCHING…"
+                                            else -> "↑  FIND & SEND"
+                                        },
+                                        fontSize = 10.sp, fontWeight = FontWeight.Black
+                                    )
+                                }
+                                Button(
+                                    onClick = {
+                                        receiveMode = true
+                                        navigateToSection("nearby")
+                                        if (!scanning && connectingAddress == null) onFindNearby()
+                                        navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                                    },
+                                    modifier = Modifier.weight(1f).height(52.dp),
+                                    shape = RoundedCornerShape(15.dp),
+                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.75f)),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                                ) {
+                                    Text(
+                                        when {
+                                            connectingAddress != null -> "◌  CONNECTING…"
+                                            scanning -> "◌  SEARCHING…"
+                                            else -> "↓  RECEIVE"
+                                        },
+                                        fontSize = 10.sp, fontWeight = FontWeight.Black
+                                    )
+                                }
+                            }
+                            val transferGuidance = when {
+                                receiveMode && incomingTransferName != null -> "Receiving ${incomingTransferName} from a nearby phone. Keep NeaRer open until it finishes."
+                                receiveMode && chatReady -> "You're connected. Ask the sender to select a file; it will arrive here automatically."
+                                receiveMode && connectingAddress != null -> "Connecting to the sender. Keep NeaRer open while both phones verify the connection."
+                                receiveMode && scanning -> "Searching for nearby senders. Keep this screen open; tap a discovered phone to connect."
+                                receiveMode -> "Your phone is ready to receive. Start a nearby search and connect to the sender."
+                                connectingAddress != null -> "Connecting to ${connectedDeviceName ?: "the nearby phone"}. Keep both phones close until verification finishes."
+                                scanning -> "Searching for nearby phones. You can browse and prepare files while discovery runs."
+                                chatReady -> "Connected to ${connectedDeviceName ?: "a nearby phone"}. Choose any file or app to send."
+                                else -> "Browse your phone now. Selected files stay queued safely until you connect to a nearby person."
+                            }
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().animateContentSize(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (incomingTransferName != null) Color(0xFF173C3A) else Color(0xFF2563EB),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (incomingTransferName != null) Color(0xFF69E0C0).copy(alpha = 0.55f)
+                                    else Color(0xFF203858).copy(alpha = 0.45f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (incomingTransferName != null) Color(0xFF69E0C0) else Gold,
+                                        modifier = Modifier.size(7.dp)
+                                    ) {}
+                                    Text(
+                                        transferGuidance,
+                                        color = if (incomingTransferName != null) Color(0xFF69E0C0) else Color(0xFFA8B6C9),
+                                        fontSize = 10.sp,
+                                        lineHeight = 15.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().animateContentSize(),
+                        shape = RoundedCornerShape(25.dp),
+                        color = Color(0xFF1A2940),
+                        border = BorderStroke(1.dp, Color(0xFF26364D)),
+                        shadowElevation = 8.dp
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text("YOUR NEARBY ORBIT", color = Color(0xFF2563EB), fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.15.sp)
+                                    Text(when {
+                                        hybridPeers.isNotEmpty() -> "${hybridPeers.size} NeaRer ${if (hybridPeers.size == 1) "person" else "people"} found"
+                                        scanning -> "Your circle is taking shape…"
+                                        else -> "Your people are closer than you think."
+                                    }, color = Color(0xFFF6F8FC), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                                }
+                                Surface(shape = CircleShape, color = Color(0xFF203858), modifier = Modifier.size(44.dp)) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                        Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer nearby network", modifier = Modifier.size(35.dp))
+                                    }
+                                }
+                            }
+                            if (hybridPeers.isNotEmpty()) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                                    hybridPeers.entries.take(4).forEach { peer ->
+                                        Surface(modifier = Modifier.weight(1f).clickable { onHybridConnect(peer.key) },
+                                            shape = RoundedCornerShape(17.dp), color = Panel,
+                                            border = BorderStroke(1.dp, Color(0xFF26364D))) {
+                                            Column(Modifier.padding(vertical = 11.dp, horizontal = 5.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                                Surface(shape = CircleShape, color = Color(0xFF2563EB), border = BorderStroke(2.dp, Color(0xFFFFD12D)), modifier = Modifier.size(43.dp)) {
+                                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                                        Text(peer.value.trim().firstOrNull()?.uppercase() ?: "N", color = White, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                                    }
+                                                }
+                                                Text(peer.value, color = Color(0xFFF6F8FC), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                Text("ACTIVE NOW", color = Color(0xFF69E0C0), fontSize = 8.sp, fontWeight = FontWeight.Black)
+                                            }
+                                        }
+                                    }
+                                }
+                                Text("Tap a person to start connecting. Only phones actually discovered nearby appear here.", color = Color(0xFFA8B6C9), fontSize = 10.sp, lineHeight = 15.sp)
+                            } else {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    androidx.compose.foundation.layout.Box(Modifier.size(66.dp), contentAlignment = Alignment.Center) {
+                                        Surface(Modifier.size(62.dp), shape = CircleShape, color = Color.Transparent, border = BorderStroke(1.dp, Color(0xFF26364D))) {}
+                                        Surface(Modifier.size(43.dp), shape = CircleShape, color = Color.Transparent, border = BorderStroke(1.dp, Color(0xFF2563EB))) {}
+                                        Surface(Modifier.size(27.dp), shape = CircleShape, color = Color(0xFF2563EB)) {
+                                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                                Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = null, modifier = Modifier.size(23.dp))
+                                            }
+                                        }
+                                    }
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text(if (scanning) "Scanning for real nearby phones" else "Start discovering your circle", color = Color(0xFFF6F8FC), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text(if (scanning) "Keep NeaRer open while discovery is active." else "Find people around you and connect directly — even without mobile data.", color = Color(0xFFA8B6C9), fontSize = 10.sp, lineHeight = 15.sp)
+                                    }
+                                }
+                                Button(onClick = {
+                                    navigateToSection("nearby")
+                                    if (!scanning && connectingAddress == null) onFindNearby()
+                                    navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                                }, modifier = Modifier.fillMaxWidth().height(47.dp), shape = RoundedCornerShape(15.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB), contentColor = White)) {
+                                    Text(if (scanning) "VIEW NEARBY DISCOVERY  →" else "FIND PEOPLE NEAR ME  →", fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+                                }
+                            }
+                            val recentCount = recentlySeenPeers.size
+                            if (recentCount > 0) Text("$recentCount previously seen on this phone · not currently confirmed nearby", color = Color(0xFFA8B6C9), fontSize = 9.sp)
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("YOUR NEARER SHORTCUTS", color = Color(0xFFFFD12D), fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black, letterSpacing = 1.15.sp)
+                                Text("Jump straight into what you love.", color = Color(0xFFA8B6C9), fontSize = 11.sp)
+                            }
+                            Text("✦", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            HomeFeatureTile("Messages", "Talk nearby", "✉", Color(0xFF2563EB), Modifier.weight(1f)) {
+                                navigateToSection("chats")
+                            }
+                            HomeFeatureTile("Flash", "Quick signals", "ϟ", Color(0xFFFFD12D), Modifier.weight(1f)) {
+                                navigateToSection("flash")
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            HomeFeatureTile("Communities", "Your circles", "◎", Color(0xFF69E0C0), Modifier.weight(1f)) {
+                                navigateToSection("community")
+                            }
+                            HomeFeatureTile("Game Zone", "Play together", "♟", Color(0xFF2563EB), Modifier.weight(1f)) {
+                                navigateToSection("games")
+                            }
+                        }
+                    }
+
+                    if (pendingChatFilesCount > 0) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().animateContentSize(),
+                            shape = RoundedCornerShape(18.dp),
+                            color = Color(0xFF2563EB),
+                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.8f)),
+                            shadowElevation = 8.dp
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                                    Surface(shape = RoundedCornerShape(13.dp), color = Gold, modifier = Modifier.size(43.dp)) {
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                            Text("$pendingChatFilesCount", color = Color(0xFF2563EB), fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                        }
+                                    }
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text("YOUR PREPARED FILES", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.8.sp)
+                                        Text(
+                                            if (chatReady) "Ready to send to ${connectedDeviceName ?: "your nearby contact"}"
+                                            else "Saved on this phone • connect whenever you're ready",
+                                            color = White, fontSize = 10.sp, lineHeight = 14.sp
+                                        )
+                                    }
+                                    Button(
+                                        onClick = onSendQueuedFiles,
+                                        enabled = chatReady && outgoingTransferId == null,
+                                        shape = RoundedCornerShape(13.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Gold,
+                                            contentColor = Color(0xFF2563EB),
+                                            disabledContainerColor = Color(0xFFA8B6C9),
+                                            disabledContentColor = Color(0xFF2563EB)
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 13.dp, vertical = 9.dp)
+                                    ) {
+                                        Text(if (chatReady) "SEND" else "WAIT", fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                    }
+                                }
+                                pendingChatFiles.take(5).forEach { queuedUri ->
+                                    val queuedLabel = Uri.decode(Uri.parse(queuedUri).lastPathSegment.orEmpty())
+                                        .substringAfterLast(':').substringAfterLast('/').ifBlank { "Selected file" }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().background(Color(0xFF26364D), RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text("▣", color = Gold, fontSize = 13.sp)
+                                        Text(queuedLabel, color = White, fontSize = 10.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                                        TextButton(onClick = { onRemoveQueuedFile(queuedUri) }, contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) {
+                                            Text("REMOVE", color = Color(0xFF633D4B), fontSize = 8.sp, fontWeight = FontWeight.Black)
+                                        }
+                                    }
+                                }
+                                if (pendingChatFiles.size > 5) {
+                                    Text("+ ${pendingChatFiles.size - 5} more prepared files", color = Muted, fontSize = 9.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            receiveMode = false
+                            filePicker.launch(arrayOf("*/*"))
+                        },
+                        shape = RoundedCornerShape(21.dp),
+                        color = Color(0xFF26364D),
+                        border = BorderStroke(1.dp, Gold.copy(alpha = homeGlow)),
+                        shadowElevation = 7.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Brush.linearGradient(listOf(Color(0xFF26364D), Color(0xFF26364D), Color(0xFF26364D))))
+                                .padding(horizontal = 15.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Gold.copy(alpha = 0.16f),
+                                border = BorderStroke(1.dp, Gold.copy(alpha = 0.42f)),
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text("ϟ", color = Gold, fontSize = 29.sp, fontWeight = FontWeight.Black)
+                                }
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    Text("FAST SEND", color = White, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 0.8.sp)
+                                    Text("QUICK ROUTE", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                                }
+                                Text(
+                                    "Browse and prepare files now. They'll send when a nearby connection is ready.",
+                                    color = Color(0xFF203858), fontSize = 10.sp, lineHeight = 14.sp
+                                )
+                            }
+                            androidx.compose.foundation.layout.Box(
+                                modifier = Modifier.size(27.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Surface(shape = CircleShape, color = Gold.copy(alpha = 0.10f * homePulse + 0.05f), modifier = Modifier.size(27.dp)) {}
+                                Text("›", color = Gold, fontSize = 27.sp, fontWeight = FontWeight.Light)
+                            }
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("BROWSE FILES", color = White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                            Spacer(Modifier.weight(1f))
+                            Text("Choose what to share", color = Muted, fontSize = 10.sp)
+                        }
+                        val fileCategories = listOf(
+                            Triple("▧", "Photos", arrayOf("image/*")),
+                            Triple("▶", "Videos", arrayOf("video/*")),
+                            Triple("♫", "Music", arrayOf("audio/*")),
+                            Triple("▣", "Apps", arrayOf("application/vnd.android.package-archive")),
+                            Triple("▤", "Documents", arrayOf("application/pdf", "text/*", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/rtf")),
+                            Triple("📁", "Phone folders", emptyArray()),
+                            Triple("•••", "All files", arrayOf("*/*"))
+                        )
+                        fileCategories.chunked(3).forEachIndexed { rowIndex, rowItems ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                                rowItems.forEachIndexed { columnIndex, item ->
+                                    val tileBlue = when ((rowIndex * 3) + columnIndex) {
+                                        0 -> Color(0xFF2563EB)
+                                        1 -> Color(0xFF2563EB)
+                                        2 -> Color(0xFF2563EB)
+                                        3 -> Color(0xFF2563EB)
+                                        4 -> Color(0xFF2563EB)
+                                        else -> Color(0xFF26364D)
+                                    }
+                                    Surface(
+                                        modifier = Modifier.weight(1f).height(108.dp).animateContentSize().clickable {
+                                            receiveMode = false
+                                            if (item.second == "Phone folders") {
+                                                openPhoneFolderBrowser()
+                                            } else if (item.second == "Apps") {
+                                                showInstalledApps = true
+                                                isLoadingApps = true
+                                                navigationScope.launch {
+                                                    installedApps = withContext(Dispatchers.IO) { onLoadShareableApps() }
+                                                    isLoadingApps = false
+                                                }
+                                            } else {
+                                                filePicker.launch(item.third)
+                                            }
+                                        },
+                                        color = tileBlue,
+                                        shape = RoundedCornerShape(19.dp),
+                                        border = BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.42f)),
+                                        shadowElevation = 5.dp
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxSize()
+                                                .background(
+                                                    Brush.linearGradient(
+                                                        listOf(tileBlue.copy(alpha = 0.98f), Color(0xFF2563EB))
+                                                    )
+                                                )
+                                                .padding(12.dp),
+                                            verticalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(11.dp),
+                                                    color = Gold.copy(alpha = 0.13f),
+                                                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.24f))
+                                                ) {
+                                                    Text(
+                                                        item.first,
+                                                        color = Gold,
+                                                        fontSize = 21.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                                    )
+                                                }
+                                                Spacer(Modifier.weight(1f))
+                                                Text("↗", color = Color(0xFFA8B6C9), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                                Text(item.second, color = White, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                                                Text(
+                                                    if (chatReady) "Choose files" else "Connect to share",
+                                                    color = Color(0xFFA8B6C9), fontSize = 9.sp, fontWeight = FontWeight.Medium
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Text(
+                            if (chatReady) "Choose a category to select files for your connected device."
+                            else "Connect to a nearby NeaRer phone to start selecting and sending files.",
+                            color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                        )
+                    }
+
+
+                    val hasTransferResult = chatNotice.startsWith("File delivered and verified") ||
+                        chatNotice.startsWith("The other phone could not verify") ||
+                        chatNotice.startsWith("The received file failed its integrity check") ||
+                        chatNotice.startsWith("The other phone cancelled the file transfer") ||
+                        chatNotice.startsWith("File transfer failed:") ||
+                        chatNotice.startsWith("File transfer cancelled") ||
+                        chatNotice.startsWith("File sent to the nearby phone") ||
+                        chatNotice.startsWith("Nearby file transfer failed") ||
+                        chatNotice.startsWith("Nearby file transfer cancelled") ||
+                        chatNotice.startsWith("Could not start file transfer") ||
+                        chatNotice.startsWith("Could not send file details") ||
+                        chatNotice.startsWith("File could not be prepared") ||
+                        chatNotice.startsWith("The received file failed") ||
+                        chatNotice.startsWith("The received file was larger than its declared size") ||
+                        chatNotice.startsWith("The received file could not be written") ||
+                        chatNotice.startsWith("Received and verified:") ||
+                        chatNotice.startsWith("Received and saved:")
+                    val transferResultCancelled = chatNotice.contains("cancel", ignoreCase = true)
+                    val transferResultFailed = !transferResultCancelled && (
+                        chatNotice.contains("failed", ignoreCase = true) ||
+                            chatNotice.contains("could not", ignoreCase = true) ||
+                            chatNotice.contains("stopped", ignoreCase = true) ||
+                            chatNotice.contains("larger than its declared size", ignoreCase = true)
+                        )
+                    val transferResultAccent = when {
+                        transferResultCancelled -> Gold
+                        transferResultFailed -> Color(0xFFA8B6C9)
+                        else -> Color(0xFF69E0C0)
+                    }
+                    if (incomingTransferName != null || outgoingTransferId != null || receivedFiles.isNotEmpty() || hasTransferResult) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().animateContentSize(),
+                            color = Color(0xFF26364D),
+                            shape = RoundedCornerShape(19.dp),
+                            border = BorderStroke(
+                                1.dp,
+                                if (hasTransferResult && incomingTransferName == null && outgoingTransferId == null)
+                                    transferResultAccent.copy(alpha = 0.58f)
+                                else Color(0xFF2563EB).copy(alpha = 0.55f)
+                            ),
+                            shadowElevation = 5.dp
+                        ) {
+                            Column(
+                                Modifier.background(
+                                    Brush.linearGradient(
+                                        listOf(Color(0xFF26364D), Color(0xFF26364D), Color(0xFF2563EB))
+                                    )
+                                )
+                            ) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        when {
+                                            incomingTransferName != null || outgoingTransferId != null -> "TRANSFER ACTIVITY"
+                                            hasTransferResult && transferResultCancelled -> "TRANSFER CANCELLED"
+                                            hasTransferResult && transferResultFailed -> "TRANSFER NEEDS ATTENTION"
+                                            hasTransferResult -> "TRANSFER COMPLETE"
+                                            else -> "RECENT TRANSFERS"
+                                        },
+                                        color = White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (incomingTransferName != null || outgoingTransferId != null) Color(0xFF69E0C0) else Gold,
+                                            modifier = Modifier.size(6.dp).alpha(if (incomingTransferName != null || outgoingTransferId != null) homePulse else 1f)
+                                        ) {}
+                                        Text(
+                                            if (incomingTransferName != null || outgoingTransferId != null) "LIVE TRANSFER" else "RECENT",
+                                            color = if (incomingTransferName != null || outgoingTransferId != null) Color(0xFF69E0C0) else Gold,
+                                            fontSize = 9.sp, fontWeight = FontWeight.Black
+                                        )
+                                    }
+                                }
+                                incomingTransferName?.let { name ->
+                                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                            Surface(shape = CircleShape, color = BrandBlue.copy(alpha = homePulse), modifier = Modifier.size(7.dp)) {}
+                                            Text("Receiving $name", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                            Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                listOf(transferDotOne, transferDotTwo, transferDotThree).forEach { dotAlpha ->
+                                                    Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(4.dp).alpha(dotAlpha)) {}
+                                                }
+                                            }
+                                        }
+                                        if (incomingProgress <= 0f) {
+                                            LinearProgressIndicator(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                color = BrandBlue,
+                                                trackColor = Color(0xFF2563EB)
+                                            )
+                                        } else {
+                                            LinearProgressIndicator(
+                                                progress = { smoothIncomingProgress },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                color = BrandBlue,
+                                                trackColor = Color(0xFF2563EB)
+                                            )
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("${(smoothIncomingProgress * 100).toInt().coerceIn(0, 100)}% received", color = Muted, fontSize = 9.sp)
+                                            Spacer(Modifier.weight(1f))
+                                            Text(
+                                                transferProgressDetail(incomingTransferredBytes, incomingTotalBytes, incomingSpeedBytesPerSecond),
+                                                color = Color(0xFFA8B6C9),
+                                                fontSize = 9.sp
+                                            )
+                                        }
+                                    }
+                                }
+                                if (outgoingTransferId != null) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                            Surface(shape = CircleShape, color = Gold.copy(alpha = homePulse), modifier = Modifier.size(7.dp)) {}
+                                            Text(
+                                                when {
+                                                    chatNotice.startsWith("Sending ") && !chatNotice.startsWith("Sending complete") -> chatNotice.removePrefix("Sending ").substringBefore(" •")
+                                                    chatNotice.startsWith("Preparing to send ") -> chatNotice.removePrefix("Preparing to send ").substringBefore(" over ")
+                                                    else -> "File transfer in progress"
+                                                },
+                                                color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                                            )
+                                            Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                listOf(transferDotOne, transferDotTwo, transferDotThree).forEach { dotAlpha ->
+                                                    Surface(shape = CircleShape, color = Gold, modifier = Modifier.size(4.dp).alpha(dotAlpha)) {}
+                                                }
+                                            }
+                                        }
+                                        if (outgoingProgress <= 0f) {
+                                            LinearProgressIndicator(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                color = Gold,
+                                                trackColor = Color(0xFF2563EB)
+                                            )
+                                        } else {
+                                            LinearProgressIndicator(
+                                                progress = { smoothOutgoingProgress },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                color = Gold,
+                                                trackColor = Color(0xFF2563EB)
+                                            )
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("${(smoothOutgoingProgress * 100).toInt().coerceIn(0, 100)}% sent", color = Muted, fontSize = 9.sp)
+                                            Spacer(Modifier.weight(1f))
+                                            Text(
+                                                transferProgressDetail(outgoingTransferredBytes, outgoingTotalBytes, outgoingSpeedBytesPerSecond),
+                                                color = Color(0xFFA8B6C9), fontSize = 9.sp
+                                            )
+                                            Spacer(Modifier.weight(1f))
+                                            TextButton(onClick = onCancelTransfer) {
+                                                Text("CANCEL", color = Color(0xFFA8B6C9), fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                            }
+                                        }
+                                    }
+                                }
+                                if (receivedFiles.isNotEmpty() || sentFiles.isNotEmpty()) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("RECENTLY RECEIVED", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 0.7.sp)
+                                        Spacer(Modifier.weight(1f))
+                                        TextButton(onClick = { showReceivedHistory = true }) {
+                                            Text("SHARED FILES · ${receivedFiles.size + sentFiles.size}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                        }
+                                    }
+                                }
+                                receivedFiles.take(2).forEach { fileItem ->
+                                    val sizeBytes = fileItem.file.length()
+                                    val sizeLabel = when {
+                                        sizeBytes < 1024L -> "$sizeBytes B"
+                                        sizeBytes < 1024L * 1024L -> "${(sizeBytes / 1024.0).toInt()} KB"
+                                        sizeBytes < 1024L * 1024L * 1024L -> "${(sizeBytes / (1024.0 * 1024.0) * 10).toInt() / 10.0} MB"
+                                        else -> "${(sizeBytes / (1024.0 * 1024.0 * 1024.0) * 10).toInt() / 10.0} GB"
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text("✓", color = Color(0xFF69E0C0), fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                fileItem.displayName,
+                                                color = White,
+                                                fontSize = 10.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text("Saved on this phone • $sizeLabel", color = Muted, fontSize = 8.sp)
+                                        }
+                                        TextButton(onClick = { onOpenFile(fileItem) }) {
+                                            Text("OPEN", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                                if (hasTransferResult && incomingTransferName == null && outgoingTransferId == null) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth()
+                                            .background(transferResultAccent.copy(alpha = 0.09f), RoundedCornerShape(12.dp))
+                                            .padding(horizontal = 10.dp, vertical = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            when {
+                                                transferResultCancelled -> "↺"
+                                                transferResultFailed -> "!"
+                                                else -> "✓"
+                                            },
+                                            color = when {
+                                                transferResultCancelled -> Gold
+                                                transferResultFailed -> Color(0xFFA8B6C9)
+                                                else -> Color(0xFF69E0C0)
+                                            },
+                                            fontSize = 15.sp, fontWeight = FontWeight.Black
+                                        )
+                                        Text(chatNotice, color = Color(0xFFA8B6C9), fontSize = 10.sp,
+                                            lineHeight = 14.sp, modifier = Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                            }
+                        }
+                    } else {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF2563EB),
+                            shape = RoundedCornerShape(19.dp),
+                            border = BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.75f))
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(11.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF26364D),
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                        Text("↗", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text("YOUR TRANSFER ACTIVITY", color = White, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                                    Text("Your sent and received files will appear here.", color = Muted, fontSize = 9.sp, lineHeight = 13.sp)
+                                }
+                                Text("READY", color = Color(0xFF69E0C0), fontSize = 8.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(shape = RoundedCornerShape(12.dp), color = BrandBlue, modifier = Modifier.size(42.dp)) {
-                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("N", color = White, fontSize = 23.sp, fontWeight = FontWeight.Black) }
-                        }
-                        Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
-                            Text("YOUR OFFLINE WORLD", color = White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.7.sp)
-                            Text("People, sharing and play — closer.", color = Muted, fontSize = 11.sp)
-                        }
-                        Text("NEARER", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                        Text("QUICK ACCESS", color = White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                        Spacer(Modifier.weight(1f))
+                        Text("Everything in one place", color = Muted, fontSize = 10.sp)
                     }
-                    Text("Everything starts nearby.", color = White, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = 0.2.sp)
-                    Text("Connect without mobile data. Share directly. Build a local community with people around you.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("PRIVATE CHAT" to "Ready after connection", "FILE SHARING" to "Ready after connection").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text(item.first, color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                    Text(item.second, color = Muted, fontSize = 10.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        listOf(
+                            listOf("✉", "Chats", "chats", "Keep talking"),
+                            listOf("⌕", "Nearby", "nearby", "Find people")
+                        ).forEach { item ->
+                            Surface(
+                                modifier = Modifier.weight(1f).clickable {
+                                    navigateToSection(item[2])
+                                    if (item[2] == "nearby") onFindNearby()
+                                    navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                                },
+                                color = Color(0xFF26364D),
+                                shape = RoundedCornerShape(19.dp),
+                                border = BorderStroke(1.dp, Color(0xFF2563EB))
+                            ) {
+                                Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    Text(item[0], color = Gold, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                                    Text(item[1], color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                    Text(item[3], color = Muted, fontSize = 10.sp)
                                 }
                             }
                         }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("NEARBY LINK" to "Bluetooth + nearby Wi-Fi", "MESH RELAY" to "Opt-in, up to 4 hops").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                    Text(item.second, color = Muted, fontSize = 10.sp)
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("RECENT CHATS", color = White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = {
+                            navigateToSection("chats")
+                            navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                        }) { Text("VIEW ALL  →", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                    }
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFF26364D),
+                        shape = RoundedCornerShape(20.dp),
+                        border = BorderStroke(1.dp, Color(0xFF2563EB))
+                    ) {
+                        Column(Modifier.padding(horizontal = 14.dp, vertical = 5.dp)) {
+                            if (messages.isEmpty()) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(shape = CircleShape, color = Color(0xFF2563EB), modifier = Modifier.size(43.dp)) {
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                            Text("✉", color = White, fontSize = 20.sp)
+                                        }
+                                    }
+                                    Column(Modifier.weight(1f).padding(start = 11.dp)) {
+                                        Text("Your conversations start here", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("Connect nearby to send your first message.", color = Muted, fontSize = 10.sp)
+                                    }
+                                    Text("›", color = Gold, fontSize = 24.sp)
+                                }
+                            } else {
+                                messages.takeLast(3).reversed().forEachIndexed { index, message ->
+                                    Row(Modifier.fillMaxWidth().padding(vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(shape = CircleShape, color = if (message.outgoing) Color(0xFF2563EB) else Color(0xFF2563EB),
+                                            modifier = Modifier.size(42.dp)) {
+                                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                                Text(if (message.outgoing) "Y" else (connectedDeviceName ?: "N").take(1).uppercase(),
+                                                    color = White, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                        Column(Modifier.weight(1f).padding(start = 11.dp)) {
+                                            Text(if (message.outgoing) "You" else (connectedDeviceName ?: "Nearby contact"),
+                                                color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text(message.body, color = Muted, fontSize = 10.sp, maxLines = 1)
+                                        }
+                                        Text(message.delivery, color = if (message.outgoing) Color(0xFF2563EB) else Gold, fontSize = 9.sp)
+                                    }
+                                    if (index < minOf(messages.size, 3) - 1) androidx.compose.material3.HorizontalDivider(color = Color(0xFF2563EB))
                                 }
                             }
                         }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("LOCAL GROUPS" to "Nearby groups ready", "PLAY TOGETHER" to "Tic-tac-toe + Ludo").forEach { item ->
-                            Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFF203858), modifier = Modifier.weight(1f)) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text(item.first, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                    Text(item.second, color = Muted, fontSize = 10.sp)
-                                }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        Surface(
+                            modifier = Modifier.weight(1f).clickable {
+                                navigateToSection("community")
+                                navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                            },
+                            color = Color(0xFF26364D), shape = RoundedCornerShape(17.dp),
+                            border = BorderStroke(1.dp, Color(0xFF2563EB))
+                        ) {
+                            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("♧", color = Gold, fontSize = 22.sp)
+                                Text("Communities", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Your local circles", color = Muted, fontSize = 9.sp)
+                            }
+                        }
+                        Surface(
+                            modifier = Modifier.weight(1f).clickable {
+                                navigateToSection("games")
+                                navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                            },
+                            color = Color(0xFF26364D), shape = RoundedCornerShape(17.dp),
+                            border = BorderStroke(1.dp, Color(0xFF2563EB))
+                        ) {
+                            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("♟", color = Gold, fontSize = 22.sp)
+                                Text("Game Zone", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Play together", color = Muted, fontSize = 9.sp)
                             }
                         }
                     }
                 }
             }
+            
 
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF15315A), border = BorderStroke(1.dp, Color(0xFF42618B))) {
+            AnimatedVisibility(visible = activeSection == "flash", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    color = Color(0xFF26364D),
+                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.55f))
+                ) {
+                    Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                        Text("NEARER FLASH • CALL-TO-CHAT", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
+                        Text("A quick call. A message in your chat.", color = White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Send a short Flash call pattern and NeaRer turns the recognised signal into a normal message bubble on the other phone. No SMS and no mobile data are used for the Flash signal. Calls use your carrier network, so any call charges depend on your plan.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        Surface(color = Color(0xFF2563EB), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("CHOOSE A SIGNAL", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    flashPresets.forEach { preset ->
+                                        val selected = preset.name == flashPresetName
+                                        Surface(
+                                            modifier = Modifier.weight(1f).clickable {
+                                                flashPresetName = preset.name
+                                                flashCallStep = 0
+                                                flashSenderNotice = "Selected ${preset.name.replace('_', ' ')}."
+                                            },
+                                            color = if (selected) AccentBlue else Color(0xFF26364D),
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = BorderStroke(1.dp, if (selected) Gold else Color(0xFF2563EB))
+                                        ) {
+                                            Text(
+                                                preset.name.replace('_', ' '),
+                                                modifier = Modifier.padding(vertical = 9.dp, horizontal = 3.dp),
+                                                color = White, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                }
+                                Text(
+                                    "${selectedFlashPreset.name.replace('_', ' ')} • $flashCallCount calls • gaps between call starts: " +
+                                        (selectedFlashPreset.gapsMillis.joinToString(" → ") { "${it / 1000.0}s" }.ifBlank { "one call" }),
+                                    color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+                                )
+                                Text("The sender chooses a signal; the receiver does not need to select anything. NeaRer recognises the incoming-call timing and turns it into a normal chat message, without SMS or mobile data.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                            }
+                        }
+                        Surface(
+                            color = Color(0xFF2563EB),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, Color(0xFF2563EB)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("TYPE ANY MESSAGE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                                Text(
+                                    "Send your own words as a real chat message over NeaRer’s offline nearby connection. This uses Bluetooth / nearby Wi-Fi—not the phone-call Flash signal.",
+                                    color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                                )
+                                OutlinedTextField(
+                                    value = flashCustomMessage,
+                                    onValueChange = { flashCustomMessage = it.take(1000) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    minLines = 2,
+                                    maxLines = 4,
+                                    label = { Text("Write your message") },
+                                    placeholder = { Text("Type anything you want…") },
+                                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = White, unfocusedTextColor = White,
+                                        focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF2563EB),
+                                        focusedLabelColor = AccentBlue, unfocusedLabelColor = Muted,
+                                        cursorColor = Gold
+                                    )
+                                )
+                                Button(
+                                    onClick = {
+                                        val message = flashCustomMessage.trim()
+                                        if (message.isNotEmpty()) {
+                                            onSendMessage(message) { saved ->
+                                                if (saved && flashCustomMessage.trim() == message) flashCustomMessage = ""
+                                            }
+                                        }
+                                    },
+                                    enabled = flashCustomMessage.isNotBlank(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Gold,
+                                        contentColor = Midnight,
+                                        disabledContainerColor = Color(0xFF26364D),
+                                        disabledContentColor = Muted
+                                    )
+                                ) {
+                                    Text(
+                                        if (chatReady) "SEND CUSTOM CHAT MESSAGE" else "SAVE UNTIL NEARBY CONNECTION",
+                                        fontSize = 10.sp, fontWeight = FontWeight.Black
+                                    )
+                                }
+                                Text(
+                                    if (chatReady) "Connected • ${connectedDeviceName ?: "nearby contact"} • offline delivery ready"
+                                    else "Not connected • your text stays in this box until a nearby connection is ready",
+                                    color = if (chatReady) Color(0xFF69E0C0) else Muted,
+                                    fontSize = 9.sp
+                                )
+                            }
+                        }
+                        Text("SEND A FLASH SIGNAL", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                        OutlinedTextField(
+                            value = flashRecipientNumber,
+                            onValueChange = { flashRecipientNumber = it.filter { ch -> ch.isDigit() || ch == '+' || ch == ' ' || ch == '-' }.take(20); flashCallStep = 0 },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Recipient phone number") },
+                            placeholder = { Text("e.g. 080… or +234…") },
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = White, unfocusedTextColor = White,
+                                focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF2563EB),
+                                focusedLabelColor = AccentBlue, unfocusedLabelColor = Muted,
+                                cursorColor = Gold
+                            )
+                        )
+                        Text("Call step ${(flashCallStep + 1).coerceAtMost(flashCallCount)} of $flashCallCount", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        if (flashStepGap != null) {
+                            Text("Aim for about ${String.format(java.util.Locale.ROOT, "%.1f", flashStepGap / 1000.0)} seconds between the START of this call and the START of the next one. End the call quickly, return here, and use the interval as a guide. Carrier delays can affect recognition.", color = Muted, fontSize = 10.sp)
+                        } else {
+                            Text("Start the sequence. Open the dialer, place the call yourself, end it quickly, and return here for the next call. The intervals are deliberately longer to make manual dialling more realistic.", color = Muted, fontSize = 10.sp)
+                        }
+                        Button(
+                            onClick = {
+                                val dialNumber = flashRecipientNumber.trim().filterIndexed { index, ch ->
+                                    ch.isDigit() || (ch == '+' && index == 0)
+                                }
+                                if (dialNumber.count(Char::isDigit) < 7) {
+                                    flashSenderNotice = "Enter a valid recipient number first."
+                                } else {
+                                    try {
+                                        flashContext.startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", dialNumber, null)))
+                                        flashSenderNotice = "Dialer opened. You decide whether to place and end this call; return here for the next step."
+                                    } catch (_: Exception) {
+                                        flashSenderNotice = "Could not open the phone dialer on this device."
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                        ) { Text("OPEN DIALER • CALL ${(flashCallStep + 1).coerceAtMost(flashCallCount)}", fontWeight = FontWeight.Black) }
+                        Button(
+                            onClick = {
+                                if (flashCallStep + 1 >= flashCallCount) {
+                                    flashCallStep = 0
+                                    flashSenderNotice = "Signal sequence completed. You can send it again."
+                                } else {
+                                    flashCallStep += 1
+                                    flashSenderNotice = "Next call step ready. Follow the displayed interval; network timing may vary."
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB), contentColor = White)
+                        ) { Text(if (flashCallStep + 1 >= flashCallCount) "FINISH SIGNAL SEQUENCE" else "I ENDED THIS CALL • NEXT STEP", fontWeight = FontWeight.Bold) }
+                        Text(flashSenderNotice, color = Gold, fontSize = 10.sp, lineHeight = 15.sp)
+                        Text("NeaRer does not place calls automatically and does not request permission to call. You must tap Call in the phone app and end each call yourself. Your carrier may charge for calls. The number is used only to open the dialer and is not saved by this screen.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                        Text(if (flashRoleReady) "Call screening access is enabled on this phone." else "To detect incoming Flash patterns, Android asks you to choose NeaRer as your call-screening app. You can decline; normal calling remains available.", color = if (flashRoleReady) Color(0xFF69E0C0) else Muted, fontSize = 11.sp)
+                        Button(
+                            onClick = onRequestFlashScreeningRole,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)
+                        ) { Text(if (flashRoleReady) "CALL SCREENING ENABLED" else "ENABLE FLASH ON THIS PHONE", fontWeight = FontWeight.Black) }
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF2563EB),
+                            shape = RoundedCornerShape(13.dp),
+                            border = BorderStroke(1.dp, if (flashContactsPermission) Color(0xFF174B43) else Color(0xFF2563EB))
+                        ) {
+                            Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Text(
+                                    if (flashContactsPermission) "SAVED-CONTACT FLASH • ENABLED" else "FLASH FROM SAVED CONTACTS",
+                                    color = if (flashContactsPermission) Color(0xFF69E0C0) else Gold,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                                Text(
+                                    if (flashContactsPermission) {
+                                        "Android can now pass incoming calls from saved contacts to NeaRer Flash. NeaRer does not read or upload your address book."
+                                    } else {
+                                        "Android normally hides calls from numbers saved in your contacts from call-screening apps. You can grant Contacts permission to allow Flash to recognise paired contacts. NeaRer does not read or upload your address book."
+                                    },
+                                    color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                                )
+                                if (!flashContactsPermission) {
+                                    Button(
+                                        onClick = { flashContactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB), contentColor = White)
+                                    ) {
+                                        Text("ALLOW FLASH FROM SAVED CONTACTS", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
+                        Text("TRUSTED SENDERS • $flashTrustedCount PAIRED", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                        OutlinedTextField(
+                            value = flashTrustedNumber,
+                            onValueChange = { flashTrustedNumber = it.filter { ch -> ch.isDigit() || ch == '+' || ch == ' ' || ch == '-' }.take(20) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Pair sender's phone number") },
+                            placeholder = { Text("Number as it appears on this phone") },
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = White, unfocusedTextColor = White,
+                                focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF2563EB),
+                                focusedLabelColor = AccentBlue, unfocusedLabelColor = Muted,
+                                cursorColor = Gold
+                            )
+                        )
+                        OutlinedTextField(
+                            value = flashTrustedName,
+                            onValueChange = { flashTrustedName = it.take(32) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Name to show in your chat (optional)") },
+                            placeholder = { Text("e.g. Tunde") },
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = White, unfocusedTextColor = White,
+                                focusedBorderColor = AccentBlue, unfocusedBorderColor = Color(0xFF2563EB),
+                                focusedLabelColor = AccentBlue, unfocusedLabelColor = Muted,
+                                cursorColor = Gold
+                            )
+                        )
+                        Button(
+                            onClick = {
+                                if (FlashTrustedSenders.addTrusted(flashContext, flashTrustedNumber, flashTrustedName)) {
+                                    flashTrustedCount = FlashTrustedSenders.trustedCount(flashContext)
+                                    flashTrustedNumber = ""
+                                    flashTrustedName = ""
+                                    flashSenderNotice = "Sender paired. Their chosen name will label their Flash chat; the raw phone number is not stored."
+                                } else {
+                                    flashSenderNotice = "Enter a valid phone number with at least 7 digits."
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB), contentColor = White)
+                        ) { Text("ADD TRUSTED SENDER", fontWeight = FontWeight.Bold) }
+                        Text("Pair each sender before they send you a Flash. NeaRer stores a salted number fingerprint and your optional chat name, not the raw phone number. Nigerian numbers saved as 080… will also match incoming +234… format. For other countries, use the number format shown on incoming calls.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+
+                        if (flashLastSignal != null) {
+                            Text("LAST SIGNAL RECEIVED", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text(flashLastSignal!!.replace('_', ' '), color = White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                        } else {
+                            Text("No Flash signal received on this phone yet.", color = Muted, fontSize = 11.sp)
+                        }
+                        Text("Android may hide calls from saved contacts from screening apps unless you grant the optional Contacts permission above. NeaRer does not read or upload your address book. Unknown, hidden or unavailable caller IDs may not be delivered to the screening service. Flash remains experimental until tested on real networks; call charges and timing depend on your carrier.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                    }
+                }
+            }
+
+            AnimatedVisibility(visible = activeSection == "games", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF26364D), border = BorderStroke(1.dp, Color(0xFF2563EB))) {
                 Column(modifier = Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("NEARER GAME ZONE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.7.sp)
                             Text("Play. Connect. Compete.", color = White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.1.sp)
                         }
-                        Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF29466B)) {
+                        Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF26364D)) {
                             Text("NEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
                         }
                     }
                     Text("Start with Ludo: traditional rules, colourful tokens and computer opponents. Nearby multiplayer is the next game milestone; online play will follow.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
-                    Button(onClick = { showLudo = true }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
+                    Button(onClick = { showLudo = true }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)) {
                         Text("PLAY LUDO", fontWeight = FontWeight.Black)
                     }
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
-                sectionPositions["nearby"] = it.positionInParent().y.toInt()
-            }, shape = RoundedCornerShape(26.dp), color = Panel) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("NEARBY CONNECTION", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                    Text("Bring nearby people closer.", color = White, fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        "NeaRer advertises your chosen name while searching for other NeaRer phones. Nearby Connections can use Bluetooth and nearby Wi-Fi automatically; Wi-Fi Direct is an additional discovery path. Hotspot and mobile data are not required.",
-                        color = Muted, fontSize = 14.sp, lineHeight = 21.sp
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(onClick = onFindNearby, modifier = Modifier.weight(1f).height(52.dp), enabled = !scanning,
-                            shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
-                            Text(if (scanning) "Searching…" else "Find people", fontWeight = FontWeight.Bold)
+            }
+            
+
+            AnimatedVisibility(visible = activeSection == "nearby", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Color(0xFF26364D),
+                shape = RoundedCornerShape(22.dp),
+                border = BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.65f)),
+                shadowElevation = 8.dp
+            ) {
+                Column(
+                    Modifier.fillMaxWidth()
+                        .background(Brush.linearGradient(listOf(Color(0xFF101A2B), Color(0xFF101A2B), Color(0xFF173C3A))))
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("YOUR NEARER IDENTITY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.25.sp)
+                            Text("The name people recognise", color = White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
                         }
-                        if (scanning) {
-                            Button(onClick = onStopSearch, modifier = Modifier.height(52.dp), shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35445B), contentColor = White)) { Text("Stop") }
+                        Surface(shape = CircleShape, color = Color(0xFF203858), border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f)), modifier = Modifier.size(38.dp)) {
+                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                Text(nameDraft.trim().firstOrNull()?.uppercase() ?: "N", color = Gold, fontSize = 17.sp, fontWeight = FontWeight.Black)
+                            }
                         }
                     }
-                    Text(status, color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    OutlinedTextField(
+                        value = nameDraft,
+                        onValueChange = { nameDraft = it.take(24); nameSaveFeedback = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("Choose your nearby name", color = Muted) },
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    Button(
+                        onClick = { nameSaveFeedback = if (onSaveDisplayName(nameDraft)) "Your name is saved." else "Could not save your name." },
+                        enabled = nameDraft.trim().isNotBlank(),
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                    ) { Text("SAVE MY NAME", fontWeight = FontWeight.Black, letterSpacing = 0.4.sp) }
+                    Text(nameSaveFeedback ?: "Your chosen name is shown to people discovering nearby phones.", color = Color(0xFFA8B6C9), fontSize = 10.sp, lineHeight = 15.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().background(Color(0xFF203858), RoundedCornerShape(12.dp)).padding(horizontal = 11.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("HIDE MY NAME IN DISCOVERY", color = White, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                            Text(
+                                "Shows “Nearby NeaRer user” instead. Your persistent device ID remains visible, so this is not full anonymity.",
+                                color = Color(0xFFA8B6C9), fontSize = 9.sp, lineHeight = 13.sp
+                            )
+                        }
+                        androidx.compose.material3.Switch(
+                            checked = anonymousDiscovery,
+                            onCheckedChange = onAnonymousDiscoveryChange
+                        )
+                    }
+                    if (blockedPeerIds.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Text("BLOCKED NEARBY DEVICES", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                            blockedPeerIds.forEach { blockedId ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().background(Color(0xFF203858), RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Device " + blockedId.take(8) + "…", color = White, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                                    TextButton(onClick = { onUnblockPeer(blockedId) }) {
+                                        Text("UNBLOCK", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
-            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(18.dp), color = if (chatReady) Color(0xFF173C3A) else Panel) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().onGloballyPositioned {
+                    sectionPositions["nearby"] = it.positionInParent().y.toInt()
+                },
+                shape = RoundedCornerShape(27.dp),
+                color = Color(0xFF26364D),
+                border = BorderStroke(1.dp, Color(0xFF203858)),
+                shadowElevation = 14.dp
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("CONNECTION STATUS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Column(Modifier.weight(1f)) {
+                            Text("NEARBY RADAR", color = Gold, fontSize = 10.sp,
+                                fontWeight = FontWeight.Black, letterSpacing = 1.7.sp)
+                            Text(when {
+                                isConnecting -> "Connecting to a nearby phone"
+                                receiveMode && incomingTransferName != null -> "Receiving a nearby file"
+                                receiveMode && chatReady -> "Ready for an incoming file"
+                                receiveMode && scanning -> "Looking for a nearby sender"
+                                receiveMode -> "Ready to receive nearby files"
+                                chatReady -> "Connected to ${connectedDeviceName ?: "nearby phone"}"
+                                scanning -> "Searching around you"
+                                else -> "Your people are closer"
+                            },
+                                color = White, fontSize = 22.sp, fontWeight = FontWeight.Black)
+                        }
+                        Surface(color = when {
+                            isConnecting -> Color(0xFF203858)
+                            scanning -> Color(0xFF174B43)
+                            else -> Color(0xFF26364D)
+                        }, shape = RoundedCornerShape(50)) {
+                            Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Surface(shape = CircleShape, color = when {
+                                    isConnecting -> Gold
+                                    scanning -> Color(0xFF69E0C0)
+                                    else -> Color(0xFF2563EB)
+                                }, modifier = Modifier.size(6.dp).alpha(if (isConnecting || scanning) pulse else 1f)) {}
+                                Text(when {
+                                    isConnecting -> "CONNECTING"
+                                    chatReady -> "CONNECTED"
+                                    scanning -> "LIVE SCAN"
+                                    else -> "READY"
+                                },
+                                    color = White, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+                    androidx.compose.foundation.layout.Box(
+                        Modifier.fillMaxWidth().height(156.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Transparent,
+                            border = BorderStroke(1.dp, Color(0xFF203858).copy(alpha = if (scanning) pulse else 0.55f)),
+                            modifier = Modifier.size(148.dp).alpha(if (scanning) pulse else 0.75f)
+                        ) {}
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Transparent,
+                            border = BorderStroke(1.dp, Color(0xFF2563EB)),
+                            modifier = Modifier.size(112.dp).rotate(if (scanning) orbitRotation else 0f)
+                        ) {
+                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.TopCenter) {
+                                Surface(shape = CircleShape, color = Gold, modifier = Modifier.size(8.dp)) {}
+                            }
+                        }
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Transparent,
+                            border = BorderStroke(1.dp, Color(0xFF2563EB)),
+                            modifier = Modifier.size(76.dp)
+                        ) {}
+                        Surface(
+                            shape = CircleShape,
+                            color = BrandBlue,
+                            border = BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.65f)),
+                            modifier = Modifier.size(58.dp),
+                            shadowElevation = 16.dp
+                        ) {
+                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    displayName.trim().firstOrNull()?.uppercase() ?: "N",
+                                    color = White,
+                                    fontSize = 25.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                        }
+                        if (hybridPeers.isNotEmpty()) {
+                            Text("${hybridPeers.size} FOUND", color = Gold, fontSize = 9.sp,
+                                fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.BottomCenter))
+                        }
+                    }
+                    Text(
+                        when {
+                            receiveMode && incomingTransferName != null -> "A file is arriving from a nearby phone. Keep both phones close until the transfer finishes."
+                            receiveMode && chatReady -> "You're connected to ${connectedDeviceName ?: "a nearby phone"}. Ask the sender to select a file and send it to you."
+                            receiveMode && scanning -> "NeaRer is listening for nearby senders. Keep this screen open; when someone connects, you can receive their file here."
+                            receiveMode -> "Ready to find someone sending you a file. Start discovery and keep NeaRer open. No mobile data is used."
+                            scanning -> "NeaRer is looking for nearby phones. Keep the app open on both devices."
+                            chatReady -> "Connected to ${connectedDeviceName ?: "a nearby phone"}. You can return Home to choose files to send."
+                            else -> "Discover nearby NeaRer users without mobile data. Bluetooth and nearby Wi-Fi work together; hotspot is not required."
+                        },
+                        color = Color(0xFFA8B6C9), fontSize = 12.sp, lineHeight = 18.sp
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = onFindNearby,
+                            modifier = Modifier.weight(1f).height(49.dp),
+                            enabled = !scanning && !chatReady && !isConnecting,
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight, disabledContainerColor = Color(0xFF2563EB), disabledContentColor = Color(0xFFA8B6C9))
+                        ) {
+                            Text(
+                                when {
+                                    isConnecting -> "CONNECTING…"
+                                    scanning && receiveMode -> "LISTENING FOR SENDER…"
+                                    scanning -> "SEARCHING…"
+                                    receiveMode && chatReady -> "READY TO RECEIVE"
+                                    chatReady -> "CONNECTED"
+                                    receiveMode -> "FIND A SENDER"
+                                    else -> "START DISCOVERING"
+                                },
+                                fontSize = 10.sp, fontWeight = FontWeight.Black
+                            )
+                        }
+                        if (scanning) {
+                            Button(
+                                onClick = onStopSearch,
+                                modifier = Modifier.height(49.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB), contentColor = White)
+                            ) { Text("STOP", fontWeight = FontWeight.Bold) }
+                        }
+                    }
+                    Surface(color = Color(0xFF2563EB), shape = RoundedCornerShape(12.dp)) {
+                        Text(status, color = Muted, fontSize = 10.sp, lineHeight = 15.sp,
+                            modifier = Modifier.fillMaxWidth().padding(11.dp))
+                    }
+                    if (incomingRequesterName != null) {
+                        Surface(
+                            color = Color(0xFF26364D),
+                            shape = RoundedCornerShape(15.dp),
+                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.65f))
+                        ) {
+                            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("CONNECTION REQUEST", color = Gold, fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                                Text("$incomingRequesterName wants to connect.", color = White,
+                                    fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("Compare the verification code on both phones before accepting.",
+                                    color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = onAccept, modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)) {
+                                        Text("ACCEPT", fontWeight = FontWeight.Black)
+                                    }
+                                    Button(onClick = onReject, modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) {
+                                        Text("DECLINE", fontWeight = FontWeight.Black)
+                                    }
+                                    Button(onClick = onBlockIncoming, modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) {
+                                        Text("BLOCK", fontWeight = FontWeight.Black)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            val connectionStage = when {
+                chatReady -> 2
+                pairingCode != null || incomingRequesterName != null || connectingAddress != null -> 1
+                else -> 0
+            }
+            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(18.dp), color = if (chatReady) Color(0xFF173C3A) else Panel) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("CONNECTION STATUS", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Spacer(modifier = Modifier.weight(1f))
                         if (chatReady) Surface(shape = RoundedCornerShape(30.dp), color = Color(0xFF174B43), modifier = Modifier.alpha(pulse)) {
                             Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text("✓", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Black)
-                                Text("CONNECTED", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Text("✓", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                                Text("CONNECTED", color = AccentBlue, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        listOf("DISCOVER", "VERIFY", "READY").forEachIndexed { index, label ->
+                            val reached = index <= connectionStage
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().height(4.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (reached) (if (chatReady) Color(0xFF69E0C0) else Gold) else Color(0xFF2563EB)
+                                ) {}
+                                Text(label, color = if (reached) White else Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                     Text(connectedDeviceName?.let { "You are connected to $it" } ?: connectionMessage, color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     Text(connectionMessage, color = Muted, fontSize = 11.sp)
-                    Text(approvalMessage, color = if (chatReady) Mint else Muted, fontSize = 12.sp)
+                    Text(approvalMessage, color = if (chatReady) AccentBlue else Muted, fontSize = 12.sp)
                     pairingCode?.let { code ->
                         Text("PAIRING CODE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        Text(code, color = Mint, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
+                        Text(code, color = AccentBlue, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
                         Text("Check that both phones show the same code before approving.", color = Muted, fontSize = 10.sp)
                     }
                     if (connectedDeviceName != null || connectingAddress != null) {
@@ -2030,35 +5455,207 @@ private fun NeaRerHome(
                 }
             }
 
+            }
+            
+
+
+            AnimatedVisibility(visible = activeSection == "chats", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("MESSAGES", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp)
+                    Text("Your conversations", color = White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("Private chats and shared files, kept close.", color = Muted, fontSize = 12.sp)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Surface(
+                        modifier = Modifier.weight(1f).clickable {
+                            navigateToSection("nearby")
+                            onFindNearby()
+                            navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                        },
+                        color = Color(0xFF2563EB), shape = RoundedCornerShape(15.dp),
+                        border = BorderStroke(1.dp, Color(0xFF2563EB))
+                    ) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("+", color = Gold, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                            Column(Modifier.padding(start = 9.dp)) {
+                                Text("New chat", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Find someone nearby", color = Color(0xFFA8B6C9), fontSize = 9.sp)
+                            }
+                        }
+                    }
+                    Surface(
+                        modifier = Modifier.weight(1f).clickable { showChatAttachmentMenu = true },
+                        color = Color(0xFF26364D), shape = RoundedCornerShape(15.dp),
+                        border = BorderStroke(1.dp, Color(0xFF2563EB))
+                    ) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("↥", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                            Column(Modifier.padding(start = 9.dp)) {
+                                Text("Share a file", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Photos, videos & more", color = Muted, fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
+
+            if (conversationRows.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFF1A2940),
+                    shape = RoundedCornerShape(19.dp),
+                    border = BorderStroke(1.dp, Color(0xFF26364D))
+                ) {
+                    Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("YOUR CONVERSATIONS", color = Color(0xFFF6F8FC), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                            Spacer(Modifier.weight(1f))
+                            Text("${conversationRows.size} ${if (conversationRows.size == 1) "person" else "people"}", color = Color(0xFFA8B6C9), fontSize = 10.sp)
+                        }
+                        conversationRows.forEach { (peerId, peerName, latest) ->
+                            val selected = selectedConversationId == peerId
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    selectedConversationId = peerId
+                                    onSelectConversation(peerId, peerName)
+                                },
+                                color = if (selected) Color(0xFF203858) else Panel,
+                                shape = RoundedCornerShape(13.dp),
+                                border = BorderStroke(1.dp, if (selected) Gold.copy(alpha = 0.75f) else Color(0xFF26364D))
+                            ) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(shape = CircleShape, color = if (selected) Color(0xFFA8B6C9) else Color(0xFF203858), modifier = Modifier.size(36.dp)) {
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                            Text(peerName.firstOrNull()?.uppercase() ?: "N", color = Color(0xFF2563EB), fontWeight = FontWeight.Black)
+                                        }
+                                    }
+                                    Column(Modifier.weight(1f).padding(start = 9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(peerName, color = Color(0xFFF6F8FC), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(latest?.body ?: "No messages yet", color = Color(0xFFA8B6C9), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text(latest?.let { formatMessageTime(it.timestamp) } ?: "", color = Color(0xFFA8B6C9), fontSize = 9.sp)
+                                        Text(latest?.delivery ?: "CHAT", color = if (latest?.outgoing == true && latest.delivery == "Delivered") Color(0xFF69E0C0) else Color(0xFFFFD12D), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
                 sectionPositions["chats"] = it.positionInParent().y.toInt()
-            }, shape = RoundedCornerShape(20.dp), color = Panel) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            }, shape = RoundedCornerShape(23.dp), color = Color(0xFF1A2940),
+                border = BorderStroke(1.dp, if (chatReady) Color(0xFF69E0C0) else Color(0xFF26364D)),
+                shadowElevation = 9.dp) {
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                        .background(Brush.linearGradient(
+                            listOf(
+                                if (chatReady) Color(0xFF203858) else Color(0xFF1A2940),
+                                Color(0xFF1A2940),
+                                Color(0xFF203858)
+                            )
+                        ))
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("PRIVATE CHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        Spacer(modifier = Modifier.weight(1f))
-                        Text(if (chatReady) "LOCAL LINK" else "NOT CONNECTED", color = Muted, fontSize = 9.sp)
+                        Surface(
+                            shape = CircleShape,
+                            color = if (chatReady) Color(0xFF174B43) else Color(0xFF26364D),
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                Text(if (chatReady) (connectedDeviceName ?: "N").take(1).uppercase() else "✉",
+                                    color = White, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                        Column(Modifier.weight(1f).padding(start = 11.dp)) {
+                            Text(connectedDeviceName ?: "PRIVATE CHAT", color = Color(0xFFF6F8FC), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text(if (chatReady) "DIRECT • OFFLINE • PRIVATE" else "OFFLINE • CHAT IS READY",
+                                color = if (chatReady) Color(0xFF69E0C0) else Color(0xFFA8B6C9),
+                                fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 0.7.sp)
+                        }
+                        Surface(
+                            color = if (chatReady) Color(0xFF203858) else Color(0xFF203858),
+                            shape = RoundedCornerShape(50)
+                        ) {
+                            Text(if (chatReady) "ACTIVE" else "OFFLINE",
+                                color = if (chatReady) Color(0xFF69E0C0) else Color(0xFFA8B6C9),
+                                fontSize = 8.sp, fontWeight = FontWeight.Black,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp))
+                        }
                     }
-                    if (chatReady) {
-                        if (messages.isEmpty()) {
-                            Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            color = Panel,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFF26364D))
+                        ) {
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
+                                Text("DIRECT LINK", color = Muted, fontSize = 7.sp, fontWeight = FontWeight.Black)
+                                Text(
+                                    if (!chatReady) "Waiting" else if (usingNearbyConnections) "Bluetooth + Wi-Fi" else "Wi-Fi Direct",
+                                    color = Color(0xFFF6F8FC), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1
+                                )
+                            }
+                        }
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            color = if (meshRelayEnabled) Color(0xFF173C3A) else Panel,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, if (meshRelayEnabled) Color(0xFF69E0C0) else Color(0xFF26364D))
+                        ) {
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
+                                Text("MESH RELAY", color = Muted, fontSize = 7.sp, fontWeight = FontWeight.Black)
+                                Text(if (meshRelayEnabled) "ON • Communities" else "OFF", color = Color(0xFFF6F8FC), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                        }
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            color = Color(0xFF203858),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFFFFD12D))
+                        ) {
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
+                                Text("NEARER FLASH", color = Muted, fontSize = 7.sp, fontWeight = FontWeight.Black)
+                                Text("Experimental", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                        }
+                    }
+                    Text(
+                        "Chat stays available offline. Messages are saved here first, then sent through an available direct route; private mesh and Flash delivery remain experimental until verified.",
+                        color = Muted, fontSize = 9.sp, lineHeight = 13.sp
+                    )
+
+                        if (visibleMessages.isEmpty()) {
+                            Text("Your private conversation starts here. Write now; messages stay safely on this phone until a route is available.", color = Color(0xFF26364D), fontSize = 12.sp, lineHeight = 18.sp)
                         } else {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().height(150.dp).verticalScroll(messageScrollState),
+                            LazyColumn(
+                                state = messageListState,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 360.dp),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
-                                messages.forEach { message ->
+                                itemsIndexed(visibleMessages, key = { _, message -> message.id }) { _, message ->
                                     Column(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
                                     ) {
                                         Surface(
-                                            color = if (message.outgoing) Color(0xFF24564F) else Color(0xFF26364D),
-                                            shape = RoundedCornerShape(14.dp)
+                                            color = if (message.outgoing) Color(0xFF2563EB) else Panel,
+                                            shape = if (message.outgoing) RoundedCornerShape(17.dp, 17.dp, 5.dp, 17.dp)
+                                                else RoundedCornerShape(17.dp, 17.dp, 17.dp, 5.dp),
+                                            modifier = Modifier.fillMaxWidth(0.86f).animateContentSize()
                                         ) {
-                                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
-                                                Text(message.body, color = White, fontSize = 14.sp)
-                                                Text(if (message.outgoing) message.delivery else "Received", color = Mint, fontSize = 9.sp)
+                                            Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
+                                                Text(message.body, color = if (message.outgoing) White else Color(0xFFF6F8FC), fontSize = 14.sp)
+                                                Text(
+                                                    "${if (message.outgoing) message.delivery else "Received"}  •  ${formatMessageTime(message.timestamp)}",
+                                                    color = if (message.outgoing) Color(0xFF26364D) else Color(0xFFA8B6C9),
+                                                    fontSize = 9.sp, fontWeight = FontWeight.Medium
+                                                )
                                             }
                                         }
                                     }
@@ -2066,45 +5663,90 @@ private fun NeaRerHome(
                             }
                         }
                         Text(chatNotice, color = Muted, fontSize = 10.sp)
+                        if (visibleMessages.any { it.outgoing && it.delivery == "Queued" }) {
+                            Button(onClick = onSendQueuedMessages, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(13.dp), colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)) {
+                                Text("SEND SAVED MESSAGES TO ${connectedDeviceName ?: "CONNECTED PHONE"}", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                        if (pendingChatFilesCount > 0) {
+                            Button(onClick = onSendQueuedFiles, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(13.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF203858), contentColor = White)) {
+                                Text("SEND $pendingChatFilesCount PREPARED ATTACHMENT(S)", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                        if (receivedFiles.isNotEmpty() || sentFiles.isNotEmpty()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("RECENT FILES", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                Spacer(Modifier.weight(1f))
+                                TextButton(onClick = { showReceivedHistory = true }) {
+                                    Text("SHARED FILES", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                }
+                            }
+                        }
                         receivedFiles.take(3).forEach { fileItem ->
                             Button(
                                 onClick = { onOpenFile(fileItem) },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26364D), contentColor = White)
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB), contentColor = White)
                             ) { Text("Open ${fileItem.displayName}", maxLines = 1) }
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Surface(
+                                modifier = Modifier.size(48.dp).clickable { showChatAttachmentMenu = true },
+                                shape = CircleShape,
+                                color = Color(0xFF2563EB),
+                                border = BorderStroke(1.dp, Color(0xFF2563EB))
+                            ) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text("+", color = Gold, fontSize = 27.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
                             OutlinedTextField(
                                 value = draft,
-                                onValueChange = { draft = it.take(2000) },
+                                onValueChange = { draft = it.take(2000); localChatPrefs.edit().putString("chat_draft", draft).apply() },
                                 modifier = Modifier.weight(1f),
-                                placeholder = { Text("Write a message…", color = Muted) },
-                                shape = RoundedCornerShape(14.dp),
-                                singleLine = true
+                                placeholder = { Text("Write a message…", color = Muted, fontSize = 12.sp) },
+                                shape = RoundedCornerShape(22.dp),
+                                minLines = 1,
+                                maxLines = 4
                             )
-                            Button(
-                                onClick = { onSendMessage(draft); draft = "" },
-                                enabled = draft.isNotBlank(),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
-                            ) { Text("Send", fontWeight = FontWeight.Bold) }
+                            Surface(
+                                modifier = Modifier.size(48.dp).clickable(enabled = draft.isNotBlank()) {
+                                    val submittedDraft = draft.trim()
+                                    onSendMessage(submittedDraft) { saved ->
+                                        if (saved && draft.trim() == submittedDraft) {
+                                            draft = ""
+                                            localChatPrefs.edit().remove("chat_draft").apply()
+                                        }
+                                    }
+                                },
+                                shape = CircleShape,
+                                color = if (draft.isNotBlank()) BrandBlue else Color(0xFF2563EB)
+                            ) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text("➤", color = White, fontSize = 19.sp, fontWeight = FontWeight.Black)
+                                }
+                            }
                         }
                         incomingTransferName?.let { incomingName ->
                             Text("Receiving $incomingName", color = Muted, fontSize = 11.sp)
                             LinearProgressIndicator(
                                 progress = { incomingProgress },
                                 modifier = Modifier.fillMaxWidth(),
-                                color = Mint,
-                                trackColor = Color(0xFF26364D)
+                                color = AccentBlue,
+                                trackColor = Color(0xFF2563EB)
                             )
                         }
                         if (outgoingTransferId != null) {
                             LinearProgressIndicator(
                                 progress = { outgoingProgress },
                                 modifier = Modifier.fillMaxWidth(),
-                                color = Mint,
-                                trackColor = Color(0xFF26364D)
+                                color = AccentBlue,
+                                trackColor = Color(0xFF2563EB)
                             )
                             Button(
                                 onClick = onCancelTransfer,
@@ -2113,19 +5755,16 @@ private fun NeaRerHome(
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)
                             ) { Text("Cancel file transfer") }
                         }
-                        Button(
-                            onClick = { filePicker.launch(arrayOf("*/*")) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26364D), contentColor = White)
-                        ) { Text("Share a photo or file") }
-                        Text(if (usingNearbyConnections) "Nearby Connections • no fixed file-size cap" else "Wi-Fi Direct • no fixed file-size cap", color = Muted, fontSize = 10.sp)
-                    } else {
-                        Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
-                    }
+                        Text("＋ Share photos, videos and files from the attachment button.", color = Muted, fontSize = 9.sp)
+                        Text(if (usingNearbyConnections) "DIRECT NEARBY LINK  •  NO MOBILE DATA" else "WI-FI DIRECT LINK  •  NO MOBILE DATA", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.35.sp)
+
                 }
             }
 
+            }
+            
+
+            AnimatedVisibility(visible = activeSection == "community", enter = slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(260)) + fadeIn(tween(220)), exit = slideOutVertically(targetOffsetY = { -it / 24 }, animationSpec = tween(170)) + fadeOut(tween(150))) {
             androidx.compose.foundation.layout.Box(
                 Modifier.fillMaxWidth().onGloballyPositioned {
                     sectionPositions["community"] = it.positionInParent().y.toInt()
@@ -2137,14 +5776,18 @@ private fun NeaRerHome(
                     onRejectGameInvite, onGameMove, onGameChat, onEndGame)
             }
 
+            }
+            
+
+            if (activeSection == "community") {
             if (incomingRequesterName != null) {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("NEARER CONNECTION REQUEST", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("NEARER CONNECTION REQUEST", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Text("$incomingRequesterName wants to connect with you.", color = White, fontWeight = FontWeight.SemiBold)
-                        Text("Compare the six-digit code on both phones. Accept only if it matches and you recognise this person.", color = Muted, fontSize = 12.sp)
+                        Text("Compare the verification code on both phones. Accept only if it matches and you recognise this person.", color = Muted, fontSize = 12.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Button(onClick = onAccept, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Accept") }
+                            Button(onClick = onAccept, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)) { Text("Accept") }
                             Button(onClick = onReject, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Reject") }
                         }
                     }
@@ -2154,7 +5797,7 @@ private fun NeaRerHome(
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
                 Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("COMMUNITY MESH RELAY", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("COMMUNITY MESH RELAY", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Text("Allow your phone to pass group text messages to other connected NeaRer phones.", color = White, fontSize = 12.sp, lineHeight = 17.sp)
                         Text("Optional • up to 4 hops • off by default. Relaying phones can read message text, so use only with trusted groups.", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
                     }
@@ -2162,42 +5805,60 @@ private fun NeaRerHome(
                 }
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("NEARBY DEVICES", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
-                Spacer(modifier = Modifier.weight(1f))
-                Text("${devices.size} found", color = Mint, fontSize = 11.sp)
             }
 
-            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Color(0xFF14243A)) {
+            if (activeSection == "nearby") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("NEARBY DEVICES", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+                    Text(
+                        if (scanning) "Discovery is active" else "Ready when you are",
+                        color = if (scanning) Color(0xFF69E0C0) else Muted,
+                        fontSize = 9.sp
+                    )
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                Text("${devices.size} found", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                if (!scanning && connectedDeviceName == null) {
+                    TextButton(
+                        onClick = onFindNearby,
+                        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp)
+                    ) {
+                        Text("SEARCH AGAIN", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+            }
+
+            Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Panel, border = BorderStroke(1.dp, NeaRerPalette.Border)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("PEOPLE AROUND YOU", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("PEOPLE AROUND YOU", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text(if (hybridPeers.isEmpty()) "Your nearby circle" else "${hybridPeers.size} active nearby", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     if (scanning && hybridPeers.isEmpty()) {
                         androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(142.dp), contentAlignment = Alignment.Center) {
                             Surface(
                                 shape = CircleShape,
                                 color = Color.Transparent,
-                                border = BorderStroke(1.dp, Color(0xFF31516F)),
+                                border = BorderStroke(1.dp, Color(0xFF2563EB)),
                                 modifier = Modifier.size(136.dp).alpha(pulse)
                             ) {}
                             Surface(
                                 shape = CircleShape,
                                 color = Color.Transparent,
-                                border = BorderStroke(1.dp, Color(0xFF315B7C)),
+                                border = BorderStroke(1.dp, Color(0xFF203858)),
                                 modifier = Modifier.size(104.dp).rotate(orbitRotation)
                             ) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.TopCenter) {
-                                    Surface(shape = CircleShape, color = Mint, modifier = Modifier.size(10.dp)) {}
+                                    Surface(shape = CircleShape, color = AccentBlue, modifier = Modifier.size(10.dp)) {}
                                 }
                             }
                             Surface(
                                 shape = CircleShape,
                                 color = Color.Transparent,
-                                border = BorderStroke(1.dp, Color(0xFF31516F)),
+                                border = BorderStroke(1.dp, Color(0xFF2563EB)),
                                 modifier = Modifier.size(72.dp)
                             ) {}
                             Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(54.dp)) {
-                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("N", color = White, fontSize = 24.sp, fontWeight = FontWeight.Black) }
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer network N", modifier = Modifier.size(44.dp)) }
                             }
                         }
                         Text("Looking for NeaRer people…", color = White, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.CenterHorizontally))
@@ -2207,18 +5868,18 @@ private fun NeaRerHome(
                             hybridPeers.entries.take(5).forEachIndexed { index, entry ->
                                 val drift by searchMotion.animateFloat(0f, if (index % 2 == 0) 5f else -5f, infiniteRepeatable(tween(1300 + index * 170), RepeatMode.Reverse), label = "bubble-$index")
                                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                                    Surface(shape = CircleShape, color = Color(0xFF244B70), modifier = Modifier.size(54.dp).rotate(drift)) {
+                                    Surface(shape = CircleShape, color = Muted, modifier = Modifier.size(54.dp).rotate(drift)) {
                                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(entry.value.take(1).uppercase(), color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
                                     }
                                     Text(entry.value, color = White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                    Text("Active now", color = Mint, fontSize = 9.sp)
+                                    Text("Active now", color = AccentBlue, fontSize = 9.sp)
                                 }
                             }
                         }
                     } else {
                         androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(78.dp), contentAlignment = Alignment.Center) {
-                            Surface(shape = CircleShape, color = Color(0xFF1C3554), modifier = Modifier.size(68.dp)) {
-                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("•••", color = Mint, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+                            Surface(shape = CircleShape, color = Muted, modifier = Modifier.size(68.dp)) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("•••", color = AccentBlue, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
                             }
                         }
                         Text("Nearby names will appear here as phones are discovered.", color = Muted, fontSize = 11.sp)
@@ -2228,7 +5889,7 @@ private fun NeaRerHome(
                             Text("RECENTLY SEEN ON THIS PHONE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                             recentlySeenPeers.values.sortedByDescending { it.lastSeenAt }.take(5).forEach { person ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Surface(shape = CircleShape, color = Color(0xFF344256), modifier = Modifier.size(32.dp)) {
+                                    Surface(shape = CircleShape, color = Muted, modifier = Modifier.size(32.dp)) {
                                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(person.name.take(1).uppercase(), color = Muted, fontWeight = FontWeight.Bold) }
                                     }
                                     Column(Modifier.weight(1f).padding(start = 9.dp)) {
@@ -2245,18 +5906,61 @@ private fun NeaRerHome(
 
             if (hybridPeers.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("CONNECT WITH A NEARBY PERSON", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("CONNECT WITH A NEARBY PERSON", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     hybridPeers.forEach { (id, name) ->
-                        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Color(0xFF1C3453)) {
-                            Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Surface(shape = CircleShape, color = BrandBlue, modifier = Modifier.size(38.dp)) {
-                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(name.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold) }
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(19.dp),
+                            color = Muted,
+                            border = BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.72f)),
+                            shadowElevation = 5.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .background(Brush.linearGradient(listOf(Color(0xFF203858), Color(0xFF26364D))))
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = BrandBlue,
+                                    border = BorderStroke(1.dp, Color(0xFFA8B6C9).copy(alpha = 0.7f)),
+                                    modifier = Modifier.size(44.dp),
+                                    shadowElevation = 5.dp
+                                ) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                        Text(name.trim().firstOrNull()?.uppercase() ?: "N", color = White, fontSize = 17.sp, fontWeight = FontWeight.Black)
+                                    }
                                 }
-                                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                                    Text(name, color = White, fontWeight = FontWeight.SemiBold)
-                                    Text("Active now • Nearby Connections", color = Mint, fontSize = 10.sp)
+                                Column(modifier = Modifier.weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(name, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        Surface(shape = CircleShape, color = Color(0xFF69E0C0), modifier = Modifier.size(6.dp)) {}
+                                        Text("ACTIVE NOW", color = Color(0xFF69E0C0), fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp)
+                                    }
                                 }
-                                Button(onClick = { onHybridConnect(id) }, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Connect") }
+                                Button(
+                                    onClick = { onHybridConnect(id) },
+                                    enabled = !chatReady && !isConnecting,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Gold,
+                                        contentColor = Midnight,
+                                        disabledContainerColor = Color(0xFF2563EB),
+                                        disabledContentColor = Color(0xFFA8B6C9)
+                                    )
+                                ) {
+                                    Text(
+                                        when {
+                                            connectedNearbyEndpoint == id -> "CONNECTED"
+                                            chatReady -> "IN ANOTHER CHAT"
+                                            isConnecting -> "CONNECTING…"
+                                            else -> "CONNECT"
+                                        },
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                }
                             }
                         }
                     }
@@ -2264,10 +5968,72 @@ private fun NeaRerHome(
             }
 
             if (devices.isEmpty()) {
-                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
-                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("No devices listed yet", color = White, fontWeight = FontWeight.SemiBold)
-                        Text("Scan with another Android phone nearby. For NeaRer chat, both phones will need the app installed.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                Surface(
+                    modifier = Modifier.fillMaxWidth().animateContentSize(),
+                    shape = RoundedCornerShape(19.dp),
+                    color = Color(0xFF1A2940),
+                    border = BorderStroke(1.dp, Color(0xFF26364D))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = NeaRerPalette.RaisedPanel,
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text(if (scanning) "⌕" else "◎", color = Color(0xFF2563EB), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    if (scanning) "Searching for nearby people" else "Ready when you are",
+                                    color = Color(0xFFF6F8FC),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    if (scanning) "NeaRer is actively looking. Keep this screen open on both phones."
+                                    else "Tap Find people nearby to start live discovery. No mobile data is needed.",
+                                    color = Muted,
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp
+                                )
+                            }
+                            Surface(shape = CircleShape, color = if (scanning) Color(0xFF203858) else Color(0xFF203858)) {
+                                Text(
+                                    if (scanning) "LIVE" else "STANDBY",
+                                    color = if (scanning) Color(0xFF174B43) else Color(0xFF26364D),
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Black,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                        androidx.compose.material3.HorizontalDivider(color = Color(0xFF26364D))
+                        listOf(
+                            "Bluetooth and Wi-Fi should be switched on",
+                            "Both phones need NeaRer for chat and app sharing",
+                            "Keep NeaRer open and accept the connection on the other phone"
+                        ).forEachIndexed { index, tip ->
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("0${index + 1}", color = Color(0xFF2563EB), fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                Text(tip, color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
+                            }
+                        }
+                        if (!scanning && connectedDeviceName == null) {
+                            Button(
+                                onClick = onFindNearby,
+                                modifier = Modifier.fillMaxWidth().height(43.dp),
+                                shape = RoundedCornerShape(13.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB), contentColor = White)
+                            ) {
+                                Text("START NEARBY SEARCH", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
                     }
                 }
             } else {
@@ -2280,18 +6046,19 @@ private fun NeaRerHome(
                             ) {
                                 Surface(shape = CircleShape, color = Color(0xFF244B4A), modifier = Modifier.size(38.dp)) {
                                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                        Text("N", color = Mint, fontWeight = FontWeight.Bold)
+                                        Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer network N", modifier = Modifier.size(28.dp))
                                     }
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                                    Text("Nearby Wi-Fi Direct phone", color = White, fontWeight = FontWeight.SemiBold)
-                                    Text(deviceStatus(device.status), color = Muted, fontSize = 11.sp)
+                                    Text(device.deviceName.takeIf { it.isNotBlank() } ?: "Nearby Wi-Fi Direct phone",
+                                        color = White, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    Text("Wi-Fi Direct • " + deviceStatus(device.status), color = Muted, fontSize = 11.sp)
                                 }
                                 Button(
                                     onClick = { onConnect(device) },
                                     enabled = connectingAddress == null && connectedDeviceName == null && device.status != WifiP2pDevice.UNAVAILABLE,
                                     shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
+                                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Midnight)
                                 ) {
                                     Text(if (connectingAddress == device.deviceAddress) "Requesting…" else "Connect", fontWeight = FontWeight.Bold)
                                 }
@@ -2301,8 +6068,75 @@ private fun NeaRerHome(
                 }
             }
 
+            if (activeSection == "more") {
+                NeaRerMoreHub(
+                    onOpenGames = { navigateToSection("games") },
+                    onOpenFlash = { navigateToSection("flash") }
+                )
+            }
+
             Spacer(modifier = Modifier.weight(1f, fill = false))
+            }
+
             Text("NEARER  •  DIRECT DEVICE DISCOVERY", color = Muted, fontSize = 10.sp, letterSpacing = 1.sp)
+            }
+            Surface(
+                color = Panel,
+                modifier = Modifier.fillMaxWidth(),
+                shadowElevation = 12.dp,
+                border = BorderStroke(1.dp, NeaRerPalette.Border)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .background(Panel)
+                        .padding(horizontal = 6.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    NeaRerNavigation.destinations.forEach { item ->
+                        val selected = activeSection == item.id || (item.id == "more" && activeSection in setOf("games", "flash"))
+                        Surface(
+                            modifier = Modifier.weight(1f).heightIn(min = 58.dp).animateContentSize()
+                                .semantics(mergeDescendants = true) {
+                                    contentDescription = item.label + " tab"
+                                    this.selected = selected
+                                    role = Role.Tab
+                                }.clickable {
+                                    navigateToSection(item.id)
+                                    navigationScope.launch { pageScrollState.animateScrollTo(0) }
+                                },
+                            color = if (selected) NeaRerPalette.RaisedPanel else Color.Transparent,
+                            shape = RoundedCornerShape(15.dp),
+                            border = if (selected) BorderStroke(1.dp, Gold.copy(alpha = 0.78f)) else null
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Text(
+                                    item.glyph,
+                                    color = if (selected) Gold else Muted,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    item.label,
+                                    color = if (selected) White else Muted,
+                                    fontSize = 9.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    maxLines = 1
+                                )
+                                androidx.compose.foundation.layout.Box(
+                                    Modifier.padding(top = 1.dp).width(if (selected) 17.dp else 4.dp)
+                                        .height(2.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (selected) Gold else Color.Transparent)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -2325,143 +6159,228 @@ private fun CommunityHub(
     var broadcastText by remember { mutableStateOf("") }
     var gameText by remember { mutableStateOf("") }
     val selected = groups.firstOrNull { it.code == selectedCode }
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("NEARER COMMUNITY", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Text("Groups and nearby broadcasts", color = White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it.take(32) }, Modifier.weight(1f), singleLine = true, label = { Text("Group name") })
-                Button(onClick = { onCreate(name); name = "" }, enabled = name.isNotBlank()) { Text("Create") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6) }, Modifier.weight(1f), singleLine = true, label = { Text("6-digit code") })
-                Button(onClick = { onJoin(code); code = "" }, enabled = code.length == 6) { Text("Join") }
-            }
-            groups.forEach { group ->
-                Button(onClick = { onSelect(group.code) }, Modifier.fillMaxWidth()) {
-                    Text(group.name + " • " + group.code + " • " + group.memberIds.size + " members")
-                }
-            }
-            if (selected != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("GROUP CHAT • " + selected.name, color = Mint, fontWeight = FontWeight.Bold)
-                        Text("Share code " + selected.code + " with connected members.", color = Muted, fontSize = 10.sp)
+    val ink = Color(0xFFF6F8FC)
+    val mutedInk = Color(0xFFA8B6C9)
+    val line = Color(0xFF26364D)
+    val blue = Color(0xFF2563EB)
+    val teal = Color(0xFF69E0C0)
+    val ivory = Color(0xFF1A2940)
+    val fieldColors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+        focusedTextColor = ink, unfocusedTextColor = ink, cursorColor = blue,
+        focusedBorderColor = blue, unfocusedBorderColor = Color(0xFF26364D),
+        focusedLabelColor = blue, unfocusedLabelColor = mutedInk
+    )
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = ivory) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("YOUR PEOPLE, YOUR SPACE", color = teal, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
+                        Text("Communities", color = ink, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                        Text("Create a group for the people you want to stay close to.", color = mutedInk, fontSize = 12.sp, lineHeight = 17.sp)
                     }
-                    val context = androidx.compose.ui.platform.LocalContext.current
-                    Button(onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("NeaRer community code", selected.code))
-                    }) { Text("Copy code") }
-                }
-                val isOwner = selected.ownerId == localMemberId && localMemberId.isNotBlank()
-                val canModerate = isOwner || localMemberId in selected.moderators
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(selected.memberIds.size.toString() + " known members", color = Muted, fontSize = 11.sp)
-                    Spacer(Modifier.weight(1f))
-                    Button(onClick = { onLeaveGroup(selected.code) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)) { Text("Leave") }
-                }
-                Text("MEMBERS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                selected.memberIds.forEach { (memberId, memberName) ->
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            Text(memberName, color = White, fontSize = 12.sp)
-                            Text(when {
-                                memberId == selected.ownerId -> "Owner"
-                                memberId in selected.moderators -> "Moderator"
-                                else -> "Member"
-                            }, color = Muted, fontSize = 10.sp)
-                        }
-                        if (isOwner && memberId != selected.ownerId && memberId !in selected.moderators) {
-                            TextButton(onClick = { onPromoteMember(selected.code, memberId) }) { Text("Make moderator") }
-                        }
-                        if (isOwner && memberId != selected.ownerId) {
-                            TextButton(onClick = { onTransferOwnership(selected.code, memberId) }) { Text("Make owner") }
-                        }
-                        if (canModerate && memberId != selected.ownerId && (isOwner || memberId !in selected.moderators)) {
-                            TextButton(onClick = { onRemoveMember(selected.code, memberId) }) { Text("Remove") }
+                    Surface(shape = CircleShape, color = Color(0xFF203858), modifier = Modifier.size(48.dp)) {
+                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                            Text("N", color = teal, fontSize = 21.sp, fontWeight = FontWeight.Black)
                         }
                     }
                 }
-                if (canModerate && selected.pendingMembers.isNotEmpty()) {
-                    Text("JOIN REQUESTS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    selected.pendingMembers.forEach { (memberId, memberName) ->
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(memberName, color = White, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { onApproveMember(selected.code, memberId) }) { Text("Approve") }
-                            TextButton(onClick = { onRemoveMember(selected.code, memberId) }) { Text("Decline") }
+                Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), color = White, border = BorderStroke(1.dp, line)) {
+                    Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Text("START A COMMUNITY", color = ink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = name, onValueChange = { name = it.take(32) }, modifier = Modifier.weight(1f),
+                                singleLine = true, label = { Text("Community name") }, colors = fieldColors,
+                                shape = RoundedCornerShape(13.dp)
+                            )
+                            Button(
+                                onClick = { onCreate(name); name = "" }, enabled = name.isNotBlank(),
+                                colors = ButtonDefaults.buttonColors(containerColor = blue, contentColor = White),
+                                shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 13.dp, vertical = 12.dp)
+                            ) { Text("Create", fontWeight = FontWeight.Bold) }
+                        }
+                        Text("HAVE AN INVITE CODE?", color = mutedInk, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.7.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = code, onValueChange = { code = it.filter(Char::isDigit).take(6) },
+                                modifier = Modifier.weight(1f), singleLine = true, label = { Text("6-digit code") },
+                                colors = fieldColors, shape = RoundedCornerShape(13.dp)
+                            )
+                            Button(
+                                onClick = { onJoin(code); code = "" }, enabled = code.length == 6,
+                                colors = ButtonDefaults.buttonColors(containerColor = teal, contentColor = White),
+                                shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                            ) { Text("Join", fontWeight = FontWeight.Bold) }
                         }
                     }
                 }
-                Column(Modifier.fillMaxWidth().height(130.dp).verticalScroll(rememberScrollState())) {
-                    messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { Text(it.sender + ": " + it.body, color = White, fontSize = 12.sp) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(groupText, { groupText = it.take(1500) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Group message") })
-                    Button(onClick = { onGroupMessage(groupText); groupText = "" }, enabled = groupText.isNotBlank()) { Text("Send") }
-                }
-            }
-            Text("BROADCAST TO CONNECTED PEOPLE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(broadcastText, { broadcastText = it.take(500) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Announcement") })
-                Button(onClick = { onBroadcast(broadcastText); broadcastText = "" }, enabled = broadcastText.isNotBlank()) { Text("Send") }
-            }
-            Text("Only currently connected NeaRer devices receive these broadcasts.", color = Muted, fontSize = 10.sp)
-            Text(notice, color = Mint, fontSize = 10.sp)
-        }
-    }
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF172A42)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Text("PLAY TOGETHER", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Text("Tic-tac-toe • live nearby match", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Text("Invite a connected player. Board moves and game chat use the offline link.", color = Muted, fontSize = 11.sp)
-            if (invite != null) {
-                Text(invite.sender + " invited you to play.", color = White)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onAccept, Modifier.weight(1f)) { Text("Accept") }
-                    Button(onClick = onReject, Modifier.weight(1f)) { Text("Decline") }
-                }
-            }
-            if (game == null) Button(onClick = onInviteGame, Modifier.fillMaxWidth()) { Text("Challenge nearby players") }
-            else {
-                Text("You are " + game.localSymbol + " • " + game.opponent, color = White, fontWeight = FontWeight.SemiBold)
-                Text(game.status, color = Mint)
-                repeat(3) { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        repeat(3) { col ->
-                            val index = row * 3 + col
-                            val cell = game.board[index].takeIf { it != '.' }?.toString() ?: ""
-                            Button(onClick = { onMove(index) }, Modifier.weight(1f).height(54.dp),
-                                enabled = cell.isEmpty() && game.turn == game.localSymbol && game.status != "Waiting for a player" && !game.status.endsWith("wins") && game.status != "Draw") {
-                                Text(cell.ifBlank { " " }, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("YOUR COMMUNITIES  ·  ${groups.size}", color = mutedInk, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                if (groups.isEmpty()) {
+                    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Color(0xFF203858)) {
+                        Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Your community list is ready", color = ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Create a group or enter a six-digit invite code. Groups appear here when they are saved on this phone.", color = mutedInk, fontSize = 11.sp, lineHeight = 16.sp)
+                        }
+                    }
+                } else {
+                    groups.forEachIndexed { index, group ->
+                        val chosen = group.code == selectedCode
+                        Surface(
+                            Modifier.fillMaxWidth().clickable { onSelect(group.code) },
+                            shape = RoundedCornerShape(15.dp),
+                            color = if (chosen) Color(0xFF203858) else White,
+                            border = BorderStroke(1.dp, if (chosen) blue.copy(alpha = 0.55f) else line)
+                        ) {
+                            Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                                Surface(shape = RoundedCornerShape(12.dp), color = if (index % 2 == 0) Color(0xFF203858) else Color(0xFF1A2940), modifier = Modifier.size(42.dp)) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                        Text(group.name.firstOrNull()?.uppercase() ?: "N", color = if (index % 2 == 0) teal else Color(0xFFFFD12D), fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(group.name, color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${group.memberIds.size} members  ·  Code ${group.code}", color = mutedInk, fontSize = 10.sp)
+                                }
+                                Text(if (chosen) "OPEN" else "VIEW", color = blue, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
                             }
                         }
                     }
                 }
-                Text("IN-GAME CHAT", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                Column(Modifier.fillMaxWidth().height(80.dp).verticalScroll(rememberScrollState())) {
-                    gameChat.takeLast(20).forEach { Text(it, color = White, fontSize = 11.sp) }
+                Text(notice, color = if (notice.contains("error", true) || notice.contains("failed", true)) Color(0xFF633D4B) else mutedInk, fontSize = 11.sp, lineHeight = 15.sp)
+            }
+        }
+        if (selected != null) {
+            Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = White, border = BorderStroke(1.dp, line)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("COMMUNITY SPACE", color = teal, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                            Text(selected.name, color = ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                            Text("Invite code ${selected.code}", color = mutedInk, fontSize = 10.sp)
+                        }
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        TextButton(onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("NeaRer community code", selected.code))
+                        }) { Text("COPY CODE", color = blue, fontWeight = FontWeight.Bold) }
+                    }
+                    val isOwner = selected.ownerId == localMemberId && localMemberId.isNotBlank()
+                    val canModerate = isOwner || localMemberId in selected.moderators
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${selected.memberIds.size} known members", color = mutedInk, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { onLeaveGroup(selected.code) }) { Text("Leave group", color = Color(0xFF633D4B)) }
+                    }
+                    Text("MEMBERS", color = ink, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                    selected.memberIds.forEach { (memberId, memberName) ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Surface(shape = CircleShape, color = Color(0xFF203858), modifier = Modifier.size(34.dp)) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text(memberName.firstOrNull()?.uppercase() ?: "?", color = blue, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(memberName, color = ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text(when { memberId == selected.ownerId -> "Owner"; memberId in selected.moderators -> "Moderator"; else -> "Member" }, color = mutedInk, fontSize = 10.sp)
+                            }
+                            if (isOwner && memberId != selected.ownerId && memberId !in selected.moderators) TextButton(onClick = { onPromoteMember(selected.code, memberId) }) { Text("MOD", color = blue, fontSize = 9.sp) }
+                            if (isOwner && memberId != selected.ownerId) TextButton(onClick = { onTransferOwnership(selected.code, memberId) }) { Text("OWNER", color = teal, fontSize = 9.sp) }
+                            if (canModerate && memberId != selected.ownerId && (isOwner || memberId !in selected.moderators)) TextButton(onClick = { onRemoveMember(selected.code, memberId) }) { Text("REMOVE", color = Color(0xFF633D4B), fontSize = 9.sp) }
+                        }
+                    }
+                    if (canModerate && selected.pendingMembers.isNotEmpty()) {
+                        Text("JOIN REQUESTS", color = ink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        selected.pendingMembers.forEach { (memberId, memberName) ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(memberName, color = ink, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { onApproveMember(selected.code, memberId) }) { Text("Approve", color = teal) }
+                                TextButton(onClick = { onRemoveMember(selected.code, memberId) }) { Text("Decline", color = Color(0xFF633D4B)) }
+                            }
+                        }
+                    }
+                    Text("CONVERSATION", color = ink, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                    Column(Modifier.fillMaxWidth().heightIn(min = 72.dp, max = 190.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        val thread = messages.filter { it.groupCode == selected.code }.takeLast(40)
+                        if (thread.isEmpty()) Text("No messages yet. Start the conversation with your group.", color = mutedInk, fontSize = 11.sp)
+                        thread.forEach { message ->
+                            Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = Color(0xFF1A2940)) {
+                                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(message.sender, color = blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text(message.body, color = ink, fontSize = 12.sp, lineHeight = 17.sp)
+                                }
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(groupText, { groupText = it.take(1500) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Write a group message") }, colors = fieldColors)
+                        Button(onClick = { onGroupMessage(groupText); groupText = "" }, enabled = groupText.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = blue)) { Text("Send") }
+                    }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(gameText, { gameText = it.take(300) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Chat while playing") })
-                    Button(onClick = { onGameChat(gameText); gameText = "" }, enabled = gameText.isNotBlank()) { Text("Send") }
+            }
+        }
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFFF6F8FC)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("NEARBY BROADCAST", color = NeaRerPalette.Mint, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                Text("Share an announcement", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Only currently connected NeaRer devices receive broadcasts. This does not send through the internet.", color = Color(0xFFA8B6C9), fontSize = 11.sp, lineHeight = 16.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        broadcastText, { broadcastText = it.take(500) }, Modifier.weight(1f), singleLine = true,
+                        placeholder = { Text("Write an announcement") },
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = White, unfocusedTextColor = White, cursorColor = Color(0xFF69E0C0),
+                            focusedBorderColor = Color(0xFF69E0C0), unfocusedBorderColor = Color(0xFFA8B6C9),
+                            focusedPlaceholderColor = Color(0xFFA8B6C9), unfocusedPlaceholderColor = Color(0xFFA8B6C9)
+                        )
+                    )
+                    Button(onClick = { onBroadcast(broadcastText); broadcastText = "" }, enabled = broadcastText.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF69E0C0), contentColor = White)) { Text("Send") }
                 }
-                Button(onClick = onEndGame, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B))) { Text("End match") }
+            }
+        }
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color(0xFF1A2940)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("PLAY TOGETHER", color = Color(0xFFFFD12D), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                Text("A little friendly competition", color = ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Invite a connected person to a live nearby Tic-tac-toe match.", color = mutedInk, fontSize = 11.sp, lineHeight = 16.sp)
+                if (invite != null) {
+                    Text(invite.sender + " invited you to play.", color = ink, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onAccept, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = teal)) { Text("Accept") }
+                        Button(onClick = onReject, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B))) { Text("Decline") }
+                    }
+                } else {
+                    Button(onClick = onInviteGame, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD12D), contentColor = White)) { Text("Invite nearby player") }
+                }
+                if (game != null) {
+                    Text("MATCH IN PROGRESS", color = Color(0xFFFFD12D), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                    Text("Game state: " + game.toString(), color = ink, fontSize = 11.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        (0..8).forEach { cell ->
+                            TextButton(onClick = { onMove(cell) }) { Text((cell + 1).toString(), color = blue) }
+                        }
+                    }
+                    gameChat.takeLast(8).forEach { Text(it, color = ink, fontSize = 11.sp) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(gameText, { gameText = it.take(300) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Game chat") }, colors = fieldColors)
+                        Button(onClick = { onGameChat(gameText); gameText = "" }, enabled = gameText.isNotBlank()) { Text("Send") }
+                    }
+                    TextButton(onClick = onEndGame) { Text("End match", color = Color(0xFF633D4B)) }
+                }
             }
         }
     }
 }
-private fun ticTacToeWinner(board: String): String? {
-    val lines = listOf("012", "345", "678", "036", "147", "258", "048", "246")
-    for (line in lines) {
-        val a = board[line[0].digitToInt()]
-        val b = board[line[1].digitToInt()]
-        val c = board[line[2].digitToInt()]
-        if (a != '.' && a == b && b == c) return a.toString()
+
+private fun formatTransferSize(bytes: Long): String {
+    val safeBytes = bytes.coerceAtLeast(0L)
+    return when {
+        safeBytes < 1024L -> "$safeBytes B"
+        safeBytes < 1024L * 1024L -> String.format(java.util.Locale.ROOT, "%.1f KB", safeBytes / 1024.0)
+        safeBytes < 1024L * 1024L * 1024L -> String.format(java.util.Locale.ROOT, "%.1f MB", safeBytes / (1024.0 * 1024.0))
+        else -> String.format(java.util.Locale.ROOT, "%.2f GB", safeBytes / (1024.0 * 1024.0 * 1024.0))
     }
-    return null
 }
+
 private data class CommunityGroup(
     val code: String,
     val name: String,
@@ -2474,27 +6393,30 @@ private data class CommunityGroup(
 private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
 private data class GameInvite(val matchId: String, val sender: String)
 private data class TicTacToeMatch(val matchId: String, val board: String, val turn: String, val localSymbol: String, val status: String, val opponent: String)
-
 private data class NearbyPerson(val name: String, val lastSeenAt: Long)
-
-private fun seenAgo(timestamp: Long): String {
-    val seconds = (System.currentTimeMillis() - timestamp).coerceAtLeast(0L) / 1000L
-    return when {
-        seconds < 60 -> "Seen just now"
-        seconds < 3600 -> "Seen ${seconds / 60}m ago"
-        seconds < 86400 -> "Seen ${seconds / 3600}h ago"
-        else -> "Seen ${seconds / 86400}d ago"
-    }
-}
 
 private data class ChatMessage(
     val id: String,
     val body: String,
     val outgoing: Boolean,
-    val delivery: String
+    val delivery: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val conversationId: String = "legacy",
+    val conversationName: String = "Nearby contact"
 )
 
+private fun formatMessageTime(timestamp: Long): String =
+    android.text.format.DateFormat.format("h:mm a", timestamp).toString()
+
+private fun transferProgressDetail(transferred: Long, total: Long, speed: Long): String {
+    val progress = if (total > 0L) "${formatTransferSize(transferred)} / ${formatTransferSize(total)}" else formatTransferSize(transferred)
+    val rate = if (speed > 0L) " • ${formatTransferSize(speed)}/s" else ""
+    return progress + rate
+}
+
 private data class ReceivedFile(val displayName: String, val file: File)
+private data class SentFile(val name: String, val uri: String, val sizeBytes: Long, val timestamp: Long)
+private data class ShareableApp(val label: String, val packageName: String, val apkPaths: List<String>, val icon: androidx.compose.ui.graphics.ImageBitmap)
 
 private data class IncomingTransfer(
     val name: String,
@@ -2515,4 +6437,258 @@ private fun deviceStatus(status: Int): String = when (status) {
     WifiP2pDevice.FAILED -> "Connection failed"
     WifiP2pDevice.UNAVAILABLE -> "Temporarily unavailable"
     else -> "Nearby Wi-Fi Direct device"
+}
+
+
+@androidx.compose.runtime.Composable
+private fun NeaRerWelcomeFlow(
+    initialName: String,
+    onSaveName: (String) -> Boolean,
+    onComplete: (String, Map<Int, String>) -> Unit
+) {
+    var name by remember { mutableStateOf(initialName) }
+    var step by remember { mutableStateOf(0) }
+    var revealFinished by remember { mutableStateOf(false) }
+    val answers = remember { androidx.compose.runtime.mutableStateMapOf<Int, String>() }
+    val multi = remember { androidx.compose.runtime.mutableStateListOf<String>() }
+    val questions = remember {
+        listOf(
+            "What kind of energy do you bring?",
+            "What brings you to NeaRer?",
+            "What do you enjoy most?",
+            "What matters most when you connect?",
+            "Your perfect free day looks like…",
+            "How should NeaRer welcome you?"
+        )
+    }
+    val options = remember {
+        listOf(
+            listOf("Electric", "Positive", "Creative", "Chill", "A little of everything"),
+            listOf("Sharing files", "Chatting with people", "Discovering communities", "Playing games", "Everything"),
+            listOf("Music & movies", "Games & entertainment", "Technology & gadgets", "Learning new things", "Creating things", "Sports & adventures"),
+            listOf("Speed", "Privacy", "Beautiful design", "Works without internet", "Everything working smoothly"),
+            listOf("Explore somewhere new", "Relax and recharge", "Spend time with friends", "Learn or create", "Games and movies", "Something unpredictable"),
+            listOf("Hey, good to see you!", "Ready for something exciting?", "Your space is ready.", "Let's connect!")
+        )
+    }
+    val captions = listOf(
+        "No labels needed. Pick the vibe that feels most like you.",
+        "We'll put the things you care about closer to the front.",
+        "Choose as many as you like. This is your space.",
+        "Tell us what makes a connection feel right.",
+        "Just for fun. There are no wrong answers.",
+        "A little personality makes every visit warmer."
+    )
+    val transition = rememberInfiniteTransition(label = "welcome-orbit")
+    val orbit by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(9000, easing = FastOutSlowInEasing)), label = "welcome-orbit-angle")
+    val glow by transition.animateFloat(0.35f, 0.85f, infiniteRepeatable(tween(1600), RepeatMode.Reverse), label = "welcome-glow")
+    val currentIndex = step - 1
+    val isMulti = currentIndex == 2
+    val selected = if (isMulti) multi.isNotEmpty() else answers.containsKey(currentIndex)
+    val progress = (step.coerceIn(0, 6) / 6f)
+    androidx.compose.foundation.layout.Box(
+        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(NeaRerPalette.Midnight, NeaRerPalette.Panel, NeaRerPalette.Midnight)))
+    ) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer", modifier = Modifier.size(38.dp))
+                Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Nea", color = NeaRerPalette.TextPrimary, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("R", color = Color(0xFFFFD12D), fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("er", color = NeaRerPalette.TextPrimary, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                    Text("NEARER YOU. NEARER EVERYTHING.", color = Color(0xFFA8B6C9), fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                }
+                if (step in 1..6) Text("SKIP", color = NeaRerPalette.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { step = 7 })
+            }
+            if (step <= 6) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    repeat(6) { index ->
+                        androidx.compose.foundation.layout.Box(
+                            Modifier.weight(1f).height(5.dp).clip(CircleShape)
+                                .background(if (index < step) NeaRerPalette.AccentBlue else NeaRerPalette.RaisedPanel)
+                        )
+                    }
+                }
+            }
+            if (step == 0) {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(210.dp), contentAlignment = Alignment.Center) {
+                    repeat(3) { index ->
+                        Surface(
+                            modifier = Modifier.size((116 + index * 42).dp).rotate(orbit * (if (index % 2 == 0) 1f else -1f)).alpha(glow),
+                            shape = CircleShape, color = Color.Transparent,
+                            border = BorderStroke(1.dp, if (index == 1) Color(0xFF2563EB) else Color(0xFFA8B6C9))
+                        ) {}
+                    }
+                    Surface(shape = RoundedCornerShape(30.dp), color = NeaRerPalette.Panel, shadowElevation = 12.dp, border = BorderStroke(1.dp, NeaRerPalette.Border),
+                        modifier = Modifier.size(100.dp)) {
+                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                            Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer connection symbol", modifier = Modifier.size(82.dp))
+                        }
+                    }
+                }
+                Text("A little about you.\nA lot closer to everything.", color = NeaRerPalette.TextPrimary, fontSize = 28.sp, lineHeight = 34.sp,
+                    fontWeight = FontWeight.ExtraBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text("Let's make your NeaRer space feel like yours from the very first hello.", color = Color(0xFFA8B6C9), fontSize = 14.sp,
+                    lineHeight = 21.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("WHAT SHOULD WE CALL YOU?", color = Color(0xFFA8B6C9), fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.2.sp)
+                    OutlinedTextField(value = name, onValueChange = { name = it.take(24) }, modifier = Modifier.fillMaxWidth(),
+                        singleLine = true, placeholder = { Text("Your name") }, shape = RoundedCornerShape(18.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(color = NeaRerPalette.TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold))
+                    Text("This is the name nearby people can see. You can change it later.", color = Color(0xFFA8B6C9), fontSize = 11.sp)
+                }
+                Button(onClick = { if (name.trim().isNotBlank() && onSaveName(name.trim())) step = 1 },
+                    enabled = name.trim().isNotBlank(), modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB), contentColor = White)) {
+                    Text("LET'S MAKE IT YOURS  →", fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+                }
+            } else if (step in 1..6) {
+                Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), color = Panel,
+                    border = BorderStroke(1.dp, NeaRerPalette.Border), shadowElevation = 8.dp) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text("GET TO KNOW YOU  •  0\${step}/06".replace("0\${step}", step.toString().padStart(2, '0')),
+                            color = Color(0xFF2563EB), fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                        Text(questions[currentIndex], color = NeaRerPalette.TextPrimary, fontSize = 25.sp, lineHeight = 31.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(captions[currentIndex], color = Color(0xFFA8B6C9), fontSize = 12.sp, lineHeight = 18.sp)
+                        options[currentIndex].forEachIndexed { index, option ->
+                            val active = if (isMulti) option in multi else answers[currentIndex] == option
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    if (isMulti) { if (active) multi.remove(option) else multi.add(option) }
+                                    else answers[currentIndex] = option
+                                },
+                                shape = RoundedCornerShape(17.dp),
+                                color = if (active) NeaRerPalette.RaisedPanel else NeaRerPalette.Panel,
+                                border = BorderStroke(if (active) 2.dp else 1.dp, if (active) NeaRerPalette.AccentBlue else NeaRerPalette.Border)
+                            ) {
+                                Row(Modifier.padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(shape = RoundedCornerShape(12.dp), color = if (active) NeaRerPalette.AccentBlue else NeaRerPalette.RaisedPanel,
+                                        modifier = Modifier.size(38.dp)) {
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                            Text(listOf("✦", "◎", "⌁", "◈", "☼", "♡")[index % 6],
+                                                color = if (active) White else Color(0xFFA8B6C9), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    Text(option, color = Color(0xFFF6F8FC), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.weight(1f).padding(start = 12.dp))
+                                    if (active) Text("✓", color = NeaRerPalette.Gold, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                }
+                            }
+                        }
+                        if (isMulti) Text("Select all that feel like you.", color = Color(0xFFA8B6C9), fontSize = 10.sp)
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    androidx.compose.material3.OutlinedButton(onClick = { step = (step - 1).coerceAtLeast(0) },
+                        modifier = Modifier.weight(1f).height(54.dp), shape = RoundedCornerShape(17.dp)) {
+                        Text("←  BACK", color = Color(0xFF2563EB), fontWeight = FontWeight.Bold)
+                    }
+                    Button(onClick = {
+                        if (isMulti) answers[currentIndex] = multi.joinToString(", ")
+                        step++
+                    }, enabled = selected, modifier = Modifier.weight(1.25f).height(54.dp), shape = RoundedCornerShape(17.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB), contentColor = White)) {
+                        Text(if (step == 6) "FINISH  ✦" else "CONTINUE  →", fontWeight = FontWeight.Black)
+                    }
+                }
+            } else {
+                LaunchedEffect(Unit) {
+                    kotlinx.coroutines.delay(2300)
+                    revealFinished = true
+                    onComplete(name.trim().ifBlank { initialName.ifBlank { "NeaRer User" } }, answers.toMap())
+                }
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    repeat(4) { index ->
+                        Surface(Modifier.size((92 + index * 48).dp).rotate(orbit * (if (index % 2 == 0) 1f else -1f)).alpha(glow),
+                            shape = CircleShape, color = Color.Transparent,
+                            border = BorderStroke(1.dp, if (index % 2 == 0) Color(0xFF2563EB) else Color(0xFFFFD12D))) {}
+                    }
+                    Surface(Modifier.size(110.dp), shape = RoundedCornerShape(32.dp), color = NeaRerPalette.Panel, shadowElevation = 12.dp, border = BorderStroke(1.dp, NeaRerPalette.Border)) {
+                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                            Image(painter = painterResource(R.drawable.ic_nearer), contentDescription = "NeaRer", modifier = Modifier.size(92.dp))
+                        }
+                    }
+                }
+                Text("Here's something\njust for you.", color = NeaRerPalette.TextPrimary, fontSize = 31.sp, lineHeight = 36.sp,
+                    fontWeight = FontWeight.ExtraBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text("Bringing your NeaRer space together, ${name.trim().ifBlank { "friend" }}…", color = Color(0xFFA8B6C9),
+                    fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                LinearProgressIndicator(Modifier.fillMaxWidth(), color = Color(0xFF2563EB), trackColor = NeaRerPalette.RaisedPanel)
+            }
+            Text("PRIVATE BY DESIGN  •  NO ACCOUNT REQUIRED", color = Color(0xFFA8B6C9), fontSize = 9.sp,
+                fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun HomeFeatureTile(
+    title: String,
+    subtitle: String,
+    symbol: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.height(118.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(22.dp),
+        color = Color(0xFF1A2940),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.30f)),
+        shadowElevation = 5.dp
+    ) {
+        Column(
+            Modifier.fillMaxSize()
+                .background(Brush.linearGradient(listOf(Panel, accent.copy(alpha = 0.075f))))
+                .padding(13.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    modifier = Modifier.size(43.dp),
+                    shape = RoundedCornerShape(15.dp),
+                    color = accent.copy(alpha = 0.13f),
+                    border = BorderStroke(1.dp, accent.copy(alpha = 0.25f))
+                ) {
+                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                        Text(symbol, color = accent, fontSize = 24.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                Text("OPEN  ›", color = accent, fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 0.55.sp)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, color = Color(0xFFF6F8FC), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, color = Color(0xFFA8B6C9), fontSize = 9.sp, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+
+private fun ticTacToeWinner(board: String): String? {
+    val lines = listOf(intArrayOf(0,1,2), intArrayOf(3,4,5), intArrayOf(6,7,8), intArrayOf(0,3,6), intArrayOf(1,4,7), intArrayOf(2,5,8), intArrayOf(0,4,8), intArrayOf(2,4,6))
+    return lines.firstNotNullOfOrNull { line ->
+        val mark = board.getOrNull(line[0]) ?: '.'
+        if (mark != '.' && line.all { board.getOrNull(it) == mark }) mark.toString() else null
+    }
+}
+
+private fun seenAgo(timestamp: Long): String {
+    val seconds = ((System.currentTimeMillis() - timestamp) / 1000L).coerceAtLeast(0L)
+    return when {
+        seconds < 60 -> "just now"
+        seconds < 3600 -> "${seconds / 60}m ago"
+        seconds < 86400 -> "${seconds / 3600}h ago"
+        else -> "${seconds / 86400}d ago"
+    }
 }

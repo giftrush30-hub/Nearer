@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NeaRer" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">@color/nearer_royal_gold</item>
+        <item name="android:windowBackground">@color/nearer_ivory</item>
+        <item name="android:statusBarColor">@color/nearer_graphite</item>
+        <item name="android:navigationBarColor">@color/nearer_graphite</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <!-- Preserve the branded launch moment; all app screens retain the original navy palette. -->
+        <item name="android:windowSplashScreenBackground">#101A2B</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/nearer_splash_avd</item>
+        <item name="android:windowSplashScreenAnimationDuration">800</item>
+    </style>
+</resources>

@@ -1,9 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-feature android:name="android.hardware.wifi.direct" android:required="false" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
@@ -18,10 +30,10 @@
     <application
         android:allowBackup="false"
         android:label="NeaRer"
-        android:icon="@drawable/ic_nearer"
-        android:roundIcon="@drawable/ic_nearer"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/Theme.NeaRer">
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"
@@ -31,6 +43,21 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/nearer_file_paths" />
         </provider>
+        <receiver
+            android:name=".PackageInstallStatusReceiver"
+            android:exported="false" />
+        <service
+            android:name=".NearbyTransferForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+        <service
+            android:name=".NeaRerFlashScreeningService"
+            android:permission="android.permission.BIND_SCREENING_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
         <activity
             android:name=".MainActivity"
             android:exported="true">

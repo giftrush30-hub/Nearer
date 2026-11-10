@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Original NeaRer first-creation palette. Legacy resource names are retained for compatibility. -->
+    <color name="nearer_icon_background">#101A2B</color>
+    <color name="nearer_brand_blue">#2563EB</color>
+    <color name="nearer_surface_blue">#203858</color>
+    <color name="nearer_electric_blue">#2563EB</color>
+    <color name="nearer_royal_gold">#FFD12D</color>
+    <color name="nearer_electric_cyan">#69E0C0</color>
+    <color name="nearer_text_white">#F6F8FC</color>
+    <color name="nearer_graphite">#101A2B</color>
+    <color name="nearer_ivory">#1A2940</color>
+    <color name="nearer_ink">#F6F8FC</color>
+    <color name="nearer_muted">#A8B6C9</color>
+    <color name="nearer_teal">#69E0C0</color>
+    <color name="nearer_terracotta">#2563EB</color>
+</resources>
