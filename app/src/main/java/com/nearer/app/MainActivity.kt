@@ -3445,7 +3445,7 @@ private fun NeaRerHome(
             CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
                 activeGame, gameChatMessages, (usingNearbyConnections || chatReady), onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
-                onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame)
+                onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame, profileAvatarId)
 
             }
 
@@ -3729,7 +3729,8 @@ private fun CommunityHub(
     invite: GameInvite?, game: LudoNetworkMatch?, gameChat: List<String>, nearbyConnected: Boolean,
     onCreate: (String) -> Unit, onJoin: (String) -> Unit, onSelect: (String) -> Unit,
     onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
-    onAccept: () -> Unit, onReject: () -> Unit, onMove: (String, Int) -> Unit, onGameChat: (String) -> Unit, onGameRematch: () -> Unit, onEndGame: () -> Unit
+    onAccept: () -> Unit, onReject: () -> Unit, onMove: (String, Int) -> Unit, onGameChat: (String) -> Unit, onGameRematch: () -> Unit, onEndGame: () -> Unit,
+    localAvatarId: String
 ) {
     var name by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
@@ -3772,7 +3773,7 @@ private fun CommunityHub(
             Text(notice, color = BlueAccent, fontSize = 10.sp)
         }
     }
-    LudoGamePanel(game, invite, nearbyConnected, onInviteGame, onAccept, onReject, onMove, gameChat, onGameChat, onGameRematch, onEndGame)
+    LudoGamePanel(game, invite, nearbyConnected, onInviteGame, onAccept, onReject, onMove, gameChat, onGameChat, onGameRematch, onEndGame, localAvatarId)
 }
 private data class CommunityGroup(val code: String, val name: String, val members: List<String>)
 private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
