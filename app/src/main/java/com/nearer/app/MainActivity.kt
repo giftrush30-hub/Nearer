@@ -284,11 +284,19 @@ class MainActivity : ComponentActivity() {
             }
             override fun onMeshRouteUpdated(destinationPeerId: String, nextHopPeerId: String, hopCount: Int) {
                 runOnUiThread {
+                    val localId = nearbyTransport?.localIdentityId().orEmpty()
+                    if (localId.isNotBlank() && hopCount in 1..MeshRelayPolicy.MAX_HOPS) {
+                        meshRouteTable.learn(
+                            destinationPeerId, nextHopPeerId, hopCount - 1,
+                            nextHopPeerId, localId, System.currentTimeMillis()
+                        )
+                    }
                     statusMessage = "Authenticated route hint received for $destinationPeerId via $nextHopPeerId ($hopCount hop(s))."
                 }
             }
             override fun onFound(id: String, name: String, stableId: String) { runOnUiThread { hybridPeers[id] = name; if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId) } }
             override fun onLost(id: String, stableId: String) { runOnUiThread {
+                meshRouteTable.removeNextHop(stableId)
                 val name = hybridPeers.remove(id)
                 if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
             } }
