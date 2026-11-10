@@ -26,7 +26,8 @@ internal fun MeshStatusPanel(
     routeCount: Int?,
     queuedPacketCount: Int?,
     relayEnabled: Boolean,
-    identityFingerprint: String?
+    identityFingerprint: String?,
+    identityError: String?
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -64,9 +65,11 @@ internal fun MeshStatusPanel(
                 fontSize = 11.sp,
                 lineHeight = 17.sp
             )
-            identityFingerprint?.let {
+            if (identityFingerprint != null) {
                 Text("THIS DEVICE KEY", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                Text(it, color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Text(identityFingerprint, color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            } else {
+                Text("Local identity key unavailable${identityError?.let { ": $it" }.orEmpty()}", color = Gold, fontSize = 10.sp)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 MeshStage("01", "Keys", false)
