@@ -40,9 +40,14 @@ internal class TransferSpeedMeter(
 
         samples.addLast(Sample(now, transferredBytes))
         prune(now)
-        // Keep callback bursts bounded even if the platform reports progress
-        // unusually frequently within one rolling window.
-        while (samples.size > MAX_SAMPLES) samples.removeFirst()
+        // Keep callback bursts bounded without losing the oldest sample in the
+        // rolling window. That anchor preserves the full measurement interval;
+        // intermediate samples are expendable when the cap is reached.
+        while (samples.size > MAX_SAMPLES) {
+            val oldest = samples.removeFirst()
+            if (samples.isNotEmpty()) samples.removeFirst()
+            samples.addFirst(oldest)
+        }
         updatePeakWindowRate(now)
         return snapshotAt(now)
     }
