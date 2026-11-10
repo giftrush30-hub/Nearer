@@ -11,7 +11,7 @@ import org.junit.Test
 
 class StreamCopyTest {
     @Test fun defaultBufferIsLargeEnoughForEfficientLocalStreaming() {
-        assertEquals(256 * 1024, StreamCopy.DEFAULT_BUFFER_SIZE)
+        assertEquals(512 * 1024, StreamCopy.DEFAULT_BUFFER_SIZE)
         val source = ByteArray(700 * 1024) { (it % 239).toByte() }
         val output = ByteArrayOutputStream()
         val result = StreamCopy.copy(ByteArrayInputStream(source), output, source.size.toLong())
@@ -60,7 +60,7 @@ class StreamCopyTest {
     }
 
     @Test fun stoppedTransferIsReportedAsIncomplete() {
-        val source = ByteArray(2 * 1024 * 1024) { (it % 251).toByte() }
+        val source = ByteArray(10 * 1024 * 1024) { (it % 251).toByte() }
         val output = ByteArrayOutputStream()
         var keepGoing = true
 
@@ -73,7 +73,8 @@ class StreamCopyTest {
         )
 
         assertFalse(result.complete)
-        assertTrue(result.bytesCopied in 1 until source.size.toLong())
+        assertEquals(StreamCopy.PROGRESS_INTERVAL_BYTES, result.bytesCopied)
+        assertTrue(result.bytesCopied < source.size.toLong())
         assertEquals(result.bytesCopied.toInt(), output.size())
     }
 
