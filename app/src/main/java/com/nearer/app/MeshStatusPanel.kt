@@ -86,7 +86,7 @@ private fun MeshMetric(label: String, value: String, modifier: Modifier) {
 @Composable
 private fun MeshStage(number: String, label: String, ready: Boolean) {
     Surface(
-        modifier = Modifier.weightless(),
+        modifier = Modifier,
         shape = RoundedCornerShape(9.dp),
         color = if (ready) Color(0xFF174B43) else Color(0xFF26344A)
     ) {
@@ -97,4 +97,3 @@ private fun MeshStage(number: String, label: String, ready: Boolean) {
     }
 }
 
-private fun Modifier.weightless(): Modifier = this
