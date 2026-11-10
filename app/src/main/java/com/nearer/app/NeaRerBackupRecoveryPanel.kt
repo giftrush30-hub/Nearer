@@ -280,7 +280,11 @@ internal fun NeaRerBackupRecoveryPanel(chatDatabase: NeaRerChatHistoryDatabase) 
                                     notice = "Restore complete. NeaRer is restarting to reload your recovered data."
                                     (context as? Activity)?.recreate()
                                 },
-                                { failure -> notice = "Restore did not complete: ${failure.message ?: "unexpected error"}" }
+                                { failure ->
+                                    val recoveryNotes = failure.suppressed.joinToString(" ") { it.message.orEmpty() }
+                                    notice = "Restore did not complete: ${failure.message ?: "unexpected error"}" +
+                                        if (recoveryNotes.isBlank()) "" else " Recovery note: $recoveryNotes"
+                                }
                             )
                         }
                     }
