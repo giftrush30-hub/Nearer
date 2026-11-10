@@ -20,7 +20,16 @@ internal object TransferDigest {
         while (true) {
             val count = input.read(buffer)
             if (count < 0) break
-            if (count == 0) continue
+            if (count == 0) {
+                // Defensive fallback for unusual ContentProvider streams that
+                // return zero for a non-empty bulk read. Avoid a hot infinite loop.
+                val singleByte = input.read()
+                if (singleByte < 0) break
+                output.write(singleByte)
+                digest.update(singleByte.toByte())
+                copied = Math.addExact(copied, 1L)
+                continue
+            }
             output.write(buffer, 0, count)
             digest.update(buffer, 0, count)
             copied = Math.addExact(copied, count.toLong())
