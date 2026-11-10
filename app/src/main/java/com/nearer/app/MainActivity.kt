@@ -752,7 +752,7 @@ class MainActivity : ComponentActivity() {
         statusMessage = if (enabled) {
             "Ultra Speed Mode saved. Restart NeaRer on BOTH phones before searching. It uses a one-to-one high-throughput connection."
         } else {
-            "Automatic mode saved. Restart NeaRer to use flexible nearby connections again."
+            "Standard mode saved. Restart NeaRer to use flexible nearby connections again."
         }
     }
 
@@ -3052,15 +3052,15 @@ private fun NeaRerHome(
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("ULTRA SPEED MODE", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    Text(if (ultraSpeedMode) "Enabled • one-to-one connection" else "Automatic • flexible nearby connections", color = White, fontSize = 13.sp)
+                                    Text(if (ultraSpeedMode) "Enabled • one-to-one connection" else "Standard • flexible multi-device", color = White, fontSize = 13.sp)
                                 }
-                                Button(onClick = { onUltraSpeedModeChange(!ultraSpeedMode) }, enabled = !scanning && !chatReady && !ultraSpeedRestartRequired,
+                                Button(onClick = { onUltraSpeedModeChange(!ultraSpeedMode) }, enabled = !scanning && !chatReady && !usingNearbyConnections && !ultraSpeedRestartRequired,
                                     shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = if (ultraSpeedMode) Gold else BlueAccent, contentColor = Midnight)) {
                                     Text(if (ultraSpeedMode) "Turn off" else "Enable")
                                 }
                             }
                             Text(
-                                if (ultraSpeedMode) "Both phones must enable this mode and restart NeaRer before searching. It uses Google's one-to-one highest-throughput connection strategy. It may improve speed, but 280 MB/s is not guaranteed." else "For a single large-file transfer, both phones can enable Ultra Speed Mode. Automatic mode keeps the flexible multi-device connection strategy.",
+                                if (ultraSpeedMode) "Both phones must enable this mode and restart NeaRer before searching. It uses Google's one-to-one highest-throughput connection strategy. It may improve speed, but 280 MB/s is not guaranteed." else "Standard mode keeps flexible multi-device connections. For a single large-file transfer, both phones can enable Ultra Speed Mode, which uses Google's highest-throughput one-to-one strategy.",
                                 color = Muted, fontSize = 11.sp, lineHeight = 16.sp
                             )
                         }
