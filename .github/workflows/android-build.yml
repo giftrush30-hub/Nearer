@@ -1,4 +1,4 @@
-name: Android debug APK
+name: Android unit tests
 
 on:
   push:
@@ -34,13 +34,5 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Run unit tests and build debug APK
-        run: gradle --no-daemon --stacktrace testDebugUnitTest assembleDebug
-
-      - name: Upload NeaRer APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: nearer-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
+      - name: Run JVM unit tests only
+        run: gradle --no-daemon --stacktrace testDebugUnitTest
