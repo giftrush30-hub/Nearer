@@ -53,11 +53,17 @@ internal object NeaRerBackupRestoreTransaction {
             throw IOException("Current received-files folder resolves outside NeaRer storage")
         }
 
+        val prefs = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        // SharedPreferences may expose mutable StringSet instances. Copy them before
+        // any mutation so the rollback snapshot remains an immutable point-in-time copy.
+        val oldPreferences = prefs.all.mapValues { (_, value) ->
+            if (value is Set<*>) value.filterIsInstance<String>().toSet() else value
+        }
+        validatePreferenceSnapshot(oldPreferences)
+
+        // Validate all rollback inputs before allocating the private workspace.
         val rollbackRoot = createPrivateDirectory(context, "nearer-restore-rollback-")
         val rollbackChats = File(rollbackRoot, "messages.jsonl")
-        val oldPreferences = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).all
-        validatePreferenceSnapshot(oldPreferences)
-        val prefs = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         val stagedReceived = File(filesRoot, ".nearer-received-stage-${UUID.randomUUID()}")
         val oldReceived = File(filesRoot, ".nearer-received-rollback-${UUID.randomUUID()}")
         val newPhoto = plan.profilePhoto?.let {
