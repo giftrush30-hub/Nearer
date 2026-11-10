@@ -58,6 +58,21 @@ class TransferSpeedMeterTest {
     }
 
     @Test
+    fun recentRateExpiresWhenNoProgressArrivesWithinWindow() {
+        val clock = FakeClock()
+        val meter = TransferSpeedMeter(windowMillis = 1_000L, clockMillis = { clock.now })
+
+        meter.record(0L)
+        clock.advance(500L)
+        val moving = meter.record(1_000L)
+        assertTrue(moving.recentBytesPerSecond > 0.0)
+
+        clock.advance(1_001L)
+        val idle = meter.snapshot()
+        assertEquals(0.0, idle.recentBytesPerSecond, 0.0)
+    }
+
+    @Test
     fun unknownTotalDoesNotInventProgressPercentage() {
         val meter = TransferSpeedMeter(clockMillis = { 100L })
         val snapshot = meter.record(123L)
