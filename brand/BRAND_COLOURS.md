@@ -1,25 +1,22 @@
 # NeaRer Brand Colour Direction
 
-The approved visual direction is a calm, premium slate-blue background with warm gold and clean white.
+The approved launcher reference is a confident, rich blue square with a white two-bar emblem and sweeping warm-gold curves.
 
 ## Core tokens
 
-- Primary background: `#1D3855` — calm slate navy
-- Gradient highlight: `#294967` — muted blue
-- Gradient shadow: `#142B43` — deep blue-grey
-- Gold: `#FFD21F` — signature gold
-- Gold highlight: `#FFF07A`
-- Gold shadow: `#F5A900`
+- Signature blue: `#004B90` — rich, confident blue sampled from the supplied NeaRer reference
+- Gold: `#FFC928` — warm signature gold
+- Gold highlight: `#FFE56A`
+- Gold shadow: `#EFAE08`
 - White: `#FFFFFF`
-- Subtle outline: `#58738D`
 
 ## Usage
 
-- Preserve the existing NeaRer emblem geometry: two white vertical bars and two sweeping gold curves.
-- Do not replace the emblem with a new symbol.
-- Avoid the previous highly saturated electric-blue backgrounds and bright cyan borders.
-- Use the slate-blue gradient for brand surfaces; use the solid primary background where a gradient is unsupported, including Android vector launcher artwork.
+- Preserve the established emblem: two white vertical bars and two sweeping gold curves.
+- Keep the launcher artwork large, optically centred, and safely inside Android's adaptive-icon mask.
+- Use a rounded-square app icon silhouette; let Android's launcher apply its standard mask rather than drawing a second inset tile.
+- Do not substitute a dark navy/slate background for the signature blue in the app icon.
 - Keep the wordmark treatment: `Nea` white, `R` gold, `er` white.
 - Keep the tagline exactly: “NeaRer You, NeaRer Everything”.
 
-These values establish the brand artwork baseline. App screen theme surfaces should adopt the same tokens in a coordinated UI pass rather than introducing unrelated blues.
+Use the signature blue and gold consistently across app surfaces, with neutral white/near-white text and restrained dark surfaces where appropriate.
