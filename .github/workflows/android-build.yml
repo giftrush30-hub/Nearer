@@ -2,9 +2,9 @@ name: Android validation and APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, integration/nearer-complete-app]
   pull_request:
-    branches: [main]
+    branches: [main, integration/nearer-complete-app]
   workflow_dispatch:
 
 concurrency:
@@ -86,9 +86,5 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           emulator-boot-timeout: 600000
-          script: |
-            gradle --no-daemon --stacktrace connectedDebugAndroidTest || {
-              echo "Android launch test failed. Recent crash diagnostics:"
-              adb logcat -d -t 1200 | grep -E "FATAL EXCEPTION|AndroidRuntime|Caused by:|Process: com.nearer.app" || true
-              exit 1
+          script: gradle --no-daemon --stacktrace connectedDebugAndroidTest
             }
