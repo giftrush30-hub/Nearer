@@ -76,7 +76,7 @@ internal class MeshDeadDropStore(context: Context) :
             "UPDATE dead_drop SET attempts = attempts + 1, last_attempt_at = ? WHERE message_id = ?",
             arrayOf(now, messageId)
         )
-        readableDatabase.rawQuery("SELECT changes()", null).use { cursor ->
+        writableDatabase.rawQuery("SELECT changes()", null).use { cursor ->
             return cursor.moveToFirst() && cursor.getInt(0) > 0
         }
     }
