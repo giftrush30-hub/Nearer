@@ -122,7 +122,7 @@ internal object MeshWireProtocol {
         trustedOriginSigningKey: String,
         nowMillis: Long,
         maxAgeMillis: Long = 90_000L
-    ): Boolean = try {
+    ): Boolean {\n        return try {
         if (route.originPeerId.isBlank() || route.destinationPeerId.isBlank() ||
             route.originPeerId == route.destinationPeerId ||
             route.hopCount !in 0 until MeshRelayPolicy.MAX_HOPS ||
