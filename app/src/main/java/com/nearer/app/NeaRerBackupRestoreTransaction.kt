@@ -160,11 +160,19 @@ internal object NeaRerBackupRestoreTransaction {
                 rollbackFailures.add(IOException("Could not put the original received files back"))
             }
             stagedReceived.deleteRecursively()
-            newPhoto?.delete()
             if (rollbackFailures.isEmpty()) {
+                newPhoto?.delete()
                 rollbackRoot.deleteRecursively()
             } else {
-                failure.addSuppressed(IOException("Rollback data retained in private cache at ${rollbackRoot.absolutePath}"))
+                // A failed preference rollback may still leave profile_photo_path pointing
+                // at the staged image. Preserve it, along with the old received folder and
+                // the exported chat archive, rather than turning a partial rollback into
+                // additional data loss.
+                failure.addSuppressed(IOException(
+                    "Rollback recovery data retained. Private cache: ${rollbackRoot.absolutePath}; " +
+                        "preserved received-folder backup: ${if (oldReceivedMoved) oldReceived.absolutePath else "none"}; " +
+                        "preserved staged profile photo: ${newPhoto?.absolutePath ?: "none"}"
+                ))
             }
             rollbackFailures.forEach(failure::addSuppressed)
             if (failure is IOException) throw failure
