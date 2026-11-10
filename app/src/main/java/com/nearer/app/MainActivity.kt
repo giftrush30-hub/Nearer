@@ -3204,8 +3204,8 @@ private fun NeaRerHome(
                         Spacer(modifier = Modifier.weight(1f))
                         Text(if (chatReady) "LOCAL LINK" else "NOT CONNECTED", color = Muted, fontSize = 9.sp)
                     }
-                    val conversations = ConversationListPolicy.build(messages)
-                    val activeConversation = conversations.firstOrNull { it.key == selectedConversationKey }
+                    val conversations = ConversationIndex.build(messages)
+                    val activeConversation = conversations.firstOrNull { it.conversationId == selectedConversationKey }
                         ?: conversations.firstOrNull()
                     if (conversations.isEmpty()) {
                         Text(
@@ -3215,10 +3215,10 @@ private fun NeaRerHome(
                     } else {
                         Text("RECENT CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         conversations.forEach { conversation ->
-                            val latest = conversation.latestMessage
-                            val isSelected = conversation.key == activeConversation?.key
+                            val latest = conversation.lastMessage
+                            val isSelected = conversation.conversationId == activeConversation?.key
                             Surface(
-                                modifier = Modifier.fillMaxWidth().clickable { selectedConversationKey = conversation.key },
+                                modifier = Modifier.fillMaxWidth().clickable { selectedConversationKey = conversation.conversationId },
                                 shape = RoundedCornerShape(14.dp),
                                 color = if (isSelected) BrandBlue.copy(alpha = 0.42f) else Midnight
                             ) {
@@ -3229,16 +3229,16 @@ private fun NeaRerHome(
                                 ) {
                                     Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(38.dp)) {
                                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                                            Text(conversation.name.take(1).uppercase(), color = Gold, fontWeight = FontWeight.Bold)
+                                            Text(conversation.displayName.take(1).uppercase(), color = Gold, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text(conversation.name, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(conversation.displayName, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Text(latest.body, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                         Text(formatChatTime(latest.timestamp), color = Muted, fontSize = 9.sp)
-                                        Text("${conversation.messages.size}", color = if (isSelected) Gold else Muted, fontSize = 9.sp)
+                                        Text("${conversation.messageCount}", color = if (isSelected) Gold else Muted, fontSize = 9.sp)
                                     }
                                 }
                             }
@@ -3247,7 +3247,7 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth().height(220.dp).verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(7.dp)
                         ) {
-                            activeConversation?.messages?.sortedBy { it.timestamp }?.forEach { message ->
+                            activeConversation?.let { ConversationIndex.messagesFor(messages, it.conversationId) }?.forEach { message ->
                                 Column(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
