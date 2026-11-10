@@ -20,6 +20,7 @@ import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.net.Uri
+import android.graphics.BitmapFactory
 import android.provider.OpenableColumns
 import android.provider.DocumentsContract
 import android.provider.MediaStore
@@ -52,6 +53,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -99,6 +101,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
@@ -131,6 +134,9 @@ class MainActivity : ComponentActivity() {
     private val hybridPeers = mutableStateMapOf<String, String>()
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
+    private var onboardingComplete by mutableStateOf(false)
+    private var profileAvatarId by mutableStateOf("orbit")
+    private var profilePhotoPath by mutableStateOf<String?>(null)
     private var hybridSearching by mutableStateOf(false)
     private var pendingHybridEndpoint: String? = null
     private var hybridConnected = false
@@ -580,6 +586,10 @@ class MainActivity : ComponentActivity() {
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
         }.getOrDefault("NeaRer User")
+        val profilePrefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        onboardingComplete = profilePrefs.getBoolean("onboarding_complete", false)
+        profileAvatarId = profilePrefs.getString("profile_avatar_id", "orbit") ?: "orbit"
+        profilePhotoPath = profilePrefs.getString("profile_photo_path", null)
         runCatching { nearbyTransport?.setDisplayName(displayName) }
         runCatching { restoreRecentlySeen() }
         // Multi-hop relay is paused until recipient routing and end-to-end encryption are ready.
@@ -602,6 +612,7 @@ class MainActivity : ComponentActivity() {
                 onSurface = White,
                 onSurfaceVariant = Muted
             )) {
+                if (onboardingComplete) {
                 NeaRerHome(
                     status = statusMessage,
                     scanning = scanning || hybridSearching,
@@ -669,8 +680,41 @@ class MainActivity : ComponentActivity() {
                     onStopSearch = ::stopDiscovery,
                     onConnect = ::connectToDevice
                 )
+                } else {
+                    NeaRerOnboarding(
+                        publicId = nearbyTransport?.localIdentityId().orEmpty(),
+                        onComplete = ::completeOnboarding
+                    )
+                }
             }
         }
+    }
+
+    private fun completeOnboarding(rawName: String, avatarId: String, photoUri: Uri?, answers: Map<String, String>) {
+        val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
+        if (cleanName.isBlank()) return
+        val photoPath = photoUri?.let { uri ->
+            runCatching {
+                val directory = File(filesDir, "profile").apply { mkdirs() }
+                val destination = File(directory, "profile-photo.jpg")
+                contentResolver.openInputStream(uri)?.use { input -> destination.outputStream().use { output -> input.copyTo(output) } }
+                destination.absolutePath.takeIf { destination.exists() && destination.length() > 0L }
+            }.getOrNull()
+        }
+        val answerJson = JSONObject().apply { answers.forEach { (key, value) -> put(key, value) } }
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("onboarding_complete", true)
+            .putString("display_name", cleanName)
+            .putString("profile_avatar_id", avatarId)
+            .putString("profile_photo_path", photoPath)
+            .putString("onboarding_answers", answerJson.toString())
+            .apply()
+        displayName = cleanName
+        profileAvatarId = avatarId
+        profilePhotoPath = photoPath
+        runCatching { nearbyTransport?.setDisplayName(cleanName) }
+        onboardingComplete = true
+        statusMessage = "Welcome to NeaRer, $cleanName."
     }
 
     override fun onResume() {
