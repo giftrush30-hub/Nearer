@@ -45,7 +45,7 @@ internal object MeshRelayPolicy {
     const val MAX_TTL = 4
     const val MAX_MESSAGE_ID_LENGTH = 128
     const val MAX_PEER_ID_LENGTH = 64
-    const val MAX_CIPHERTEXT_LENGTH = 64 * 1024
+    const val MAX_CIPHERTEXT_LENGTH = 96 * 1024
     const val DEFAULT_MAX_AGE_MILLIS = 24L * 60L * 60L * 1000L
 
     fun evaluate(
