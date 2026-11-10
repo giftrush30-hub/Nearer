@@ -7,6 +7,8 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.UUID
+import java.nio.file.Files
+import java.nio.file.LinkOption
 
 /**
  * Applies a previously reviewed backup as a coordinated local restore.
@@ -49,7 +51,10 @@ internal object NeaRerBackupRestoreTransaction {
         val plan = NeaRerBackupRestorePlan.fromPreparedRestore(prepared)
         val filesRoot = context.filesDir.canonicalFile
         val receivedTarget = File(filesRoot, "received")
-        if (receivedTarget.exists() && !NeaRerBackupPathSafety.isContained(filesRoot, receivedTarget)) {
+        // NOFOLLOW_LINKS also detects a dangling symlink, for which File.exists() is false.
+        if (Files.exists(receivedTarget.toPath(), LinkOption.NOFOLLOW_LINKS) &&
+            (!receivedTarget.isDirectory || !NeaRerBackupPathSafety.isContained(filesRoot, receivedTarget))
+        ) {
             throw IOException("Current received-files folder resolves outside NeaRer storage")
         }
 
