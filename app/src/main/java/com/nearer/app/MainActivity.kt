@@ -416,6 +416,34 @@ class MainActivity : ComponentActivity() {
                     chatNotice = if (total > 0L) "$action $name • ${(fraction * 100).toInt()}%$rateText$etaText" else "$action $name…"
                 }
             }
+            override fun onFileSpeed(id: String, payloadId: Long, name: String, snapshot: TransferSpeedSnapshot, incoming: Boolean) {
+                runOnUiThread {
+                    // Use the transport's monotonic rolling-window measurement rather
+                    // than estimating speed from UI callback timing.
+                    val rate = snapshot.recentBytesPerSecond.toLong().coerceAtLeast(0L)
+                    val peak = snapshot.peakWindowBytesPerSecond.toLong().coerceAtLeast(0L)
+                    if (incoming) incomingRateBytesPerSecond = rate else outgoingRateBytesPerSecond = rate
+                    val total = snapshot.totalBytes
+                    val transferred = snapshot.transferredBytes
+                    val fraction = snapshot.progressFraction ?: 0f
+                    val currentRateText = when {
+                        rate >= 1_000_000L -> String.format(java.util.Locale.US, "%.1f MB/s", rate / 1_000_000.0)
+                        rate >= 1_000L -> String.format(java.util.Locale.US, "%.0f KB/s", rate / 1_000.0)
+                        else -> ""
+                    }
+                    val peakText = if (peak > rate && peak >= 1_000L) {
+                        if (peak >= 1_000_000L) String.format(java.util.Locale.US, " • peak %.1f MB/s", peak / 1_000_000.0)
+                        else String.format(java.util.Locale.US, " • peak %.0f KB/s", peak / 1_000.0)
+                    } else ""
+                    val remaining = if (total > transferred && rate > 0L) (total - transferred) / rate else -1L
+                    val etaText = if (remaining >= 0L) " • ~${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')} left" else ""
+                    val action = if (incoming) "Receiving" else "Sending"
+                    val speedText = if (currentRateText.isBlank()) "" else " • $currentRateText$peakText"
+                    chatNotice = if (total > 0L) {
+                        "$action $name • ${(fraction * 100).toInt()}%$speedText$etaText"
+                    } else "$action $name…"
+                }
+            }
             override fun onFileReceived(id: String, name: String, file: File) {
                 val isAppBundle = isNeaRerAppBundle(file)
                 runOnUiThread {
