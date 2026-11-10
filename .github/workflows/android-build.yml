@@ -51,7 +51,7 @@ jobs:
   launch-smoke-test:
     name: Launch NeaRer on Android ${{ matrix.api-level }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -76,11 +76,19 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Install, launch and verify NeaRer on Android 35
+      - name: Install, launch and verify NeaRer on Android ${{ matrix.api-level }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
           target: google_apis
           profile: pixel_2
-          script: gradle --no-daemon --stacktrace connectedDebugAndroidTest
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          emulator-boot-timeout: 600000
+          script: |
+            gradle --no-daemon --stacktrace connectedDebugAndroidTest || {
+              echo "Android launch test failed. Recent crash diagnostics:"
+              adb logcat -d -t 1200 | grep -E "FATAL EXCEPTION|AndroidRuntime|Caused by:|Process: com.nearer.app" || true
+              exit 1
+            }
