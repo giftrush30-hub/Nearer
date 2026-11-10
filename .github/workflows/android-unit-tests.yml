@@ -52,3 +52,27 @@ jobs:
       # Intentionally do not assemble or publish an APK in this workflow.
       - name: Compile app and run unit tests
         run: gradle --no-daemon :app:testDebugUnitTest
+
+      # This is an installable debug/test APK for real-phone validation, not a
+      # production-signed Play Store release.
+      - name: Assemble installable debug APK
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Check APK size
+        shell: bash
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          SIZE="$(stat -c%s "$APK")"
+          echo "Debug APK size: $SIZE bytes"
+          if [ "$SIZE" -gt $((30 * 1024 * 1024)) ]; then
+            echo "::warning::Debug APK exceeds the 30 MiB target. A minified release build must be measured separately."
+          fi
+
+      - name: Upload installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nearer-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
