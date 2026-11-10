@@ -410,11 +410,43 @@ internal object IncomingFilePayloadPolicy {
         try {
             val hello = MeshWireProtocol.createIdentityHello(localStableId, identity)
             client.sendPayload(endpointId, Payload.fromBytes(MeshWireProtocol.encodeIdentityHello(hello)))
+                .addOnSuccessListener {
+                    advertiseKnownRoutes(endpointId)
+                }
                 .addOnFailureListener {
                     listener.onStatus("Could not exchange the secure nearby identity with this phone.")
                 }
         } catch (_: Exception) {
             listener.onStatus("Could not prepare the secure nearby identity.")
+        }
+    }
+
+    private fun advertiseKnownRoutes(endpointId: String) {
+        val identity = meshIdentity ?: return
+        val now = System.currentTimeMillis()
+        meshRouteTable.snapshot(now).forEach { route ->
+            if (route.destinationPeerId == localStableId) return@forEach
+            runCatching {
+                val advertisement = MeshWireProtocol.createRouteAdvertisement(
+                    localStableId, route.destinationPeerId, route.hopCount, now, identity.signing
+                )
+                client.sendPayload(endpointId, Payload.fromBytes(MeshWireProtocol.encodeRoute(advertisement)))
+            }
+        }
+    }
+
+    private fun propagateRoute(destinationPeerId: String, hopCount: Int, excludeEndpoint: String) {
+        val identity = meshIdentity ?: return
+        val now = System.currentTimeMillis()
+        val advertisement = runCatching {
+            MeshWireProtocol.createRouteAdvertisement(
+                localStableId, destinationPeerId, hopCount, now, identity.signing
+            )
+        }.getOrNull() ?: return
+        val bytes = MeshWireProtocol.encodeRoute(advertisement)
+        val endpoints = synchronized(activeEndpoints) { activeEndpoints.filter { it != excludeEndpoint } }
+        endpoints.forEach { endpoint ->
+            runCatching { client.sendPayload(endpoint, Payload.fromBytes(bytes)) }
         }
     }
 
@@ -431,8 +463,14 @@ internal object IncomingFilePayloadPolicy {
                     return
                 }
                 meshPeerHellos[endpointId] = hello
+                val now = System.currentTimeMillis()
+                val learnedDirect = meshRouteTable.learn(
+                    hello.peerId, hello.peerId, 0, hello.peerId, localStableId, now
+                )
+                if (learnedDirect) listener.onMeshRouteUpdated(hello.peerId, hello.peerId, 1)
                 listener.onMeshIdentityObserved(endpointId, hello.peerId, hello.fingerprint)
                 listener.onStatus("Signed identity received. Compare its fingerprint with the other phone before trusting it.")
+                advertiseKnownRoutes(endpointId)
                 return
             }
             if (envelope.optString("kind") == MeshWireProtocol.KIND_ROUTE_ADVERTISEMENT) {
@@ -446,7 +484,10 @@ internal object IncomingFilePayloadPolicy {
                     route.destinationPeerId, hello.peerId, route.hopCount,
                     hello.peerId, localStableId, System.currentTimeMillis()
                 )
-                if (learned) listener.onMeshRouteUpdated(route.destinationPeerId, hello.peerId, route.hopCount + 1)
+                if (learned) {
+                    listener.onMeshRouteUpdated(route.destinationPeerId, hello.peerId, route.hopCount + 1)
+                    propagateRoute(route.destinationPeerId, route.hopCount + 1, endpointId)
+                }
                 return
             }
             if (envelope.optString("kind") == "file_meta") {
