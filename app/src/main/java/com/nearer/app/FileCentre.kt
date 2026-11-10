@@ -66,7 +66,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 internal enum class FileCentreCategory(val label: String) {
-    PICTURES("Pictures"), VIDEOS("Videos"), MUSIC("Music"), APPS("Apps"),
+    ALL_FILES("All files"), PICTURES("Pictures"), VIDEOS("Videos"), MUSIC("Music"), APPS("Apps"),
     DOCUMENTS("Documents"), DOWNLOADS("Downloads"), OTHER("Other files"), CONTACTS("Contacts"), FAVOURITES("Favourites"), RECENT("Recent files")
 }
 
@@ -99,6 +99,10 @@ internal object AndroidFileCatalog {
     }
 
     fun hasMediaAccess(context: Context, category: FileCentreCategory): Boolean {
+        if (category == FileCentreCategory.ALL_FILES) {
+            return if (Build.VERSION.SDK_INT < 33) context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+            else listOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO).any { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED } || (Build.VERSION.SDK_INT >= 34 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED)
+        }
         if (category == FileCentreCategory.APPS || category == FileCentreCategory.DOCUMENTS || category == FileCentreCategory.DOWNLOADS || category == FileCentreCategory.OTHER || category == FileCentreCategory.CONTACTS) return true
         if (Build.VERSION.SDK_INT < 33) {
             return context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
@@ -432,7 +436,7 @@ internal fun FileCentreScreen(
     val selected = remember { mutableStateListOf<String>() }
     val favouriteIds = remember { mutableStateListOf<String>() }
     val recentIds = remember { mutableStateListOf<String>() }
-    var category by remember { mutableStateOf(FileCentreCategory.PICTURES) }
+    var category by remember { mutableStateOf(FileCentreCategory.ALL_FILES) }
     var search by remember { mutableStateOf("") }
     var gridMode by remember { mutableStateOf(true) }
     var sortMode by remember { mutableStateOf("Recent") }
@@ -702,12 +706,11 @@ internal fun FileCentreScreen(
                 }
                 folderItems.forEach { found ->
                     if (items.none { it.id == found.id }) items.add(found)
-                    if (found.id !in selected) selected.add(found.id)
                     markRecent(found.id)
                 }
                 loading = false
                 notice = if (folderItems.isEmpty()) "No shareable files were found in that folder."
-                    else "${folderItems.size} file(s) from the selected folder added to your send basket."
+                    else "${folderItems.size} file(s) found in the selected folder. Select the files you want to send."
             }
         }
     }
@@ -729,7 +732,7 @@ internal fun FileCentreScreen(
     }
 
     val visible = items.filter { item ->
-        (when (category) { FileCentreCategory.FAVOURITES -> item.id in favouriteIds; FileCentreCategory.RECENT -> item.id in recentIds; else -> item.category == category }) &&
+        (when (category) { FileCentreCategory.ALL_FILES -> true; FileCentreCategory.FAVOURITES -> item.id in favouriteIds; FileCentreCategory.RECENT -> item.id in recentIds; else -> item.category == category }) &&
             (search.isBlank() || item.name.contains(search.trim(), ignoreCase = true))
     }.let { matches ->
         when (sortMode) {
@@ -809,7 +812,7 @@ internal fun FileCentreScreen(
             ) { Text(if (allVisibleSelected) "Deselect visible" else "Select visible", fontSize = 10.sp) }
         }
         if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = BlueAccent)
-        if (!hasAccess && category in listOf(FileCentreCategory.PICTURES, FileCentreCategory.VIDEOS, FileCentreCategory.MUSIC)) {
+        if (!hasAccess && category in listOf(FileCentreCategory.ALL_FILES, FileCentreCategory.PICTURES, FileCentreCategory.VIDEOS, FileCentreCategory.MUSIC)) {
             Surface(color = Panel, shape = RoundedCornerShape(16.dp)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Let NeaRer organise your media", color = White, fontWeight = FontWeight.Bold)
@@ -821,11 +824,11 @@ internal fun FileCentreScreen(
                 }
             }
         }
-        if (category == FileCentreCategory.DOCUMENTS || category == FileCentreCategory.DOWNLOADS || category == FileCentreCategory.OTHER) {
+        if (category == FileCentreCategory.ALL_FILES || category == FileCentreCategory.DOCUMENTS || category == FileCentreCategory.DOWNLOADS || category == FileCentreCategory.OTHER) {
             Surface(color = Panel, shape = RoundedCornerShape(16.dp)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(when (category) { FileCentreCategory.DOCUMENTS -> "Browse documents"; FileCentreCategory.DOWNLOADS -> "Browse downloads"; else -> "Browse other files" }, color = White, fontWeight = FontWeight.Bold)
-                    Text(if (category == FileCentreCategory.DOWNLOADS) "Choose files from your Downloads folder. Android controls access, so NeaRer only lists files you select." else "Android protects documents and many folders. Choose files using the system file picker; NeaRer can then send them without scanning private folders.", color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
+                    Text(when (category) { FileCentreCategory.ALL_FILES -> "Browse your phone storage"; FileCentreCategory.DOCUMENTS -> "Browse documents"; FileCentreCategory.DOWNLOADS -> "Browse downloads"; else -> "Browse other files" }, color = White, fontWeight = FontWeight.Bold)
+                    Text(if (category == FileCentreCategory.ALL_FILES) "Choose a storage folder below to show its files. Android requires your approval; NeaRer cannot scan private app data." else if (category == FileCentreCategory.DOWNLOADS) "Choose files from your Downloads folder. Android controls access, so NeaRer only lists files you select." else "Android protects documents and many folders. Choose files using the system file picker; NeaRer can then send them without scanning private folders.", color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
                     Button(
                         onClick = { documentPicker.launch(arrayOf("*/*")) },
                         colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
@@ -854,7 +857,7 @@ internal fun FileCentreScreen(
             }
         }
         Text(notice, color = Muted, fontSize = 10.sp)
-        if (visible.isEmpty() && !loading && (category == FileCentreCategory.APPS || hasAccess)) {
+        if (visible.isEmpty() && !loading && (category == FileCentreCategory.APPS || category == FileCentreCategory.ALL_FILES || hasAccess)) {
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 Text(if (search.isBlank()) "Nothing found in this category yet." else "No matches. Try another search.", color = Muted)
             }
