@@ -103,7 +103,7 @@ internal class TransferSpeedMeter(
     }
 }
 
-internal data class TransferSpeedSnapshot(
+data class TransferSpeedSnapshot(
     val transferredBytes: Long,
     val totalBytes: Long,
     val elapsedMillis: Long,
