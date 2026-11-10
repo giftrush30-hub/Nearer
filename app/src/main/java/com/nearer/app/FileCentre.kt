@@ -408,6 +408,7 @@ internal object AndroidFileCatalog {
         val subtype = item.mimeType?.substringAfter("/", "")?.substringBefore(";")
         if (!subtype.isNullOrBlank() && subtype != "*") return subtype.uppercase(Locale.getDefault())
         return when (item.category) {
+            FileCentreCategory.ALL_FILES -> "FILE"
             FileCentreCategory.PICTURES -> "IMAGE"
             FileCentreCategory.VIDEOS -> "VIDEO"
             FileCentreCategory.MUSIC -> "AUDIO"
