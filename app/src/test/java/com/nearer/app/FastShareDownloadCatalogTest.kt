@@ -110,6 +110,8 @@ class FastShareDownloadCatalogTest {
         assertTrue(page.contains("retryQueue=[]"))
         assertTrue(page.contains("retryQueue.length?retryQueue.slice()"))
         assertTrue(page.contains("retryQueue=retryFiles.slice()"))
+        assertTrue(page.contains("picker.disabled=true"))
+        assertTrue(page.contains("picker.disabled=false"))
         assertTrue(page.contains("Trying the next file"))
         assertTrue(page.contains("retryFiles.push(file)"))
         assertTrue(page.contains("Cancelled after"))
