@@ -14,8 +14,9 @@ internal data class ChunkedCopyResult(
  * the transfer is still allowed to continue.
  */
 internal object ChunkedStreamCopy {
-    // Keep unknown-length streams efficient without ever buffering the whole file.
-    const val DEFAULT_BUFFER_SIZE = 256 * 1024
+    // Match known-length transfers so both paths use the same bounded memory profile.
+    const val DEFAULT_BUFFER_SIZE = 512 * 1024
+    const val PROGRESS_INTERVAL_BYTES = 4L * 1024L * 1024L
 
     fun copy(
         input: InputStream,
@@ -28,7 +29,7 @@ internal object ChunkedStreamCopy {
         require(bufferSize > 0) { "Buffer size must be positive" }
         val buffer = ByteArray(bufferSize)
         var sent = 0L
-        var lastReported = 0L
+        var nextProgressAt = PROGRESS_INTERVAL_BYTES
 
         while (shouldContinue()) {
             val read = input.read(buffer)
@@ -49,10 +50,12 @@ internal object ChunkedStreamCopy {
             sent += count
             onBytesCopied(sent)
 
-            if (sent - lastReported >= 1024L * 1024L) {
+            if (sent >= nextProgressAt) {
                 output.flush()
                 onProgress(sent)
-                lastReported = sent
+                while (nextProgressAt <= sent && nextProgressAt <= Long.MAX_VALUE - PROGRESS_INTERVAL_BYTES) {
+                    nextProgressAt += PROGRESS_INTERVAL_BYTES
+                }
             }
         }
 
@@ -60,7 +63,7 @@ internal object ChunkedStreamCopy {
         if (complete) {
             output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
             output.flush()
-            if (sent != lastReported) onProgress(sent)
+            if (sent > 0L) onProgress(sent)
         }
         return ChunkedCopyResult(sent, complete)
     }
