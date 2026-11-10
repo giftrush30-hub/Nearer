@@ -485,8 +485,8 @@ internal object IncomingFilePayloadPolicy {
                     hello.peerId, localStableId, System.currentTimeMillis()
                 )
                 if (learned) {
-                    listener.onMeshRouteUpdated(route.destinationPeerId, hello.peerId, route.hopCount + 1)
-                    propagateRoute(route.destinationPeerId, route.hopCount + 1, endpointId)
+                    listener.onMeshRouteUpdated(route.destinationPeerId, hello.peerId, route.hopCount)
+                    propagateRoute(route.destinationPeerId, route.hopCount, endpointId)
                 }
                 return
             }
