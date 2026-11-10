@@ -41,6 +41,16 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val names = mutableMapOf<String, String>()
     private val stableIds = mutableMapOf<String, String>()
     private val activeEndpoints = mutableSetOf<String>()
+    private val authenticatedEndpoints = ConcurrentHashMap.newKeySet<String>()
+    private data class PeerHandshakeState(
+        val localNonce: ByteArray,
+        val localPublicKey: ByteArray,
+        var remoteNonce: ByteArray? = null,
+        var remotePublicKey: ByteArray? = null,
+        var remotePeerId: String = "",
+        var localProofSent: Boolean = false
+    )
+    private val peerHandshakes = ConcurrentHashMap<String, PeerHandshakeState>()
     private val localStableId = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         .let { prefs ->
             val stored = prefs.getString("nearer_stable_id", null)
@@ -311,16 +321,20 @@ internal object IncomingFilePayloadPolicy {
             if (result.status.isSuccess) {
                 synchronized(activeEndpoints) { activeEndpoints.add(id) }
                 val details = synchronized(names) { (names[id] ?: "Nearby NeaRer user") to stableIds[id].orEmpty() }
-                retryQueuedMessagesForPeer(details.second, id)
-                listener.onConnected(id, details.first, details.second)
+                beginPeerHandshake(id)
+                listener.onStatus("Nearby link established. Verifying this phone’s NeaRer identity…")
             } else listener.onStatus("Nearby connection was not approved. Try again.")
         }
         override fun onDisconnected(id: String) {
+            val wasAuthenticated = authenticatedEndpoints.remove(id)
+            peerHandshakes.remove(id)
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
             pauseOutgoingFilesForEndpoint(id)
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
-            if (empty) listener.onDisconnected(id, details.first, details.second)
-            else {
+            if (wasAuthenticated && empty) listener.onDisconnected(id, details.first, details.second)
+            else if (wasAuthenticated) {
+                listener.onLost(id, details.first)
+            } else {
                 listener.onLost(id, details.first)
                 listener.onStatus("One nearby person disconnected. Your other direct connections remain active.")
             }
@@ -409,9 +423,93 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
+
+    private fun beginPeerHandshake(endpointId: String) {
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (NeaRerIdentity.normalize(peerId) == null) {
+            failPeerHandshake(endpointId, "This nearby phone did not provide a valid NeaRer identity.")
+            return
+        }
+        try {
+            val publicKey = SecurePeerIdentity.publicKeyEncoded()
+            val state = PeerHandshakeState(NearbyPeerHandshake.newNonce(), publicKey)
+            peerHandshakes[endpointId] = state
+            client.sendPayload(endpointId, Payload.fromBytes(NearbyPeerHandshake.hello(localStableId, publicKey, state.localNonce)))
+                .addOnFailureListener { failPeerHandshake(endpointId, "Could not start secure peer verification.") }
+        } catch (_: Exception) {
+            failPeerHandshake(endpointId, "This phone could not create its secure NeaRer identity.")
+        }
+    }
+
+    private fun handlePeerHello(endpointId: String, envelope: JSONObject) {
+        val state = peerHandshakes[endpointId] ?: return
+        try {
+            val hello = NearbyPeerHandshake.decodeHello(envelope)
+            val advertisedId = synchronized(names) { stableIds[endpointId].orEmpty() }
+            require(hello.peerId == advertisedId && hello.peerId != localStableId)
+            require(state.remotePublicKey == null || java.security.MessageDigest.isEqual(state.remotePublicKey, hello.publicKey))
+            require(state.remoteNonce == null || java.security.MessageDigest.isEqual(state.remoteNonce, hello.nonce))
+            state.remotePeerId = hello.peerId
+            state.remotePublicKey = hello.publicKey
+            state.remoteNonce = hello.nonce
+            if (!state.localProofSent) {
+                val challenge = NearbyPeerHandshake.transcriptChallenge(localStableId, state.localNonce, hello.peerId, hello.nonce)
+                val signature = SecurePeerIdentity.signChallenge(localStableId, state.localPublicKey, challenge)
+                state.localProofSent = true
+                client.sendPayload(endpointId, Payload.fromBytes(NearbyPeerHandshake.proof(localStableId, signature)))
+                    .addOnFailureListener { failPeerHandshake(endpointId, "Could not send this phone’s secure identity proof.") }
+            }
+        } catch (error: Exception) {
+            failPeerHandshake(endpointId, error.localizedMessage ?: "The nearby identity challenge was invalid.")
+        }
+    }
+
+    private fun handlePeerProof(endpointId: String, envelope: JSONObject) {
+        val state = peerHandshakes[endpointId] ?: return
+        try {
+            val (peerId, signature) = NearbyPeerHandshake.decodeProof(envelope)
+            val remoteKey = state.remotePublicKey ?: throw IllegalArgumentException("Peer key has not been received.")
+            val remoteNonce = state.remoteNonce ?: throw IllegalArgumentException("Peer challenge has not been received.")
+            require(peerId == state.remotePeerId)
+            val challenge = NearbyPeerHandshake.transcriptChallenge(localStableId, state.localNonce, peerId, remoteNonce)
+            require(SecurePeerIdentity.verifyChallenge(peerId, remoteKey, challenge, signature))
+            when (TrustedPeerKeyStore.checkAndPin(appContext, peerId, remoteKey)) {
+                TrustedPeerKeyStore.Result.FIRST_SEEN, TrustedPeerKeyStore.Result.MATCH -> {
+                    if (authenticatedEndpoints.add(endpointId)) {
+                        peerHandshakes.remove(endpointId)
+                        val details = synchronized(names) {
+                            (names[endpointId] ?: "Nearby NeaRer user") to stableIds[endpointId].orEmpty()
+                        }
+                        retryQueuedMessagesForPeer(details.second, endpointId)
+                        listener.onConnected(endpointId, details.first, details.second)
+                        listener.onStatus("Secure NeaRer identity verified for ${details.first}.")
+                    }
+                }
+                TrustedPeerKeyStore.Result.KEY_CHANGED ->
+                    throw SecurityException("This phone’s saved NeaRer identity key has changed. Verify the person before reconnecting.")
+                TrustedPeerKeyStore.Result.STORAGE_ERROR ->
+                    throw IllegalStateException("NeaRer could not safely save this phone’s identity key.")
+            }
+        } catch (error: Exception) {
+            failPeerHandshake(endpointId, error.localizedMessage ?: "Secure peer verification failed.")
+        }
+    }
+
+    private fun failPeerHandshake(endpointId: String, reason: String) {
+        peerHandshakes.remove(endpointId)
+        authenticatedEndpoints.remove(endpointId)
+        listener.onStatus(reason)
+        try { client.disconnectFromEndpoint(endpointId) } catch (_: Exception) { }
+    }
+
     private fun handleBytes(endpointId: String, bytes: ByteArray?) {
         try {
             val envelope = JSONObject(bytes?.toString(Charsets.UTF_8).orEmpty())
+            when (envelope.optString("kind")) {
+                "peer_hello_v1" -> { handlePeerHello(endpointId, envelope); return }
+                "peer_proof_v1" -> { handlePeerProof(endpointId, envelope); return }
+            }
+            if (!authenticatedEndpoints.contains(endpointId)) return
             if (envelope.optString("kind") == "file_meta") {
                 val payloadId = envelope.optLong("payloadId", -1L)
                 val name = safeFileName(envelope.optString("name", "shared-file"))
