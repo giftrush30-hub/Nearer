@@ -47,12 +47,14 @@ class TransferSpeedMeterTest {
         meter.record(0L)
         clock.advance(1_000L)
         meter.record(1_000_000L)
-        clock.advance(4_000L)
+        clock.advance(1_000L)
+        meter.record(1_000_000L)
+        clock.advance(1_000L)
         val snapshot = meter.record(5_000_000L)
 
-        assertEquals(1_000_000.0, snapshot.averageBytesPerSecond, 0.001)
-        assertEquals(1_000_000.0, snapshot.recentBytesPerSecond, 0.001)
-        assertEquals(1_000_000.0, snapshot.peakWindowBytesPerSecond, 0.001)
+        assertEquals(1_666_666.667, snapshot.averageBytesPerSecond, 0.01)
+        assertEquals(2_000_000.0, snapshot.recentBytesPerSecond, 0.001)
+        assertEquals(2_000_000.0, snapshot.peakWindowBytesPerSecond, 0.001)
     }
 
     @Test
