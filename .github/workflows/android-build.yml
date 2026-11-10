@@ -87,4 +87,3 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 600000
           script: gradle --no-daemon --stacktrace connectedDebugAndroidTest
-            }
