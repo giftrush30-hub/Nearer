@@ -37,7 +37,7 @@ class MeshWireProtocolTest {
             alice.signing, bob.agreementPublicKey
         )
         val envelope = MeshRelayEnvelope(
-            "relay-1", "alice", "bob", "opaque", 4, 0, emptyList(), 1_800_000_000_000L
+            "relay-1", "alice", "bob", packet.ciphertext, 4, 0, emptyList(), 1_800_000_000_000L
         )
         val encoded = MeshWireProtocol.encodeRelayFrame(envelope, packet)
         val decoded = MeshWireProtocol.decodeRelayFrame(JSONObject(encoded.toString(Charsets.UTF_8)))
