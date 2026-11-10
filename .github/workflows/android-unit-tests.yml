@@ -1,6 +1,7 @@
 name: Android unit tests
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - feature/premium-onboarding-identity
