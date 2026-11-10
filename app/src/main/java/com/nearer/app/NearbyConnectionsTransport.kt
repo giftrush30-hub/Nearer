@@ -735,12 +735,17 @@ internal object IncomingFilePayloadPolicy {
                 stagedSource = java.io.File.createTempFile("nearer-source-", ".bin", stagingDir)
                 val input = appContext.contentResolver.openInputStream(uri)
                     ?: throw IllegalStateException("The selected file could not be opened as a stream")
-                input.use { source ->
+                val copyResult = input.use { source ->
                     stagedSource!!.outputStream().buffered().use { output ->
-                        stagedSha256 = TransferDigest.copyAndSha256(source, output).sha256
+                        TransferDigest.copyAndSha256(source, output)
                     }
                 }
-                size = stagedSource!!.length()
+                val stagedLength = stagedSource!!.length()
+                if (copyResult.bytesCopied != stagedLength) {
+                    throw IllegalStateException("Staged file length did not match the number of bytes copied")
+                }
+                stagedSha256 = copyResult.sha256
+                size = copyResult.bytesCopied
                 payload = Payload.fromFile(stagedSource!!)
                 filePayload = payload
             }
