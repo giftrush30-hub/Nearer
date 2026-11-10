@@ -105,7 +105,8 @@ internal object MeshCrypto {
         trustedSenderSigningPublicKey: String
     ): ByteArray? {
         return try {
-            if (packet.destinationPeerId != localPeerId ||
+            if (!hasValidBounds(packet) ||
+                packet.destinationPeerId != localPeerId ||
                 packet.senderSigningPublicKey != trustedSenderSigningPublicKey
             ) {
                 null
@@ -134,6 +135,19 @@ internal object MeshCrypto {
             null
         }
     }
+
+    private fun hasValidBounds(packet: MeshCryptoPacket): Boolean =
+        packet.messageId.isNotBlank() && packet.messageId.length <= 128 &&
+            packet.originPeerId.isNotBlank() && packet.originPeerId.length <= 64 &&
+            packet.destinationPeerId.isNotBlank() && packet.destinationPeerId.length <= 64 &&
+            packet.ephemeralPublicKey.length in 1..512 &&
+            packet.senderSigningPublicKey.length in 1..512 &&
+            packet.salt.length in 1..128 &&
+            packet.nonce.length in 1..64 &&
+            packet.ciphertext.length in 1..96 * 1024 &&
+            packet.signature.length in 1..256 &&
+            decode(packet.salt).size == SALT_BYTES &&
+            decode(packet.nonce).size == NONCE_BYTES
 
     private fun generateEcKeyPair(): KeyPair =
         KeyPairGenerator.getInstance("EC").apply {
