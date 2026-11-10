@@ -137,7 +137,8 @@ fun LudoGamePanel(
     gameChat: List<String>,
     onGameChat: (String) -> Unit,
     onRematch: () -> Unit,
-    onEndMatch: () -> Unit
+    onEndMatch: () -> Unit,
+    localAvatarId: String
 ) {
     var localGame by remember { mutableStateOf(LudoEngine.newGame(
         mapOf(LudoColor.RED to "You", LudoColor.GREEN to "Nova", LudoColor.YELLOW to "Atlas", LudoColor.BLUE to "Mira"),
@@ -315,7 +316,11 @@ fun LudoGamePanel(
                     Surface(color = if (active) Color(0xFF294967) else Color(0xFF1A3048), shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f)) {
                         Column(Modifier.padding(vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Surface(color = player.color.paint(), shape = CircleShape, modifier = Modifier.size(7.dp)) {}
+                                if (player.color == (networkMatch?.localColor ?: LudoColor.RED)) {
+                                    NeaRerAvatarBadge(localAvatarId, Modifier.size(22.dp))
+                                } else {
+                                    Surface(color = player.color.paint(), shape = CircleShape, modifier = Modifier.size(7.dp)) {}
+                                }
                                 Text(player.name, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                             Text("${player.finishedTokens}/4 HOME", color = if (player.finishedTokens == 4) LudoGold else Color(0xFFAFC1D4), fontSize = 8.sp)
