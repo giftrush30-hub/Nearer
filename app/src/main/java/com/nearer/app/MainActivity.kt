@@ -490,6 +490,7 @@ class MainActivity : ComponentActivity() {
             )) {
                 if (onboardingComplete) {
                 NeaRerHome(
+                    chatDatabase = chatHistoryDatabase,
                     status = statusMessage,
                     scanning = scanning || hybridSearching,
                     devices = nearbyDevices,
@@ -2338,6 +2339,7 @@ class MainActivity : ComponentActivity() {
 
 @androidx.compose.runtime.Composable
 private fun NeaRerHome(
+    chatDatabase: NeaRerChatHistoryDatabase,
     status: String,
     scanning: Boolean,
     devices: List<WifiP2pDevice>,
