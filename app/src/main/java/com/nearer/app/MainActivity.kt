@@ -1343,7 +1343,11 @@ class MainActivity : ComponentActivity() {
             return
         }
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
-        chatMessages.add(ChatMessage(id, body, outgoing = true, delivery = "Sending…"))
+        chatMessages.add(ChatMessage(
+            id, body, outgoing = true, delivery = "Sending…",
+            conversationId = connectedDeviceName?.let { "direct:$it" }.orEmpty(),
+            conversationName = connectedDeviceName.orEmpty()
+        ))
         if (!persistMessages()) {
             chatMessages.removeAll { it.id == id }
             chatNotice = "NeaRer could not save this message on your phone. It was not sent."
@@ -2546,7 +2550,11 @@ class MainActivity : ComponentActivity() {
                                             receivedMessageIds.add(id)
                                             synchronized(writerLock) { peerWriter?.println("ACK|$id") }
                                         } else {
-                                            chatMessages.add(ChatMessage(id, body, outgoing = false, delivery = "Received"))
+                                            chatMessages.add(ChatMessage(
+                                                id, body, outgoing = false, delivery = "Received",
+                                                conversationId = connectedDeviceName?.let { "direct:$it" }.orEmpty(),
+                                                conversationName = connectedDeviceName.orEmpty()
+                                            ))
                                             if (persistMessages()) {
                                                 trimChatMessages()
                                                 receivedMessageIds.add(id)
@@ -2811,6 +2819,8 @@ private fun NeaRerHome(
     val context = LocalContext.current
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
+    var selectedConversationKey by remember { mutableStateOf<String?>(null) }
+    var selectedFileUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     LaunchedEffect(externalShareUris) { if (externalShareUris.isNotEmpty()) selectedTab = "Share" }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
@@ -2845,7 +2855,22 @@ private fun NeaRerHome(
     val orbitRotation by searchMotion.animateFloat(0f, 360f, infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing)), label = "orbit")
     val pulse by searchMotion.animateFloat(0.72f, 1f, infiniteRepeatable(tween(1050), RepeatMode.Reverse), label = "pulse")
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) onSendFiles(uris)
+        if (uris.isNotEmpty()) {
+            selectedFileUris = uris.distinct()
+            selectedTab = "Chats"
+        }
+    }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) { selectedFileUris = uris.distinct(); selectedTab = "Chats" }
+    }
+    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) { selectedFileUris = uris.distinct(); selectedTab = "Chats" }
+    }
+    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) { selectedFileUris = uris.distinct(); selectedTab = "Chats" }
+    }
+    val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) { selectedFileUris = uris.distinct(); selectedTab = "Chats" }
     }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) onSendFolder(uri)
@@ -2932,17 +2957,14 @@ private fun NeaRerHome(
                             colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
                         ) { Text(if (scanning) "Finding people…" else "Find people nearby", fontWeight = FontWeight.Bold) }
                         Button(
-                            onClick = {
-                                if (chatReady) filePicker.launch(arrayOf("*/*"))
-                                else { selectedTab = "Nearby"; onFindNearby() }
-                            },
+                            onClick = { filePicker.launch(arrayOf("*/*")) },
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD12D), contentColor = Midnight)
-                        ) { Text(if (chatReady) "Choose files to send" else "Send to a NeaRer phone", fontWeight = FontWeight.Bold) }
+                        ) { Text("Browse files on this phone", fontWeight = FontWeight.Bold) }
                         Text(
-                            if (chatReady) "Connected. Choose photos, videos or documents to send."
-                            else "Find and connect to the other NeaRer phone first. You only need to do that once per connection.",
+                            if (chatReady) "Choose photos, videos, music or documents. You can browse the phone at any time."
+                            else "Browse your phone now; connect to a nearby NeaRer user when you are ready to send.",
                             color = Muted, fontSize = 11.sp, lineHeight = 16.sp
                         )
                         Button(
@@ -3204,33 +3226,71 @@ private fun NeaRerHome(
                         Spacer(modifier = Modifier.weight(1f))
                         Text(if (chatReady) "LOCAL LINK" else "NOT CONNECTED", color = Muted, fontSize = 9.sp)
                     }
-                    if (chatReady) {
-                        if (messages.isEmpty()) {
-                            Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
-                        } else {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().height(220.dp).verticalScroll(rememberScrollState()),
-                                verticalArrangement = Arrangement.spacedBy(7.dp)
+                    val conversations = ConversationListPolicy.build(messages)
+                    val activeConversation = conversations.firstOrNull { it.key == selectedConversationKey }
+                        ?: conversations.firstOrNull()
+                    if (conversations.isEmpty()) {
+                        Text(
+                            "No conversations yet. Find someone nearby and connect to start your first private chat.",
+                            color = Muted, fontSize = 12.sp, lineHeight = 18.sp
+                        )
+                    } else {
+                        Text("RECENT CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        conversations.forEach { conversation ->
+                            val latest = conversation.latestMessage
+                            val isSelected = conversation.key == activeConversation?.key
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().clickable { selectedConversationKey = conversation.key },
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isSelected) BrandBlue.copy(alpha = 0.42f) else Midnight
                             ) {
-                                messages.forEach { message ->
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(38.dp)) {
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                            Text(conversation.name.take(1).uppercase(), color = Gold, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(conversation.name, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(latest.body, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text(formatChatTime(latest.timestamp), color = Muted, fontSize = 9.sp)
+                                        Text("${conversation.messages.size}", color = if (isSelected) Gold else Muted, fontSize = 9.sp)
+                                    }
+                                }
+                            }
+                        }
+                        Column(
+                            modifier = Modifier.fillMaxWidth().height(220.dp).verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
+                            activeConversation?.messages?.sortedBy { it.timestamp }?.forEach { message ->
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
+                                ) {
+                                    Surface(
+                                        color = if (message.outgoing) BrandBlue.copy(alpha = 0.82f) else Midnight,
+                                        shape = RoundedCornerShape(18.dp)
                                     ) {
-                                        Surface(
-                                            color = if (message.outgoing) BrandBlue.copy(alpha = 0.72f) else Midnight,
-                                            shape = RoundedCornerShape(18.dp)
-                                        ) {
-                                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
-                                                Text(message.body, color = White, fontSize = 14.sp)
-                                                Text(if (message.outgoing) message.delivery else "Received", color = if (message.outgoing) Gold else BlueAccent, fontSize = 9.sp)
-                                            }
+                                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                                            Text(message.body, color = White, fontSize = 14.sp)
+                                            Text(
+                                                "${if (message.outgoing) message.delivery else "Received"} • ${formatChatTime(message.timestamp)}",
+                                                color = if (message.outgoing) Gold else BlueAccent, fontSize = 9.sp
+                                            )
                                         }
                                     }
                                 }
                             }
                         }
-                        Text(chatNotice, color = Muted, fontSize = 10.sp)
+                    }
+                    Text(if (chatReady) chatNotice else "Chat history is saved on this phone. Connect nearby to send or receive new messages.", color = Muted, fontSize = 10.sp)
                         if (transferHistory.isNotEmpty()) {
                             Text("Recent transfers", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             transferHistory.take(5).forEach { record ->
@@ -3285,13 +3345,14 @@ private fun NeaRerHome(
                                 value = draft,
                                 onValueChange = { draft = it.take(2000) },
                                 modifier = Modifier.weight(1f),
-                                placeholder = { Text("Write a message…", color = Muted) },
+                                placeholder = { Text(if (chatReady) "Write a message…" else "Connect to send a message", color = Muted) },
                                 shape = RoundedCornerShape(14.dp),
-                                singleLine = true
+                                singleLine = true,
+                                enabled = chatReady
                             )
                             Button(
                                 onClick = { onSendMessage(draft); draft = "" },
-                                enabled = draft.isNotBlank(),
+                                enabled = draft.isNotBlank() && chatReady,
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
                             ) { Text("Send", fontWeight = FontWeight.Bold) }
@@ -3324,7 +3385,35 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)
-                        ) { Text("Share photos or files") }
+                        ) { Text("Browse all files on this phone") }
+                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
+                            Button(onClick = { photoPicker.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)) { Text("Photos", fontSize = 10.sp) }
+                            Button(onClick = { videoPicker.launch(arrayOf("video/*")) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)) { Text("Videos", fontSize = 10.sp) }
+                            Button(onClick = { audioPicker.launch(arrayOf("audio/*")) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)) { Text("Music", fontSize = 10.sp) }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
+                            Button(onClick = { documentPicker.launch(arrayOf("application/pdf", "text/plain", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation")) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = White)) { Text("Documents", fontSize = 10.sp) }
+                            Button(onClick = { folderPicker.launch(null) }, modifier = Modifier.weight(1f), enabled = chatReady, shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Gold)) { Text("Whole folder", fontSize = 10.sp) }
+                        }
+                        if (selectedFileUris.isNotEmpty()) {
+                            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = Midnight) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    Text("${selectedFileUris.size} file(s) selected", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    selectedFileUris.take(5).forEach { uri ->
+                                        Text(displayNameForUri(context, uri), color = White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    if (selectedFileUris.size > 5) Text("+ ${selectedFileUris.size - 5} more", color = Muted, fontSize = 10.sp)
+                                    Button(
+                                        onClick = { onSendFiles(selectedFileUris); selectedFileUris = emptyList() },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        enabled = chatReady,
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                                    ) { Text(if (chatReady) "Send selected files" else "Connect to send selected files") }
+                                    Button(onClick = { selectedFileUris = emptyList() }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Muted)) { Text("Clear selection") }
+                                }
+                            }
+                        }
                         Button(
                             onClick = { folderPicker.launch(null) },
                             modifier = Modifier.fillMaxWidth(),
@@ -3332,8 +3421,8 @@ private fun NeaRerHome(
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263B58), contentColor = Gold)
                         ) { Text("Share an entire folder") }
                         Text("Folders are packaged as ZIP archives with their subfolder structure preserved. No fixed file-size cap is added.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
-                    } else {
-                        Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    if (!chatReady) {
+                        Text("Connect to a nearby NeaRer phone to send messages. Your saved conversations remain visible while offline.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         Button(
                             onClick = { selectedTab = "Nearby"; onFindNearby() },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -3710,6 +3799,23 @@ private data class NearbyTransferRecord(
     val status: String
 ) {
     val timeLabel: String get() = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+}
+
+private fun formatChatTime(timestamp: Long): String =
+    java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+
+private fun displayNameForUri(context: Context, uri: Uri): String {
+    val queried = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) cursor.getString(index) else null
+            } else null
+        }
+    }.getOrNull()
+    return queried?.takeIf { it.isNotBlank() }
+        ?: uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')?.takeIf { it.isNotBlank() }
+        ?: "Selected file"
 }
 
 private fun formatTransferBytes(bytes: Long): String = when {
