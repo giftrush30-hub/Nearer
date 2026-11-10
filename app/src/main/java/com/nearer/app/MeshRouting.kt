@@ -30,7 +30,7 @@ internal class MeshRouteTable(
         if (destinationPeerId.isBlank() || nextHopPeerId.isBlank() ||
             learnedFromPeerId.isBlank() || localPeerId.isBlank()) return false
         if (destinationPeerId == localPeerId || nextHopPeerId == localPeerId) return false
-        if (advertisedHops !in 0 until maxHops || destinationPeerId == nextHopPeerId) return false
+        if (advertisedHops !in 0 until maxHops) return false
         val candidate = MeshRoute(
             destinationPeerId = destinationPeerId,
             nextHopPeerId = nextHopPeerId,
