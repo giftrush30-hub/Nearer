@@ -17,7 +17,7 @@ internal object TrustedPeerKeyStore {
 
     @Synchronized
     fun checkAndPin(context: Context, publicId: String, publicKey: ByteArray): Result {
-        if (!NeaRerIdentity.isValid(publicId) || !SecurePeerIdentity.isValidPublicKey(publicKey)) {
+        if (!NeaRerIdentity.normalize(publicId) != null || !SecurePeerIdentity.isValidPublicKey(publicKey)) {
             return Result.STORAGE_ERROR
         }
         return try {
