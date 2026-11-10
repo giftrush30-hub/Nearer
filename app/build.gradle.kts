@@ -48,6 +48,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-nearby:19.5.1")
 
     testImplementation("junit:junit:4.13.2")
+    // Android's platform org.json classes are test stubs; use the real implementation on the JVM.
+    testImplementation("org.json:json:20240303")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
