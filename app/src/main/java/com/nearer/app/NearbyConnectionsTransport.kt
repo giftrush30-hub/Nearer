@@ -135,7 +135,10 @@ internal object IncomingFilePayloadPolicy {
     private fun persistPendingOutbox(): Boolean {
         return try {
             val array = org.json.JSONArray()
-            pendingOutgoingMessages.forEach { (id, p) -> array.put(JSONObject().put("id", id).put("peer", p.stablePeerId).put("payload", p.payload.toString(Charsets.UTF_8))) }
+            pendingOutgoingMessages.forEach { (id, p) ->
+                val encryptedPayload = LocalDataCipher.encrypt(appContext, p.payload)
+                array.put(JSONObject().put("id", id).put("peer", p.stablePeerId).put("payload", encryptedPayload))
+            }
             val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("nearby_outbox", array.toString()).commit()
             if (!saved) listener.onStatus("NeaRer could not save its pending-message queue.")
             saved
@@ -150,6 +153,7 @@ internal object IncomingFilePayloadPolicy {
                 .getString("nearby_outbox", "[]") ?: "[]"
             val array = org.json.JSONArray(raw)
             var skipped = false
+            var migratedLegacyPayload = false
             for (i in 0 until array.length()) {
                 try {
                     val item = array.optJSONObject(i)
@@ -159,12 +163,24 @@ internal object IncomingFilePayloadPolicy {
                     }
                     val id = item.optString("id")
                     val peer = item.optString("peer")
-                    val payload = item.optString("payload")
+                    val storedPayload = item.optString("payload")
                     if (id.isBlank() || id.length > 80 || peer.isBlank() || peer.length > 64 ||
-                        payload.isBlank() || payload.length > 12000) {
+                        storedPayload.isBlank() || storedPayload.length > 24000) {
                         skipped = true
                         continue
                     }
+                    val payloadBytes = if (storedPayload.startsWith("v1:")) {
+                        LocalDataCipher.decrypt(appContext, storedPayload)
+                    } else {
+                        // One-time migration from the older plaintext outbox format.
+                        migratedLegacyPayload = true
+                        storedPayload.toByteArray(Charsets.UTF_8)
+                    }
+                    if (payloadBytes == null || payloadBytes.isEmpty() || payloadBytes.size > 12000) {
+                        skipped = true
+                        continue
+                    }
+                    val payload = payloadBytes.toString(Charsets.UTF_8)
                     val envelope = JSONObject(payload)
                     if (envelope.optString("kind") != "message" ||
                         envelope.optString("id") != id ||
@@ -173,14 +189,15 @@ internal object IncomingFilePayloadPolicy {
                         skipped = true
                         continue
                     }
-                    pendingOutgoingMessages[id] = PendingOutgoingMessage(
-                        "", peer, payload.toByteArray(Charsets.UTF_8)
-                    )
+                    pendingOutgoingMessages[id] = PendingOutgoingMessage("", peer, payloadBytes)
                 } catch (_: Exception) {
                     skipped = true
                 }
             }
-            if (skipped) listener.onStatus("Some damaged queued messages were skipped. Other saved messages are still available.")
+            if (migratedLegacyPayload && !persistPendingOutbox()) {
+                listener.onStatus("NeaRer could not encrypt the older saved message queue. It remains on this phone unchanged.")
+            }
+            if (skipped) listener.onStatus("Some damaged or locked queued messages were skipped. Other saved messages are still available.")
         } catch (_: Exception) {
             listener.onStatus("The saved pending-message queue could not be read.")
         }
