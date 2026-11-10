@@ -8,7 +8,7 @@ import org.junit.Test
 
 class ChunkedStreamCopyTest {
     @Test fun defaultBufferIsOptimizedForLargeLocalTransfers() {
-        assertEquals(256 * 1024, ChunkedStreamCopy.DEFAULT_BUFFER_SIZE)
+        assertEquals(512 * 1024, ChunkedStreamCopy.DEFAULT_BUFFER_SIZE)
         val source = ByteArray(700 * 1024) { (it % 233).toByte() }
         val output = ByteArrayOutputStream()
         val result = ChunkedStreamCopy.copy(ByteArrayInputStream(source), output, { true })
@@ -17,6 +17,20 @@ class ChunkedStreamCopyTest {
         val wire = output.toByteArray()
         assertTrue(wire.size > source.size)
         assertTrue(wire.takeLast(5).toByteArray().contentEquals("0\r\n\r\n".toByteArray()))
+    }
+
+    @Test fun progressCallbacksAreThrottledForUnknownLengthStreams() {
+        val source = ByteArray(10 * 1024 * 1024) { (it % 197).toByte() }
+        val output = ByteArrayOutputStream()
+        val progress = mutableListOf<Long>()
+
+        val result = ChunkedStreamCopy.copy(
+            ByteArrayInputStream(source), output, { true },
+            onProgress = { progress += it }
+        )
+
+        assertTrue(result.complete)
+        assertEquals(listOf(4L, 8L, 10L).map { it * 1024L * 1024L }, progress)
     }
 
     @Test fun zeroLengthBulkReadFallsBackToSingleByteRead() {
