@@ -226,7 +226,7 @@ internal object IncomingFilePayloadPolicy {
         // an endless retry loop.
         if (pending.endpointId.isBlank()) return
         pending.attempts += 1
-        if (synchronized(activeEndpoints) { !activeEndpoints.contains(pending.endpointId) }) {
+        if (!authenticatedEndpoints.contains(pending.endpointId) || synchronized(activeEndpoints) { !activeEndpoints.contains(pending.endpointId) }) {
             scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1800L))
             return
         }
@@ -586,7 +586,7 @@ internal object IncomingFilePayloadPolicy {
             if (kind == "ack") {
                 val acknowledgedId = envelope.optString("id")
                 // Only the peer we actually sent this message to may confirm it.
-                if (acknowledgedId.isNotBlank() && outgoingMessageTargets[acknowledgedId] == endpointId) {
+                if (authenticatedEndpoints.contains(endpointId) && acknowledgedId.isNotBlank() && outgoingMessageTargets[acknowledgedId] == endpointId) {
                     clearPendingOutgoingMessage(acknowledgedId)
                     listener.onMessageStatus(acknowledgedId, "Delivered")
                 }
@@ -768,7 +768,7 @@ internal object IncomingFilePayloadPolicy {
             .put("ttl", 0).put("hops", 0).put("origin", localName)
             .put("createdAt", System.currentTimeMillis()).toString()
         if (targetEndpointId != null) {
-            if (synchronized(activeEndpoints) { !activeEndpoints.contains(targetEndpointId) }) return false
+            if (!authenticatedEndpoints.contains(targetEndpointId) || synchronized(activeEndpoints) { !activeEndpoints.contains(targetEndpointId) }) return false
             return try {
                 val payload = envelope.toByteArray(Charsets.UTF_8)
                 val stablePeerId = synchronized(names) { stableIds[targetEndpointId].orEmpty() }
@@ -803,7 +803,7 @@ internal object IncomingFilePayloadPolicy {
         if (body.isBlank() || targetNames.isEmpty()) return false
         val targets = synchronized(activeEndpoints) {
             activeEndpoints.filter { endpoint ->
-                synchronized(names) { names[endpoint]?.let { it in targetNames } == true }
+                authenticatedEndpoints.contains(endpoint) && synchronized(names) { names[endpoint]?.let { it in targetNames } == true }
             }
         }
         if (targets.isEmpty()) return false
@@ -828,8 +828,8 @@ internal object IncomingFilePayloadPolicy {
     }
 
     fun sendFile(endpointId: String, uri: Uri, displayName: String): Long? {
-        if (synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
-            listener.onFileStatus("The nearby connection is no longer active.")
+        if (!authenticatedEndpoints.contains(endpointId) || synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
+            listener.onFileStatus("The nearby connection is not securely verified or is no longer active.")
             return null
         }
         var descriptor: android.os.ParcelFileDescriptor? = null
@@ -922,7 +922,7 @@ internal object IncomingFilePayloadPolicy {
 
     private fun sendPreparedFile(payloadId: Long, outgoing: OutgoingFile, resumeOffset: Long = 0L) {
         val endpointId = outgoing.endpointId
-        if (endpointId.isBlank() || outgoing.sha256.isBlank()) return
+        if (endpointId.isBlank() || !authenticatedEndpoints.contains(endpointId) || outgoing.sha256.isBlank()) return
         val metadata = JSONObject().put("kind", "file_meta").put("payloadId", payloadId)
             .put("name", outgoing.name).put("size", outgoing.size).put("sha256", outgoing.sha256)
         client.sendPayload(endpointId, Payload.fromBytes(metadata.toString().toByteArray(Charsets.UTF_8)))
@@ -956,7 +956,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     fun requestPendingIncomingFilesForPeer(peerStableId: String, endpointId: String): Boolean {
-        if (peerStableId.isBlank() || !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) return false
+        if (peerStableId.isBlank() || !authenticatedEndpoints.contains(endpointId) || !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) return false
         var requested = false
         incomingMetadata.entries.toList().forEach { (payloadId, meta) ->
             if (incomingPeerIds[payloadId] != peerStableId) return@forEach
@@ -984,7 +984,7 @@ internal object IncomingFilePayloadPolicy {
     ) {
         val meta = incomingMetadata[payloadId] ?: return
         if (incomingPeerIds[payloadId] != peerStableId ||
-            meta.endpointId != endpointId ||
+            !authenticatedEndpoints.contains(endpointId) || meta.endpointId != endpointId ||
             !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) return
 
         val request = JSONObject().put("kind", "file_resume_request")
@@ -1018,39 +1018,3 @@ internal object IncomingFilePayloadPolicy {
 
     private fun broadcast(content: String, excludeEndpoint: String?): Boolean {
         val targets = synchronized(activeEndpoints) { activeEndpoints.filter { it != excludeEndpoint } }
-        if (targets.isEmpty()) return false
-        var sent = false
-        targets.forEach { endpoint ->
-            try {
-                client.sendPayload(endpoint, Payload.fromBytes(content.toByteArray(Charsets.UTF_8)))
-                sent = true
-            } catch (_: Exception) { }
-        }
-        return sent
-    }
-
-    fun stopSearching() {
-        started = false
-        try { client.stopAdvertising() } catch (_: Exception) { }
-        try { client.stopDiscovery() } catch (_: Exception) { }
-    }
-
-    fun disconnect() {
-        try { client.stopAllEndpoints() } catch (_: Exception) { }
-        synchronized(activeEndpoints) { activeEndpoints.clear() }
-    }
-    fun stop() {
-        stopSearching()
-        disconnect()
-        pendingOutgoingMessages.values.forEach { it.retryTask?.let(deliveryHandler::removeCallbacks); it.retryTask = null }
-        deliveryHandler.removeCallbacksAndMessages(null)
-        outgoingFiles.values.forEach {
-            try { it.payload.close() } catch (_: Exception) { }
-            it.temporarySourceFile?.delete()
-        }
-        outgoingFiles.clear()
-        fileIo.shutdownNow()
-        transferPreparation.shutdownNow()
-    }
-
-}
