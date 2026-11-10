@@ -4,13 +4,17 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Exact approved diagonal-sweep emblem, kept within the adaptive icon safe area. -->
+    <!-- The two white pillars are intentionally behind the gold sweeps. -->
     <path android:fillColor="#FFFFFF"
-        android:pathData="M30,31 L43,31 L43,81 L30,81 Z M75,31 L88,31 L88,81 L75,81 Z" />
-    <path android:fillColor="#00000000" android:strokeColor="#FFC928"
-        android:strokeWidth="6.5" android:strokeLineCap="butt"
-        android:pathData="M18,25 C39,19 68,30 90,82" />
-    <path android:fillColor="#00000000" android:strokeColor="#FFC928"
-        android:strokeWidth="4.0" android:strokeLineCap="butt"
-        android:pathData="M18,34 C40,29 66,41 85,89" />
+        android:pathData="M20,31 L36.5,31 L36.5,89 L20,89 Z M78,28 L94.5,28 L94.5,89 L78,89 Z" />
+    <!-- Broad upper gold ribbon with a sharp, tapered lower-right tip. -->
+    <path android:fillColor="#FFC928"
+        android:pathData="M3.4,16 C36,14.8 74,31.5 102.5,94
+            C90.5,72 76.5,56 61.3,44
+            C42.8,29.8 22.5,21.5 3.4,20.8 Z" />
+    <!-- Fine lower ribbon, ending slightly earlier. -->
+    <path android:fillColor="#FFC928"
+        android:pathData="M3.4,23.2 C34,23.2 64,40.8 81.5,96
+            C74,76.5 62.5,61 48.2,48.5
+            C31.8,34.2 16.5,28.5 3.4,27.8 Z" />
 </vector>
