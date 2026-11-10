@@ -344,7 +344,11 @@ private class FastShareHttpServer(
     private var acceptThread: Thread? = null
 
     fun start(): String {
-        val listener = ServerSocket(8765, 8, java.net.InetAddress.getByName("0.0.0.0"))
+        val listener = ServerSocket().apply {
+            reuseAddress = true
+            receiveBufferSize = 256 * 1024
+            bind(java.net.InetSocketAddress(java.net.InetAddress.getByName("0.0.0.0"), 8765), 32)
+        }
         socket = listener
         // Keep accepting on its own daemon thread. If the accept loop occupied
         // a worker-pool slot, it would reduce the five-worker download capacity.
@@ -449,8 +453,13 @@ private class FastShareHttpServer(
             connection.soTimeout = 15000
             val writeGuard = SocketWriteStallGuard(connection, writeWatchdog, 30_000L)
             try {
-            val input = BufferedInputStream(connection.getInputStream())
-            val output = BufferedOutputStream(writeGuard.wrap(connection.getOutputStream()))
+            val input = BufferedInputStream(connection.getInputStream(), 32 * 1024)
+            // Keep bounded socket buffers large enough to feed modern Wi-Fi links without
+            // allocating per-file copies. The five active workers use 512 KiB source
+            // buffers plus 256 KiB output buffers (about 3.75 MiB total).
+            connection.sendBufferSize = 1024 * 1024
+            connection.receiveBufferSize = 256 * 1024
+            val output = BufferedOutputStream(writeGuard.wrap(connection.getOutputStream()), 256 * 1024)
             // SO_TIMEOUT limits each individual read. A peer could otherwise
             // trickle one header byte before every timeout and pin a worker.
             // Bound the complete request-header phase as well.
