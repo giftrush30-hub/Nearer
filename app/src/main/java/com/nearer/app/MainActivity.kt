@@ -127,6 +127,7 @@ class MainActivity : ComponentActivity() {
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
     private var ultraSpeedMode by mutableStateOf(false)
+    private var ultraSpeedRestartRequired by mutableStateOf(false)
     private val hybridPeers = mutableStateMapOf<String, String>()
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
@@ -263,6 +264,7 @@ class MainActivity : ComponentActivity() {
         channel = wifiManager?.initialize(this, mainLooper, null)
         ultraSpeedMode = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
             .getBoolean("ultra_speed_mode", false)
+        ultraSpeedRestartRequired = false
         nearbyTransport = NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
             override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
             override fun onFound(id: String, name: String, stableId: String) { runOnUiThread { hybridPeers[id] = name; if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId) } }
@@ -580,6 +582,7 @@ class MainActivity : ComponentActivity() {
                     displayName = displayName,
                     nearbyIdentityId = nearbyTransport?.localIdentityId().orEmpty(),
                     ultraSpeedMode = ultraSpeedMode,
+                    ultraSpeedRestartRequired = ultraSpeedRestartRequired,
                     onUltraSpeedModeChange = ::updateUltraSpeedMode,
                     onSaveDisplayName = ::saveDisplayName,
                     meshRelayEnabled = meshRelayEnabled,
@@ -745,6 +748,7 @@ class MainActivity : ComponentActivity() {
             .putBoolean("ultra_speed_mode", enabled)
             .apply()
         ultraSpeedMode = enabled
+        ultraSpeedRestartRequired = true
         statusMessage = if (enabled) {
             "Ultra Speed Mode saved. Restart NeaRer on BOTH phones before searching. It uses a one-to-one high-throughput connection."
         } else {
@@ -753,6 +757,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startDiscovery() {
+        if (ultraSpeedRestartRequired) {
+            statusMessage = "Restart NeaRer on both phones to apply the selected transfer mode, then search again."
+            return
+        }
         if (!hasNearbyPermissions()) {
             ActivityCompat.requestPermissions(this, nearbyPermissionList(), REQUEST_DISCOVERY_PERMISSION)
             statusMessage = "Allow Nearby devices and Bluetooth permissions so NeaRer can find phones without internet."
@@ -2708,6 +2716,7 @@ private fun NeaRerHome(
     displayName: String,
     nearbyIdentityId: String,
     ultraSpeedMode: Boolean,
+    ultraSpeedRestartRequired: Boolean,
     onUltraSpeedModeChange: (Boolean) -> Unit,
     onSaveDisplayName: (String) -> Unit,
     meshRelayEnabled: Boolean,
@@ -3045,7 +3054,7 @@ private fun NeaRerHome(
                                     Text("ULTRA SPEED MODE", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     Text(if (ultraSpeedMode) "Enabled • one-to-one connection" else "Automatic • flexible nearby connections", color = White, fontSize = 13.sp)
                                 }
-                                Button(onClick = { onUltraSpeedModeChange(!ultraSpeedMode) }, enabled = !scanning && !chatReady,
+                                Button(onClick = { onUltraSpeedModeChange(!ultraSpeedMode) }, enabled = !scanning && !chatReady && !ultraSpeedRestartRequired,
                                     shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = if (ultraSpeedMode) Gold else BlueAccent, contentColor = Midnight)) {
                                     Text(if (ultraSpeedMode) "Turn off" else "Enable")
                                 }
