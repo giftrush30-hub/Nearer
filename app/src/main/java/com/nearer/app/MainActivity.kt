@@ -20,6 +20,7 @@ import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.net.Uri
+import android.graphics.BitmapFactory
 import android.provider.OpenableColumns
 import android.provider.DocumentsContract
 import android.provider.MediaStore
@@ -51,6 +52,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -99,6 +101,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
@@ -111,14 +114,14 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 
-// NeaRer brand palette: midnight, deep panel, clear blue, soft white and gold.
-internal val Midnight = Color(0xFF101A2B)
-internal val Panel = Color(0xFF1A2940)
-internal val BlueAccent = Color(0xFF6EA8FF)
-internal val Muted = Color(0xFFA8B6C9)
-internal val White = Color(0xFFF6F8FC)
-internal val BrandBlue = Color(0xFF2563EB)
-internal val Gold = Color(0xFFFFD12D)
+// NeaRer signature palette: rich brand blue, deep ink surfaces, clear blue and warm gold.
+internal val Midnight = Color(0xFF07182A)
+internal val Panel = Color(0xFF102B46)
+internal val BlueAccent = Color(0xFF78B9FF)
+internal val Muted = Color(0xFFB2C2D3)
+internal val White = Color(0xFFF7FAFF)
+internal val BrandBlue = Color(0xFF004B90)
+internal val Gold = Color(0xFFFFC928)
 
 class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
@@ -131,6 +134,9 @@ class MainActivity : ComponentActivity() {
     private val hybridPeers = mutableStateMapOf<String, String>()
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
+    private var onboardingComplete by mutableStateOf(false)
+    private var profileAvatarId by mutableStateOf("orbit")
+    private var profilePhotoPath by mutableStateOf<String?>(null)
     private var hybridSearching by mutableStateOf(false)
     private var pendingHybridEndpoint: String? = null
     private var hybridConnected = false
@@ -256,16 +262,72 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val diagnosticPreferences = getSharedPreferences("nearer_diagnostics", Context.MODE_PRIVATE)
+        val startupCrash = runCatching {
+            diagnosticPreferences.getString("nearer_startup_crash", null)
+        }.getOrNull()
+        if (!startupCrash.isNullOrBlank()) {
+            // Do not immediately retry a known-crashing startup path. Show the saved
+            // exception first so a phone-only tester can share the actual stack trace.
+            window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
+            window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
+            setContent {
+                MaterialTheme(colorScheme = darkColorScheme(
+                    background = Midnight, surface = Panel, primary = BlueAccent,
+                    secondary = Gold, onBackground = White, onSurface = White
+                )) {
+                    Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text("NeaRer found a startup error", color = Gold, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                            Text("The previous launch crashed. This report records the real error so it can be repaired.", color = White)
+                            Text(startupCrash.take(12000), color = Muted, fontSize = 12.sp)
+                            Button(
+                                onClick = {
+                                    val reportIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "NeaRer startup crash report")
+                                        putExtra(Intent.EXTRA_TEXT, startupCrash)
+                                    }
+                                    startActivity(Intent.createChooser(reportIntent, "Share NeaRer crash report"))
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Share crash report") }
+                            Button(
+                                onClick = {
+                                    diagnosticPreferences.edit().remove("nearer_startup_crash").apply()
+                                    recreate()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                            ) { Text("Try opening NeaRer again") }
+                        }
+                    }
+                }
+            }
+            return
+        }
         captureExternalShareIntent(intent)
-        window.statusBarColor = android.graphics.Color.rgb(16, 26, 43)
-        window.navigationBarColor = android.graphics.Color.rgb(16, 26, 43)
+        window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
+        window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
         window.decorView.systemUiVisibility = 0
-        wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
-        channel = wifiManager?.initialize(this, mainLooper, null)
-        ultraSpeedMode = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-            .getBoolean("ultra_speed_mode", false)
+        try {
+            wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
+            channel = wifiManager?.initialize(this, mainLooper, null)
+        } catch (error: Exception) {
+            wifiManager = null
+            channel = null
+            statusMessage = "Wi-Fi Direct could not initialise on this phone. Bluetooth nearby features can still be used."
+        }
+        ultraSpeedMode = runCatching {
+            getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .getBoolean("ultra_speed_mode", false)
+        }.getOrDefault(false)
         ultraSpeedRestartRequired = false
-        nearbyTransport = NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
+        nearbyTransport = try {
+            NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
             override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
             override fun onFound(id: String, name: String, stableId: String) { runOnUiThread { hybridPeers[id] = name; if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId) } }
             override fun onLost(id: String, stableId: String) { runOnUiThread {
@@ -493,15 +555,25 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-        })
-        if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
-        restoreLocalData()
-        restoreNearbyTransferHistory()
-        restoreNearbyFileQueue()
-        val queuedAfterRestart = nearbyTransport?.pendingMessageIds().orEmpty()
-        val recoveredChatStates = ChatRestartRecoveryPolicy.reconcile(chatMessages, queuedAfterRestart)
+            })
+        } catch (error: Exception) {
+            statusMessage = "Nearby services could not initialise: ${error.javaClass.simpleName}. NeaRer opened in safe mode."
+            null
+        }
+        if (wifiManager == null && statusMessage == "Ready to find nearby Android phones.") {
+            statusMessage = "Wi-Fi Direct is unavailable. Bluetooth nearby features may still work."
+        }
+        runCatching { restoreLocalData() }.onFailure {
+            statusMessage = "NeaRer opened, but some saved local data could not be restored."
+        }
+        runCatching { restoreNearbyTransferHistory() }
+        runCatching { restoreNearbyFileQueue() }
+        val queuedAfterRestart = runCatching { nearbyTransport?.pendingMessageIds().orEmpty() }.getOrDefault(emptySet())
+        val recoveredChatStates = runCatching {
+            ChatRestartRecoveryPolicy.reconcile(chatMessages, queuedAfterRestart)
+        }.getOrDefault(false)
         if (recoveredChatStates) {
-            persistMessages()
+            runCatching { persistMessages() }
             chatNotice = when {
                 queuedAfterRestart.isNotEmpty() -> "Some messages are safely queued. NeaRer will retry when those people reconnect."
                 chatMessages.any { it.outgoing && it.delivery == "Interrupted" } ->
@@ -509,22 +581,38 @@ class MainActivity : ComponentActivity() {
                 else -> chatNotice
             }
         }
-        restoreCommunityData()
-        displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
-        nearbyTransport?.setDisplayName(displayName)
-        restoreRecentlySeen()
+        runCatching { restoreCommunityData() }
+        displayName = runCatching {
+            getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
+        }.getOrDefault("NeaRer User")
+        val profilePrefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        onboardingComplete = profilePrefs.getBoolean("onboarding_complete", false)
+        profileAvatarId = profilePrefs.getString("profile_avatar_id", "orbit") ?: "orbit"
+        profilePhotoPath = profilePrefs.getString("profile_photo_path", null)
+        runCatching { nearbyTransport?.setDisplayName(displayName) }
+        runCatching { restoreRecentlySeen() }
         // Multi-hop relay is paused until recipient routing and end-to-end encryption are ready.
         meshRelayEnabled = false
-        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", false).apply()
+        runCatching {
+            getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+                .putBoolean("mesh_relay_enabled", false).apply()
+        }
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(
                 background = Midnight,
                 surface = Panel,
+                surfaceVariant = Color(0xFF173A5B),
                 primary = BlueAccent,
                 onPrimary = Midnight,
+                secondary = Gold,
+                onSecondary = Midnight,
+                tertiary = BrandBlue,
                 onBackground = White,
-                onSurface = White
+                onSurface = White,
+                onSurfaceVariant = Muted
             )) {
+                if (onboardingComplete) {
                 NeaRerHome(
                     status = statusMessage,
                     scanning = scanning || hybridSearching,
@@ -580,6 +668,9 @@ class MainActivity : ComponentActivity() {
                     hybridPeers = hybridPeers.toMap(),
                     recentlySeenPeers = recentlySeenPeers.toMap(),
                     displayName = displayName,
+                    profileAvatarId = profileAvatarId,
+                    profilePhotoPath = profilePhotoPath,
+                    onSaveProfile = ::saveProfileEdits,
                     nearbyIdentityId = nearbyTransport?.localIdentityId().orEmpty(),
                     ultraSpeedMode = ultraSpeedMode,
                     ultraSpeedRestartRequired = ultraSpeedRestartRequired,
@@ -592,6 +683,12 @@ class MainActivity : ComponentActivity() {
                     onStopSearch = ::stopDiscovery,
                     onConnect = ::connectToDevice
                 )
+                } else {
+                    NeaRerOnboarding(
+                        publicId = nearbyTransport?.localIdentityId().orEmpty(),
+                        onComplete = ::completeOnboarding
+                    )
+                }
             }
         }
     }
@@ -605,13 +702,18 @@ class MainActivity : ComponentActivity() {
             addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
         }
         if (!receiverRegistered) {
-            if (Build.VERSION.SDK_INT >= 33) {
-                registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
-            } else {
-                @Suppress("DEPRECATION")
-                registerReceiver(receiver, filter)
+            try {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+                } else {
+                    @Suppress("DEPRECATION")
+                    registerReceiver(receiver, filter)
+                }
+                receiverRegistered = true
+            } catch (error: Exception) {
+                receiverRegistered = false
+                statusMessage = "NeaRer opened with limited Wi-Fi discovery: ${error.javaClass.simpleName}. Bluetooth nearby features may still be available."
             }
-            receiverRegistered = true
         }
     }
 
@@ -625,7 +727,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         if (receiverRegistered) {
-            unregisterReceiver(receiver)
+            runCatching { unregisterReceiver(receiver) }
             receiverRegistered = false
         }
         super.onPause()
@@ -684,6 +786,77 @@ class MainActivity : ComponentActivity() {
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", enabled).apply()
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", false).apply()
         statusMessage = "Community relay is temporarily paused while recipient routing and end-to-end encryption are being built."
+    }
+
+    private fun completeOnboarding(rawName: String, avatarId: String, photoUri: Uri?, answers: Map<String, String>) {
+        val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
+        if (cleanName.isBlank()) return
+        val savedPhotoPath = photoUri?.let(::storeProfilePhoto)
+        val answerJson = JSONObject().apply { answers.forEach { (key, value) -> put(key, value) } }
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("onboarding_complete", true)
+            .putString("display_name", cleanName)
+            .putString("profile_avatar_id", avatarId)
+            .putString("profile_photo_path", savedPhotoPath)
+            .putString("onboarding_answers", answerJson.toString())
+            .apply()
+        displayName = cleanName
+        profileAvatarId = avatarId
+        profilePhotoPath = savedPhotoPath
+        runCatching { nearbyTransport?.setDisplayName(cleanName) }
+        onboardingComplete = true
+        statusMessage = "Welcome to NeaRer, $cleanName."
+    }
+
+    private fun storeProfilePhoto(uri: Uri): String? = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / sample > 1024 || bounds.outHeight / sample > 1024) sample *= 2
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+        }
+        val decoded = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) } ?: return null
+        val scale = minOf(1f, 512f / maxOf(decoded.width, decoded.height).toFloat())
+        val outputBitmap = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(
+            decoded, (decoded.width * scale).toInt().coerceAtLeast(1),
+            (decoded.height * scale).toInt().coerceAtLeast(1), true
+        ) else decoded
+        val profileDirectory = File(filesDir, "profile").apply { mkdirs() }
+        val destination = File(profileDirectory, "profile-photo-${System.currentTimeMillis()}.jpg")
+        FileOutputStream(destination).use { output ->
+            outputBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 86, output)
+        }
+        if (outputBitmap !== decoded) outputBitmap.recycle()
+        decoded.recycle()
+        destination.absolutePath.takeIf { destination.exists() && destination.length() > 0L }
+    }.getOrNull()
+
+    private fun saveProfileEdits(rawName: String, avatarId: String, photoUri: Uri?, removePhoto: Boolean) {
+        val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
+        if (cleanName.isBlank()) return
+        val oldPhotoPath = profilePhotoPath
+        val newPhotoPath = when {
+            photoUri != null -> storeProfilePhoto(photoUri) ?: oldPhotoPath
+            removePhoto -> null
+            else -> oldPhotoPath
+        }
+        if ((removePhoto && photoUri == null || photoUri != null && newPhotoPath != oldPhotoPath) &&
+            oldPhotoPath != null && oldPhotoPath != newPhotoPath) {
+            runCatching { File(oldPhotoPath).delete() }
+        }
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putString("display_name", cleanName)
+            .putString("profile_avatar_id", avatarId)
+            .putString("profile_photo_path", newPhotoPath)
+            .apply()
+        displayName = cleanName
+        profileAvatarId = avatarId
+        profilePhotoPath = newPhotoPath
+        runCatching { nearbyTransport?.setDisplayName(cleanName) }
+        statusMessage = "Your NeaRer profile has been updated."
     }
 
     private fun saveDisplayName(rawName: String) {
@@ -2714,6 +2887,9 @@ private fun NeaRerHome(
     hybridPeers: Map<String, String>,
     recentlySeenPeers: Map<String, NearbyPerson>,
     displayName: String,
+    profileAvatarId: String,
+    profilePhotoPath: String?,
+    onSaveProfile: (String, String, Uri?, Boolean) -> Unit,
     nearbyIdentityId: String,
     ultraSpeedMode: Boolean,
     ultraSpeedRestartRequired: Boolean,
@@ -2727,9 +2903,38 @@ private fun NeaRerHome(
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     val context = LocalContext.current
+    var showProfileEditor by remember { mutableStateOf(false) }
+    val profileBitmap = remember(profilePhotoPath) { profilePhotoPath?.let { path -> runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull() } }
     var draft by remember { mutableStateOf("") }
-    var selectedTab by remember { mutableStateOf("Chats") }
-    LaunchedEffect(externalShareUris) { if (externalShareUris.isNotEmpty()) selectedTab = "Share" }
+    var selectedTab by remember { mutableStateOf("Home") }
+    val tabBackStack = remember { mutableStateListOf<String>() }
+
+    fun navigateTo(tab: String) {
+        if (tab == selectedTab) return
+        tabBackStack.add(selectedTab)
+        selectedTab = tab
+    }
+
+    fun navigateToRootTab(tab: String) {
+        tabBackStack.clear()
+        selectedTab = tab
+    }
+
+    fun navigateBack() {
+        selectedTab = if (tabBackStack.isNotEmpty()) {
+            tabBackStack.removeAt(tabBackStack.lastIndex)
+        } else {
+            "Home"
+        }
+    }
+
+    BackHandler(enabled = selectedTab != "Home") {
+        navigateBack()
+    }
+
+    LaunchedEffect(externalShareUris) {
+        if (externalShareUris.isNotEmpty()) navigateToRootTab("Share")
+    }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val fastShare = remember(context) { FastShareController(context) }
@@ -2805,31 +3010,36 @@ private fun NeaRerHome(
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 22.dp, vertical = 22.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
+                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 20.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (selectedTab != "Home") {
+                    Text(
+                        "‹",
+                        modifier = Modifier.clickable { navigateBack() }.padding(end = 10.dp),
+                        color = Gold,
+                        fontSize = 38.sp,
+                        fontWeight = FontWeight.Light
+                    )
+                }
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Nea", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                        Text("R", color = Color(0xFFFFD400), fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                        Text("er", color = White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("Nea", color = White, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp)
+                        Text("R", color = Gold, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp)
+                        Text("er", color = White, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp)
                     }
-                    Text("NO DATA? WE ARE NEARER.", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.1.sp)
+                    Text("NeaRer You, NeaRer Everything", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.35.sp)
                 }
-                Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(46.dp)) {
-                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
-                        androidx.compose.foundation.Image(
-                            painter = androidx.compose.ui.res.painterResource(R.drawable.ic_nearer),
-                            contentDescription = "NeaRer logo",
-                            modifier = Modifier.size(38.dp)
-                        )
-                    }
-                }
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(R.drawable.nearer_logo),
+                    contentDescription = "NeaRer logo",
+                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp))
+                )
             }
 
             if (selectedTab == "Home") {
@@ -2841,14 +3051,14 @@ private fun NeaRerHome(
                                 Text("Stay close. Share freely.", color = White, fontSize = 25.sp, lineHeight = 31.sp, fontWeight = FontWeight.ExtraBold)
                             }
                             androidx.compose.foundation.Image(
-                                painter = androidx.compose.ui.res.painterResource(R.drawable.ic_nearer),
+                                painter = androidx.compose.ui.res.painterResource(R.drawable.nearer_logo),
                                 contentDescription = "NeaRer logo",
                                 modifier = Modifier.size(48.dp)
                             )
                         }
                         Text("Find people around you, chat and share files — without mobile data.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
                         Button(
-                            onClick = { selectedTab = "Nearby"; onFindNearby() },
+                            onClick = { navigateTo("Nearby"); onFindNearby() },
                             modifier = Modifier.fillMaxWidth().height(54.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
@@ -2856,7 +3066,7 @@ private fun NeaRerHome(
                         Button(
                             onClick = {
                                 if (chatReady) filePicker.launch(arrayOf("*/*"))
-                                else { selectedTab = "Nearby"; onFindNearby() }
+                                else { navigateTo("Nearby"); onFindNearby() }
                             },
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(16.dp),
@@ -3104,7 +3314,22 @@ private fun NeaRerHome(
             }
 
             if (selectedTab == "Chats") {
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
+            Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("YOUR CHATS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                        Text("Keep your people close.", color = White, fontSize = 23.sp, lineHeight = 28.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                    Surface(shape = RoundedCornerShape(30.dp), color = if (chatReady) Color(0xFF174B43) else Panel) {
+                        Row(modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Surface(modifier = Modifier.size(7.dp), shape = CircleShape, color = if (chatReady) Gold else Muted) {}
+                            Text(if (chatReady) "CONNECTED" else "OFFLINE", color = if (chatReady) Gold else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp)
+                        }
+                    }
+                }
+                Text("Private conversations and nearby sharing, even without mobile data.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+            }
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("PRIVATE CHAT", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -3116,7 +3341,7 @@ private fun NeaRerHome(
                             Text("Your private conversation starts here. Messages travel over the direct phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         } else {
                             Column(
-                                modifier = Modifier.fillMaxWidth().height(150.dp).verticalScroll(rememberScrollState()),
+                                modifier = Modifier.fillMaxWidth().height(220.dp).verticalScroll(rememberScrollState()),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
                                 messages.forEach { message ->
@@ -3125,12 +3350,12 @@ private fun NeaRerHome(
                                         horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
                                     ) {
                                         Surface(
-                                            color = if (message.outgoing) Color(0xFF24564F) else Panel,
-                                            shape = RoundedCornerShape(14.dp)
+                                            color = if (message.outgoing) BrandBlue.copy(alpha = 0.72f) else Midnight,
+                                            shape = RoundedCornerShape(18.dp)
                                         ) {
                                             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                                                 Text(message.body, color = White, fontSize = 14.sp)
-                                                Text(if (message.outgoing) message.delivery else "Received", color = BlueAccent, fontSize = 9.sp)
+                                                Text(if (message.outgoing) message.delivery else "Received", color = if (message.outgoing) Gold else BlueAccent, fontSize = 9.sp)
                                             }
                                         }
                                     }
@@ -3242,7 +3467,7 @@ private fun NeaRerHome(
                     } else {
                         Text("Approve a nearby NeaRer connection to unlock private text chat. No mobile data is used for this local conversation.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         Button(
-                            onClick = { selectedTab = "Nearby"; onFindNearby() },
+                            onClick = { navigateTo("Nearby"); onFindNearby() },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
@@ -3257,7 +3482,7 @@ private fun NeaRerHome(
             CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
                 activeGame, gameChatMessages, (usingNearbyConnections || chatReady), onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
-                onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame)
+                onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame, profileAvatarId)
 
             }
 
@@ -3389,6 +3614,21 @@ private fun NeaRerHome(
 
             if (selectedTab == "More") {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        if (profileBitmap != null) {
+                            androidx.compose.foundation.Image(profileBitmap, contentDescription = "Your profile photo", modifier = Modifier.size(66.dp).clip(CircleShape))
+                        } else {
+                            NeaRerAvatarBadge(profileAvatarId, Modifier.size(66.dp))
+                        }
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("YOUR NEARER PROFILE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                            Text(displayName, color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Text("ID  NR-$nearbyIdentityId", color = Muted, fontSize = 11.sp)
+                        }
+                        Button(onClick = { showProfileEditor = true }, colors = ButtonDefaults.buttonColors(containerColor = BrandBlue, contentColor = White)) { Text("Edit") }
+                    }
+                }
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
                     Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("YOUR NEARER", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
                         Text("Everything closer, even without mobile data.", color = White, fontSize = 23.sp, lineHeight = 29.sp, fontWeight = FontWeight.ExtraBold)
@@ -3451,20 +3691,20 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Chats" to "▤", "Share" to "⇧", "Games" to "♟").forEach { item ->
+                    listOf("Home" to "⌂", "Chats" to "▤", "Share" to "⇧", "Games" to "♟", "More" to "⋯").forEach { item ->
                         val selected = selectedTab == item.first
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
                             shape = RoundedCornerShape(13.dp),
-                            color = if (selected) BlueAccent.copy(alpha = 0.13f) else Panel
+                            color = if (selected) BrandBlue.copy(alpha = 0.42f) else Panel
                         ) {
                             Column(
-                                modifier = Modifier.clickable { selectedTab = item.first }.padding(vertical = 8.dp),
+                                modifier = Modifier.clickable { navigateToRootTab(item.first) }.padding(vertical = 8.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
-                                Text(item.second, color = if (selected) BlueAccent else Muted, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text(item.first, color = if (selected) BlueAccent else Muted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                Text(item.second, color = if (selected) Gold else Muted, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                                Text(item.first, color = if (selected) White else Muted, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
                                 Surface(
                                     modifier = Modifier.width(16.dp).height(2.dp),
                                     shape = RoundedCornerShape(2.dp),
@@ -3476,6 +3716,16 @@ private fun NeaRerHome(
                 }
             }
         }
+    }
+
+    if (showProfileEditor) {
+        NeaRerProfileEditor(
+            currentName = displayName,
+            currentAvatarId = profileAvatarId,
+            currentPhotoPath = profilePhotoPath,
+            onSave = { name, avatar, photo, remove -> onSaveProfile(name, avatar, photo, remove); showProfileEditor = false },
+            onDismiss = { showProfileEditor = false }
+        )
     }
 
     // Connection approval is global: users must not miss a request just because
@@ -3516,7 +3766,8 @@ private fun CommunityHub(
     invite: GameInvite?, game: LudoNetworkMatch?, gameChat: List<String>, nearbyConnected: Boolean,
     onCreate: (String) -> Unit, onJoin: (String) -> Unit, onSelect: (String) -> Unit,
     onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
-    onAccept: () -> Unit, onReject: () -> Unit, onMove: (String, Int) -> Unit, onGameChat: (String) -> Unit, onGameRematch: () -> Unit, onEndGame: () -> Unit
+    onAccept: () -> Unit, onReject: () -> Unit, onMove: (String, Int) -> Unit, onGameChat: (String) -> Unit, onGameRematch: () -> Unit, onEndGame: () -> Unit,
+    localAvatarId: String
 ) {
     var name by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
@@ -3559,7 +3810,7 @@ private fun CommunityHub(
             Text(notice, color = BlueAccent, fontSize = 10.sp)
         }
     }
-    LudoGamePanel(game, invite, nearbyConnected, onInviteGame, onAccept, onReject, onMove, gameChat, onGameChat, onGameRematch, onEndGame)
+    LudoGamePanel(game, invite, nearbyConnected, onInviteGame, onAccept, onReject, onMove, gameChat, onGameChat, onGameRematch, onEndGame, localAvatarId)
 }
 private data class CommunityGroup(val code: String, val name: String, val members: List<String>)
 private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
