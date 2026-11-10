@@ -558,6 +558,7 @@ internal object IncomingFilePayloadPolicy {
                 destination?.delete()
                 listener.onFileStatus("Could not save the received file: ${error.localizedMessage ?: "transfer error"}")
             } finally {
+                transferSpeedMeters.remove(payloadId)
                 try { payload.close() } catch (_: Exception) { }
             }
         }
@@ -766,6 +767,7 @@ internal object IncomingFilePayloadPolicy {
                     sendPreparedFile(id, outgoing)
                 } catch (error: Exception) {
                     outgoingFiles.remove(id)
+                    transferSpeedMeters.remove(id)
                     try { client.cancelPayload(id) } catch (_: Exception) { }
                     try { payload.close() } catch (_: Exception) { }
                     outgoing.temporarySourceFile?.delete()
@@ -875,6 +877,7 @@ internal object IncomingFilePayloadPolicy {
             try { it.payload.close() } catch (_: Exception) { }
             it.temporarySourceFile?.delete()
         }
+        transferSpeedMeters.remove(payloadId)
     }
 
     private fun broadcast(content: String, excludeEndpoint: String?): Boolean {
