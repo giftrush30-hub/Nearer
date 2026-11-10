@@ -10,19 +10,12 @@ import java.security.PublicKey
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
 
-/**
- * Versioned JSON wire contract for mesh control/data frames.
- * Identity hello proves possession of the advertised signing key; it does NOT
- * prove the human identity behind that key. The displayed fingerprint must be
- * compared through a trusted channel before a peer is authorised to relay.
- */
+/** Versioned wire contract. A valid hello proves key possession, not human identity. */
 internal object MeshWireProtocol {
     const val VERSION = 1
     const val MAX_FRAME_BYTES = 128 * 1024
     const val KIND_IDENTITY_HELLO = "mesh_identity_hello"
     const val KIND_ROUTE_ADVERTISEMENT = "mesh_route"
-    const val KIND_RELAY_PACKET = "mesh_relay"
-    const val KIND_RELAY_ACK = "mesh_relay_ack"
 
     data class IdentityHello(
         val peerId: String,
@@ -31,7 +24,7 @@ internal object MeshWireProtocol {
         val nonce: String,
         val signature: String
     ) {
-        val fingerprint: String get() = fingerprint(signingPublicKey)
+        val fingerprint: String get() = fingerprintOf(signingPublicKey)
     }
 
     data class RouteAdvertisement(
@@ -45,9 +38,7 @@ internal object MeshWireProtocol {
     fun createIdentityHello(peerId: String, identity: MeshIdentityKeys): IdentityHello {
         require(peerId.isNotBlank() && peerId.length <= 64)
         val nonce = MeshCrypto.encode(ByteArray(24).also { java.security.SecureRandom().nextBytes(it) })
-        val unsigned = IdentityHello(
-            peerId, identity.signingPublicKey, identity.agreementPublicKey, nonce, ""
-        )
+        val unsigned = IdentityHello(peerId, identity.signingPublicKey, identity.agreementPublicKey, nonce, "")
         val signer = Signature.getInstance("SHA256withECDSA")
         signer.initSign(identity.signing.private)
         signer.update(helloCanonical(unsigned))
@@ -56,48 +47,59 @@ internal object MeshWireProtocol {
 
     fun verifyIdentityHello(hello: IdentityHello): Boolean {
         return try {
-        if (hello.peerId.isBlank() || hello.peerId.length > 64 ||
-            hello.signingPublicKey.length !in 1..512 ||
-            hello.agreementPublicKey.length !in 1..512 ||
-            hello.nonce.length !in 1..128 ||
-            hello.signature.length !in 1..256 ||
-            MeshCrypto.decode(hello.nonce).size != 24
-        ) return false
-        val publicKey = decodeEcPublicKey(hello.signingPublicKey)
-        decodeEcPublicKey(hello.agreementPublicKey)
-        val verifier = Signature.getInstance("SHA256withECDSA")
-        verifier.initVerify(publicKey)
-        verifier.update(helloCanonical(hello.copy(signature = "")))
-        verifier.verify(MeshCrypto.decode(hello.signature))
-    } catch (_: Exception) {
-        false
+            if (hello.peerId.isBlank() || hello.peerId.length > 64 ||
+                hello.signingPublicKey.length !in 1..512 ||
+                hello.agreementPublicKey.length !in 1..512 ||
+                hello.nonce.length !in 1..128 ||
+                hello.signature.length !in 1..256 ||
+                MeshCrypto.decode(hello.nonce).size != 24
+            ) {
+                false
+            } else {
+                val signingKey = decodeEcPublicKey(hello.signingPublicKey)
+                decodeEcPublicKey(hello.agreementPublicKey)
+                val verifier = Signature.getInstance("SHA256withECDSA")
+                verifier.initVerify(signingKey)
+                verifier.update(helloCanonical(hello.copy(signature = "")))
+                verifier.verify(MeshCrypto.decode(hello.signature))
+            }
+        } catch (_: Exception) {
+            false
+        }
     }
 
-    fun encodeIdentityHello(hello: IdentityHello): ByteArray = JSONObject()
-        .put("kind", KIND_IDENTITY_HELLO)
-        .put("version", VERSION)
-        .put("peerId", hello.peerId)
-        .put("signingKey", hello.signingPublicKey)
-        .put("agreementKey", hello.agreementPublicKey)
-        .put("nonce", hello.nonce)
-        .put("signature", hello.signature)
-        .toString().toByteArray(Charsets.UTF_8)
-        .also { require(it.size <= MAX_FRAME_BYTES) }
+    fun encodeIdentityHello(hello: IdentityHello): ByteArray {
+        require(verifyIdentityHello(hello))
+        return JSONObject()
+            .put("kind", KIND_IDENTITY_HELLO)
+            .put("version", VERSION)
+            .put("peerId", hello.peerId)
+            .put("signingKey", hello.signingPublicKey)
+            .put("agreementKey", hello.agreementPublicKey)
+            .put("nonce", hello.nonce)
+            .put("signature", hello.signature)
+            .toString().toByteArray(Charsets.UTF_8)
+            .also { require(it.size <= MAX_FRAME_BYTES) }
+    }
 
     fun decodeIdentityHello(json: JSONObject): IdentityHello? {
         return try {
-        if (json.optString("kind") != KIND_IDENTITY_HELLO ||
-            json.optInt("version", -1) != VERSION
-        ) return null
-        IdentityHello(
-            json.getString("peerId"),
-            json.getString("signingKey"),
-            json.getString("agreementKey"),
-            json.getString("nonce"),
-            json.getString("signature")
-        ).takeIf(::verifyIdentityHello)
-    } catch (_: Exception) {
-        null
+            if (json.optString("kind") != KIND_IDENTITY_HELLO ||
+                json.optInt("version", -1) != VERSION
+            ) {
+                null
+            } else {
+                IdentityHello(
+                    json.getString("peerId"),
+                    json.getString("signingKey"),
+                    json.getString("agreementKey"),
+                    json.getString("nonce"),
+                    json.getString("signature")
+                ).takeIf(::verifyIdentityHello)
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun createRouteAdvertisement(
@@ -126,18 +128,22 @@ internal object MeshWireProtocol {
         maxAgeMillis: Long = 90_000L
     ): Boolean {
         return try {
-        if (route.originPeerId.isBlank() || route.destinationPeerId.isBlank() ||
-            route.originPeerId == route.destinationPeerId ||
-            route.hopCount !in 0 until MeshRelayPolicy.MAX_HOPS ||
-            route.issuedAtMillis <= 0 || nowMillis < route.issuedAtMillis ||
-            nowMillis - route.issuedAtMillis > maxAgeMillis
-        ) return false
-        val verifier = Signature.getInstance("SHA256withECDSA")
-        verifier.initVerify(decodeEcPublicKey(trustedOriginSigningKey))
-        verifier.update(routeCanonical(route.copy(signature = "")))
-        verifier.verify(MeshCrypto.decode(route.signature))
-    } catch (_: Exception) {
-        false
+            if (route.originPeerId.isBlank() || route.destinationPeerId.isBlank() ||
+                route.originPeerId == route.destinationPeerId ||
+                route.hopCount !in 0 until MeshRelayPolicy.MAX_HOPS ||
+                route.issuedAtMillis <= 0 || nowMillis < route.issuedAtMillis ||
+                nowMillis - route.issuedAtMillis > maxAgeMillis
+            ) {
+                false
+            } else {
+                val verifier = Signature.getInstance("SHA256withECDSA")
+                verifier.initVerify(decodeEcPublicKey(trustedOriginSigningKey))
+                verifier.update(routeCanonical(route.copy(signature = "")))
+                verifier.verify(MeshCrypto.decode(route.signature))
+            }
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun encodeRoute(route: RouteAdvertisement): ByteArray = JSONObject()
@@ -151,22 +157,27 @@ internal object MeshWireProtocol {
         .toString().toByteArray(Charsets.UTF_8)
         .also { require(it.size <= MAX_FRAME_BYTES) }
 
-    fun decodeRoute(json: JSONObject): RouteAdvertisement? = try {
-        if (json.optString("kind") != KIND_ROUTE_ADVERTISEMENT ||
-            json.optInt("version", -1) != VERSION
-        ) return null
-        RouteAdvertisement(
-            json.getString("origin"),
-            json.getString("destination"),
-            json.getInt("hops"),
-            json.getLong("issuedAt"),
-            json.getString("signature")
-        )
-    } catch (_: Exception) {
-        null
+    fun decodeRoute(json: JSONObject): RouteAdvertisement? {
+        return try {
+            if (json.optString("kind") != KIND_ROUTE_ADVERTISEMENT ||
+                json.optInt("version", -1) != VERSION
+            ) {
+                null
+            } else {
+                RouteAdvertisement(
+                    json.getString("origin"),
+                    json.getString("destination"),
+                    json.getInt("hops"),
+                    json.getLong("issuedAt"),
+                    json.getString("signature")
+                )
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
-    fun fingerprint(publicKey: String): String =
+    fun fingerprintOf(publicKey: String): String =
         MessageDigest.getInstance("SHA-256").digest(MeshCrypto.decode(publicKey)).take(16)
             .joinToString(":") { "%02X".format(it) }
 
