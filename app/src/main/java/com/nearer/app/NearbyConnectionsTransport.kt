@@ -333,10 +333,10 @@ internal object IncomingFilePayloadPolicy {
                     }
                     val incomingName = meta?.name ?: "Incoming file"
                     val incomingSize = meta?.size ?: -1L
-                    val meter = transferSpeedMeters.computeIfAbsent(payload.id) { TransferSpeedMeter() }
-                    val speed = meter.record(0L, incomingSize)
-                    listener.onFileSpeed(id, payload.id, incomingName, speed, true)
-                    listener.onFileProgress(id, payload.id, incomingName, 0L, incomingSize, true)
+                    // onPayloadReceived is the completed-file callback; report completion,
+                    // while live speed is emitted by the transfer-update callbacks.
+                    val completedBytes = incomingSize.coerceAtLeast(0L)
+                    listener.onFileProgress(id, payload.id, incomingName, completedBytes, incomingSize, true)
                     processCompletedFile(payload.id)
                 }
                 else -> listener.onFileStatus("NeaRer received an unsupported nearby transfer type.")
@@ -429,11 +429,21 @@ internal object IncomingFilePayloadPolicy {
                     return
                 }
                 val acceptedHash = sha256.ifBlank { existing?.sha256.orEmpty() }
+                // A repeated metadata packet for the same payload is the resume handshake.
+                // Start a fresh speed interval at the last known byte offset, excluding
+                // time spent disconnected, while retaining absolute transfer progress.
+                val resumeOffset = if (existing != null) {
+                    transferSpeedMeters[payloadId]?.snapshot()?.transferredBytes ?: 0L
+                } else 0L
+                val meter = transferSpeedMeters.computeIfAbsent(payloadId) { TransferSpeedMeter() }
+                if (existing != null) meter.reset()
+                val speed = meter.record(resumeOffset, size)
                 incomingMetadata[payloadId] = FileMeta(endpointId, name, size, acceptedHash)
                 if (incomingPeerId.isNotBlank() || previousPeerId.isBlank()) {
                     incomingPeerIds[payloadId] = incomingPeerId
                 }
-                listener.onFileProgress(endpointId, payloadId, name, 0L, size, true)
+                listener.onFileSpeed(endpointId, payloadId, name, speed, true)
+                listener.onFileProgress(endpointId, payloadId, name, resumeOffset, size, true)
                 processCompletedFile(payloadId)
                 return
             }
