@@ -39,6 +39,13 @@ class MeshCryptoAndRoutingTest {
         assertNull(table.nextHop("peer-d", 1201))
     }
 
+    @Test fun directNeighbourRouteIsAccepted() {
+        val table = MeshRouteTable()
+        assertTrue(table.learn("peer-b", "peer-b", 0, "peer-b", "peer-a", 100))
+        assertEquals("peer-b", table.nextHop("peer-b", 100)?.nextHopPeerId)
+        assertEquals(1, table.nextHop("peer-b", 100)?.hopCount)
+    }
+
     @Test fun routeRejectsSelfRoutesAndHopOverflow() {
         val table = MeshRouteTable()
         assertFalse(table.learn("peer-a", "peer-b", 1, "peer-b", "peer-a", 100))
