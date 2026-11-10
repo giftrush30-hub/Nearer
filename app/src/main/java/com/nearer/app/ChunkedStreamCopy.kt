@@ -29,6 +29,7 @@ internal object ChunkedStreamCopy {
         require(bufferSize > 0) { "Buffer size must be positive" }
         val buffer = ByteArray(bufferSize)
         var sent = 0L
+        var lastReported = 0L
         var nextProgressAt = PROGRESS_INTERVAL_BYTES
 
         while (shouldContinue()) {
@@ -53,6 +54,7 @@ internal object ChunkedStreamCopy {
             if (sent >= nextProgressAt) {
                 output.flush()
                 onProgress(sent)
+                lastReported = sent
                 while (nextProgressAt <= sent && nextProgressAt <= Long.MAX_VALUE - PROGRESS_INTERVAL_BYTES) {
                     nextProgressAt += PROGRESS_INTERVAL_BYTES
                 }
@@ -63,7 +65,7 @@ internal object ChunkedStreamCopy {
         if (complete) {
             output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
             output.flush()
-            if (sent > 0L) onProgress(sent)
+            if (sent != lastReported) onProgress(sent)
         }
         return ChunkedCopyResult(sent, complete)
     }
