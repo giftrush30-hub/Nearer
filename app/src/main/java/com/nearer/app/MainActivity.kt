@@ -138,6 +138,10 @@ class MainActivity : ComponentActivity() {
     private var hybridConnectedStableId: String? = null
     private var nearbyQueuePeerStableId: String? = null
     private var meshRelayEnabled by mutableStateOf(false)
+    private val meshRouteTable = MeshRouteTable()
+    private lateinit var meshDeadDropStore: MeshDeadDropStore
+    private var meshIdentityFingerprint by mutableStateOf<String?>(null)
+    private var meshIdentityError by mutableStateOf<String?>(null)
     private val discoveryHandler = Handler(Looper.getMainLooper())
     private var discoveryTimeout: Runnable? = null
     private var discoveryGeneration = 0
@@ -256,6 +260,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        meshDeadDropStore = MeshDeadDropStore(this)
+        val meshVault = MeshIdentityVault(this)
+        runCatching { meshVault.loadOrCreate() }
+            .onSuccess { meshIdentityFingerprint = meshVault.signingFingerprint(it) }
+            .onFailure { meshIdentityError = it.localizedMessage ?: "Secure identity storage is unavailable" }
         captureExternalShareIntent(intent)
         window.statusBarColor = android.graphics.Color.rgb(16, 26, 43)
         window.navigationBarColor = android.graphics.Color.rgb(16, 26, 43)
@@ -3264,9 +3273,10 @@ private fun NeaRerHome(
             if (selectedTab == "Nearby") {
             MeshStatusPanel(
                 activePeerCount = hybridPeers.size,
-                routeCount = null,
-                queuedPacketCount = null,
-                relayEnabled = false
+                routeCount = meshRouteTable.snapshot(System.currentTimeMillis()).size,
+                queuedPacketCount = meshDeadDropStore.count(System.currentTimeMillis()),
+                relayEnabled = false,
+                identityFingerprint = meshIdentityFingerprint
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
