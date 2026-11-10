@@ -81,4 +81,22 @@ class TransferSpeedMeterTest {
         assertEquals(0L, snapshot.elapsedMillis)
         assertEquals(0.0, snapshot.averageBytesPerSecond, 0.0)
     }
+    @Test
+    fun resumedTransferAverageExcludesBytesTransferredBeforeResume() {
+        val clock = FakeClock()
+        val meter = TransferSpeedMeter(clockMillis = { clock.now })
+
+        meter.record(40_000_000L, 100_000_000L)
+        meter.reset()
+        val resumed = meter.record(40_000_000L, 100_000_000L)
+        assertEquals(0.0, resumed.averageBytesPerSecond, 0.0)
+
+        clock.advance(1_000L)
+        val afterResume = meter.record(60_000_000L)
+
+        assertEquals(20_000_000.0, afterResume.averageBytesPerSecond, 0.001)
+        assertEquals(60_000_000L, afterResume.transferredBytes)
+        assertEquals(0.6f, afterResume.progressFraction!!)
+    }
+
 }
