@@ -1,6 +1,6 @@
 # NeaRer onboarding, identity and recovery specification
 
-Status: product decisions approved. First-run onboarding, local profile persistence, profile editing, the More-tab profile preview, nearby avatar metadata exchange, the durable SQLite chat-history archive with older-message paging, and the encrypted local backup/restore workflow are implemented in code on the `feature/premium-onboarding-identity` branch. Profile-photo exchange and authenticated old-to-new phone migration remain separate milestones. Android compilation, unit-test execution and real-device verification are still pending.
+Status: implementation is on the `feature/premium-onboarding-identity` branch and is not yet release-verified. Onboarding, local profile persistence/editing, nearby avatar metadata, SQLite chat archiving/paging, encrypted backup creation, verified restore staging, a read-only restore plan, and a rollback-capable restore coordinator are implemented in code. The backup currently covers portable profile/preferences, chat history, received files and an optional profile photo; it does not yet migrate device identity credentials, contacts, all app media or live transport state. CI has compiled the app, but the latest recorded test run had two failures that are being fixed. Real-device backup/restore testing remains outstanding. Profile-photo exchange and authenticated old-to-new phone migration remain separate milestones.
 
 ## Product promise
 
@@ -93,7 +93,7 @@ If a phone is lost or destroyed, no backup exists, and the old phone cannot be a
 1. First-run onboarding, name, optional answers, avatar/photo choice, ID reveal and local persistence — implemented.
 2. Local profile editor and profile preview in More — implemented. Nearby display-name/avatar metadata exchange and avatar rendering in discovery/connection lists — implemented. SQLite chat archive migration and older-message paging — implemented in code; build/device verification remains pending. Profile-photo sharing and avatar rendering in chat/contact surfaces remain pending.
 3. Recovery Kit generation and secure key storage.
-4. Encrypted backup/export and restore — encrypted backup creation, authenticated staging, strict snapshot validation, a read-only typed restore plan, a coordinated rollback-capable apply transaction, and a More-screen SAF backup/restore panel with preview and explicit destructive confirmation are implemented in code. CI compilation/unit-test verification and real-device backup/restore validation remain pending.
+4. Encrypted backup/export and restore — encrypted backup creation, authenticated staging, strict snapshot validation, a read-only typed restore plan, a coordinated rollback-capable apply transaction, and a More-screen SAF backup/restore panel with preview and explicit destructive confirmation are implemented in code. JVM tests are being corrected after the first CI run found two failures; full passing CI and real-device backup/restore validation remain pending.
 5. Old-to-new phone migration with pairing, integrity checks and rollback-safe completion.
 6. Device management and credential revocation.
 7. Optional cloud backup only if later approved; never make it a prerequisite for the offline-first core.
