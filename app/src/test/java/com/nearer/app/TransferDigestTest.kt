@@ -52,7 +52,7 @@ class TransferDigestTest {
 
         val expected = java.security.MessageDigest.getInstance("SHA-256")
             .digest(source)
-            .joinToString("") { "%02x".format(it) }
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
         assertEquals(source.size.toLong(), result.bytesCopied)
         assertEquals(expected, result.sha256)
         assertArrayEquals(source, destination.toByteArray())
