@@ -103,28 +103,36 @@ internal object MeshCrypto {
         localPeerId: String,
         recipientAgreementPrivateKey: PrivateKey,
         trustedSenderSigningPublicKey: String
-    ): ByteArray? = try {
-        if (packet.destinationPeerId != localPeerId) return null
-        if (packet.senderSigningPublicKey != trustedSenderSigningPublicKey) return null
-        val trustedKey = decodePublic(trustedSenderSigningPublicKey)
-        val verifier = Signature.getInstance("SHA256withECDSA")
-        verifier.initVerify(trustedKey)
-        verifier.update(canonical(packet.copy(signature = "")))
-        if (!verifier.verify(decode(packet.signature))) return null
-
-        val shared = agree(recipientAgreementPrivateKey, decodePublic(packet.ephemeralPublicKey))
-        val aad = associatedData(packet.messageId, packet.originPeerId, packet.destinationPeerId)
-        val key = hkdf(shared, decode(packet.salt), aad, 32)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(
-            Cipher.DECRYPT_MODE,
-            SecretKeySpec(key, "AES"),
-            GCMParameterSpec(GCM_TAG_BITS, decode(packet.nonce))
-        )
-        cipher.updateAAD(aad)
-        cipher.doFinal(decode(packet.ciphertext))
-    } catch (_: Exception) {
-        null
+    ): ByteArray? {
+        return try {
+            if (packet.destinationPeerId != localPeerId ||
+                packet.senderSigningPublicKey != trustedSenderSigningPublicKey
+            ) {
+                null
+            } else {
+                val trustedKey = decodePublic(trustedSenderSigningPublicKey)
+                val verifier = Signature.getInstance("SHA256withECDSA")
+                verifier.initVerify(trustedKey)
+                verifier.update(canonical(packet.copy(signature = "")))
+                if (!verifier.verify(decode(packet.signature))) {
+                    null
+                } else {
+                    val shared = agree(recipientAgreementPrivateKey, decodePublic(packet.ephemeralPublicKey))
+                    val aad = associatedData(packet.messageId, packet.originPeerId, packet.destinationPeerId)
+                    val key = hkdf(shared, decode(packet.salt), aad, 32)
+                    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                    cipher.init(
+                        Cipher.DECRYPT_MODE,
+                        SecretKeySpec(key, "AES"),
+                        GCMParameterSpec(GCM_TAG_BITS, decode(packet.nonce))
+                    )
+                    cipher.updateAAD(aad)
+                    cipher.doFinal(decode(packet.ciphertext))
+                }
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun generateEcKeyPair(): KeyPair =
