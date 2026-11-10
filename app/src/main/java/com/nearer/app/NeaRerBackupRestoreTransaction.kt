@@ -124,16 +124,21 @@ internal object NeaRerBackupRestoreTransaction {
             if (!editor.commit()) throw IOException("Could not save restored NeaRer preferences")
             preferencesCommitted = true
 
-            oldReceived.deleteRecursively()
-            rollbackRoot.deleteRecursively()
+            // The live restore is committed at this point. Cleanup is deliberately
+            // best-effort and must never enter the rollback path: the rollback chat
+            // archive is no longer needed once preferences and SQLite have committed.
+            runCatching { oldReceived.deleteRecursively() }
             val oldPhotoPath = oldPreferences["profile_photo_path"] as? String
-            oldPhotoPath?.let { path ->
-                val oldPhoto = File(path)
-                if (oldPhoto != newPhoto && oldPhoto.isFile &&
-                    NeaRerBackupPathSafety.isContained(filesRoot, oldPhoto)) {
-                    oldPhoto.delete()
+            runCatching {
+                oldPhotoPath?.let { path ->
+                    val oldPhoto = File(path)
+                    if (oldPhoto != newPhoto && oldPhoto.isFile &&
+                        NeaRerBackupPathSafety.isContained(filesRoot, oldPhoto)) {
+                        oldPhoto.delete()
+                    }
                 }
             }
+            runCatching { rollbackRoot.deleteRecursively() }
             return Result(
                 chatMessages = plan.preview.chatMessages,
                 receivedFiles = plan.receivedFiles.size,
