@@ -3262,16 +3262,12 @@ private fun NeaRerHome(
             }
 
             if (selectedTab == "Nearby") {
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
-                Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("COMMUNITY MESH RELAY", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        Text("Multi-hop delivery is being upgraded with recipient routing and end-to-end encryption.", color = White, fontSize = 12.sp, lineHeight = 17.sp)
-                        Text("Temporarily paused for privacy. Direct phone-to-phone chat still works.", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
-                    }
-                    androidx.compose.material3.Switch(checked = false, onCheckedChange = { }, enabled = false)
-                }
-            }
+            MeshStatusPanel(
+                activePeerCount = hybridPeers.size,
+                routeCount = 0,
+                queuedPacketCount = 0,
+                relayEnabled = false
+            )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("NEARBY DEVICES", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
