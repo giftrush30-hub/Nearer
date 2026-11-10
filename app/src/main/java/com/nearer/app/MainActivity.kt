@@ -256,16 +256,30 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val startupCrash = getSharedPreferences("nearer_diagnostics", Context.MODE_PRIVATE)
+            .getString("nearer_startup_crash", null)
+        if (!startupCrash.isNullOrBlank()) {
+            statusMessage = "NeaRer recovered after a previous startup crash. Details saved for diagnosis."
+            getSharedPreferences("nearer_diagnostics", Context.MODE_PRIVATE).edit()
+                .remove("nearer_startup_crash").apply()
+        }
         captureExternalShareIntent(intent)
         window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
         window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
         window.decorView.systemUiVisibility = 0
-        wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
-        channel = wifiManager?.initialize(this, mainLooper, null)
+        try {
+            wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
+            channel = wifiManager?.initialize(this, mainLooper, null)
+        } catch (error: Exception) {
+            wifiManager = null
+            channel = null
+            statusMessage = "Wi-Fi Direct could not initialise on this phone. Bluetooth nearby features can still be used."
+        }
         ultraSpeedMode = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
             .getBoolean("ultra_speed_mode", false)
         ultraSpeedRestartRequired = false
-        nearbyTransport = NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
+        nearbyTransport = try {
+            NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
             override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
             override fun onFound(id: String, name: String, stableId: String) { runOnUiThread { hybridPeers[id] = name; if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId) } }
             override fun onLost(id: String, stableId: String) { runOnUiThread {
@@ -493,12 +507,20 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-        })
-        if (wifiManager == null) statusMessage = "This phone does not provide Wi-Fi Direct support."
-        restoreLocalData()
-        restoreNearbyTransferHistory()
-        restoreNearbyFileQueue()
-        val queuedAfterRestart = nearbyTransport?.pendingMessageIds().orEmpty()
+            })
+        } catch (error: Exception) {
+            statusMessage = "Nearby services could not initialise: ${error.javaClass.simpleName}. NeaRer opened in safe mode."
+            null
+        }
+        if (wifiManager == null && statusMessage == "Ready to find nearby Android phones.") {
+            statusMessage = "Wi-Fi Direct is unavailable. Bluetooth nearby features may still work."
+        }
+        runCatching { restoreLocalData() }.onFailure {
+            statusMessage = "NeaRer opened, but some saved local data could not be restored."
+        }
+        runCatching { restoreNearbyTransferHistory() }
+        runCatching { restoreNearbyFileQueue() }
+        val queuedAfterRestart = runCatching { nearbyTransport?.pendingMessageIds().orEmpty() }.getOrDefault(emptySet())
         val recoveredChatStates = ChatRestartRecoveryPolicy.reconcile(chatMessages, queuedAfterRestart)
         if (recoveredChatStates) {
             persistMessages()
@@ -509,13 +531,19 @@ class MainActivity : ComponentActivity() {
                 else -> chatNotice
             }
         }
-        restoreCommunityData()
-        displayName = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
-        nearbyTransport?.setDisplayName(displayName)
-        restoreRecentlySeen()
+        runCatching { restoreCommunityData() }
+        displayName = runCatching {
+            getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+                .getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
+        }.getOrDefault("NeaRer User")
+        runCatching { nearbyTransport?.setDisplayName(displayName) }
+        runCatching { restoreRecentlySeen() }
         // Multi-hop relay is paused until recipient routing and end-to-end encryption are ready.
         meshRelayEnabled = false
-        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", false).apply()
+        runCatching {
+            getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+                .putBoolean("mesh_relay_enabled", false).apply()
+        }
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(
                 background = Midnight,
