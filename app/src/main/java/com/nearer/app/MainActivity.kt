@@ -3428,7 +3428,7 @@ private fun NeaRerHome(
                     onDraftChange = { draft = it.take(2000) },
                     onSendMessage = { onSendMessage(it); draft = "" },
                     onFindNearby = { selectedTab = "Nearby"; onFindNearby() },
-                    onChooseFiles = { filePicker.launch(arrayOf("*/*")) },
+                    onChooseFiles = { selectedTab = "Share" },
                     receivedFiles = receivedFiles,
                     onOpenFile = onOpenFile,
                     transferHistory = transferHistory,
@@ -3811,7 +3811,7 @@ private fun CommunityHub(
             Text(notice, color = BlueAccent, fontSize = 10.sp)
         }
     }
-    LudoGamePanel(game, invite, nearbyConnected, onInviteGame, onAccept, onReject, onMove, gameChat, onGameChat, onGameRematch, onEndGame)
+    LudoGamePanel(game, invite, nearbyConnected, onInviteGame, onAccept, onReject, onMove, gameChat, onGameChat, onGameRematch, onEndGame, localAvatarId = profileAvatarId)
 }
 private data class CommunityGroup(val code: String, val name: String, val members: List<String>)
 private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
@@ -3848,7 +3848,7 @@ private fun isNeaRerAppBundle(file: File): Boolean {
     }.getOrDefault(false)
 }
 
-private data class ReceivedFile(val displayName: String, val file: File, val isAppBundle: Boolean = false)
+internal data class ReceivedFile(val displayName: String, val file: File, val isAppBundle: Boolean = false)
 
 private data class UnifiedTransferHistoryEntry(
     val direction: String,
@@ -3861,7 +3861,7 @@ private data class UnifiedTransferHistoryEntry(
 
 private data class DirectOutgoingTransfer(val fileName: String, val bytes: Long)
 
-private data class NearbyTransferRecord(
+internal data class NearbyTransferRecord(
     val direction: String,
     val fileName: String,
     val bytes: Long,
@@ -3874,7 +3874,7 @@ private data class NearbyTransferRecord(
 private fun formatChatTime(timestamp: Long): String =
     java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
 
-private fun formatTransferBytes(bytes: Long): String = when {
+internal fun formatTransferBytes(bytes: Long): String = when {
     bytes >= 1024L * 1024L * 1024L -> String.format(java.util.Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
     bytes >= 1024L * 1024L -> String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
     bytes >= 1024L -> String.format(java.util.Locale.US, "%.0f KB", bytes / 1024.0)
