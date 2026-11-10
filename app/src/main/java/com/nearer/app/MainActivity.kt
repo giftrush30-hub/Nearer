@@ -3264,8 +3264,8 @@ private fun NeaRerHome(
             if (selectedTab == "Nearby") {
             MeshStatusPanel(
                 activePeerCount = hybridPeers.size,
-                routeCount = 0,
-                queuedPacketCount = 0,
+                routeCount = null,
+                queuedPacketCount = null,
                 relayEnabled = false
             )
 
