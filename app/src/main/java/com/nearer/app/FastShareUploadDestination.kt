@@ -11,7 +11,7 @@ internal object FastShareUploadDestination {
         require(safeName.isNotBlank()) { "A safe filename is required" }
         require(
             safeName != "." && safeName != ".." &&
-                '/' !in safeName && '\\\\' !in safeName &&
+                '/' !in safeName && '\\' !in safeName &&
                 safeName.none { it.code < 0x20 || it.code == 0x7f }
         ) { "Filename must be a single safe path segment" }
         val original = File(directory, safeName)
