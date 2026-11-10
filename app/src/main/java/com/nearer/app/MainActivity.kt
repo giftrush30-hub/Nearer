@@ -668,6 +668,8 @@ class MainActivity : ComponentActivity() {
                     hybridPeers = hybridPeers.toMap(),
                     recentlySeenPeers = recentlySeenPeers.toMap(),
                     displayName = displayName,
+                    profileAvatarId = profileAvatarId,
+                    profilePhotoPath = profilePhotoPath,
                     nearbyIdentityId = nearbyTransport?.localIdentityId().orEmpty(),
                     ultraSpeedMode = ultraSpeedMode,
                     ultraSpeedRestartRequired = ultraSpeedRestartRequired,
@@ -2848,6 +2850,8 @@ private fun NeaRerHome(
     hybridPeers: Map<String, String>,
     recentlySeenPeers: Map<String, NearbyPerson>,
     displayName: String,
+    profileAvatarId: String,
+    profilePhotoPath: String?,
     nearbyIdentityId: String,
     ultraSpeedMode: Boolean,
     ultraSpeedRestartRequired: Boolean,
@@ -3384,6 +3388,48 @@ private fun NeaRerHome(
             }
 
             if (selectedTab == "More") {
+                val profilePhoto = remember(profilePhotoPath) {
+                    profilePhotoPath?.let { path -> BitmapFactory.decodeFile(path)?.asImageBitmap() }
+                }
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
+                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("YOUR PROFILE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (profilePhoto != null) {
+                                androidx.compose.foundation.Image(
+                                    bitmap = profilePhoto,
+                                    contentDescription = "Profile photo",
+                                    modifier = Modifier.size(58.dp).clip(CircleShape)
+                                )
+                            } else {
+                                Surface(modifier = Modifier.size(58.dp), shape = CircleShape, color = Color(0xFF2455A5)) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                        Text(displayName.take(1).uppercase(), color = White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                                    }
+                                }
+                            }
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(displayName, color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                Text("Avatar: $profileAvatarId", color = Muted, fontSize = 10.sp)
+                                Text("NeaRer ID  •  $nearbyIdentityId", color = BlueAccent, fontSize = 10.sp)
+                            }
+                        }
+                        OutlinedTextField(
+                            value = nameDraft,
+                            onValueChange = { nameDraft = it.take(24) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Nearby display name") }
+                        )
+                        Button(
+                            onClick = { onSaveDisplayName(nameDraft) },
+                            enabled = nameDraft.isNotBlank() && nameDraft.trim() != displayName,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(13.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                        ) { Text("Save profile", fontWeight = FontWeight.Bold) }
+                    }
+                }
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
                     Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("YOUR NEARER", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
