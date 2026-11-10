@@ -2872,6 +2872,193 @@ private fun NeaRerHome(
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     val fastShare = remember(context) { FastShareController(context) }
+    val appCatalog = remember(context) { AppShareCatalog(context) }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    var shareableApps by remember { mutableStateOf<List<ShareableApp>>(emptyList()) }
+    var appsLoading by remember { mutableStateOf(false) }
+    var appNotice by remember { mutableStateOf("Load installed apps to prepare a verified APK package.") }
+    var pendingAppShare by remember { mutableStateOf<AppShareArchiveInfo?>(null) }
+    var validatingAppPath by remember { mutableStateOf<String?>(null) }
+    var openSendSession by remember { mutableStateOf<OpenSendSession?>(null) }
+    var openSendNotice by remember { mutableStateOf("Choose files to create a temporary local Wi-Fi download page.") }
+    var openSendManager by remember { mutableStateOf<OpenSendSessionManager?>(null) }
+    var openSendPermissionPending by remember { mutableStateOf(false) }
+
+    val openSendPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) {
+            openSendNotice = "Preparing " + uris.size + " file(s) for local sharing…"
+            Thread {
+                val staged = runCatching {
+                    val folder = File(context.cacheDir, "opensend/" + UUID.randomUUID()).apply {
+                        if (!mkdirs()) throw IllegalStateException("Could not prepare OpenSend files.")
+                    }
+                    uris.mapIndexed { index, uri ->
+                        val originalName = context.contentResolver.query(
+                            uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+                        )?.use { cursor ->
+                            if (cursor.moveToFirst()) cursor.getString(0) else null
+                        } ?: ("shared-file-" + (index + 1))
+                        val safeName = TransferFileNamePolicy.safeName(originalName)
+                        val destination = File(folder, safeName)
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            destination.outputStream().use { output -> input.copyTo(output, 64 * 1024) }
+                        } ?: throw IllegalStateException("Could not read " + safeName + ".")
+                        OpenSendFile(
+                            displayName = safeName,
+                            file = destination,
+                            mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
+                        )
+                    }
+                }
+                mainHandler.post {
+                    staged.onSuccess { files ->
+                        openSendManager?.close()
+                        val manager = OpenSendSessionManager(context)
+                        openSendManager = manager
+                        manager.start(
+                            files = files,
+                            onReady = { session ->
+                                openSendSession = session
+                                openSendNotice = "OpenSend is ready. Give the receiver the Wi-Fi details and browser link."
+                            },
+                            onFailure = { message ->
+                                openSendSession = null
+                                openSendNotice = message
+                                manager.close()
+                            }
+                        )
+                    }.onFailure { error ->
+                        openSendNotice = error.localizedMessage ?: "Could not prepare OpenSend files."
+                    }
+                }
+            }.apply { isDaemon = true; start() }
+        }
+    }
+    val openSendPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val shouldPick = openSendPermissionPending
+        openSendPermissionPending = false
+        if (granted && shouldPick) openSendPicker.launch(arrayOf("*/*"))
+        else if (!granted) openSendNotice = "Android's nearby Wi-Fi permission is required to start OpenSend."
+    }
+    val pickOpenSendFiles: () -> Unit = {
+        val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.NEARBY_WIFI_DEVICES else Manifest.permission.ACCESS_FINE_LOCATION
+        if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
+            openSendPicker.launch(arrayOf("*/*"))
+        } else {
+            openSendPermissionPending = true
+            openSendPermissionLauncher.launch(permission)
+        }
+    }
+    val loadShareableApps: () -> Unit = {
+        if (!appsLoading) {
+            appsLoading = true
+            appNotice = "Scanning apps that Android allows NeaRer to see…"
+            Thread {
+                val result = runCatching { appCatalog.listApps(includeSystemApps = false) }
+                mainHandler.post {
+                    appsLoading = false
+                    result.onSuccess { apps ->
+                        shareableApps = apps
+                        appNotice = if (apps.isEmpty()) "No shareable installed apps were found. Android package visibility may be restricted." else apps.size.toString() + " installed app(s) are ready to share."
+                    }.onFailure { error ->
+                        appNotice = error.localizedMessage ?: "Could not read the installed-app catalogue."
+                    }
+                }
+            }.apply { isDaemon = true; start() }
+        }
+    }
+    val shareAppsNearby: (List<String>) -> Unit = { packageNames ->
+        val selectedApps = shareableApps.filter { it.packageName in packageNames }
+        Thread {
+            val result = runCatching {
+                selectedApps.map { app ->
+                    val prepared = appCatalog.preparePackage(app)
+                    AppShareArchive(context).create(prepared)
+                }.map { file ->
+                    androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
+                }
+            }
+            mainHandler.post {
+                result.onSuccess { uris ->
+                    if (uris.isNotEmpty()) {
+                        onSendFiles(uris)
+                        appNotice = "Verified app archive(s) queued for the connected NeaRer phone."
+                    }
+                }.onFailure { error ->
+                    appNotice = error.localizedMessage ?: "Could not prepare the selected app package(s)."
+                }
+            }
+        }.apply { isDaemon = true; start() }
+    }
+    val shareAppsToAnyPhone: (List<String>) -> Unit = { packageNames ->
+        val selectedApps = shareableApps.filter { it.packageName in packageNames }
+        Thread {
+            val result = runCatching {
+                selectedApps.map { app -> AppShareArchive(context).create(appCatalog.preparePackage(app)) }
+                    .map { file -> androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file) }
+            }
+            mainHandler.post {
+                result.onSuccess { uris ->
+                    if (uris.isNotEmpty()) {
+                        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                            type = "application/vnd.nearer.appshare"
+                            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+                            clipData = ClipData.newUri(context.contentResolver, "NeaRer app packages", uris.first()).apply {
+                                uris.drop(1).forEach { addItem(ClipData.Item(it)) }
+                            }
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Share app packages"))
+                        appNotice = "App package archive(s) prepared. The receiving Android phone needs NeaRer to verify and install them."
+                    }
+                }.onFailure { error ->
+                    appNotice = error.localizedMessage ?: "Could not prepare the selected app package(s)."
+                }
+            }
+        }.apply { isDaemon = true; start() }
+    }
+    val installPendingApp: () -> Unit = {
+        val app = pendingAppShare
+        if (app != null) {
+            try {
+                if (!AppShareInstaller.canRequestInstall(context)) {
+                    context.startActivity(Intent(
+                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:" + context.packageName)
+                    ))
+                    appNotice = "Allow NeaRer to install apps in Android settings, then return here."
+                } else {
+                    AppShareInstaller.stageAndCommit(context, app)
+                    appNotice = "Android has received the verified package. Follow its installation confirmation."
+                }
+            } catch (error: Exception) {
+                appNotice = error.localizedMessage ?: "Android could not prepare this installation."
+            }
+        }
+    }
+    val incomingAppArchive = receivedFiles.firstOrNull { it.displayName.endsWith(".nearerapp", ignoreCase = true) }
+    LaunchedEffect(incomingAppArchive?.file?.absolutePath) {
+        val candidate = incomingAppArchive
+        if (candidate != null && validatingAppPath != candidate.file.absolutePath && pendingAppShare == null) {
+            validatingAppPath = candidate.file.absolutePath
+            appNotice = "Verifying received app package…"
+            Thread {
+                val result = runCatching { AppShareArchive(context).validateAndExtract(candidate.file) }
+                mainHandler.post {
+                    result.onSuccess { verified ->
+                        pendingAppShare = verified
+                        appNotice = "Verified " + verified.label + ". Review it before asking Android to install."
+                    }.onFailure { error ->
+                        candidate.file.delete()
+                        appNotice = "Received app package rejected: " + (error.localizedMessage ?: "verification failed")
+                    }
+                }
+            }.apply { isDaemon = true; start() }
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { openSendManager?.close() }
+    }
     val unifiedTransferHistory = remember(transferHistory, fastShare.history) {
         (transferHistory.map { UnifiedTransferHistoryEntry(it.direction, it.fileName, it.bytes, it.status, it.timestamp, "Nearby") } +
             fastShare.history.map { UnifiedTransferHistoryEntry("Fast Share", it.fileName, it.bytesTransferred, it.result, it.timestampMillis, "Fast Share") })
@@ -2938,7 +3125,7 @@ private fun NeaRerHome(
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 20.dp, vertical = 18.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share" || selectedTab == "Share Hub") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 20.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
             Row(
@@ -3253,6 +3440,29 @@ private fun NeaRerHome(
                 )
             }
 
+            if (selectedTab == "Share Hub") {
+                NeaRerShareHub(
+                    apps = shareableApps,
+                    appsLoading = appsLoading,
+                    appNotice = appNotice,
+                    onLoadApps = loadShareableApps,
+                    onShareApps = shareAppsNearby,
+                    onShareAppsToAnyPhone = shareAppsToAnyPhone,
+                    openSendSession = openSendSession,
+                    openSendNotice = openSendNotice,
+                    onPickOpenSendFiles = pickOpenSendFiles,
+                    onStopOpenSend = {
+                        openSendManager?.close()
+                        openSendManager = null
+                        openSendSession = null
+                        File(context.cacheDir, "opensend").deleteRecursively()
+                        openSendNotice = "Sharing stopped. The temporary download page is closed."
+                    },
+                    pendingApp = pendingAppShare,
+                    onInstallPendingApp = installPendingApp
+                )
+            }
+
             if (selectedTab == "Games") {
             CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
                 activeGame, gameChatMessages, (usingNearbyConnections || chatReady), onCreateGroup, onJoinGroup, onSelectGroup,
@@ -3493,7 +3703,7 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Chats" to "▤", "Share" to "⇧", "Games" to "♟").forEach { item ->
+                    listOf("Chats" to "▤", "Share" to "⇧", "Share Hub" to "⌁", "Games" to "♟").forEach { item ->
                         val selected = selectedTab == item.first
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
