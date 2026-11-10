@@ -534,29 +534,37 @@ internal object IncomingFilePayloadPolicy {
                 // NeaRer's private received folder when possible, avoiding a second full
                 // read/write pass for multi-gigabyte videos.
                 val moved = sourceFile != null && sourceFile.exists() && sourceFile.renameTo(target)
+                var copiedSha256 = ""
+                var copiedBytes = -1L
+                var copiedSourceUri: Uri? = null
                 if (!moved) {
                     val uri: Uri = receivedFile.asUri() ?: throw IllegalStateException("Nearby file content is unavailable")
+                    copiedSourceUri = uri
                     appContext.contentResolver.openInputStream(uri)?.use { input ->
                         FileOutputStream(target).use { output ->
-                            val buffer = ByteArray(1024 * 1024)
-                            while (true) {
-                                val count = input.read(buffer)
-                                if (count < 0) break
-                                output.write(buffer, 0, count)
-                            }
+                            val copyResult = TransferStreamCopy.copyAndSha256(input, output)
+                            copiedBytes = copyResult.bytesCopied
+                            copiedSha256 = copyResult.sha256
                             output.fd.sync()
                         }
                     } ?: throw IllegalStateException("Could not open the received file")
-                    appContext.contentResolver.delete(uri, null, null)
                 }
-                if (!target.isFile || target.length() != meta.size) {
-                    throw IllegalStateException("Received file size did not match")
+                if (!target.isFile || target.length() != meta.size ||
+                    (copiedBytes >= 0L && copiedBytes != target.length())) {
+                    throw IllegalStateException("Received file size did not match the expected and copied byte counts")
                 }
-                val actualHash = target.inputStream().use { input -> sha256Hex(input) }
+                // The fallback copy already calculated the digest. Only the rename path
+                // needs a separate read to verify the completed file.
+                val actualHash = copiedSha256.ifBlank {
+                    target.inputStream().use { input -> sha256Hex(input) }
+                }
                 if (meta.sha256.isNotBlank() && !actualHash.equals(meta.sha256, ignoreCase = true)) {
                     throw IllegalStateException("File integrity check failed. The received file was not kept.")
                 }
                 listener.onFileReceived(meta.endpointId, meta.name, target)
+                // Keep the provider's original payload until the staged copy has passed
+                // size/hash checks and the app has accepted the saved file.
+                copiedSourceUri?.let { appContext.contentResolver.delete(it, null, null) }
             } catch (error: Exception) {
                 destination?.delete()
                 listener.onFileStatus("Could not save the received file: ${error.localizedMessage ?: "transfer error"}")
