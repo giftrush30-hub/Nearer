@@ -3066,7 +3066,7 @@ private fun NeaRerHome(
                         ) { Text("Share NeaRer link", fontWeight = FontWeight.Bold) }
                     }
                 }
-                NeaRerBackupRecoveryPanel(chatHistoryDatabase)
+                NeaRerBackupRecoveryPanel(chatDatabase)
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Panel) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("CONNECTION & PRIVACY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
