@@ -1,5 +1,6 @@
 ## Recent safety hardening
 
+- Receipt forwarding now persists the exact selected outgoing next-hop identity before transmission. A signed receipt-hop ACK from a different authenticated neighbor cannot delete the queued receipt; the expected next hop survives process restart.
 - Route-withdrawal replay protection is committed before the in-memory route is removed. A storage failure pauses multi-hop before the withdrawal is applied.
 - When a direct next hop disconnects, all active learned-route tombstones are persisted before route eviction. If this persistence fails, the transport pauses multi-hop and attempts to remove cached routes learned from that neighbor; if that cleanup also fails, it attempts to clear the route cache.
 - A packet's selected next-hop peer ID is persisted with its forwarding lease before transmission. A signed hop acknowledgement is accepted only from that selected peer, not merely from any authenticated neighbor. If the route changes after a retry, the durable expected next hop is updated before the next send.
