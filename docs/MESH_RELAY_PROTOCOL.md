@@ -101,9 +101,9 @@ Foundations now present in source:
 - A bounded, signed hop-acceptance acknowledgement that binds packet ID, accepting next-hop ID, previous-hop ID and timestamp; Dead Drop now requires this proof from the expected next hop before recording hop acceptance.
 
 Still not integrated:
-- The new recipient identity binding is not exchanged during the live Nearby handshake or stored in the trusted-peer directory.
-- The route table is not populated from live authenticated peer events and route advertisements are not gossiped.
-- Dead Drop enqueue/claim/verified-hop-ack/retry/receipt methods are not connected to Nearby transport callbacks or a background worker. The signed hop-ack codec and verification gate are protocol primitives only.
+- The v3 Nearby handshake now exchanges a fresh signed recipient-identity binding after the signing-key proof, verifies that it binds the exact recipient key from the handshake, pins the signing/encryption keys, and rejects stale/replayed binding sequence numbers.
+- Authenticated Nearby peers now exchange signed route advertisements containing the destination encryption-key material, verify the advertiser against the pinned signing key and destination-key fingerprint, derive the next hop from the direct authenticated sender, and gossip materially new routes. Unchanged route refreshes do not trigger gossip loops. Route expiry, per-peer rate limits, withdrawal propagation and route persistence still need work.
+- Dead Drop enqueue/claim/verified-hop-ack/retry/receipt methods are not yet connected to mesh packet send/receive callbacks or a background worker. The signed hop-ack codec and verification gate remain protocol primitives only.
 - Receipt creation is a protocol primitive; no end-to-end receipt exchange exists.
 - There is no A → B → C → D real-device test, no app-restart delivery test, and no adversarial field test.
 - Storage quotas and retry policies need product-level review before field use.
