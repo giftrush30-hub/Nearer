@@ -24,6 +24,10 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         fun onConnected(id: String, name: String, stableId: String)
         fun onDisconnected(id: String, stableId: String, name: String)
         fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit)
+        /** Message whose sender is the original end-to-end identity, not the immediate relay. */
+        fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
+            onMessage(originPeerId, senderName, messageId, body, acknowledge)
+        }
         fun onMessageStatus(messageId: String, status: String)
         fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
         /** Optional live application-throughput callback; default keeps existing listeners source-compatible. */
