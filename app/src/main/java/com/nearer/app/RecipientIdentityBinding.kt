@@ -86,7 +86,7 @@ internal data class RecipientIdentityBinding(
             return create(
                 deviceId, signingPublic, recipient.publicKeyEncoded,
                 sequence, nowMs, nowMs + MAX_BINDING_LIFETIME_MS,
-                SecurePeerIdentity::signDetached
+                { bytes -> SecurePeerIdentity.signDetached(bytes) }
             )
         }
     }
