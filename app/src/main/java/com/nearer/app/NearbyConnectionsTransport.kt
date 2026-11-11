@@ -909,8 +909,13 @@ internal object IncomingFilePayloadPolicy {
                 withdrawal.destinationId, senderId, withdrawal.sequence
             )
             if (!meshRouteWithdrawalStore.record(tombstone)) {
+                meshRouteWithdrawalStore.disableRouting()
                 meshRouteWithdrawalStoreHealthy = false
-                listener.onStatus("Mesh route history could not be saved. Multi-hop routing is paused on this phone.")
+                // A full/corrupt tombstone ledger must not leave an old route
+                // cache that could be restored after process death.
+                meshRoutePersistence.clearAll()
+                meshDestinationEncryptionKeys.clear()
+                listener.onStatus("Mesh route history could not be saved. Cached routes were cleared and multi-hop is paused on this phone.")
                 return
             }
             val routeRemoved = meshRouteTable.removeDestinationIfNextHop(
@@ -921,8 +926,11 @@ internal object IncomingFilePayloadPolicy {
             if (!meshRouteTable.rememberWithdrawal(
                     withdrawal.destinationId, senderId, withdrawal.sequence
                 )) {
+                meshRouteWithdrawalStore.disableRouting()
                 meshRouteWithdrawalStoreHealthy = false
-                listener.onStatus("Mesh route history could not be applied. Multi-hop routing is paused on this phone.")
+                meshRoutePersistence.clearAll()
+                meshDestinationEncryptionKeys.clear()
+                listener.onStatus("Mesh route history could not be applied. Cached routes were cleared and multi-hop is paused on this phone.")
                 return
             }
             if (routeRemoved) {
