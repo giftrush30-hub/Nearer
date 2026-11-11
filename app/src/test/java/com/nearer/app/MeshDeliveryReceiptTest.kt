@@ -16,15 +16,15 @@ class MeshDeliveryReceiptTest {
         val destination = pair()
         val attacker = pair()
         val receipt = MeshDeliveryReceipt.create(
-            "packet-1", "AAAAAA", "BBBBBB", 2000L
+            "packet-1", "AAAAAA", "BBBBBB", 400000L
         ) { bytes ->
             Signature.getInstance("SHA256withECDSA").run {
                 initSign(destination.private); update(bytes); sign()
             }
         }
-        assertTrue(receipt.verify(destination.public.encoded, 3000L))
-        assertFalse(receipt.verify(attacker.public.encoded, 3000L))
-        assertFalse(receipt.copy(packetId = "packet-2").verify(destination.public.encoded, 3000L))
+        assertTrue(receipt.verify(destination.public.encoded, 401000L))
+        assertFalse(receipt.verify(attacker.public.encoded, 401000L))
+        assertFalse(receipt.copy(packetId = "packet-2").verify(destination.public.encoded, 401000L))
         assertFalse(receipt.verify(destination.public.encoded, 1000L))
     }
 }
