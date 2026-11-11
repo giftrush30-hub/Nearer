@@ -2896,6 +2896,10 @@ private fun NeaRerHome(
     pairingCode: String?,
     chatReady: Boolean,
     usingNearbyConnections: Boolean,
+    meshRecipients: List<MeshRecipient>,
+    selectedMeshRecipientId: String?,
+    onSelectMeshRecipient: (String) -> Unit,
+    connectedPeerStableId: String?,
     messages: List<ChatMessage>,
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
@@ -3507,10 +3511,10 @@ private fun NeaRerHome(
 
             if (selectedTab == "Chats") {
                 PremiumChatsScreen(
-                    meshRecipients = meshRecipients.values.toList(),
+                    meshRecipients = meshRecipients,
                     selectedMeshRecipientId = selectedMeshRecipientId,
-                    onSelectMeshRecipient = { selectedMeshRecipientId = it },
-                    connectedPeerStableId = hybridConnectedStableId,
+                    onSelectMeshRecipient = onSelectMeshRecipient,
+                    connectedPeerStableId = connectedPeerStableId,
                     chatReady = chatReady,
                     connectedDeviceName = connectedDeviceName,
                     connectionMessage = connectionMessage,
