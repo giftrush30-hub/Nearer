@@ -22,7 +22,7 @@ internal data class MeshHopAcknowledgement(
     fun signedBytes(): ByteArray {
         val bytes = ByteArrayOutputStream()
         DataOutputStream(bytes).use { out ->
-            out.write(DOMAIN)
+            out.write(DOMAIN.toByteArray(Charsets.US_ASCII))
             writeString(out, packetId)
             writeString(out, acceptingPeerId)
             writeString(out, previousHopPeerId)
