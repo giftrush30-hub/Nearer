@@ -35,6 +35,7 @@ class MeshRouteTableTest {
         assertNotNull(route)
         assertEquals("AAAAAA", route!!.nextHopPeerId)
         assertEquals(2, route.hopCount)
+        assertEquals(listOf("CCCCCC", "AAAAAA", "EEEEEE", "BBBBBB"), route.path)
         assertFalse(table.update(ad, "DDDDDD", sender.public.encoded, 2000L))
         assertFalse(table.update(ad, "AAAAAA", destination.public.encoded, 2000L))
     }
@@ -102,6 +103,29 @@ class MeshRouteTableTest {
             "DDDDDD", "BBBBBB", destination.public.encoded, 0L, 0, 2500L, 9000L
         ) { sign(secondAdvertiser.private, it) }
         assertFalse(table.update(staleFromD, "DDDDDD", secondAdvertiser.public.encoded, 4000L))
+    }
+
+    @Test fun rejectsPathVectorsThatWouldRouteBackThroughThisDevice() {
+        val sender = pair()
+        val destination = pair()
+        val ad = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 2L, 1, 1000L, 5000L,
+            path = listOf("AAAAAA", "CCCCCC", "BBBBBB")
+        ) { sign(sender.private, it) }
+        val table = MeshRouteTable("CCCCCC")
+        assertFalse(table.update(ad, "AAAAAA", sender.public.encoded, 2000L))
+    }
+
+    @Test fun rejectsMalformedOrRepeatedPathVector() {
+        val sender = pair()
+        val destination = pair()
+        val repeated = runCatching {
+            SignedRouteAdvertisement.create(
+                "AAAAAA", "BBBBBB", destination.public.encoded, 2L, 1, 1000L, 5000L,
+                path = listOf("AAAAAA", "EEEEEE", "EEEEEE", "BBBBBB")
+            ) { sign(sender.private, it) }
+        }
+        assertFalse(repeated.isSuccess)
     }
 
     @Test fun rejectsRoutesThatPointToTheLocalDeviceOrAdvertiserItself() {
