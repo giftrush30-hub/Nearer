@@ -96,11 +96,12 @@ Foundations now present in source:
 - Signed route advertisement verification and a route table that derives its next hop from the authenticated direct advertiser, rather than trusting a remote next-hop claim.
 - A durable encrypted-at-rest Dead Drop queue foundation with bounded storage, retry backoff, forwarding leases, and distinct hop-accepted vs final-delivery states.
 - Destination-signed final receipt verification before a stored packet can be deleted.
+- A bounded, signed hop-acceptance acknowledgement that binds packet ID, accepting next-hop ID, previous-hop ID and timestamp; Dead Drop now requires this proof from the expected next hop before recording hop acceptance.
 
 Still not integrated:
 - The new recipient identity binding is not exchanged during the live Nearby handshake or stored in the trusted-peer directory.
 - The route table is not populated from live authenticated peer events and route advertisements are not gossiped.
-- Dead Drop enqueue/claim/ack/retry/receipt methods are not connected to Nearby transport callbacks or a background worker.
+- Dead Drop enqueue/claim/verified-hop-ack/retry/receipt methods are not connected to Nearby transport callbacks or a background worker. The signed hop-ack codec and verification gate are protocol primitives only.
 - Receipt creation is a protocol primitive; no end-to-end receipt exchange exists.
 - There is no A → B → C → D real-device test, no app-restart delivery test, and no adversarial field test.
 - Storage quotas and retry policies need product-level review before field use.
