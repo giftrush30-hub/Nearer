@@ -157,6 +157,21 @@ internal class DeadDropStore(context: Context) {
         return removed
     }
 
+    /** Returns locally addressed packets waiting for the recipient's identity trust or app save. */
+    @Synchronized
+    fun pendingForDestination(destinationId: String, now: Long, limit: Int = 16): List<MeshRelayPacketV1> {
+        if (NeaRerIdentity.normalize(destinationId) != destinationId || limit !in 1..MAX_ITEMS) return emptyList()
+        val entries = read() ?: return emptyList()
+        val result = mutableListOf<MeshRelayPacketV1>()
+        entries.values.forEach { entry ->
+            if (result.size >= limit) return@forEach
+            val clear = LocalDataCipher.decrypt(app, entry.encrypted) ?: return@forEach
+            val packet = try { MeshRelayPacketV1.decode(clear) } catch (_: Exception) { return@forEach }
+            if (packet.destinationId == destinationId && packet.verifyEmbeddedOrigin(now)) result += packet
+        }
+        return result
+    }
+
     @Synchronized fun size(): Int = read()?.size ?: 0
 
     private fun read(): LinkedHashMap<String, Entry>? = try {
