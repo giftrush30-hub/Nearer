@@ -607,6 +607,7 @@ class MainActivity : ComponentActivity() {
             statusMessage = "Nearby services could not initialise: ${error.javaClass.simpleName}. NeaRer opened in safe mode."
             null
         }
+        nearbyTransport?.setMeshTransitEnabled(false)
         if (wifiManager == null && statusMessage == "Ready to find nearby Android phones.") {
             statusMessage = "Wi-Fi Direct is unavailable. Bluetooth nearby features may still work."
         }
@@ -859,10 +860,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateMeshRelayEnabled(enabled: Boolean) {
-        meshRelayEnabled = enabled
-        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", enabled).apply()
+        // Keep transit disabled until the explicit relay-consent onboarding and
+        // safety gates are shipped. The transport also enforces this default.
+        meshRelayEnabled = false
+        nearbyTransport?.setMeshTransitEnabled(false)
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", false).apply()
-        statusMessage = "Community relay is temporarily paused while recipient routing and end-to-end encryption are being built."
+        statusMessage = "Community relay is paused. This phone will not store or forward other people's mesh messages."
     }
 
     private fun saveDisplayName(rawName: String) {
