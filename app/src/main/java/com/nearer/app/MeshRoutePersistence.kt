@@ -96,6 +96,12 @@ internal class MeshRoutePersistence(context: Context) {
         return result
     }
 
+    /** Remove every cached route when replay protection cannot be committed. */
+    @Synchronized
+    fun clearAll(): Boolean = try {
+        prefs.edit().remove(KEY).commit()
+    } catch (_: Exception) { false }
+
     @Synchronized
     fun size(): Int = read()?.size ?: 0
 
