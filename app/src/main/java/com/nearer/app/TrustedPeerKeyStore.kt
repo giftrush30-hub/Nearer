@@ -14,6 +14,29 @@ import java.security.spec.X509EncodedKeySpec
 internal object TrustedPeerKeyStore {
     enum class Result { FIRST_SEEN, MATCH, KEY_CHANGED, STORAGE_ERROR }
 
+    /** Read-only TOFU/key-continuity check; does not pin until the signed binding is verified. */
+    @Synchronized
+    fun checkPinned(
+        context: Context,
+        publicId: String,
+        signingPublicKey: ByteArray,
+        recipientEncryptionPublicKey: ByteArray
+    ): Result {
+        if (NeaRerIdentity.normalize(publicId) != publicId ||
+            !isP256(signingPublicKey) || !isP256(recipientEncryptionPublicKey)) return Result.STORAGE_ERROR
+        return try {
+            val prefs = context.applicationContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            val signingPins = JSONObject(prefs.getString("nearby_peer_key_pins", "{}") ?: "{}")
+            val encryptionPins = JSONObject(prefs.getString("nearby_peer_encryption_key_pins", "{}") ?: "{}")
+            val savedSigning = decodePin(signingPins, publicId)
+            val savedEncryption = decodePin(encryptionPins, publicId)
+            if (savedSigning != null && !MessageDigest.isEqual(savedSigning, signingPublicKey)) return Result.KEY_CHANGED
+            if (savedEncryption != null && !MessageDigest.isEqual(savedEncryption, recipientEncryptionPublicKey)) return Result.KEY_CHANGED
+            if (savedSigning == null && savedEncryption != null) return Result.STORAGE_ERROR
+            if (savedSigning == null || savedEncryption == null) Result.FIRST_SEEN else Result.MATCH
+        } catch (_: Exception) { Result.STORAGE_ERROR }
+    }
+
     @Synchronized
     fun checkAndPin(
         context: Context,
@@ -21,7 +44,7 @@ internal object TrustedPeerKeyStore {
         signingPublicKey: ByteArray,
         recipientEncryptionPublicKey: ByteArray
     ): Result {
-        if (NeaRerIdentity.normalize(publicId) == null ||
+        if (NeaRerIdentity.normalize(publicId) != publicId ||
             !isP256(signingPublicKey) || !isP256(recipientEncryptionPublicKey)) return Result.STORAGE_ERROR
         return try {
             val prefs = context.applicationContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
