@@ -157,7 +157,9 @@ internal class DeadDropStore(context: Context) {
     fun markDelivered(receipt: MeshDeliveryReceipt, trustedDestinationKey: ByteArray, now: Long): Boolean {
         if (!receipt.verify(trustedDestinationKey, now)) return false
         val entries = read() ?: return false
-        val old = entries[receipt.packetId] ?: return false
+        // Idempotent duplicate receipt: the packet was already removed after a
+        // previously verified final receipt, so the sender may safely be ACKed.
+        val old = entries[receipt.packetId] ?: return true
         val clear = LocalDataCipher.decrypt(app, old.encrypted) ?: return false
         val packet = try { MeshRelayPacketV1.decode(clear) } catch (_: Exception) { return false }
         if (packet.originId != receipt.originId || packet.destinationId != receipt.destinationId) return false
