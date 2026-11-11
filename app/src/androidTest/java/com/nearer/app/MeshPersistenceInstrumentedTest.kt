@@ -21,6 +21,7 @@ class MeshPersistenceInstrumentedTest {
     fun clearMeshStores() {
         context.getSharedPreferences("nearer_dead_drop_v1", 0).edit().clear().commit()
         context.getSharedPreferences("nearer_mesh_receipt_outbox_v1", 0).edit().clear().commit()
+        context.getSharedPreferences("nearer_mesh_route_withdrawals_v1", 0).edit().clear().commit()
     }
 
     @After
@@ -96,6 +97,37 @@ class MeshPersistenceInstrumentedTest {
         )
         assertFalse(store.enqueueTransit(overflow, previousHop, now))
         assertEquals(16, store.size())
+    }
+
+    @Test
+    fun routeWithdrawalTombstonesSurviveStoreRecreationAndRejectOldAdvertisements() {
+        val sender = recipientKeyPair()
+        val destination = recipientKeyPair()
+        val tombstone = MeshRouteTable.WithdrawalTombstone("BBBBBB", "AAAAAA", 7L)
+        assertTrue(MeshRouteWithdrawalStore(context).record(tombstone))
+
+        val table = MeshRouteTable("CCCCCC")
+        assertEquals(1, MeshRouteWithdrawalStore(context).restore(table))
+        val stale = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 7L, 0, 1000L, 9000L
+        ) { bytes ->
+            java.security.Signature.getInstance("SHA256withECDSA").run {
+                initSign(sender.private)
+                update(bytes)
+                sign()
+            }
+        }
+        assertFalse(table.update(stale, "AAAAAA", sender.public.encoded, 2000L))
+        val fresh = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 8L, 0, 2100L, 9000L
+        ) { bytes ->
+            java.security.Signature.getInstance("SHA256withECDSA").run {
+                initSign(sender.private)
+                update(bytes)
+                sign()
+            }
+        }
+        assertTrue(table.update(fresh, "AAAAAA", sender.public.encoded, 2200L))
     }
 
     @Test
