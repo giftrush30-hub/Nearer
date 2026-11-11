@@ -109,6 +109,8 @@ internal data class MeshRelayPacketV1(
     }
 
     companion object {
+        // Nearby Connections BYTES payloads are limited to 32 KiB.
+        const val MAX_NEARBY_BYTES = 32 * 1024
         private const val MAX_CLOCK_SKEW_MS = 5L * 60L * 1000L
         private const val MAX_LIFETIME_MS = 7L * 24L * 60L * 60L * 1000L
 
@@ -136,7 +138,7 @@ internal data class MeshRelayPacketV1(
         }
 
         fun decode(bytes: ByteArray): MeshRelayPacketV1 {
-            require(bytes.size in 1..40000)
+            require(bytes.size in 1..MAX_NEARBY_BYTES)
             val json = JSONObject(bytes.toString(Charsets.UTF_8))
             require(json.optString("kind") == "mesh_packet_v1")
             return MeshRelayPacketV1(
