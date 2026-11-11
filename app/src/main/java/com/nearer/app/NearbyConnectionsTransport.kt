@@ -1076,7 +1076,9 @@ internal object IncomingFilePayloadPolicy {
     private fun scheduleMeshForwardRetry() {
         if (meshForwardRetryScheduled) return
         val nextWake = deadDropStore.nextWakeAt() ?: return
-        val delay = (nextWake - System.currentTimeMillis()).coerceIn(1_000L, 60_000L)
+        val remaining = nextWake - System.currentTimeMillis()
+        // No route is available yet: poll slowly rather than spinning every second.
+        val delay = if (remaining <= 0L) 30_000L else remaining.coerceIn(1_000L, 60_000L)
         meshForwardRetryScheduled = true
         deliveryHandler.postDelayed({
             meshForwardRetryScheduled = false
