@@ -224,8 +224,15 @@ class MeshPersistenceInstrumentedTest {
         assertEquals(1, pending.size)
         assertEquals(alternatePreviousHop, pending.single().previousHopPeerId)
         assertTrue(receipt.encode().contentEquals(pending.single().receipt.encode()))
-        assertTrue(reopened.remove(receipt.packetId))
+        val intendedNextHop = NeaRerIdentity.generate()
+        val wrongNextHop = NeaRerIdentity.generate()
+        assertTrue(reopened.setExpectedNextHop(receipt.packetId, intendedNextHop))
+        val afterRestart = MeshReceiptOutbox(context)
+        assertEquals(intendedNextHop, afterRestart.pending().single().expectedNextHopPeerId)
+        assertFalse(afterRestart.acknowledge(receipt.packetId, wrongNextHop))
+        assertEquals(1, afterRestart.size())
+        assertTrue(afterRestart.acknowledge(receipt.packetId, intendedNextHop))
         assertEquals(0, MeshReceiptOutbox(context).size())
-        assertFalse(reopened.remove(receipt.packetId))
+        assertFalse(afterRestart.acknowledge(receipt.packetId, intendedNextHop))
     }
 }
