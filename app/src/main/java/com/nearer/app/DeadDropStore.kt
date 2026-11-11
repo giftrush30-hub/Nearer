@@ -35,12 +35,17 @@ internal class DeadDropStore(context: Context) {
      * The final recipient must compare the origin key with its pinned identity.
      */
     @Synchronized
-    fun enqueueTransit(packet: MeshRelayPacketV1, now: Long): Boolean {
-        if (!packet.verifyEmbeddedOrigin(now)) return false
-        return enqueueValidatedPacket(packet, now, "")
+    fun enqueueTransit(packet: MeshRelayPacketV1, previousHopPeerId: String, now: Long): Boolean {
+        if (!packet.verifyEmbeddedOrigin(now) ||
+            NeaRerIdentity.normalize(previousHopPeerId) != previousHopPeerId) return false
+        return enqueueValidatedPacket(packet, now, previousHopPeerId)
     }
 
-    private fun enqueueValidatedPacket(packet: MeshRelayPacketV1, now: Long): Boolean {
+    private fun enqueueValidatedPacket(
+        packet: MeshRelayPacketV1,
+        now: Long,
+        previousHopPeerId: String = ""
+    ): Boolean {
         val entries = read() ?: return false
         val existing = entries[packet.packetId]
         if (existing != null) {
@@ -188,10 +193,12 @@ internal class DeadDropStore(context: Context) {
             val state = item.getString("state")
             val dueAt = item.getLong("dueAt")
             val leaseUntil = item.optLong("leaseUntil", 0L)
+            val previousHopPeerId = item.optString("previousHopPeerId", "")
             if (encrypted.isBlank() || encrypted.length > MAX_TOTAL_CHARS ||
                 attempts !in 0..MAX_ATTEMPTS || state !in setOf(QUEUED, FORWARDING, AWAITING_DESTINATION) ||
-                dueAt < 0L || leaseUntil < 0L) return null
-            result[id] = Entry(encrypted, attempts, state, dueAt, leaseUntil)
+                dueAt < 0L || leaseUntil < 0L ||
+                (previousHopPeerId.isNotEmpty() && NeaRerIdentity.normalize(previousHopPeerId) != previousHopPeerId)) return null
+            result[id] = Entry(encrypted, attempts, state, dueAt, leaseUntil, previousHopPeerId)
         }
         if (result.values.sumOf { it.encrypted.length } > MAX_TOTAL_CHARS) return null
         result
