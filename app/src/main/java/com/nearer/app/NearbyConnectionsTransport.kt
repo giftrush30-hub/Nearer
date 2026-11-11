@@ -1155,14 +1155,16 @@ internal object IncomingFilePayloadPolicy {
                 if (packet.packetId in pendingIncomingMessageIds) {
                     val saved = rememberMessageId(packet.packetId)
                     pendingIncomingMessageIds.remove(packet.packetId)
-                    if (saved && deadDropStore.markLocallyDelivered(packet.packetId)) {
+                    if (saved) {
                         val receipt = MeshDeliveryReceipt.create(
                             packet.packetId, packet.originId, packet.destinationId, System.currentTimeMillis()
                         ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+                        // Persist the final receipt before deleting the locally delivered packet.
+                        // If receipt storage fails, keep the packet so a retry can regenerate it.
                         if (queueMeshReceipt(receipt)) {
                             deadDropStore.markLocallyDelivered(packet.packetId)
                         } else {
-                            listener.onStatus("Message saved here. Its final receipt remains queued for safe retry.")
+                            listener.onStatus("Message saved here. Its encrypted packet is retained until the final receipt can be saved.")
                         }
                     }
                 }
