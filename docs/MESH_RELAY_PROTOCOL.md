@@ -102,7 +102,7 @@ Foundations now present in source:
 
 Still not integrated:
 - The v3 Nearby handshake now exchanges a fresh signed recipient-identity binding after the signing-key proof, verifies that it binds the exact recipient key from the handshake, pins the signing/encryption keys, and rejects stale/replayed binding sequence numbers.
-- Authenticated Nearby peers now exchange signed route advertisements containing the destination encryption-key material, verify the advertiser against the pinned signing key and destination-key fingerprint, derive the next hop from the direct authenticated sender, and gossip materially new routes. Unchanged route refreshes do not trigger gossip loops. Route expiry, per-peer rate limits, withdrawal propagation and route persistence still need work.
+- Authenticated Nearby peers now exchange signed route advertisements containing the destination encryption-key material and a signed path vector; they verify the advertiser against the pinned signing key and destination-key fingerprint, derive the next hop from the direct authenticated sender, reject paths containing themselves, prefer shorter loop-free paths, and gossip materially changed routes. The in-memory route table is bounded and advertisements are rate-limited per authenticated neighbor. Route withdrawal propagation and route persistence still need work.
 - Dead Drop enqueue/claim/verified-hop-ack/retry/receipt methods are not yet connected to mesh packet send/receive callbacks or a background worker. The signed hop-ack codec and verification gate remain protocol primitives only.
 - Receipt creation is a protocol primitive; no end-to-end receipt exchange exists.
 - There is no A → B → C → D real-device test, no app-restart delivery test, and no adversarial field test.
