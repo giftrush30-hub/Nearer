@@ -31,7 +31,7 @@ internal class MeshRouteWithdrawalStore(context: Context) {
         if (isPermanentlyDisabled()) return false
         val entries = read() ?: return disableRouting()
         tombstones.forEach { tombstone ->
-            if (!valid(tombstone)) return false
+            if (!valid(tombstone)) return disableRouting()
             val key = key(tombstone.destinationId, tombstone.advertiserId)
             entries[key] = maxOf(entries[key] ?: -1L, tombstone.sequence)
         }
