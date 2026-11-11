@@ -125,6 +125,27 @@ class MeshRouteTableTest {
         assertNotNull(table.find("BBBBBB", 3500L))
     }
 
+    @Test fun withdrawalFromNonSelectedAdvertiserBlocksItsReplayWithoutRemovingChosenRoute() {
+        val chosen = pair()
+        val former = pair()
+        val destination = pair()
+        val table = MeshRouteTable("CCCCCC")
+        val chosenAd = SignedRouteAdvertisement.create(
+            "DDDDDD", "BBBBBB", destination.public.encoded, 2L, 0, 2000L, 9000L
+        ) { sign(chosen.private, it) }
+        assertTrue(table.update(chosenAd, "DDDDDD", chosen.public.encoded, 2500L))
+
+        // This advertiser is not the current next hop, but its signed withdrawal
+        // still needs a tombstone so an old advertisement cannot be replayed later.
+        assertTrue(table.rememberWithdrawal("BBBBBB", "AAAAAA", 8L))
+        assertEquals("DDDDDD", table.find("BBBBBB", 3000L)!!.nextHopPeerId)
+        val staleFromFormer = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 8L, 0, 1000L, 9000L
+        ) { sign(former.private, it) }
+        assertFalse(table.update(staleFromFormer, "AAAAAA", former.public.encoded, 3000L))
+        assertEquals("DDDDDD", table.find("BBBBBB", 3000L)!!.nextHopPeerId)
+    }
+
     @Test fun rejectsAdvertisementTampering() {
         val sender = pair()
         val destination = pair()
