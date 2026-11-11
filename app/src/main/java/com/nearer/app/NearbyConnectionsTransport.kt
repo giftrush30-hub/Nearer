@@ -102,6 +102,12 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
 
     /** Transit relay is opt-in and defaults off; direct recipient delivery still works. */
     fun setMeshTransitEnabled(enabled: Boolean) {
+        val wasEnabled = meshTransitEnabled
+        if (wasEnabled && !enabled) {
+            // Withdraw every route this phone may have advertised before
+            // stopping transit, so neighbors do not keep routing into a dead end.
+            broadcastMeshRouteWithdrawals(meshRouteTable.snapshot(System.currentTimeMillis()).map { it.destinationId })
+        }
         meshTransitEnabled = enabled
         if (enabled) {
             forwardDueMeshPackets()
@@ -805,7 +811,7 @@ internal object IncomingFilePayloadPolicy {
         hopCount: Int,
         path: List<String> = listOf(localStableId, destinationId)
     ) {
-        if (!meshTransitEnabled || !meshRouteWithdrawalStoreHealthy || !authenticatedEndpoints.contains(endpointId) || hopCount !in 0..3) return
+        if (!MeshRelayParticipationPolicy.mayAdvertiseRoutes(meshTransitEnabled) || !meshRouteWithdrawalStoreHealthy || !authenticatedEndpoints.contains(endpointId) || hopCount !in 0..3) return
         try {
             val now = System.currentTimeMillis()
             val advertisement = SignedRouteAdvertisement.create(
@@ -829,7 +835,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun publishKnownRoutesTo(endpointId: String) {
-        if (!meshTransitEnabled || !meshRouteWithdrawalStoreHealthy || !authenticatedEndpoints.contains(endpointId)) return
+        if (!MeshRelayParticipationPolicy.mayAdvertiseRoutes(meshTransitEnabled) || !meshRouteWithdrawalStoreHealthy || !authenticatedEndpoints.contains(endpointId)) return
         val targetPeerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (targetPeerId.isBlank()) return
         val sent = HashSet<String>()
@@ -866,7 +872,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun broadcastMeshRouteWithdrawals(destinationIds: List<String>, exceptEndpointId: String? = null) {
-        if (!meshTransitEnabled) return
+        if (!MeshRelayParticipationPolicy.mayAdvertiseRoutes(meshTransitEnabled)) return
         val destinations = destinationIds.distinct().filter { NeaRerIdentity.normalize(it) == it }.take(256)
         if (destinations.isEmpty()) return
         val endpoints = synchronized(activeEndpoints) {
@@ -1128,7 +1134,7 @@ internal object IncomingFilePayloadPolicy {
         var waitingForAck = false
         meshReceiptOutbox.pending().forEach { pending ->
             val receipt = pending.receipt
-            if (receipt.destinationId != localStableId && !meshTransitEnabled) return@forEach
+            if (!MeshRelayParticipationPolicy.mayForwardReceipt(meshTransitEnabled, receipt.destinationId, localStableId)) return@forEach
             if ((receiptSendInFlightUntil[receipt.packetId] ?: 0L) > now) {
                 waitingForAck = true
                 return@forEach
@@ -1178,7 +1184,7 @@ internal object IncomingFilePayloadPolicy {
             val now = System.currentTimeMillis()
             val previousHopId = synchronized(names) { stableIds[endpointId].orEmpty() }
             require(previousHopId.isNotBlank())
-            if (receipt.originId != localStableId && !meshTransitEnabled) {
+            if (!MeshRelayParticipationPolicy.mayAcceptReceipt(meshTransitEnabled, receipt.originId, localStableId)) {
                 listener.onStatus("This phone is not participating as a relay. The receipt was not accepted or acknowledged.")
                 return
             }
@@ -1268,7 +1274,7 @@ internal object IncomingFilePayloadPolicy {
             val packet = MeshRelayPacketV1.decode(bytes)
             val now = System.currentTimeMillis()
             require(packet.verifyEmbeddedOrigin(now)) { "Mesh packet origin signature or expiry is invalid." }
-            if (packet.destinationId != localStableId && !meshTransitEnabled) {
+            if (!MeshRelayParticipationPolicy.mayAcceptPacket(meshTransitEnabled, packet.destinationId, localStableId)) {
                 listener.onStatus("This phone is not participating as a relay. The packet was not accepted or acknowledged.")
                 return
             }
@@ -1311,7 +1317,7 @@ internal object IncomingFilePayloadPolicy {
         val now = System.currentTimeMillis()
         deadDropStore.purgeExpired(now)
         val due = deadDropStore.claimDue(now, 8) { packet, previousHop ->
-            if (packet.originId != localStableId && !meshTransitEnabled) return@claimDue false
+            if (!MeshRelayParticipationPolicy.mayForwardPacket(meshTransitEnabled, packet.originId, localStableId)) return@claimDue false
             if (packet.destinationId == localStableId || packet.hopsTaken >= packet.hopLimit) return@claimDue false
             val route = meshRouteTable.find(packet.destinationId, now) ?: return@claimDue false
             if (route.nextHopPeerId == previousHop) return@claimDue false
