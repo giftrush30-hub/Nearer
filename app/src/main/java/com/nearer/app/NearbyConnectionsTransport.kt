@@ -1094,18 +1094,6 @@ internal object IncomingFilePayloadPolicy {
         transferSpeedMeters.remove(payloadId)
     }
 
-    private fun broadcast(content: String, excludeEndpoint: String?): Boolean {
-        val targets = synchronized(activeEndpoints) { activeEndpoints.filter { it != excludeEndpoint && authenticatedEndpoints.contains(it) } }
-        if (targets.isEmpty()) return false
-        var sent = false
-        targets.forEach { endpoint ->
-            try {
-                client.sendPayload(endpoint, Payload.fromBytes(content.toByteArray(Charsets.UTF_8)))
-                sent = true
-            } catch (_: Exception) { }
-        }
-        return sent
-    }
 
     fun stopSearching() {
         started = false
