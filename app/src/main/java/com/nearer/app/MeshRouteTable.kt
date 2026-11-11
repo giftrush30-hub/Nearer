@@ -57,15 +57,13 @@ internal data class SignedRouteAdvertisement(
         return out.toByteArray()
     }
 
-    private fun localPathDoesNotLoop(): Boolean = path.none { it == destinationId && it != path.last() }
-
     fun verify(trustedAdvertiserKey: ByteArray, nowMs: Long): Boolean = try {
         require(NeaRerIdentity.normalize(advertiserId) == advertiserId)
         require(NeaRerIdentity.normalize(destinationId) == destinationId)
         require(advertiserId != destinationId)
         require(path.size in 2..5 && path.first() == advertiserId && path.last() == destinationId)
         require(path.all { NeaRerIdentity.normalize(it) == it } && path.distinct().size == path.size)
-        require(path.size == hopCount + 2 && localPathDoesNotLoop())
+        require(path.size == hopCount + 2)
         require(destinationKeyFingerprint.size == 32)
         require(sequence >= 0L && hopCount in 0..3)
         require(issuedAtMs <= nowMs + MAX_CLOCK_SKEW_MS)
