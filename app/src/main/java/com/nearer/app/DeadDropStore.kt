@@ -274,7 +274,16 @@ internal class DeadDropStore(context: Context) {
 
     private fun read(): LinkedHashMap<String, Entry>? = try {
         val raw = prefs.getString(KEY, null) ?: return LinkedHashMap()
-        val json = JSONObject(raw)
+        if (raw.length > MAX_STORED_CHARS) return null
+        // Migrate older development entries that encrypted packet bytes but
+        // left queue metadata in a plaintext JSON wrapper. New writes encrypt
+        // the entire wrapper, including packet and peer identifiers.
+        val clear = if (raw.trimStart().startsWith("{")) {
+            raw.toByteArray(Charsets.UTF_8)
+        } else {
+            LocalDataCipher.decrypt(app, raw) ?: return null
+        }
+        val json = JSONObject(clear.toString(Charsets.UTF_8))
         val result = LinkedHashMap<String, Entry>()
         val keys = json.keys()
         while (keys.hasNext()) {
@@ -309,7 +318,12 @@ internal class DeadDropStore(context: Context) {
             .put("previousHopPeerId", e.previousHopPeerId)
             .put("preparedForNextHop", e.preparedForNextHop)
             .put("expectedNextHopPeerId", e.expectedNextHopPeerId)) }
-        return prefs.edit().putString(KEY, json.toString()).commit()
+        val clear = json.toString().toByteArray(Charsets.UTF_8)
+        if (clear.size > MAX_TOTAL_CHARS + MAX_METADATA_CHARS) return false
+        return try {
+            val encrypted = LocalDataCipher.encrypt(app, clear)
+            prefs.edit().putString(KEY, encrypted).commit()
+        } catch (_: Exception) { false }
     }
 
     private fun backoff(attempt: Int): Long = minOf(3_600_000L, 5_000L * (1L shl (attempt - 1).coerceIn(0, 10)))
@@ -321,6 +335,8 @@ internal class DeadDropStore(context: Context) {
         private const val MAX_PER_ORIGIN_CHARS = 512 * 1024
         private const val MAX_PACKET_BYTES = MeshRelayPacketV1.MAX_NEARBY_BYTES
         private const val MAX_TOTAL_CHARS = 2 * 1024 * 1024
+        private const val MAX_METADATA_CHARS = 64 * 1024
+        private const val MAX_STORED_CHARS = 3 * 1024 * 1024
         private const val MAX_ATTEMPTS = 8
         private const val LEASE_MS = 30_000L
         private const val QUEUED = "queued"
