@@ -90,34 +90,30 @@ A hop acknowledgement means only that the next hop durably accepted the packet. 
 
 ## Implementation status on this draft branch
 
-Foundations now present in source:
-- A stable P-256 recipient ECDH keypair persisted as LocalDataCipher ciphertext; unreadable existing key material fails closed rather than being silently replaced.
-- A signed binding that associates the recipient ECDH public key with the already pinned device signing identity.
-- Recipient-only ECDH + HKDF-SHA256 + AES-256-GCM packet encryption, separate from the live direct-chat session keys.
-- An origin-signed opaque packet envelope with immutable signed header/ciphertext, expiry, and bounded hop count. Mesh chat wire packets are capped at Nearby Connections' 32 KiB BYTES payload limit; larger future content must use a stream/file payload rather than this chat envelope.
-- Signed route advertisement verification and a route table that derives its next hop from the authenticated direct advertiser, rather than trusting a remote next-hop claim.
-- A durable encrypted-at-rest Dead Drop queue with bounded storage (64 total packets, 16 per origin, 40 KiB per packet, 2 MiB global encrypted queue), packet-ID collision checks, previous-hop tracking, retry backoff, forwarding leases, and distinct hop-accepted vs final-delivery states. Each relay persists its hop-counter increment exactly once before transmission, reuses that count on retry/restart, and rejects duplicate packets that roll the observed counter backwards.
-- Destination-signed final receipt verification before a stored packet can be deleted.
-- A bounded, signed hop-acceptance acknowledgement that binds packet ID, accepting next-hop ID, previous-hop ID and timestamp; Dead Drop requires this proof from the expected next hop before recording hop acceptance.
-- Live Nearby transport now exchanges the signed recipient identity binding, learns authenticated direct and multi-hop routes, and exchanges signed path-vector route advertisements with loop rejection, bounded route state and per-neighbor rate limiting. Signed route withdrawals are propagated when a next hop disconnects; receivers remove only routes whose current next hop is the authenticated advertiser and reject older sequence advertisements while the in-memory tombstone is retained.
-- The transport now creates recipient-encrypted mesh chat envelopes for previously trusted recipients, durably queues opaque transit packets, verifies embedded origin signatures for transit integrity, sends signed hop acknowledgements only after durable storage, forwards due packets over authenticated routes, and returns destination-signed final receipts toward the origin. A foreground retry scheduler reclaims expired forwarding leases and retries after route recovery.
-- Final receipts now use a separate encrypted-at-rest bounded outbox. Every receiving hop persists a receipt before sending a signed hop acknowledgement; it retains the receipt until the next authenticated hop acknowledges it. Receipt retries survive app restarts and are retried while the transport is active.
-- Handshake authentication now waits for successful Nearby task completion when sending the local signing proof and recipient-key binding; the remote binding sequence is checked before first-time key pins are committed.
-- A destination refuses to display a relayed message until its origin signing key is already pinned on that phone. If the origin is not yet trusted, the packet remains encrypted in the Dead Drop and can be reconsidered after a direct authenticated pairing.
-- Encrypted route-advertisement persistence now restores only signed, unexpired records whose advertiser signing key remains pinned, including the associated destination encryption keys. Restored routes still require the advertised next-hop neighbor to reconnect and authenticate before they can be used. Route withdrawals also remove the affected cached route.
-- Android instrumentation coverage has been added for Android Keystore-backed packet signing, encrypted Dead Drop persistence across store recreation, persisted previous-hop state, once-per-hop counter recovery, rollback rejection, per-origin queue quotas, and receipt-outbox persistence. JVM coverage also checks the Nearby 32 KiB wire cap. Exact-head emulator CI is still pending.
-- A direct authenticated peer is installed as a reverse route so final receipts can travel back through the mesh.
+### Implemented in source (not yet field-validated)
 
-Still not integrated:
-- A foreground retry scheduler reclaims expired leases and retries queued packets while the transport remains active. Background service/worker scheduling to wake the queue after Android kills the process or reboots remains outstanding. Local route-table persistence, invalidation on next-hop disconnect, and signed route-withdrawal gossip are implemented. Withdrawal tombstones are currently memory-only and are not restored after process restart. The queue itself has crash-recoverable leases, but no Android background worker currently wakes it after process death.
-- Route advertisements do not yet carry an independently verifiable destination identity binding for first-contact remote recipients. Sending is therefore restricted to destinations whose recipient encryption key was previously pinned by direct pairing.
-- Intermediate relays forward destination-signed receipts toward the origin, but only a device with the destination's pinned signing key can delete its stored packet copy. Relays that have not directly trusted the destination may retain duplicate packets until expiry.
-- Foreground retry scheduling is active only while the Nearby transport instance is alive. There is not yet a WorkManager/foreground-service worker to wake and resume the queue after Android kills the process or reboots.
-- The hop counter is mutable forwarding metadata, not a globally verifiable signed forwarding trace. Each node persists its own observed count and rejects rollback on duplicate packet IDs, but a malicious authenticated relay can still lie about earlier hops before a downstream node has seen the packet. A chained, independently verifiable per-hop forwarding trace is a security gate before hostile-network release.
-- The new mesh send API is not yet connected to the normal chat composer and recipient-selection UI.
-- Route advertisements do not carry an independently verifiable destination identity binding for remote first-contact recipients. Sending remains restricted to recipients whose encryption key was pinned by a prior direct authenticated pairing.
-- Retry and storage limits still need product-level review. Current queue limits are global and per-origin as documented above.
-- The transport integration has not yet been exercised on physical phones or through a forced process-death/reboot scenario.
-- There is no A → B → C → D real-device test, no confirmed exact-head emulator instrumentation pass, no background worker/process-death delivery test, and no adversarial field test.
+- A stable P-256 recipient ECDH keypair persisted as LocalDataCipher ciphertext; unreadable existing key material fails closed rather than silently generating a replacement.
+- A signed binding associates the recipient ECDH public key with the already pinned device signing identity. The Nearby handshake exchanges and verifies this binding and rejects stale/replayed binding sequences.
+- Recipient-only ECDH + HKDF-SHA256 + AES-256-GCM packet encryption, separate from live direct-chat session keys.
+- An origin-signed opaque packet envelope with immutable signed header/ciphertext, expiry, bounded hop count and a 32 KiB Nearby BYTES wire cap.
+- Signed path-vector route advertisements. The receiver derives its next hop from the authenticated direct advertiser, checks destination-key fingerprints, rejects loops, bounds route state and rate-limits advertisements. Signed withdrawals remove routes only when issued by their current next hop.
+- Encrypted-at-rest Dead Drop storage with queue and per-origin quotas, packet-ID collision checks, previous-hop tracking, durable forwarding leases, retry backoff, and persisted once-per-hop counter increments.
+- Signed hop acknowledgements are accepted only from the expected authenticated next hop and only after the receiver has durably stored the packet.
+- Destination-signed final receipts and a separate encrypted-at-rest receipt outbox. Receipt relays persist before acknowledging and retain receipts until the next authenticated hop acknowledges them.
+- The transport has a mesh-send API and the normal Chats UI now exposes a trusted-recipient selector, route/hop status, recipient-specific message history, and an explicit unreachable state. File sharing remains limited to a direct connection.
+- Route availability is exposed to the UI only when the destination's signing and recipient-encryption keys are already pinned on this phone. This is a deliberate fail-closed trust rule: current NeaRer IDs are random identifiers, not cryptographic fingerprints. A relayed public key alone is not sufficient proof that it belongs to the claimed ID. Remote first-contact recipients therefore cannot yet be safely added to the send list.
+- A duplicate final receipt arriving through a new authenticated neighbor refreshes its stored ingress path so route recovery does not keep forwarding it toward a stale previous hop.
+- JVM tests cover packet integrity, recipient encryption, route signatures/path vectors/withdrawals, hop ACKs, receipts and the Nearby payload cap. Android instrumentation covers encrypted queue persistence, hop-counter recovery, quotas and receipt-outbox persistence.
 
-The draft PR must pass the exact-head CI and code review before integration. Relay remains disabled.
+### Still incomplete / release blockers
+
+- The random legacy NeaRer ID is not cryptographically bound to the signing key. A secure, backwards-compatible identity migration or equivalent independently verifiable identity certificate is required before enabling first-contact multi-hop delivery. Do not trust a destination key supplied by an intermediate relay.
+- The mutable hop counter is not a globally verifiable chained forwarding trace. A malicious authenticated relay can lie about earlier hops before downstream nodes observe the packet. A chained, independently verifiable per-hop trace is still required before hostile-network release.
+- Receipt verification and deletion at intermediate relays is incomplete when that relay has not directly pinned the destination signing key; such copies may remain until expiry.
+- Queue retry currently runs only while the Nearby transport instance is alive. WorkManager/foreground-service scheduling for process death, Doze and reboot recovery is not yet implemented.
+- Withdrawal tombstones are in-memory only and do not survive process restart. Route cache and withdrawal recovery need further adversarial testing.
+- Queue limits, expiry, retry policy and battery/storage controls need product-level review.
+- No physical A → B → C → D test, forced process-death/reboot test, multi-manufacturer test, or adversarial field test has passed. Android 35 instrumentation recently crashed before its tests completed; the latest workflow is being rerun with clean emulator snapshots and retained test reports.
+- Relay remains disabled. This draft PR is not release-ready and must not be merged or advertised as complete.
+
+The draft PR must pass exact-head CI and code review before integration. The user must explicitly approve any merge or controlled relay field test.
