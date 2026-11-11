@@ -24,8 +24,30 @@ internal class DeadDropStore(context: Context) {
     @Synchronized
     fun enqueueVerified(packet: MeshRelayPacketV1, trustedOriginKey: ByteArray, now: Long): Boolean {
         if (!packet.verify(trustedOriginKey, now)) return false
+        return enqueueValidatedPacket(packet, now)
+    }
+
+    /**
+     * Stores an opaque packet for transit after verifying its origin signature
+     * against the key embedded in the packet. This proves packet integrity only;
+     * it does NOT establish that the claimed origin identity is trusted.
+     * The final recipient must compare the origin key with its pinned identity.
+     */
+    @Synchronized
+    fun enqueueTransit(packet: MeshRelayPacketV1, now: Long): Boolean {
+        if (!packet.verifyEmbeddedOrigin(now)) return false
+        return enqueueValidatedPacket(packet, now)
+    }
+
+    private fun enqueueValidatedPacket(packet: MeshRelayPacketV1, now: Long): Boolean {
         val entries = read() ?: return false
-        if (entries.containsKey(packet.packetId)) return true
+        val existing = entries[packet.packetId]
+        if (existing != null) {
+            val oldBytes = LocalDataCipher.decrypt(app, existing.encrypted) ?: return false
+            val oldPacket = try { MeshRelayPacketV1.decode(oldBytes) } catch (_: Exception) { return false }
+            // Never ACK a reused packet ID carrying different signed content.
+            return oldPacket.sameImmutablePacket(packet)
+        }
         if (entries.size >= MAX_ITEMS) return false
         val bytes = packet.encode()
         if (bytes.size > MAX_PACKET_BYTES) return false
@@ -61,7 +83,9 @@ internal class DeadDropStore(context: Context) {
             )
             result += Pending(id, clear, attempts)
         }
-        write(entries)
+        // A lease is useful only if its state reached durable storage. Never
+        // transmit a packet whose claim could be lost on process death.
+        if (!write(entries)) return emptyList()
         return result
     }
 
@@ -126,10 +150,19 @@ internal class DeadDropStore(context: Context) {
         val keys = json.keys()
         while (keys.hasNext()) {
             val id = keys.next()
+            if (id.isBlank() || id.length > 80 || result.size >= MAX_ITEMS) return null
             val item = json.getJSONObject(id)
-            result[id] = Entry(item.getString("encrypted"), item.getInt("attempts"),
-                item.getString("state"), item.getLong("dueAt"), item.optLong("leaseUntil", 0L))
+            val encrypted = item.getString("encrypted")
+            val attempts = item.getInt("attempts")
+            val state = item.getString("state")
+            val dueAt = item.getLong("dueAt")
+            val leaseUntil = item.optLong("leaseUntil", 0L)
+            if (encrypted.isBlank() || encrypted.length > MAX_TOTAL_CHARS ||
+                attempts !in 0..MAX_ATTEMPTS || state !in setOf(QUEUED, FORWARDING, AWAITING_DESTINATION) ||
+                dueAt < 0L || leaseUntil < 0L) return null
+            result[id] = Entry(encrypted, attempts, state, dueAt, leaseUntil)
         }
+        if (result.values.sumOf { it.encrypted.length } > MAX_TOTAL_CHARS) return null
         result
     } catch (_: Exception) { null }
 
