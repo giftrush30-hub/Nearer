@@ -381,9 +381,10 @@ internal object IncomingFilePayloadPolicy {
             peerHandshakes.remove(id)
             messageSessions.remove(id)
             val lostPeerId = synchronized(names) { stableIds[id].orEmpty() }
-            meshRouteTable.removeNextHop(lostPeerId)
+            val withdrawnDestinations = meshRouteTable.removeNextHop(lostPeerId)
             if (lostPeerId.isNotBlank()) meshRoutePersistence.removeAdvertiser(lostPeerId)
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
+            withdrawnDestinations.forEach { broadcastMeshRouteWithdrawal(it) }
             pauseOutgoingFilesForEndpoint(id)
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
             if (wasAuthenticated && empty) listener.onDisconnected(id, details.first, details.second)
@@ -774,6 +775,56 @@ internal object IncomingFilePayloadPolicy {
             if (route.nextHopPeerId == targetPeerId || route.destinationId == targetPeerId || !sent.add(route.destinationId)) return@forEach
             val key = meshDestinationEncryptionKeys[route.destinationId] ?: return@forEach
             sendMeshRouteAdvertisement(endpointId, route.destinationId, key, route.hopCount, route.path)
+        }
+    }
+
+    private fun sendMeshRouteWithdrawal(endpointId: String, destinationId: String) {
+        if (!authenticatedEndpoints.contains(endpointId)) return
+        try {
+            val withdrawal = MeshRouteWithdrawal.create(
+                localStableId, destinationId, nextMeshRouteSequence(), System.currentTimeMillis()
+            ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+            val envelope = JSONObject()
+                .put("kind", "mesh_route_withdraw_v1")
+                .put("withdrawal", android.util.Base64.encodeToString(withdrawal.encode(), android.util.Base64.NO_WRAP))
+            client.sendPayload(endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8)))
+        } catch (_: Exception) {
+            listener.onStatus("A mesh route withdrawal could not be sent.")
+        }
+    }
+
+    private fun broadcastMeshRouteWithdrawal(destinationId: String, exceptEndpointId: String? = null) {
+        val endpoints = synchronized(activeEndpoints) {
+            activeEndpoints.filter {
+                it != exceptEndpointId && authenticatedEndpoints.contains(it)
+            }
+        }
+        endpoints.forEach { sendMeshRouteWithdrawal(it, destinationId) }
+    }
+
+    private fun handleMeshRouteWithdrawal(endpointId: String, envelope: JSONObject) {
+        if (!authenticatedEndpoints.contains(endpointId)) return
+        try {
+            val senderId = synchronized(names) { stableIds[endpointId].orEmpty() }
+            if (senderId.isBlank() || !allowRouteAdvertisement(senderId, System.currentTimeMillis())) return
+            val senderKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, senderId) ?: return
+            val withdrawal = MeshRouteWithdrawal.decode(
+                android.util.Base64.decode(envelope.getString("withdrawal"), android.util.Base64.NO_WRAP)
+            )
+            require(withdrawal.advertiserId == senderId)
+            require(withdrawal.verify(senderKey, System.currentTimeMillis()))
+            if (!meshRouteTable.removeDestinationIfNextHop(
+                    withdrawal.destinationId, senderId, withdrawal.sequence
+                )) return
+            meshRoutePersistence.removeDestination(withdrawal.destinationId)
+            // Re-sign the withdrawal as this node so downstream peers can invalidate
+            // routes whose authenticated next hop is this device.
+            broadcastMeshRouteWithdrawal(withdrawal.destinationId, endpointId)
+            listener.onStatus("A lost mesh route was withdrawn from the nearby network.")
+            forwardDueMeshPackets()
+            flushPendingMeshReceipts()
+        } catch (_: Exception) {
+            listener.onStatus("An invalid mesh route withdrawal was rejected.")
         }
     }
 
@@ -1176,6 +1227,7 @@ internal object IncomingFilePayloadPolicy {
                 "peer_proof_v3" -> { handlePeerProof(endpointId, envelope); return }
                 "mesh_identity_binding_v1" -> { handlePeerIdentityBinding(endpointId, envelope); return }
                 "mesh_route_advert_v1" -> { handleMeshRouteAdvertisement(endpointId, envelope); return }
+                "mesh_route_withdraw_v1" -> { handleMeshRouteWithdrawal(endpointId, envelope); return }
                 "mesh_hop_ack_v1" -> { handleMeshHopAcknowledgement(endpointId, envelope); return }
                 "mesh_receipt_hop_ack_v1" -> { handleMeshReceiptHopAcknowledgement(endpointId, envelope); return }
                 "mesh_delivery_receipt_v1" -> { handleMeshDeliveryReceipt(endpointId, envelope); return }
