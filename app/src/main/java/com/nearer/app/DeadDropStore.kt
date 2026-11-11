@@ -47,6 +47,8 @@ internal class DeadDropStore(context: Context) {
         now: Long,
         previousHopPeerId: String = ""
     ): Boolean {
+        // Expired items must not occupy scarce queue or per-origin quota.
+        purgeExpired(now)
         val entries = read() ?: return false
         val existing = entries[packet.packetId]
         if (existing != null) {
@@ -87,7 +89,8 @@ internal class DeadDropStore(context: Context) {
         val bytes = packet.encode()
         if (bytes.size > MAX_PACKET_BYTES) return false
         val encrypted = try { LocalDataCipher.encrypt(app, bytes) } catch (_: Exception) { return false }
-        if (entries.values.sumOf { it.encrypted.length } + encrypted.length > MAX_TOTAL_CHARS) return false
+        if (originEncryptedChars + encrypted.length > MAX_PER_ORIGIN_CHARS ||
+            entries.values.sumOf { it.encrypted.length } + encrypted.length > MAX_TOTAL_CHARS) return false
         entries[packet.packetId] = Entry(encrypted, 0, QUEUED, now, 0L, previousHopPeerId)
         return write(entries)
     }
@@ -110,8 +113,11 @@ internal class DeadDropStore(context: Context) {
             )
             if (!due) return@forEach
             val clear = LocalDataCipher.decrypt(app, entry.encrypted) ?: return@forEach
-            val packet = try { MeshRelayPacketV1.decode(clear) } catch (_: Exception) { return@forEach }
-            if (!packet.verifyEmbeddedOrigin(now)) {
+            val packet = try { MeshRelayPacketV1.decode(clear) } catch (_: Exception) {
+                entries.remove(id)
+                return@forEach
+            }
+            if (packet.packetId != id || !packet.verifyEmbeddedOrigin(now)) {
                 entries.remove(id)
                 return@forEach
             }
@@ -174,7 +180,8 @@ internal class DeadDropStore(context: Context) {
         val old = entries[receipt.packetId] ?: return true
         val clear = LocalDataCipher.decrypt(app, old.encrypted) ?: return false
         val packet = try { MeshRelayPacketV1.decode(clear) } catch (_: Exception) { return false }
-        if (packet.originId != receipt.originId || packet.destinationId != receipt.destinationId) return false
+        if (packet.packetId != receipt.packetId ||
+            packet.originId != receipt.originId || packet.destinationId != receipt.destinationId) return false
         entries.remove(receipt.packetId)
         return write(entries)
     }
@@ -185,8 +192,11 @@ internal class DeadDropStore(context: Context) {
         val before = entries.size
         entries.toMap().forEach { (id, entry) ->
             val clear = LocalDataCipher.decrypt(app, entry.encrypted) ?: return@forEach
-            val packet = try { MeshRelayPacketV1.decode(clear) } catch (_: Exception) { return@forEach }
-            if (packet.expiresAtMs <= now) entries.remove(id)
+            val packet = try { MeshRelayPacketV1.decode(clear) } catch (_: Exception) {
+                entries.remove(id)
+                return@forEach
+            }
+            if (packet.packetId != id || packet.expiresAtMs <= now) entries.remove(id)
         }
         val removed = before - entries.size
         if (removed > 0) write(entries)
@@ -203,7 +213,8 @@ internal class DeadDropStore(context: Context) {
             if (result.size >= limit) return@forEach
             val clear = LocalDataCipher.decrypt(app, entry.encrypted) ?: return@forEach
             val packet = try { MeshRelayPacketV1.decode(clear) } catch (_: Exception) { return@forEach }
-            if (packet.destinationId == destinationId && packet.verifyEmbeddedOrigin(now)) result += packet
+            if (packet.packetId == entries.entries.firstOrNull { it.value === entry }?.key &&
+                packet.destinationId == destinationId && packet.verifyEmbeddedOrigin(now)) result += packet
         }
         return result
     }
@@ -219,7 +230,7 @@ internal class DeadDropStore(context: Context) {
         val entry = entries[packetId] ?: return null
         val clear = LocalDataCipher.decrypt(app, entry.encrypted) ?: return null
         val packet = try { MeshRelayPacketV1.decode(clear) } catch (_: Exception) { return null }
-        if (!packet.verifyEmbeddedOrigin(now)) return null
+        if (packet.packetId != packetId || !packet.verifyEmbeddedOrigin(now)) return null
         if (entry.preparedForNextHop) return packet
         val prepared = if (packet.originId == localPeerId) packet else packet.forwarded() ?: return null
         val encrypted = try { LocalDataCipher.encrypt(app, prepared.encode()) } catch (_: Exception) { return null }
@@ -269,6 +280,7 @@ internal class DeadDropStore(context: Context) {
     } catch (_: Exception) { null }
 
     private fun write(entries: Map<String, Entry>): Boolean {
+        if (entries.size > MAX_ITEMS || entries.values.sumOf { it.encrypted.length } > MAX_TOTAL_CHARS) return false
         val json = JSONObject()
         entries.forEach { (id, e) -> json.put(id, JSONObject()
             .put("encrypted", e.encrypted).put("attempts", e.attempts)
