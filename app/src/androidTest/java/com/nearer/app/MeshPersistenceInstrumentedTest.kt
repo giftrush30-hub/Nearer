@@ -136,7 +136,7 @@ class MeshPersistenceInstrumentedTest {
         val prefs = context.getSharedPreferences("nearer_mesh_route_withdrawals_v1", 0)
         prefs.edit().putString("withdrawals_encrypted_v1", "not-valid-ciphertext").commit()
         val table = MeshRouteTable("CCCCCC")
-        assertEquals(0, MeshRouteWithdrawalStore(context).restore(table))
+        assertEquals(-1, MeshRouteWithdrawalStore(context).restore(table))
         val sender = recipientKeyPair()
         val destination = recipientKeyPair()
         val stale = SignedRouteAdvertisement.create(
@@ -148,8 +148,8 @@ class MeshPersistenceInstrumentedTest {
                 sign()
             }
         }
-        // A corrupt local store must not cause the app to invent a withdrawal.
-        // The caller must surface storage failure and keep relay disabled.
+        // The negative restore result is a hard health failure. The transport
+        // must pause route exchange instead of treating corruption as "no tombstones".
         assertTrue(table.update(stale, "AAAAAA", sender.public.encoded, 2000L))
     }
 
