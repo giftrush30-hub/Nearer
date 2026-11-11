@@ -1,5 +1,6 @@
 ## Recent safety hardening
 
+- Outgoing mesh routing now compares the selected route's destination-key fingerprint directly with the locally pinned recipient encryption key, even when the in-memory advertised-key cache is absent. Invalid tombstone batches also persist the fail-closed marker.
 - The receipt outbox now encrypts its complete persisted wrapper, including packet IDs and previous/expected next-hop IDs. A compatibility reader migrates earlier development-format entries on their next write; instrumentation checks that routing metadata is not visible in SharedPreferences.
 - If the withdrawal ledger becomes corrupt, cannot be written, or reaches capacity, a separate persistent fail-closed marker disables routing after restart; the transport also clears the route cache when an incoming withdrawal cannot be committed. The marker is intentionally not auto-cleared.
 - A signed withdrawal with a sequence equal to the selected route's advertisement sequence also removes that route and triggers route-cache/UI reconciliation; stale equal-sequence advertisements remain blocked.
