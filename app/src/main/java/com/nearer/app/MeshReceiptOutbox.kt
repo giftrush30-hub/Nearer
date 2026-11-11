@@ -21,10 +21,19 @@ internal class MeshReceiptOutbox(context: Context) {
         val existing = entries[receipt.packetId]
         if (existing != null) {
             val clear = LocalDataCipher.decrypt(app, existing.encrypted) ?: return false
-            return runCatching {
+            val sameReceipt = runCatching {
                 val old = MeshDeliveryReceipt.decode(clear)
                 old.encode().contentEquals(receipt.encode())
             }.getOrDefault(false)
+            if (!sameReceipt) return false
+            // A duplicate may arrive over a different authenticated neighbor after
+            // route recovery. Remember the newest ingress so the receipt is not
+            // forwarded straight back along a stale reverse path.
+            if (previousHopPeerId.isNotEmpty() && existing.previousHopPeerId != previousHopPeerId) {
+                entries[receipt.packetId] = existing.copy(previousHopPeerId = previousHopPeerId)
+                return write(entries)
+            }
+            return true
         }
         if (entries.size >= MAX_ITEMS) return false
         val encoded = try { receipt.encode() } catch (_: Exception) { return false }
