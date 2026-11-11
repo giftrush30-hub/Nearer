@@ -50,7 +50,8 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         var remotePublicKey: ByteArray? = null,
         var remoteEphemeralPublicKey: ByteArray? = null,
         var remotePeerId: String = "",
-        var localProofSent: Boolean = false
+        var localProofSent: Boolean = false,
+        var pendingRemoteProof: String? = null
     )
     private val peerHandshakes = ConcurrentHashMap<String, PeerHandshakeState>()
     private val messageSessions = ConcurrentHashMap<String, NearbyMessageCrypto.Session>()
@@ -488,6 +489,10 @@ internal object IncomingFilePayloadPolicy {
                 client.sendPayload(endpointId, Payload.fromBytes(NearbyPeerHandshake.proof(localStableId, signature)))
                     .addOnFailureListener { failPeerHandshake(endpointId, "Could not send this phone’s secure identity proof.") }
             }
+            state.pendingRemoteProof?.let { pending ->
+                state.pendingRemoteProof = null
+                handlePeerProof(endpointId, JSONObject(pending))
+            }
         } catch (error: Exception) {
             failPeerHandshake(endpointId, error.localizedMessage ?: "The nearby identity challenge was invalid.")
         }
@@ -497,7 +502,11 @@ internal object IncomingFilePayloadPolicy {
         val state = peerHandshakes[endpointId] ?: return
         try {
             val (peerId, signature) = NearbyPeerHandshake.decodeProof(envelope)
-            require(state.localProofSent) { "Local proof has not been sent." }
+            if (!state.localProofSent || state.remotePublicKey == null ||
+                state.remoteNonce == null || state.remoteEphemeralPublicKey == null) {
+                state.pendingRemoteProof = envelope.toString()
+                return
+            }
             val remoteKey = state.remotePublicKey ?: throw IllegalArgumentException("Peer key has not been received.")
             val remoteNonce = state.remoteNonce ?: throw IllegalArgumentException("Peer challenge has not been received.")
             val remoteEphemeral = state.remoteEphemeralPublicKey ?: throw IllegalArgumentException("Peer encryption key has not been received.")
