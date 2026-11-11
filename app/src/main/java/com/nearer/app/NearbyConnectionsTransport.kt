@@ -1285,12 +1285,12 @@ internal object IncomingFilePayloadPolicy {
         due.forEach { pending ->
             try {
                 val queuedPacket = MeshRelayPacketV1.decode(pending.bytes)
+                val route = meshRouteTable.find(queuedPacket.destinationId, System.currentTimeMillis()) ?: return@forEach
+                if (route.nextHopPeerId == pending.previousHopPeerId) return@forEach
                 val packet = deadDropStore.prepareForForwarding(
-                    pending.packetId, localStableId, System.currentTimeMillis()
+                    pending.packetId, localStableId, System.currentTimeMillis(), route.nextHopPeerId
                 ) ?: return@forEach
                 require(packet.sameImmutablePacket(queuedPacket)) { "Queued packet changed while preparing its forwarding hop." }
-                val route = meshRouteTable.find(packet.destinationId, System.currentTimeMillis()) ?: return@forEach
-                if (route.nextHopPeerId == pending.previousHopPeerId) return@forEach
                 val endpointId = endpointForStablePeer(route.nextHopPeerId) ?: return@forEach
                 client.sendPayload(endpointId, Payload.fromBytes(packet.encode()))
                     .addOnFailureListener { listener.onStatus("A mesh relay transfer failed. NeaRer will retry it.") }
