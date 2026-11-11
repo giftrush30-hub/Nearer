@@ -369,7 +369,9 @@ class MainActivity : ComponentActivity() {
                     hybridConnected = true
                     hybridConnectedEndpoint = id
                     hybridConnectedStableId = stableId.ifBlank { null }
-                    selectedMeshRecipientId = stableId.takeIf { it.isNotBlank() }
+                    if (selectedMeshRecipientId == null) {
+                        selectedMeshRecipientId = stableId.takeIf { it.isNotBlank() }
+                    }
                     val requestedIncomingResume = nearbyTransport?.requestPendingIncomingFilesForPeer(stableId, id) == true
                     val hasQueuedOutgoingFile = currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()
                     if (hasQueuedOutgoingFile) {
