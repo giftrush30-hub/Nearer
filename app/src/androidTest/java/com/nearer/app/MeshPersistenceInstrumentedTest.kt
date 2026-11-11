@@ -205,6 +205,26 @@ class MeshPersistenceInstrumentedTest {
     }
 
     @Test
+    fun withdrawalStoreFailsClosedInsteadOfEvictingLiveReplayWatermarks() {
+        val store = MeshRouteWithdrawalStore(context)
+        val tombstones = (0 until 512).map {
+            MeshRouteTable.WithdrawalTombstone(
+                destinationId = NeaRerIdentity.generate(),
+                advertiserId = NeaRerIdentity.generate(),
+                sequence = it.toLong()
+            )
+        }
+        assertEquals(512, tombstones.distinctBy { it.destinationId + "|" + it.advertiserId }.size)
+        assertTrue(store.saveAll(tombstones))
+        val overflow = MeshRouteTable.WithdrawalTombstone(
+            NeaRerIdentity.generate(), NeaRerIdentity.generate(), 999L
+        )
+        assertFalse(store.record(overflow))
+        val restored = MeshRouteTable("CCCCCC")
+        assertEquals(512, store.restore(restored))
+    }
+
+    @Test
     fun receiptOutboxPersistsUntilExplicitNextHopAcknowledgement() {
         val now = System.currentTimeMillis()
         val receipt = MeshDeliveryReceipt.create(
