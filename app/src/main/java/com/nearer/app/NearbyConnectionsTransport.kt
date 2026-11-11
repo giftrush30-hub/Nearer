@@ -909,13 +909,19 @@ internal object IncomingFilePayloadPolicy {
                 withdrawal.destinationId, senderId, withdrawal.sequence
             )
             if (!meshRouteWithdrawalStore.record(tombstone)) {
-                meshRouteWithdrawalStore.disableRouting()
+                val disabledMarkerSaved = meshRouteWithdrawalStore.disableRouting()
                 meshRouteWithdrawalStoreHealthy = false
                 // A full/corrupt tombstone ledger must not leave an old route
                 // cache that could be restored after process death.
-                meshRoutePersistence.clearAll()
+                val routeCacheCleared = meshRoutePersistence.clearAll()
                 meshDestinationEncryptionKeys.clear()
-                listener.onStatus("Mesh route history could not be saved. Cached routes were cleared and multi-hop is paused on this phone.")
+                listener.onStatus(
+                    if (disabledMarkerSaved || routeCacheCleared) {
+                        "Mesh route history could not be saved. Routing is paused and stale route recovery is blocked."
+                    } else {
+                        "Mesh route history could not be saved. Routing is paused for this session, but storage could not confirm the safety marker."
+                    }
+                )
                 return
             }
             val routeBeforeWithdrawal = meshRouteTable.find(
@@ -926,11 +932,17 @@ internal object IncomingFilePayloadPolicy {
             if (!meshRouteTable.rememberWithdrawal(
                     withdrawal.destinationId, senderId, withdrawal.sequence
                 )) {
-                meshRouteWithdrawalStore.disableRouting()
+                val disabledMarkerSaved = meshRouteWithdrawalStore.disableRouting()
                 meshRouteWithdrawalStoreHealthy = false
-                meshRoutePersistence.clearAll()
+                val routeCacheCleared = meshRoutePersistence.clearAll()
                 meshDestinationEncryptionKeys.clear()
-                listener.onStatus("Mesh route history could not be applied. Cached routes were cleared and multi-hop is paused on this phone.")
+                listener.onStatus(
+                    if (disabledMarkerSaved || routeCacheCleared) {
+                        "Mesh route history could not be applied. Routing is paused and stale route recovery is blocked."
+                    } else {
+                        "Mesh route history could not be applied. Routing is paused for this session, but storage could not confirm the safety marker."
+                    }
+                )
                 return
             }
             // Equal-sequence signed withdrawals also invalidate the selected route.
