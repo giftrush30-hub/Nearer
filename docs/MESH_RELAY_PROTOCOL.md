@@ -94,7 +94,7 @@ Foundations now present in source:
 - A stable P-256 recipient ECDH keypair persisted as LocalDataCipher ciphertext; unreadable existing key material fails closed rather than being silently replaced.
 - A signed binding that associates the recipient ECDH public key with the already pinned device signing identity.
 - Recipient-only ECDH + HKDF-SHA256 + AES-256-GCM packet encryption, separate from the live direct-chat session keys.
-- An origin-signed opaque packet envelope with immutable signed header/ciphertext, expiry, and bounded hop count.
+- An origin-signed opaque packet envelope with immutable signed header/ciphertext, expiry, and bounded hop count. Mesh chat wire packets are capped at Nearby Connections' 32 KiB BYTES payload limit; larger future content must use a stream/file payload rather than this chat envelope.
 - Signed route advertisement verification and a route table that derives its next hop from the authenticated direct advertiser, rather than trusting a remote next-hop claim.
 - A durable encrypted-at-rest Dead Drop queue with bounded storage (64 total packets, 16 per origin, 40 KiB per packet, 2 MiB global encrypted queue), packet-ID collision checks, previous-hop tracking, retry backoff, forwarding leases, and distinct hop-accepted vs final-delivery states. Each relay persists its hop-counter increment exactly once before transmission, reuses that count on retry/restart, and rejects duplicate packets that roll the observed counter backwards.
 - Destination-signed final receipt verification before a stored packet can be deleted.
@@ -105,7 +105,7 @@ Foundations now present in source:
 - Handshake authentication now waits for successful Nearby task completion when sending the local signing proof and recipient-key binding; the remote binding sequence is checked before first-time key pins are committed.
 - A destination refuses to display a relayed message until its origin signing key is already pinned on that phone. If the origin is not yet trusted, the packet remains encrypted in the Dead Drop and can be reconsidered after a direct authenticated pairing.
 - Encrypted route-advertisement persistence now restores only signed, unexpired records whose advertiser signing key remains pinned, including the associated destination encryption keys. Restored routes still require the advertised next-hop neighbor to reconnect and authenticate before they can be used. Route withdrawals also remove the affected cached route.
-- Android instrumentation coverage has been added for Android Keystore-backed packet signing, encrypted Dead Drop persistence across store recreation, persisted previous-hop state, once-per-hop counter recovery, rollback rejection, per-origin queue quotas, and receipt-outbox persistence. Exact-head emulator CI is still pending.
+- Android instrumentation coverage has been added for Android Keystore-backed packet signing, encrypted Dead Drop persistence across store recreation, persisted previous-hop state, once-per-hop counter recovery, rollback rejection, per-origin queue quotas, and receipt-outbox persistence. JVM coverage also checks the Nearby 32 KiB wire cap. Exact-head emulator CI is still pending.
 - A direct authenticated peer is installed as a reverse route so final receipts can travel back through the mesh.
 
 Still not integrated:
