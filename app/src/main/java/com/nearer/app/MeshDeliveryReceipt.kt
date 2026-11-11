@@ -1,5 +1,7 @@
 package com.nearer.app
 
+import android.util.Base64
+import org.json.JSONObject
 import java.security.KeyFactory
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
@@ -21,7 +23,7 @@ internal data class MeshDeliveryReceipt(
         require(NeaRerIdentity.normalize(originId) == originId)
         require(NeaRerIdentity.normalize(destinationId) == destinationId)
         require(originId != destinationId)
-        require(deliveredAtMs in 1..(nowMs + 300_000L))
+        require(deliveredAtMs in 1..(nowMs + MAX_CLOCK_SKEW_MS))
         require(signature.size in 8..128)
         val key = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(trustedDestinationKey))
         require((key as? java.security.interfaces.ECPublicKey)?.params?.curve?.field?.fieldSize == 256)
@@ -31,13 +33,51 @@ internal data class MeshDeliveryReceipt(
         verifier.verify(signature)
     } catch (_: Exception) { false }
 
+    /** Small transport representation; signature is still verified against a pinned key after decoding. */
+    fun encode(): ByteArray = JSONObject()
+        .put("kind", KIND)
+        .put("packetId", packetId)
+        .put("originId", originId)
+        .put("destinationId", destinationId)
+        .put("deliveredAtMs", deliveredAtMs)
+        .put("signature", Base64.encodeToString(signature, Base64.NO_WRAP))
+        .toString().toByteArray(Charsets.UTF_8)
+
     companion object {
+        private const val KIND = "mesh_delivery_receipt_v1"
+        private const val MAX_CLOCK_SKEW_MS = 300_000L
+
+        fun decode(bytes: ByteArray): MeshDeliveryReceipt {
+            require(bytes.size in 1..2048)
+            val json = JSONObject(bytes.toString(Charsets.UTF_8))
+            require(json.optString("kind") == KIND)
+            val receipt = MeshDeliveryReceipt(
+                json.getString("packetId"),
+                json.getString("originId"),
+                json.getString("destinationId"),
+                json.getLong("deliveredAtMs"),
+                Base64.decode(json.getString("signature"), Base64.NO_WRAP)
+            )
+            require(receipt.packetId.matches(Regex("[A-Za-z0-9._:-]{1,80}")))
+            require(NeaRerIdentity.normalize(receipt.originId) == receipt.originId)
+            require(NeaRerIdentity.normalize(receipt.destinationId) == receipt.destinationId)
+            require(receipt.originId != receipt.destinationId)
+            require(receipt.signature.size in 8..128)
+            return receipt
+        }
+
         fun create(
             packetId: String, originId: String, destinationId: String,
             deliveredAtMs: Long, sign: (ByteArray) -> ByteArray
         ): MeshDeliveryReceipt {
+            require(packetId.matches(Regex("[A-Za-z0-9._:-]{1,80}")))
+            require(NeaRerIdentity.normalize(originId) == originId)
+            require(NeaRerIdentity.normalize(destinationId) == destinationId)
+            require(originId != destinationId && deliveredAtMs > 0L)
             val unsigned = MeshDeliveryReceipt(packetId, originId, destinationId, deliveredAtMs, ByteArray(0))
-            return unsigned.copy(signature = sign(unsigned.signedBytes()))
+            val signature = sign(unsigned.signedBytes())
+            require(signature.size in 8..128)
+            return unsigned.copy(signature = signature)
         }
     }
 }
