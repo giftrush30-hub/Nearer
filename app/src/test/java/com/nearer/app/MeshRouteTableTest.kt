@@ -26,7 +26,8 @@ class MeshRouteTableTest {
         val sender = pair()
         val destination = pair()
         val ad = SignedRouteAdvertisement.create(
-            "AAAAAA", "BBBBBB", destination.public.encoded, 4L, 1, 1000L, 5000L
+            "AAAAAA", "BBBBBB", destination.public.encoded, 4L, 1, 1000L, 5000L,
+            path = listOf("AAAAAA", "EEEEEE", "BBBBBB")
         ) { sign(sender.private, it) }
         val table = MeshRouteTable("CCCCCC")
         assertTrue(table.update(ad, "AAAAAA", sender.public.encoded, 2000L))
@@ -57,7 +58,8 @@ class MeshRouteTableTest {
         val sender = pair()
         val destination = pair()
         val ad = SignedRouteAdvertisement.create(
-            "AAAAAA", "BBBBBB", destination.public.encoded, 9L, 1, 1000L, 5000L
+            "AAAAAA", "BBBBBB", destination.public.encoded, 9L, 1, 1000L, 5000L,
+            path = listOf("AAAAAA", "EEEEEE", "BBBBBB")
         ) { sign(sender.private, it) }
         val decoded = SignedRouteAdvertisement.decode(ad.encode())
         assertTrue(decoded.verify(sender.public.encoded, 2000L))
@@ -83,7 +85,8 @@ class MeshRouteTableTest {
         val destination = pair()
         val table = MeshRouteTable("CCCCCC")
         val olderFromA = SignedRouteAdvertisement.create(
-            "AAAAAA", "BBBBBB", destination.public.encoded, 900L, 1, 1000L, 9000L
+            "AAAAAA", "BBBBBB", destination.public.encoded, 900L, 1, 1000L, 9000L,
+            path = listOf("AAAAAA", "EEEEEE", "BBBBBB")
         ) { sign(firstAdvertiser.private, it) }
         val newerFromD = SignedRouteAdvertisement.create(
             "DDDDDD", "BBBBBB", destination.public.encoded, 1L, 0, 3000L, 9000L
