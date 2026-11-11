@@ -160,6 +160,8 @@ internal data class SignedRouteAdvertisement(
  * remote-provided next-hop IDs are never trusted.
  */
 internal class MeshRouteTable(private val localId: String) {
+    data class WithdrawalTombstone(val destinationId: String, val advertiserId: String, val sequence: Long)
+
     data class Route(
         val destinationId: String,
         /** Authenticated direct neighbor used as the next hop and route advertiser. */
@@ -272,16 +274,16 @@ internal class MeshRouteTable(private val localId: String) {
         return routes[destinationId]
     }
 
-    /** Apply a signed withdrawal only to the route asserted by that neighbor. */
+    /** Remember a verified withdrawal even when its route was already evicted or expired. */
     @Synchronized
-    fun removeDestinationIfNextHop(destinationId: String, advertiserId: String, sequence: Long): Boolean {
+    fun rememberWithdrawal(destinationId: String, advertiserId: String, sequence: Long): Boolean {
         if (NeaRerIdentity.normalize(destinationId) != destinationId ||
             NeaRerIdentity.normalize(advertiserId) != advertiserId || sequence < 0L) return false
-        val route = routes[destinationId] ?: return false
-        if (route.nextHopPeerId != advertiserId || sequence <= route.sequence) return false
-        routes.remove(destinationId)
+        val route = routes[destinationId]
+        if (route != null && route.nextHopPeerId != advertiserId) return false
         val key = destinationId + "|" + advertiserId
         withdrawnSequences[key] = maxOf(withdrawnSequences[key] ?: -1L, sequence)
+        if (route != null && route.sequence <= sequence) routes.remove(destinationId)
         while (withdrawnSequences.size > MAX_TOMBSTONES) {
             val oldest = withdrawnSequences.keys.firstOrNull() ?: break
             withdrawnSequences.remove(oldest)
@@ -289,11 +291,32 @@ internal class MeshRouteTable(private val localId: String) {
         return true
     }
 
+    /** Apply a signed withdrawal only to the route asserted by that neighbor. */
+    @Synchronized
+    fun removeDestinationIfNextHop(destinationId: String, advertiserId: String, sequence: Long): Boolean {
+        val route = routes[destinationId] ?: return false
+        if (route.nextHopPeerId != advertiserId || sequence <= route.sequence) return false
+        return rememberWithdrawal(destinationId, advertiserId, sequence)
+    }
+
+    @Synchronized
+    fun withdrawalTombstones(): List<WithdrawalTombstone> = withdrawnSequences.mapNotNull { (key, sequence) ->
+        val split = key.split("|")
+        if (split.size != 2) null else WithdrawalTombstone(split[0], split[1], sequence)
+    }
+
     @Synchronized
     fun removeNextHop(peerId: String): List<String> {
-        val removed = routes.values.filter { it.nextHopPeerId == peerId }.map { it.destinationId }
+        val removedRoutes = routes.values.filter { it.nextHopPeerId == peerId }
+        removedRoutes.forEach { route ->
+            // Direct-neighbor routes use Long.MAX_VALUE and have no remote
+            // advertisement sequence to tombstone. Learned routes do.
+            if (route.sequence != Long.MAX_VALUE) {
+                rememberWithdrawal(route.destinationId, peerId, route.sequence)
+            }
+        }
         routes.entries.removeAll { it.value.nextHopPeerId == peerId }
-        return removed
+        return removedRoutes.map { it.destinationId }
     }
 
     @Synchronized
