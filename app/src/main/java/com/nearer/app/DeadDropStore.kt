@@ -263,8 +263,9 @@ internal class DeadDropStore(context: Context) {
     @Synchronized
     fun nextWakeAt(): Long? {
         val entries = read() ?: return null
+        // Retry remains eligible until the signed packet expiry. Attempts saturate
+        // only to bound persisted metadata; they are never a terminal cutoff.
         return entries.values
-            .filter { it.attempts < MAX_ATTEMPTS }
             .map { entry ->
                 if (entry.state == FORWARDING) maxOf(entry.dueAt, entry.leaseUntil)
                 else entry.dueAt
