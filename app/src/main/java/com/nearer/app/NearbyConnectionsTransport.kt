@@ -696,6 +696,7 @@ internal object IncomingFilePayloadPolicy {
             require(meshRouteTable.addDirectPeer(peerId, destinationKey, System.currentTimeMillis())) {
                 "Could not install the authenticated direct mesh route."
             }
+            pruneMeshDestinationKeys()
             if (authenticatedEndpoints.add(endpointId)) {
                 peerHandshakes.remove(endpointId, state)
                 val details = synchronized(names) {
