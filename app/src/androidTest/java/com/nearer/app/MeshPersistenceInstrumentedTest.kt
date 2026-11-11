@@ -221,7 +221,7 @@ class MeshPersistenceInstrumentedTest {
         )
         assertFalse(store.record(overflow))
         val restored = MeshRouteTable("CCCCCC")
-        assertEquals(512, store.restore(restored))
+        assertEquals(-1, MeshRouteWithdrawalStore(context).restore(restored))
     }
 
     @Test
