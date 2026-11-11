@@ -542,7 +542,7 @@ internal object IncomingFilePayloadPolicy {
                         retryQueuedMessagesForPeer(details.second, endpointId)
                         listener.onConnected(endpointId, details.first, details.second)
                         val trustNotice = if (trustResult == TrustedPeerKeyStore.Result.FIRST_SEEN) {
-                            "Encrypted link established with ${details.first}. This is the first key seen for this device ID; it does not prove the person’s real-world identity."
+                            "Encrypted link established with ${details.first}. New key material was pinned for this device ID; this does not prove the person’s real-world identity."
                         } else {
                             "Encrypted link established with ${details.first} using its previously pinned device key."
                         }
