@@ -110,10 +110,13 @@ class MeshPersistenceInstrumentedTest {
         val previousHop = NeaRerIdentity.generate()
         assertTrue(MeshReceiptOutbox(context).enqueue(receipt, previousHop))
 
+        val alternatePreviousHop = NeaRerIdentity.generate()
+        assertTrue(MeshReceiptOutbox(context).enqueue(receipt, alternatePreviousHop))
+
         val reopened = MeshReceiptOutbox(context)
         val pending = reopened.pending()
         assertEquals(1, pending.size)
-        assertEquals(previousHop, pending.single().previousHopPeerId)
+        assertEquals(alternatePreviousHop, pending.single().previousHopPeerId)
         assertTrue(receipt.encode().contentEquals(pending.single().receipt.encode()))
         assertTrue(reopened.remove(receipt.packetId))
         assertEquals(0, MeshReceiptOutbox(context).size())
