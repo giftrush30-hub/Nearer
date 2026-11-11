@@ -96,7 +96,7 @@ A hop acknowledgement means only that the next hop durably accepted the packet. 
 - A signed binding associates the recipient ECDH public key with the already pinned device signing identity. The Nearby handshake exchanges and verifies this binding and rejects stale/replayed binding sequences.
 - Recipient-only ECDH + HKDF-SHA256 + AES-256-GCM packet encryption, separate from live direct-chat session keys.
 - An origin-signed opaque packet envelope with immutable signed header/ciphertext, expiry, bounded hop count and a 32 KiB Nearby BYTES wire cap.
-- Signed path-vector route advertisements. The receiver derives its next hop from the authenticated direct advertiser, checks destination-key fingerprints, rejects loops, bounds route state and rate-limits advertisements. Signed withdrawals remove routes only when issued by their current next hop.
+- Signed path-vector route advertisements. The receiver derives its next hop from the authenticated direct advertiser, checks destination-key fingerprints, rejects loops, bounds route state and rate-limits advertisements. Signed withdrawals remove routes only when issued by their current next hop; encrypted withdrawal tombstones survive app restarts and block stale route resurrection.
 - Encrypted-at-rest Dead Drop storage with queue and per-origin quotas, packet-ID collision checks, previous-hop tracking, durable forwarding leases, retry backoff, and persisted once-per-hop counter increments.
 - Signed hop acknowledgements are accepted only from the expected authenticated next hop and only after the receiver has durably stored the packet.
 - Destination-signed final receipts and a separate encrypted-at-rest receipt outbox. Receipt relays persist before acknowledging and retain receipts until the next authenticated hop acknowledges them.
@@ -111,7 +111,7 @@ A hop acknowledgement means only that the next hop durably accepted the packet. 
 - The mutable hop counter is not a globally verifiable chained forwarding trace. A malicious authenticated relay can lie about earlier hops before downstream nodes observe the packet. A chained, independently verifiable per-hop trace is still required before hostile-network release.
 - Receipt verification and deletion at intermediate relays is incomplete when that relay has not directly pinned the destination signing key; such copies may remain until expiry.
 - Queue retry currently runs only while the Nearby transport instance is alive. WorkManager/foreground-service scheduling for process death, Doze and reboot recovery is not yet implemented.
-- Withdrawal tombstones are in-memory only and do not survive process restart. Route cache and withdrawal recovery need further adversarial testing.
+- Persistent withdrawal tombstones are now restored before new route advertisements are accepted. Route cache and withdrawal recovery still need adversarial testing, including storage corruption and conflicting paths.
 - Queue limits, expiry, retry policy and battery/storage controls need product-level review.
 - No physical A → B → C → D test, forced process-death/reboot test, multi-manufacturer test, or adversarial field test has passed. Android 35 instrumentation recently crashed before its tests completed; the latest workflow is being rerun with clean emulator snapshots and retained test reports.
 - Relay remains disabled. This draft PR is not release-ready and must not be merged or advertised as complete.
