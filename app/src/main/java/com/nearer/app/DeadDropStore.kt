@@ -107,7 +107,7 @@ internal class DeadDropStore(context: Context) {
         val entries = read() ?: return emptyList()
         val result = mutableListOf<Pending>()
         entries.toMap().forEach { (id, entry) ->
-            if (result.size >= limit || entry.attempts >= MAX_ATTEMPTS) return@forEach
+            if (result.size >= limit) return@forEach
             val due = entry.dueAt <= now && (
                 entry.state == QUEUED || entry.state == AWAITING_DESTINATION ||
                 (entry.state == FORWARDING && entry.leaseUntil <= now)
@@ -123,7 +123,9 @@ internal class DeadDropStore(context: Context) {
                 return@forEach
             }
             if (!eligible(packet, entry.previousHopPeerId)) return@forEach
-            val attempts = entry.attempts + 1
+            // Retry until packet expiry. The counter saturates only to bound
+            // persisted metadata; it is not a terminal attempt limit.
+            val attempts = (entry.attempts + 1).coerceAtMost(MAX_RETRY_LEVEL)
             entries[id] = entry.copy(
                 attempts = attempts, state = FORWARDING,
                 dueAt = now + backoff(attempts), leaseUntil = now + LEASE_MS
@@ -299,7 +301,7 @@ internal class DeadDropStore(context: Context) {
             val preparedForNextHop = item.optBoolean("preparedForNextHop", false)
             val expectedNextHopPeerId = item.optString("expectedNextHopPeerId", "")
             if (encrypted.isBlank() || encrypted.length > MAX_TOTAL_CHARS ||
-                attempts !in 0..MAX_ATTEMPTS || state !in setOf(QUEUED, FORWARDING, AWAITING_DESTINATION) ||
+                attempts !in 0..MAX_RETRY_LEVEL || state !in setOf(QUEUED, FORWARDING, AWAITING_DESTINATION) ||
                 dueAt < 0L || leaseUntil < 0L ||
                 (previousHopPeerId.isNotEmpty() && NeaRerIdentity.normalize(previousHopPeerId) != previousHopPeerId) ||
                 (expectedNextHopPeerId.isNotEmpty() && NeaRerIdentity.normalize(expectedNextHopPeerId) != expectedNextHopPeerId)) return null
@@ -337,7 +339,7 @@ internal class DeadDropStore(context: Context) {
         private const val MAX_TOTAL_CHARS = 2 * 1024 * 1024
         private const val MAX_METADATA_CHARS = 64 * 1024
         private const val MAX_STORED_CHARS = 3 * 1024 * 1024
-        private const val MAX_ATTEMPTS = 8
+        private const val MAX_RETRY_LEVEL = 16
         private const val LEASE_MS = 30_000L
         private const val QUEUED = "queued"
         private const val FORWARDING = "forwarding"
