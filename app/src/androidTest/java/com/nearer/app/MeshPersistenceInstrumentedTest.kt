@@ -47,16 +47,32 @@ class MeshPersistenceInstrumentedTest {
             recipientPublicKey = recipient.public.encoded,
             plaintext = "opaque test body".toByteArray()
         )
+        val previousHop = NeaRerIdentity.generate()
+        val localRelay = NeaRerIdentity.generate()
         val firstStore = DeadDropStore(context)
-        assertTrue(firstStore.enqueueTransit(packet, NeaRerIdentity.generate(), now))
+        assertTrue(firstStore.enqueueTransit(packet, previousHop, now))
 
         val reopenedStore = DeadDropStore(context)
         val claimed = reopenedStore.claimDue(now + 1L, 1)
         assertEquals(1, claimed.size)
         assertEquals(packet.packetId, claimed.single().packetId)
-        assertNotNull(claimed.single().previousHopPeerId)
-        assertTrue(claimed.single().previousHopPeerId.isNotBlank())
+        assertEquals(previousHop, claimed.single().previousHopPeerId)
         assertTrue(MeshRelayPacketV1.decode(claimed.single().bytes).verifyEmbeddedOrigin(now + 1L))
+
+        val prepared = reopenedStore.prepareForForwarding(packet.packetId, localRelay, now + 2L)
+        assertNotNull(prepared)
+        assertEquals(1, prepared!!.hopsTaken)
+
+        // Reopening and retrying must reuse the prepared hop count, not increment again.
+        val afterRestart = DeadDropStore(context)
+        val retry = afterRestart.claimDue(now + 31_000L, 1)
+        assertEquals(1, retry.size)
+        val preparedAgain = afterRestart.prepareForForwarding(packet.packetId, localRelay, now + 31_001L)
+        assertNotNull(preparedAgain)
+        assertEquals(1, preparedAgain!!.hopsTaken)
+
+        // A replay cannot roll the persisted hop count backwards.
+        assertFalse(afterRestart.enqueueTransit(packet.copy(hopsTaken = 0), NeaRerIdentity.generate(), now + 31_002L))
     }
 
     @Test
