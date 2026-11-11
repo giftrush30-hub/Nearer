@@ -90,6 +90,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val routeAdvertisementWindows = ConcurrentHashMap<String, Pair<Long, Int>>()
     private val deadDropStore = DeadDropStore(appContext)
     private val meshRoutePersistence = MeshRoutePersistence(appContext)
+    private val meshRouteWithdrawalStore = MeshRouteWithdrawalStore(appContext)
     private val meshReceiptOutbox = MeshReceiptOutbox(appContext)
     private val receiptSendInFlightUntil = ConcurrentHashMap<String, Long>()
     @Volatile private var receiptRetryScheduled = false
@@ -191,7 +192,10 @@ internal object IncomingFilePayloadPolicy {
         meshRoutePersistence.destinationKeys().forEach { (peerId, key) ->
             meshDestinationEncryptionKeys[peerId] = key.copyOf()
         }
-        if (restoredRoutes > 0) listener.onStatus("Restored $restoredRoutes previously verified nearby mesh route(s).")
+        val restoredWithdrawals = meshRouteWithdrawalStore.restore(meshRouteTable)
+        if (restoredRoutes > 0 || restoredWithdrawals > 0) {
+            listener.onStatus("Restored $restoredRoutes verified route(s) and $restoredWithdrawals route-withdrawal protection record(s).")
+        }
     }
     private fun persistPendingOutbox(): Boolean {
         return try {
@@ -395,6 +399,9 @@ internal object IncomingFilePayloadPolicy {
             messageSessions.remove(id)
             val lostPeerId = synchronized(names) { stableIds[id].orEmpty() }
             val withdrawnDestinations = meshRouteTable.removeNextHop(lostPeerId)
+            if (!meshRouteWithdrawalStore.saveAll(meshRouteTable.withdrawalTombstones())) {
+                listener.onStatus("Some mesh route replay-protection records could not be saved.")
+            }
             if (lostPeerId.isNotBlank()) {
                 meshRoutePersistence.removeAdvertiser(lostPeerId)
                 routeAdvertisementWindows.remove(lostPeerId)
@@ -848,17 +855,30 @@ internal object IncomingFilePayloadPolicy {
             )
             require(withdrawal.advertiserId == senderId)
             require(withdrawal.verify(senderKey, System.currentTimeMillis()))
-            if (!meshRouteTable.removeDestinationIfNextHop(
-                    withdrawal.destinationId, senderId, withdrawal.sequence
-                )) return
-            meshRoutePersistence.removeDestination(withdrawal.destinationId)
-            // Re-sign the withdrawal as this node so downstream peers can invalidate
-            // routes whose authenticated next hop is this device.
-            broadcastMeshRouteWithdrawals(listOf(withdrawal.destinationId), endpointId)
-            listener.onStatus("A lost mesh route was withdrawn from the nearby network.")
-            notifyMeshRoutesChanged()
-            forwardDueMeshPackets()
-            flushPendingMeshReceipts()
+            val routeRemoved = meshRouteTable.removeDestinationIfNextHop(
+                withdrawal.destinationId, senderId, withdrawal.sequence
+            )
+            val routeStillPresent = meshRouteTable.find(withdrawal.destinationId, System.currentTimeMillis()) != null
+            // Even if the route was already evicted, persist this verified sequence
+            // so a replayed old advertisement cannot resurrect it after restart.
+            val tombstoneAccepted = routeRemoved || (!routeStillPresent &&
+                meshRouteTable.rememberWithdrawal(withdrawal.destinationId, senderId, withdrawal.sequence))
+            if (!tombstoneAccepted) return
+            if (!meshRouteWithdrawalStore.record(
+                    MeshRouteTable.WithdrawalTombstone(withdrawal.destinationId, senderId, withdrawal.sequence)
+                )) {
+                listener.onStatus("A route withdrawal was applied, but its replay protection could not be saved.")
+            }
+            if (routeRemoved) {
+                meshRoutePersistence.removeDestination(withdrawal.destinationId)
+                // Re-sign the withdrawal as this node so downstream peers can invalidate
+                // routes whose authenticated next hop is this device.
+                broadcastMeshRouteWithdrawals(listOf(withdrawal.destinationId), endpointId)
+                listener.onStatus("A lost mesh route was withdrawn from the nearby network.")
+                notifyMeshRoutesChanged()
+                forwardDueMeshPackets()
+                flushPendingMeshReceipts()
+            }
         } catch (_: Exception) {
             listener.onStatus("An invalid mesh route withdrawal was rejected.")
         }
