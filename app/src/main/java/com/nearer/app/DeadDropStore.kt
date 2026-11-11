@@ -17,7 +17,8 @@ internal class DeadDropStore(context: Context) {
         val dueAt: Long,
         val leaseUntil: Long,
         val previousHopPeerId: String = "",
-        val preparedForNextHop: Boolean = false
+        val preparedForNextHop: Boolean = false,
+        val expectedNextHopPeerId: String = ""
     )
 
     private val app = context.applicationContext
@@ -151,7 +152,9 @@ internal class DeadDropStore(context: Context) {
             !acknowledgement.verify(trustedAcceptingPeerKey, localPeerId, now)) return false
         val entries = read() ?: return false
         val old = entries[acknowledgement.packetId] ?: return false
-        if (old.state != FORWARDING) return false
+        // An authenticated neighbor is not necessarily the neighbor selected for
+        // this packet. Bind the ACK to the durable next-hop choice made before send.
+        if (old.state != FORWARDING || old.expectedNextHopPeerId != expectedAcceptingPeerId) return false
         entries[acknowledgement.packetId] = old.copy(
             state = AWAITING_DESTINATION,
             dueAt = now + backoff(old.attempts),
@@ -224,17 +227,33 @@ internal class DeadDropStore(context: Context) {
      * Retries reuse the same prepared packet; process death cannot reset the counter.
      */
     @Synchronized
-    fun prepareForForwarding(packetId: String, localPeerId: String, now: Long): MeshRelayPacketV1? {
-        if (NeaRerIdentity.normalize(localPeerId) != localPeerId) return null
+    fun prepareForForwarding(
+        packetId: String,
+        localPeerId: String,
+        now: Long,
+        expectedNextHopPeerId: String = ""
+    ): MeshRelayPacketV1? {
+        if (NeaRerIdentity.normalize(localPeerId) != localPeerId ||
+            (expectedNextHopPeerId.isNotEmpty() && NeaRerIdentity.normalize(expectedNextHopPeerId) != expectedNextHopPeerId)) return null
         val entries = read() ?: return null
         val entry = entries[packetId] ?: return null
         val clear = LocalDataCipher.decrypt(app, entry.encrypted) ?: return null
         val packet = try { MeshRelayPacketV1.decode(clear) } catch (_: Exception) { return null }
         if (packet.packetId != packetId || !packet.verifyEmbeddedOrigin(now)) return null
-        if (entry.preparedForNextHop) return packet
+        if (entry.preparedForNextHop) {
+            if (expectedNextHopPeerId.isNotEmpty() && entry.expectedNextHopPeerId != expectedNextHopPeerId) {
+                entries[packetId] = entry.copy(expectedNextHopPeerId = expectedNextHopPeerId)
+                if (!write(entries)) return null
+            }
+            return packet
+        }
         val prepared = if (packet.originId == localPeerId) packet else packet.forwarded() ?: return null
         val encrypted = try { LocalDataCipher.encrypt(app, prepared.encode()) } catch (_: Exception) { return null }
-        entries[packetId] = entry.copy(encrypted = encrypted, preparedForNextHop = true)
+        entries[packetId] = entry.copy(
+            encrypted = encrypted,
+            preparedForNextHop = true,
+            expectedNextHopPeerId = expectedNextHopPeerId
+        )
         return if (write(entries)) prepared else null
     }
 
@@ -269,11 +288,13 @@ internal class DeadDropStore(context: Context) {
             val leaseUntil = item.optLong("leaseUntil", 0L)
             val previousHopPeerId = item.optString("previousHopPeerId", "")
             val preparedForNextHop = item.optBoolean("preparedForNextHop", false)
+            val expectedNextHopPeerId = item.optString("expectedNextHopPeerId", "")
             if (encrypted.isBlank() || encrypted.length > MAX_TOTAL_CHARS ||
                 attempts !in 0..MAX_ATTEMPTS || state !in setOf(QUEUED, FORWARDING, AWAITING_DESTINATION) ||
                 dueAt < 0L || leaseUntil < 0L ||
-                (previousHopPeerId.isNotEmpty() && NeaRerIdentity.normalize(previousHopPeerId) != previousHopPeerId)) return null
-            result[id] = Entry(encrypted, attempts, state, dueAt, leaseUntil, previousHopPeerId, preparedForNextHop)
+                (previousHopPeerId.isNotEmpty() && NeaRerIdentity.normalize(previousHopPeerId) != previousHopPeerId) ||
+                (expectedNextHopPeerId.isNotEmpty() && NeaRerIdentity.normalize(expectedNextHopPeerId) != expectedNextHopPeerId)) return null
+            result[id] = Entry(encrypted, attempts, state, dueAt, leaseUntil, previousHopPeerId, preparedForNextHop, expectedNextHopPeerId)
         }
         if (result.values.sumOf { it.encrypted.length } > MAX_TOTAL_CHARS) return null
         result
@@ -286,7 +307,8 @@ internal class DeadDropStore(context: Context) {
             .put("encrypted", e.encrypted).put("attempts", e.attempts)
             .put("state", e.state).put("dueAt", e.dueAt).put("leaseUntil", e.leaseUntil)
             .put("previousHopPeerId", e.previousHopPeerId)
-            .put("preparedForNextHop", e.preparedForNextHop)) }
+            .put("preparedForNextHop", e.preparedForNextHop)
+            .put("expectedNextHopPeerId", e.expectedNextHopPeerId)) }
         return prefs.edit().putString(KEY, json.toString()).commit()
     }
 
