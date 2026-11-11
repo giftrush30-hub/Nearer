@@ -96,7 +96,7 @@ Foundations now present in source:
 - Recipient-only ECDH + HKDF-SHA256 + AES-256-GCM packet encryption, separate from the live direct-chat session keys.
 - An origin-signed opaque packet envelope with immutable signed header/ciphertext, expiry, and bounded hop count.
 - Signed route advertisement verification and a route table that derives its next hop from the authenticated direct advertiser, rather than trusting a remote next-hop claim.
-- A durable encrypted-at-rest Dead Drop queue with bounded storage, packet-ID collision checks, previous-hop tracking, retry backoff, forwarding leases, and distinct hop-accepted vs final-delivery states. Each relay persists its hop-counter increment exactly once before transmission, reuses that count on retry/restart, and rejects duplicate packets that roll the observed counter backwards.
+- A durable encrypted-at-rest Dead Drop queue with bounded storage (64 total packets, 16 per origin, 40 KiB per packet, 2 MiB global encrypted queue), packet-ID collision checks, previous-hop tracking, retry backoff, forwarding leases, and distinct hop-accepted vs final-delivery states. Each relay persists its hop-counter increment exactly once before transmission, reuses that count on retry/restart, and rejects duplicate packets that roll the observed counter backwards.
 - Destination-signed final receipt verification before a stored packet can be deleted.
 - A bounded, signed hop-acceptance acknowledgement that binds packet ID, accepting next-hop ID, previous-hop ID and timestamp; Dead Drop requires this proof from the expected next hop before recording hop acceptance.
 - Live Nearby transport now exchanges the signed recipient identity binding, learns authenticated direct and multi-hop routes, and exchanges signed path-vector route advertisements with loop rejection, bounded route state and per-neighbor rate limiting.
@@ -105,7 +105,7 @@ Foundations now present in source:
 - Handshake authentication now waits for successful Nearby task completion when sending the local signing proof and recipient-key binding; the remote binding sequence is checked before first-time key pins are committed.
 - A destination refuses to display a relayed message until its origin signing key is already pinned on that phone. If the origin is not yet trusted, the packet remains encrypted in the Dead Drop and can be reconsidered after a direct authenticated pairing.
 - Encrypted route-advertisement persistence now restores only signed, unexpired records whose advertiser signing key remains pinned. Restored routes still require the advertised next-hop neighbor to reconnect and authenticate before they can be used.
-- Android instrumentation coverage has been added for Android Keystore-backed packet signing, encrypted Dead Drop persistence across store recreation, persisted previous-hop state, once-per-hop counter recovery, rollback rejection, and receipt-outbox persistence. Exact-head emulator CI is still pending.
+- Android instrumentation coverage has been added for Android Keystore-backed packet signing, encrypted Dead Drop persistence across store recreation, persisted previous-hop state, once-per-hop counter recovery, rollback rejection, per-origin queue quotas, and receipt-outbox persistence. Exact-head emulator CI is still pending.
 - A direct authenticated peer is installed as a reverse route so final receipts can travel back through the mesh.
 
 Still not integrated:
@@ -116,7 +116,7 @@ Still not integrated:
 - The hop counter is mutable forwarding metadata, not a globally verifiable signed forwarding trace. Each node persists its own observed count and rejects rollback on duplicate packet IDs, but a malicious authenticated relay can still lie about earlier hops before a downstream node has seen the packet. A chained, independently verifiable per-hop forwarding trace is a security gate before hostile-network release.
 - The new mesh send API is not yet connected to the normal chat composer and recipient-selection UI.
 - Route advertisements do not carry an independently verifiable destination identity binding for remote first-contact recipients. Sending remains restricted to recipients whose encryption key was pinned by a prior direct authenticated pairing.
-- Per-origin storage quotas are not yet implemented; current queue limits are global. Retry and storage limits still need product-level review.
+- Retry and storage limits still need product-level review. Current queue limits are global and per-origin as documented above.
 - The transport integration has not yet been exercised on physical phones or through a forced process-death/reboot scenario.
 - There is no A → B → C → D real-device test, no confirmed exact-head emulator instrumentation pass, no background worker/process-death delivery test, and no adversarial field test.
 
