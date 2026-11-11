@@ -87,7 +87,12 @@ class MeshForwardingProofChainTest {
             "packet-2", "AAAAAA", "CCCCCC", "BBBBBB", 2, 10_300L, first.hash()
         ) { sign(c.private, it) }
         val keys = mapOf("BBBBBB" to b.public.encoded, "CCCCCC" to c.public.encoded)
-        assertFalse(MeshForwardingProofChain(listOf(first, second))
+        assertTrue(MeshForwardingProofChain(listOf(first, second))
+            .verify("packet-2", "AAAAAA", "CCCCCC", { keys[it] }, 10_500L))
+        val nonMonotonicSecond = MeshForwardingProof.create(
+            "packet-2", "AAAAAA", "CCCCCC", "BBBBBB", 2, 10_100L, first.hash()
+        ) { sign(c.private, it) }
+        assertFalse(MeshForwardingProofChain(listOf(first, nonMonotonicSecond))
             .verify("packet-2", "AAAAAA", "CCCCCC", { keys[it] }, 10_500L))
         assertFalse(MeshForwardingProofChain(listOf(first))
             .verify("packet-2", "AAAAAA", "BBBBBB", { pair().public.encoded }, 10_500L))
