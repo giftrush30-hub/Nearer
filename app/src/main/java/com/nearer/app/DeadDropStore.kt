@@ -209,11 +209,11 @@ internal class DeadDropStore(context: Context) {
         if (NeaRerIdentity.normalize(destinationId) != destinationId || limit !in 1..MAX_ITEMS) return emptyList()
         val entries = read() ?: return emptyList()
         val result = mutableListOf<MeshRelayPacketV1>()
-        entries.values.forEach { entry ->
+        entries.forEach { (packetId, entry) ->
             if (result.size >= limit) return@forEach
             val clear = LocalDataCipher.decrypt(app, entry.encrypted) ?: return@forEach
             val packet = try { MeshRelayPacketV1.decode(clear) } catch (_: Exception) { return@forEach }
-            if (packet.packetId == entries.entries.firstOrNull { it.value === entry }?.key &&
+            if (packet.packetId == packetId &&
                 packet.destinationId == destinationId && packet.verifyEmbeddedOrigin(now)) result += packet
         }
         return result
