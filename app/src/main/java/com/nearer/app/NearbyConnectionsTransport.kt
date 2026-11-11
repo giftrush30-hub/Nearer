@@ -15,6 +15,14 @@ import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
+internal data class MeshRecipient(
+    val peerId: String,
+    val displayName: String,
+    /** Number of intermediate relays between this phone and the recipient. */
+    val hopCount: Int,
+    val isDirect: Boolean
+)
+
 class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = false, private val listener: Listener) {
     interface Listener {
         fun onStatus(message: String)
@@ -29,6 +37,8 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
             onMessage(originPeerId, senderName, messageId, body, acknowledge)
         }
         fun onMessageStatus(messageId: String, status: String)
+        /** Available routes only to recipients whose signing and encryption keys are pinned. */
+        fun onMeshRoutesChanged(recipients: List<MeshRecipient>) {}
         fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean)
         /** Optional live application-throughput callback; default keeps existing listeners source-compatible. */
         fun onFileSpeed(id: String, payloadId: Long, name: String, snapshot: TransferSpeedSnapshot, incoming: Boolean) {}
@@ -392,6 +402,7 @@ internal object IncomingFilePayloadPolicy {
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
             pruneMeshDestinationKeys()
             broadcastMeshRouteWithdrawals(withdrawnDestinations)
+            notifyMeshRoutesChanged()
             pauseOutgoingFilesForEndpoint(id)
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
             if (wasAuthenticated && empty) listener.onDisconnected(id, details.first, details.second)
@@ -704,6 +715,7 @@ internal object IncomingFilePayloadPolicy {
                 }
                 retryQueuedMessagesForPeer(details.second, endpointId)
                 listener.onConnected(endpointId, details.first, details.second)
+                notifyMeshRoutesChanged()
                 val trustNotice = if (state.remoteFirstSeen) {
                     "Encrypted link established with ${details.first}. Signing and recipient keys were verified and pinned; this does not prove the person’s real-world identity."
                 } else {
@@ -844,6 +856,7 @@ internal object IncomingFilePayloadPolicy {
             // routes whose authenticated next hop is this device.
             broadcastMeshRouteWithdrawals(listOf(withdrawal.destinationId), endpointId)
             listener.onStatus("A lost mesh route was withdrawn from the nearby network.")
+            notifyMeshRoutesChanged()
             forwardDueMeshPackets()
             flushPendingMeshReceipts()
         } catch (_: Exception) {
@@ -916,12 +929,37 @@ internal object IncomingFilePayloadPolicy {
                 }
                 peers.forEach { publishKnownRoutesTo(it) }
                 listener.onStatus("A verified nearby mesh route was learned (${route.hopCount} hop(s)).")
+                notifyMeshRoutesChanged()
                 forwardDueMeshPackets()
                 flushPendingMeshReceipts()
             }
         } catch (_: Exception) {
             listener.onStatus("An invalid or unauthenticated mesh route was rejected.")
         }
+    }
+
+    /** Returns currently usable routes only for recipients this phone has already trusted. */
+    fun reachableMeshRecipients(): List<MeshRecipient> {
+        val now = System.currentTimeMillis()
+        return meshRouteTable.snapshot(now).mapNotNull { route ->
+            if (endpointForStablePeer(route.nextHopPeerId) == null) return@mapNotNull null
+            if (TrustedPeerKeyStore.pinnedSigningKey(appContext, route.destinationId) == null) return@mapNotNull null
+            val pinnedKey = TrustedPeerKeyStore.pinnedRecipientEncryptionKey(appContext, route.destinationId)
+                ?: return@mapNotNull null
+            val advertisedKey = meshDestinationEncryptionKeys[route.destinationId]
+            if (advertisedKey != null && !java.security.MessageDigest.isEqual(advertisedKey, pinnedKey)) {
+                return@mapNotNull null
+            }
+            val directEndpoint = endpointForStablePeer(route.destinationId)
+            val display = directEndpoint?.let { displayNameForEndpoint(it) }
+                ?.takeIf { it.isNotBlank() }
+                ?: "NeaRer ${route.destinationId.takeLast(4)}"
+            MeshRecipient(route.destinationId, display, route.hopCount, route.hopCount == 0)
+        }.distinctBy { it.peerId }.sortedBy { it.displayName.lowercase() }
+    }
+
+    private fun notifyMeshRoutesChanged() {
+        listener.onMeshRoutesChanged(reachableMeshRecipients())
     }
 
     private fun endpointForStablePeer(peerId: String): String? =
