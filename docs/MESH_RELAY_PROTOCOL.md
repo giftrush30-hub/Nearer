@@ -1,6 +1,6 @@
 # NeaRer secure mesh relay protocol — design gate
 
-Status: design only. This document does not enable relay or claim that store-and-forward works.
+Status: engineering prototype in a draft branch. Relay participation remains disabled; this is not a release or a claim of physical multi-hop validation.
 
 ## Why direct-chat E2E keys are not enough
 
@@ -96,16 +96,21 @@ Foundations now present in source:
 - Recipient-only ECDH + HKDF-SHA256 + AES-256-GCM packet encryption, separate from the live direct-chat session keys.
 - An origin-signed opaque packet envelope with immutable signed header/ciphertext, expiry, and bounded hop count.
 - Signed route advertisement verification and a route table that derives its next hop from the authenticated direct advertiser, rather than trusting a remote next-hop claim.
-- A durable encrypted-at-rest Dead Drop queue foundation with bounded storage, retry backoff, forwarding leases, and distinct hop-accepted vs final-delivery states.
+- A durable encrypted-at-rest Dead Drop queue with bounded storage, packet-ID collision checks, previous-hop tracking, retry backoff, forwarding leases, and distinct hop-accepted vs final-delivery states.
 - Destination-signed final receipt verification before a stored packet can be deleted.
-- A bounded, signed hop-acceptance acknowledgement that binds packet ID, accepting next-hop ID, previous-hop ID and timestamp; Dead Drop now requires this proof from the expected next hop before recording hop acceptance.
+- A bounded, signed hop-acceptance acknowledgement that binds packet ID, accepting next-hop ID, previous-hop ID and timestamp; Dead Drop requires this proof from the expected next hop before recording hop acceptance.
+- Live Nearby transport now exchanges the signed recipient identity binding, learns authenticated direct and multi-hop routes, and exchanges signed path-vector route advertisements with loop rejection, bounded route state and per-neighbor rate limiting.
+- The transport now creates recipient-encrypted mesh chat envelopes for previously trusted recipients, durably queues opaque transit packets, verifies embedded origin signatures for transit integrity, sends signed hop acknowledgements only after durable storage, forwards due packets over authenticated routes, and returns destination-signed final receipts toward the origin.
+- A destination refuses to display a relayed message until its origin signing key is already pinned on that phone. If the origin is not yet trusted, the packet remains encrypted in the Dead Drop and can be reconsidered after a direct authenticated pairing.
+- A direct authenticated peer is installed as a reverse route so final receipts can travel back through the mesh.
 
 Still not integrated:
-- The v3 Nearby handshake now exchanges a fresh signed recipient-identity binding after the signing-key proof, verifies that it binds the exact recipient key from the handshake, pins the signing/encryption keys, and rejects stale/replayed binding sequence numbers.
-- Authenticated Nearby peers now exchange signed route advertisements containing the destination encryption-key material and a signed path vector; they verify the advertiser against the pinned signing key and destination-key fingerprint, derive the next hop from the direct authenticated sender, reject paths containing themselves, prefer shorter loop-free paths, and gossip materially changed routes. The in-memory route table is bounded and advertisements are rate-limited per authenticated neighbor. Route withdrawal propagation and route persistence still need work.
-- Dead Drop enqueue/claim/verified-hop-ack/retry/receipt methods are not yet connected to mesh packet send/receive callbacks or a background worker. The signed hop-ack codec and verification gate remain protocol primitives only.
-- Receipt creation is a protocol primitive; no end-to-end receipt exchange exists.
-- There is no A → B → C → D real-device test, no app-restart delivery test, and no adversarial field test.
+- Background service/worker scheduling, process-death recovery orchestration, route withdrawal propagation, and persistent route-table storage are not yet implemented. The queue itself has crash-recoverable leases, but no Android background worker currently wakes it after process death.
+- Route advertisements do not yet carry an independently verifiable destination identity binding for first-contact remote recipients. Sending is therefore restricted to destinations whose recipient encryption key was previously pinned by direct pairing.
+- Intermediate relays forward destination-signed receipts toward the origin, but only a device with the destination's pinned signing key can delete its stored packet copy. Relays that have not directly trusted the destination may retain duplicate packets until expiry.
+- A failed receipt send is recovered by a subsequent duplicate packet/retry; a separately persisted receipt outbox is still needed for reliable receipt delivery across long offline periods.
+- The transport integration has not yet been exercised on physical phones or through a forced process-death/reboot scenario.
+- There is no A → B → C → D real-device test, no Android Keystore instrumentation test, no background worker/process-death delivery test, and no adversarial field test.
 - Storage quotas and retry policies need product-level review before field use.
 
 The draft PR must pass the exact-head CI and code review before integration. Relay remains disabled.
