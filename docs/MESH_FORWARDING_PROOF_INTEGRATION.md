@@ -42,7 +42,7 @@ For each accepted packet:
 - A signed acceptance proof attests to the signer's statement that it durably accepted the packet from the named previous hop. It does not prove physical radio transmission or that the signer behaved honestly.
 - A malicious trusted relay can sign a false acceptance statement. The protocol must not describe signatures as proof of honest forwarding.
 - Proof-chain timestamps are diagnostic and replay-hardening inputs, not a trusted global clock. Packet expiry remains authoritative.
-- The current proof primitive's four-record maximum must be reconciled with packet hopLimit semantics. The exact count (relays only versus destination acceptance included) must be fixed in the protocol before wire integration.
+- Proof records include every receiving peer, including the final destination. `hopsTaken` counts relay forwarding operations, not receiving peers: with `hopLimit = 4`, four intermediate relays may each forward once and a fifth receiving peer is the destination. The chain therefore allows at most five acceptance records (`hopLimit + 1`). This is a bound derived from the current v1 forwarding loop; preserve it in v2 golden vectors and tests.
 - Duplicate packet arrival through another neighbor must not replace a better verified chain with an unverified or rollback chain.
 - A destination receipt must remain a distinct end-to-end delivery statement; a hop proof is never a Delivered signal.
 
