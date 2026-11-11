@@ -429,6 +429,29 @@ class MainActivity : ComponentActivity() {
                     if (safelyStored) acknowledge()
                 }
             }
+            override fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
+                runOnUiThread {
+                    var safelyStored = false
+                    if (chatMessages.any { it.id == messageId }) {
+                        safelyStored = true
+                    } else {
+                        chatMessages.add(ChatMessage(
+                            messageId, body, outgoing = false, delivery = "Received",
+                            conversationId = originPeerId,
+                            conversationName = senderName
+                        ))
+                        safelyStored = persistMessages()
+                        if (safelyStored) {
+                            trimChatMessages()
+                            chatNotice = "New offline mesh message received from $senderName."
+                        } else {
+                            chatMessages.removeAll { it.id == messageId }
+                            chatNotice = "Mesh message received, but could not be saved. Delivery was not confirmed."
+                        }
+                    }
+                    if (safelyStored) acknowledge()
+                }
+            }
             override fun onMessageStatus(messageId: String, status: String) {
                 runOnUiThread {
                     val index = chatMessages.indexOfFirst { it.id == messageId }
