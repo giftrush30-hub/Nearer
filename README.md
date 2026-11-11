@@ -2,75 +2,53 @@
 
 **No Data? We Are NeaRer.**
 
-NeaRer is a native Android app for nearby communication, file sharing and local community features. Direct Nearby Connections sessions are designed to discover and connect devices without requiring an internet connection.
+NeaRer is a native Android app for nearby communication, file sharing and local community features. Its core nearby discovery and direct communication are designed to work without an internet connection.
 
-## Current source milestone: 0.5.3
+## Current integration source milestone: 0.5.5
 
-### Existing nearby foundation
+### Nearby communication
 - Kotlin + Jetpack Compose Android app.
 - Nearby Connections discovery, connection requests and approval.
-- One-to-one text chat.
-- Nearby Connections and Wi-Fi Direct file transfer code, progress and cancellation.
-- Local recent-message history and received-file storage.
-- Stable public nearby peer identities.
-- Persistent direct-message outbox and duplicate-message protection for direct delivery.
+- Direct one-to-one chat with encrypted message packets and encrypted delivery acknowledgements after the authenticated key exchange.
+- Group and nearby broadcast messages are encrypted separately for each connected peer.
+- Local recent-message history and an encrypted-at-rest pending-message queue.
+- Nearby Connections file transfer, progress, cancellation and integrity checks.
+- Share Hub / OpenSend foundations for local file and app sharing.
 
-### Mesh development status
+### Community and game features
+- Local group creation and joining with a six-digit code.
+- Locally stored group membership and message history.
+- Nearby group messaging to currently connected members.
+- Ludo and other in-app community/game foundations are part of the integration branch; individual multiplayer and offline/online modes must be checked against the actual build before being described as complete.
 
-**Multi-hop relay is still disabled in the app.** This milestone adds several security and reliability building blocks, but they are not yet connected into an operational mesh transport:
+## Security boundaries and current limitations
 
-- `MeshCrypto.kt`: P-256 ECDH, HKDF-SHA256, AES-256-GCM recipient encryption and ECDSA packet signatures. Packets are bound to message/origin/destination metadata. The recipient must supply a trusted sender signing key.
-- `MeshIdentityVault.kt`: persists P-256 identity keys with private-key material encrypted by an Android Keystore AES-GCM key. App startup creates/loads this local identity and the Nearby screen displays its public signing-key fingerprint.
-- `MeshRelayPolicy.kt`: four-hop ceiling, TTL decrement, visited-peer loop prevention, duplicate/expiry checks, consent gate and local destination delivery.
-- `MeshRouting.kt`: bounded in-memory route learning, direct-neighbour routes, shortest-route preference, stale-route expiry and next-hop invalidation.
-- `MeshWireProtocol.kt`: versioned signed identity-hello and route-advertisement frames, plus bounded encrypted relay-frame serialisation. The Nearby Connections transport now exchanges signed identity hellos after an approved connection and propagates authenticated-by-direct-peer route hints. A signature proves possession of a key; the Nearby connection authentication code still needs to be compared by users to verify the session, and a durable peer-key trust/pinning flow is not yet complete.
-- `MeshDeadDropStore.kt`: SQLite persistence for opaque encrypted packets, duplicate insertion protection, expiry pruning and retry counters.
-- `MeshStatusPanel.kt`: premium blue-and-gold mesh status display. Nearby peers reflect discovery state; route count comes from the in-memory route table and Dead Drop count comes from the SQLite store. Neither is populated by transport forwarding yet.
-- JVM tests cover encryption/decryption, wrong-recipient and tamper rejection, identity hello signatures, route-advertisement signatures and expiry, relay-frame serialisation, route selection/expiry, and relay-policy limits.
+- The current Nearby handshake uses each phone's long-term P-256 signing identity to authenticate a fresh ephemeral P-256 ECDH exchange. HKDF-SHA256 derives directional AES-256-GCM session keys.
+- Chat bodies and delivery acknowledgements are encrypted and authenticated at the application layer. The message ID is authenticated as associated data; the receiver's durable deduplication prevents a replayed message from being stored twice.
+- First-contact trust uses trust-on-first-use key pinning. This detects a changed key on later connections, but it does **not** prove a real-world person's identity or prevent a first-contact man-in-the-middle attack.
+- File metadata and resume-control packets are authenticated by the direct Nearby connection but are not yet protected by the new end-to-end chat packet layer.
+- Multi-hop mesh relay is **disabled**. Do not enable it until recipient routing, encrypted store-and-forward packets, authenticated hop handling, delivery/expiry rules and multi-phone tests are complete.
+- Durable HyperTransfer checkpoints are not yet integrated with the actual interrupted Nearby FILE payload lifecycle. Do not claim process-death recovery or fully resumable transfers.
+- Real-device testing is still required for two-phone discovery, chat, group messaging, large-file transfers, interrupted transfers, OpenSend hotspot compatibility, app installation and game behavior.
+- Delivery acknowledgements are not read receipts. Internet multiplayer and live voice calls are not implied by the offline game foundation.
+- File transfers have no fixed application-level size cap, but actual transfer size and speed remain constrained by device storage, Android providers, hardware and connection stability.
 
-**Still not operational:** recipient-key discovery/pinning for end-to-end chat, automatic multi-hop encrypted packet forwarding in Nearby Connections, Dead Drop queue-to-transport delivery/retry/acknowledgement, and real-device A → B → C → D testing. The transport exchanges signed identity hellos and signed route hints, but it does not forward chat packets. The relay remains disabled. Do not describe the current APK as a working mesh network.
+## Build and release policy
 
-### NeaRer visual identity
-The app's existing brand palette is midnight navy, deep blue panels, electric/clear blue accents and gold. Mesh visuals should use that same blue-and-gold identity, with cyan reserved for transmission effects. Network animations must reflect real discovered peers, actual forwarding and confirmed delivery; simulated activity must not be presented as live network state.
-
-### Community and multiplayer additions
-- Create a local group with a six-digit join code.
-- Join a group using its code.
-- Persist local group membership and up to 300 group messages on the phone.
-- Send group messages directly to connected peers whose names are in the locally stored group member list.
-- Send a nearby broadcast to currently connected NeaRer peers.
-- Invite a nearby peer to a live two-player tic-tac-toe match.
-- Synchronise legal board moves over the Nearby Connections message channel.
-- In-game text chat while the match is active.
-
-## Important operating details and limitations
-
-- These group and game features currently use the Nearby Connections transport. They are not available over the legacy single-peer Wi-Fi Direct chat socket.
-- Group join codes are manually shared. This milestone does not provide a public group directory, accounts, cloud sync, group admin roles, moderation, or end-to-end group identity verification.
-- Group messages are sent to the sender's currently connected Nearby Connections endpoints. Only devices that have locally joined the matching code display those group messages.
-- Nearby broadcasts reach currently connected peers; they are not public internet posts.
-- The game is a real two-player tic-tac-toe implementation, not a catalogue of finished multiplayer games. A match is live and does not currently recover after either phone disconnects.
-- No in-game voice chat, voice notes, voice calls, video calls, game matchmaking service, or cross-device message queue has been implemented yet.
-- File transfers have no fixed application-level size cap, but available storage, Android document providers, hardware and connection stability still constrain actual transfers. Interrupted transfers cannot yet resume.
-- Nearby Connections provides encrypted peer connections, but that does not by itself provide end-to-end encryption across multiple relay devices. Recipient-key management, message authentication, replay protection, relay privacy and group identity need a reviewed design before forwarding is enabled.
-- Two-physical-phone testing is required before these features can be described as field-verified.
-
-## Build policy
-
-GitHub Actions runs JVM unit tests only. It does not compile the Android app, assemble an APK, or upload APK artifacts. APK creation is intentionally deferred until the project owner explicitly declares development complete and authorizes an APK build.
+The integration branch has GitHub Actions checks for JVM unit tests, debug APK assembly and Android emulator launch tests on API 31 and API 35. A passing workflow is necessary but does not replace two-physical-phone testing. Only an artifact from the exact validated branch commit should be considered current. Do not merge to `main` or publish a release APK without the project owner's approval.
 
 ## Suggested two-phone test
 
-1. Install the same APK on two Android phones once an authorized build is available.
+1. Install the same validated build on two Android phones.
 2. Enable Bluetooth and Wi-Fi on both phones and grant NeaRer's nearby-device permissions.
-3. Search from both phones, connect and compare the displayed authentication code before accepting.
-4. Create a group on one phone, share the six-digit code, and join from the other phone.
-5. Send messages both ways in the group and send a nearby broadcast.
-6. Start a tic-tac-toe invitation, accept it on the other phone, play alternating turns and exchange in-game chat.
-7. Repeat after disconnecting and reconnecting to identify lifecycle and recovery problems.
+3. Discover each other, compare the connection authentication code and approve the connection.
+4. Send direct messages in both directions and verify delivery after reconnecting.
+5. Create a local group, join from the second phone and test group messages.
+6. Send a file, interrupt a transfer and verify the current recovery behavior.
+7. Repeat with Ludo and other available game modes; record any feature that does not work on real devices.
 
 ## Technical references
 
 - [Nearby Connections overview](https://developers.google.com/nearby/connections/overview)
 - [Nearby Connections: exchange data](https://developers.google.com/nearby/connections/android/exchange-data)
-- [Android Room persistence guidance](https://developer.android.com/training/data-storage/room)
+- [Android Keystore system](https://developer.android.com/privacy-and-security/keystore)

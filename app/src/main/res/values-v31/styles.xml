@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="NeaRerAppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">#07182A</item>
+        <item name="android:statusBarColor">#07182A</item>
+        <item name="android:navigationBarColor">#07182A</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowSplashScreenBackground">#07182A</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_nearer</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#004B90</item>
+    </style>
+</resources>

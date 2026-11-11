@@ -1,0 +1,57 @@
+package com.nearer.app
+
+import org.json.JSONObject
+import org.junit.Assert.*
+import org.junit.Test
+
+class NearbyPeerHandshakeTest {
+    @Test fun transcriptIsIndependentOfWhichPeerBuildsIt() {
+        val aNonce = ByteArray(32) { (it + 1).toByte() }
+        val bNonce = ByteArray(32) { (it + 65).toByte() }
+        val aKey = byteArrayOf(1, 2, 3)
+        val bKey = byteArrayOf(4, 5, 6)
+        val aRecipientKey = byteArrayOf(7, 8, 9)
+        val bRecipientKey = byteArrayOf(10, 11, 12)
+        val fromA = NearbyPeerHandshake.transcriptChallenge("peer-a", aNonce, aKey, aRecipientKey, "peer-b", bNonce, bKey, bRecipientKey)
+        val fromB = NearbyPeerHandshake.transcriptChallenge("peer-b", bNonce, bKey, bRecipientKey, "peer-a", aNonce, aKey, aRecipientKey)
+        assertArrayEquals(fromA, fromB)
+    }
+
+    @Test fun transcriptChangesWhenEitherEphemeralKeyOrNonceChanges() {
+        val nonceA = ByteArray(32) { it.toByte() }
+        val nonceB = ByteArray(32) { (it + 32).toByte() }
+        val keyA = byteArrayOf(1, 2, 3)
+        val keyB = byteArrayOf(4, 5, 6)
+        val recipientA = byteArrayOf(7, 8, 9)
+        val recipientB = byteArrayOf(10, 11, 12)
+        val original = NearbyMessageCrypto.transcript("a", nonceA, keyA, recipientA, "b", nonceB, keyB, recipientB)
+        val alteredEphemeral = NearbyMessageCrypto.transcript("a", nonceA, keyA, recipientA, "b", nonceB, byteArrayOf(4, 5, 7), recipientB)
+        val alteredRecipient = NearbyMessageCrypto.transcript("a", nonceA, keyA, recipientA, "b", nonceB, keyB, byteArrayOf(10, 11, 13))
+        assertFalse(original.contentEquals(alteredEphemeral))
+        assertFalse(original.contentEquals(alteredRecipient))
+    }
+
+    @Test fun ecdhDerivesMatchingDirectionalKeys() {
+        val a = NearbyMessageCrypto.newEphemeralKeyPair()
+        val b = NearbyMessageCrypto.newEphemeralKeyPair()
+        val transcript = byteArrayOf(9, 8, 7, 6)
+        val aSession = NearbyMessageCrypto.deriveSession("a", "b", a.private, b.public, transcript)
+        val bSession = NearbyMessageCrypto.deriveSession("b", "a", b.private, a.public, transcript)
+        assertArrayEquals(aSession.sendKey, bSession.receiveKey)
+        assertArrayEquals(aSession.receiveKey, bSession.sendKey)
+    }
+
+    @Test fun securePacketAuthenticatesContentsAndMessageId() {
+        val a = NearbyMessageCrypto.newEphemeralKeyPair()
+        val b = NearbyMessageCrypto.newEphemeralKeyPair()
+        val sessionA = NearbyMessageCrypto.deriveSession("a", "b", a.private, b.public, byteArrayOf(1))
+        val sessionB = NearbyMessageCrypto.deriveSession("b", "a", b.private, a.public, byteArrayOf(1))
+        val clear = """{"kind":"message","id":"m-1","body":"hello"}""".toByteArray()
+        val packet = NearbyMessageCrypto.seal(sessionA, "a", "b", "m-1", clear)
+        assertArrayEquals(clear, NearbyMessageCrypto.open(sessionB, "b", "a", packet))
+        val changedId = packet.copy(messageId = "m-2")
+        assertTrue(runCatching { NearbyMessageCrypto.open(sessionB, "b", "a", changedId) }.isFailure)
+        val changedCiphertext = packet.copy(ciphertext = packet.ciphertext.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() })
+        assertTrue(runCatching { NearbyMessageCrypto.open(sessionB, "b", "a", changedCiphertext) }.isFailure)
+    }
+}

@@ -15,6 +15,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
@@ -30,12 +33,13 @@
     </queries>
 
     <application
+        android:name=".NeaRerApplication"
         android:allowBackup="false"
         android:label="NeaRer"
-        android:icon="@drawable/ic_nearer"
-        android:roundIcon="@drawable/ic_nearer"
+        android:icon="@mipmap/ic_nearer"
+        android:roundIcon="@mipmap/ic_nearer"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/NeaRerAppTheme">
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"
@@ -44,6 +48,8 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/nearer_file_paths" />
         </provider>
         <activity android:name=".AppInstallResultActivity" android:exported="false" />
+        <receiver android:name=".AppShareInstallReceiver" android:exported="false" />
+        <service android:name=".OpenSendForegroundService" android:exported="false" android:foregroundServiceType="connectedDevice" />
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
