@@ -75,4 +75,41 @@ class MeshForwardingProofChainTest {
             MeshForwardingProofChain.decode(proof.encode() + byteArrayOf(0))
         }.isSuccess)
     }
+
+    @Test fun chainRejectsWrongTrustedKeyInvalidSignatureAndNonMonotonicTime() {
+        val b = pair()
+        val c = pair()
+        val first = MeshForwardingProof.create(
+            "packet-2", "AAAAAA", "BBBBBB", "AAAAAA", 1, 10_200L,
+            MeshForwardingProof.GENESIS_HASH
+        ) { sign(b.private, it) }
+        val second = MeshForwardingProof.create(
+            "packet-2", "AAAAAA", "CCCCCC", "BBBBBB", 2, 10_100L, first.hash()
+        ) { sign(c.private, it) }
+        val keys = mapOf("BBBBBB" to b.public.encoded, "CCCCCC" to c.public.encoded)
+        assertFalse(MeshForwardingProofChain(listOf(first, second))
+            .verify("packet-2", "AAAAAA", "CCCCCC", { keys[it] }, 10_500L))
+        assertFalse(MeshForwardingProofChain(listOf(first))
+            .verify("packet-2", "AAAAAA", "BBBBBB", { pair().public.encoded }, 10_500L))
+        val corruptedSignature = first.signature.copyOf().also { it[it.lastIndex] = (it.last().toInt() xor 1).toByte() }
+        assertFalse(MeshForwardingProofChain(listOf(first.copy(signature = corruptedSignature)))
+            .verify("packet-2", "AAAAAA", "BBBBBB", { keys[it] }, 10_500L))
+    }
+
+    @Test fun chainRejectsDuplicatePeersAndTooManyHops() {
+        val b = pair()
+        val first = MeshForwardingProof.create(
+            "packet-3", "AAAAAA", "BBBBBB", "AAAAAA", 1, 10_000L,
+            MeshForwardingProof.GENESIS_HASH
+        ) { sign(b.private, it) }
+        val repeated = MeshForwardingProof.create(
+            "packet-3", "AAAAAA", "BBBBBB", "BBBBBB", 2, 10_100L, first.hash()
+        ) { sign(b.private, it) }
+        assertFalse(MeshForwardingProofChain(listOf(first, repeated))
+            .verify("packet-3", "AAAAAA", "BBBBBB", { b.public.encoded }, 10_500L))
+        assertFalse(runCatching {
+            MeshForwardingProofChain.decode(byteArrayOf(0x4e, 0x52, 0x43, 0x31, 5))
+        }.isSuccess)
+    }
+
 }
