@@ -108,6 +108,21 @@ class MeshRouteTableTest {
         assertTrue(table.update(fresh, "AAAAAA", sender.public.encoded, 3800L))
     }
 
+    @Test fun equalSequenceWithdrawalStillRemovesSelectedRoute() {
+        val sender = pair()
+        val destination = pair()
+        val table = MeshRouteTable("CCCCCC")
+        val ad = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 4L, 0, 1000L, 9000L
+        ) { sign(sender.private, it) }
+        assertTrue(table.update(ad, "AAAAAA", sender.public.encoded, 2000L))
+
+        // A signed withdrawal at the same sequence is authoritative too.
+        assertTrue(table.rememberWithdrawal("BBBBBB", "AAAAAA", 4L))
+        assertNull(table.find("BBBBBB", 3000L))
+        assertFalse(table.update(ad, "AAAAAA", sender.public.encoded, 3100L))
+    }
+
     @Test fun routeWithdrawalCannotRemoveAnotherNeighborsRoute() {
         val first = pair()
         val second = pair()
