@@ -190,7 +190,7 @@ internal class MeshRouteTable(private val localId: String) {
             val candidate = Route(
                 destinationId = peerId,
                 nextHopPeerId = peerId,
-                hopCount = 1,
+                hopCount = 0,
                 sequence = Long.MAX_VALUE,
                 issuedAtMs = nowMs,
                 destinationKeyFingerprint = MessageDigest.getInstance("SHA-256").digest(recipientEncryptionKey),
