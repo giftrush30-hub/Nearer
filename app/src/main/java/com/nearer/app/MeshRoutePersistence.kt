@@ -93,7 +93,7 @@ internal class MeshRoutePersistence(context: Context) {
                 }
             } catch (_: Exception) { }
         }
-        result
+        return result
     }
 
     @Synchronized
