@@ -543,7 +543,7 @@ internal object IncomingFilePayloadPolicy {
                 peerId, remoteNonce, remoteEphemeral, remoteRecipientKey
             )
             require(SecurePeerIdentity.verifyChallenge(peerId, remoteKey, challenge, signature))
-            val trustResult = TrustedPeerKeyStore.checkAndPin(appContext, peerId, remoteKey, remoteRecipientKey)
+            val trustResult = TrustedPeerKeyStore.checkPinned(appContext, peerId, remoteKey, remoteRecipientKey)
             when (trustResult) {
                 TrustedPeerKeyStore.Result.FIRST_SEEN, TrustedPeerKeyStore.Result.MATCH -> {
                     state.remoteProofVerified = true
@@ -619,6 +619,13 @@ internal object IncomingFilePayloadPolicy {
             } == true) { "Recipient key binding did not match the handshake key." }
             require(binding.verify(remoteSigningKey, System.currentTimeMillis())) {
                 "The nearby phone’s recipient identity binding was invalid or expired."
+            }
+            val pinResult = TrustedPeerKeyStore.checkAndPin(
+                appContext, remoteId, remoteSigningKey, binding.recipientEncryptionPublicKey
+            )
+            require(pinResult == TrustedPeerKeyStore.Result.FIRST_SEEN ||
+                pinResult == TrustedPeerKeyStore.Result.MATCH) {
+                "The nearby phone's identity key changed or could not be safely pinned."
             }
             require(TrustedPeerKeyStore.acceptBindingSequence(appContext, remoteId, binding.sequence)) {
                 "A replayed or older recipient identity binding was rejected."
