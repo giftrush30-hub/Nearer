@@ -14,7 +14,10 @@ internal class MeshRouteWithdrawalStore(context: Context) {
         val entries = read() ?: return false
         val key = key(tombstone.destinationId, tombstone.advertiserId)
         val old = entries[key] ?: -1L
-        if (tombstone.sequence <= old) return tombstone.sequence == old
+        // Older/equal verified withdrawals are harmless replays: keep the
+        // higher watermark and report a healthy store rather than treating the
+        // replay itself as a storage failure.
+        if (tombstone.sequence <= old) return true
         entries[key] = tombstone.sequence
         while (entries.size > MAX_TOMBSTONES) {
             val oldest = entries.keys.firstOrNull() ?: break
