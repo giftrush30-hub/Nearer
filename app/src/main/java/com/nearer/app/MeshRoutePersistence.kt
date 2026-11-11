@@ -77,6 +77,26 @@ internal class MeshRoutePersistence(context: Context) {
     }
 
     @Synchronized
+    fun destinationKeys(): Map<String, ByteArray> {
+        val entries = read() ?: return emptyMap()
+        val result = LinkedHashMap<String, ByteArray>()
+        entries.forEach { (destinationId, item) ->
+            try {
+                val advertisement = SignedRouteAdvertisement.decode(
+                    Base64.decode(item.getString("advertisement"), Base64.NO_WRAP)
+                )
+                val key = Base64.decode(item.getString("destinationKey"), Base64.NO_WRAP)
+                val fingerprint = java.security.MessageDigest.getInstance("SHA-256").digest(key)
+                if (advertisement.destinationId == destinationId &&
+                    java.security.MessageDigest.isEqual(fingerprint, advertisement.destinationKeyFingerprint)) {
+                    result[destinationId] = key
+                }
+            } catch (_: Exception) { }
+        }
+        result
+    }
+
+    @Synchronized
     fun size(): Int = read()?.size ?: 0
 
     private fun read(): LinkedHashMap<String, JSONObject>? = try {
