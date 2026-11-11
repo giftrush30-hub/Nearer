@@ -980,9 +980,10 @@ internal object IncomingFilePayloadPolicy {
                 val destinationKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, receipt.destinationId)
                     ?: throw SecurityException("The destination identity has not been verified on this phone.")
                 require(receipt.verify(destinationKey, now)) { "The final delivery receipt signature is invalid." }
-                if (deadDropStore.markDelivered(receipt, destinationKey, now)) {
-                    listener.onMessageStatus(receipt.packetId, "Delivered")
+                require(deadDropStore.markDelivered(receipt, destinationKey, now)) {
+                    "The verified final receipt could not be committed to the local delivery queue."
                 }
+                listener.onMessageStatus(receipt.packetId, "Delivered")
                 // The origin has durably accepted the final receipt; acknowledge the previous hop.
                 sendMeshReceiptHopAcknowledgement(endpointId, receipt, previousHopId)
                 return
@@ -990,7 +991,9 @@ internal object IncomingFilePayloadPolicy {
             val destinationKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, receipt.destinationId)
             if (destinationKey != null) {
                 require(receipt.verify(destinationKey, now)) { "A receipt signed by a pinned destination was invalid." }
-                deadDropStore.markDelivered(receipt, destinationKey, now)
+                require(deadDropStore.markDelivered(receipt, destinationKey, now)) {
+                    "The verified receipt could not be committed before forwarding."
+                }
             }
             // Persist the opaque receipt before acknowledging its previous hop.
             require(meshReceiptOutbox.enqueue(receipt, previousHopId)) { "The receipt could not be stored for forwarding." }
