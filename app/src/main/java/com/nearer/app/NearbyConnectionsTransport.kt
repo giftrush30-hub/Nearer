@@ -937,9 +937,14 @@ internal object IncomingFilePayloadPolicy {
 
     private fun flushPendingMeshReceipts() {
         val now = System.currentTimeMillis()
+        var sentAny = false
+        var waitingForAck = false
         meshReceiptOutbox.pending().forEach { pending ->
             val receipt = pending.receipt
-            if ((receiptSendInFlightUntil[receipt.packetId] ?: 0L) > now) return@forEach
+            if ((receiptSendInFlightUntil[receipt.packetId] ?: 0L) > now) {
+                waitingForAck = true
+                return@forEach
+            }
             val route = meshRouteTable.find(receipt.originId, now) ?: return@forEach
             if (route.nextHopPeerId == pending.previousHopPeerId) return@forEach
             val endpointId = endpointForStablePeer(route.nextHopPeerId) ?: return@forEach
@@ -948,6 +953,7 @@ internal object IncomingFilePayloadPolicy {
                 .put("receipt", android.util.Base64.encodeToString(receipt.encode(), android.util.Base64.NO_WRAP))
             try {
                 receiptSendInFlightUntil[receipt.packetId] = now + RECEIPT_RETRY_MS
+                sentAny = true
                 client.sendPayload(endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8)))
                     .addOnFailureListener {
                         receiptSendInFlightUntil.remove(receipt.packetId)
@@ -958,7 +964,9 @@ internal object IncomingFilePayloadPolicy {
                 listener.onStatus("A mesh delivery receipt could not reach the next hop. NeaRer will retry.")
             }
         }
-        if (meshReceiptOutbox.size() > 0 && !receiptRetryScheduled) {
+        // Do not wake the app every 15 seconds for receipts with no available route.
+        // A newly authenticated neighbor or route advertisement calls this again.
+        if ((sentAny || waitingForAck) && meshReceiptOutbox.size() > 0 && !receiptRetryScheduled) {
             receiptRetryScheduled = true
             deliveryHandler.postDelayed({
                 receiptRetryScheduled = false
