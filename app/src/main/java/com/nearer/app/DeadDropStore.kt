@@ -177,6 +177,19 @@ internal class DeadDropStore(context: Context) {
         return result
     }
 
+    /** Earliest due/lease expiry for a foreground retry scheduler. */
+    @Synchronized
+    fun nextWakeAt(): Long? {
+        val entries = read() ?: return null
+        return entries.values
+            .filter { it.attempts < MAX_ATTEMPTS }
+            .map { entry ->
+                if (entry.state == FORWARDING) maxOf(entry.dueAt, entry.leaseUntil)
+                else entry.dueAt
+            }
+            .minOrNull()
+    }
+
     @Synchronized fun size(): Int = read()?.size ?: 0
 
     private fun read(): LinkedHashMap<String, Entry>? = try {
