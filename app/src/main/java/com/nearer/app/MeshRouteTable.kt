@@ -215,8 +215,12 @@ internal class MeshRouteTable(private val localId: String) {
                 if (candidate.sequence < previous.sequence) return false
                 if (candidate.sequence == previous.sequence && candidate.hopCount >= previous.hopCount) return false
             } else {
-                if (candidate.issuedAtMs < previous.issuedAtMs) return false
-                if (candidate.issuedAtMs == previous.issuedAtMs && candidate.hopCount >= previous.hopCount) return false
+                // Prefer a shorter loop-free path. Freshness breaks ties between
+                // equally short routes; timestamps never make a longer route win.
+                if (candidate.hopCount > previous.hopCount) return false
+                if (candidate.hopCount == previous.hopCount && candidate.issuedAtMs < previous.issuedAtMs) return false
+                if (candidate.hopCount == previous.hopCount && candidate.issuedAtMs == previous.issuedAtMs &&
+                    candidate.nextHopPeerId >= previous.nextHopPeerId) return false
             }
         }
         routes[candidate.destinationId] = candidate
