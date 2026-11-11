@@ -45,12 +45,15 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private data class PeerHandshakeState(
         val localNonce: ByteArray,
         val localPublicKey: ByteArray,
+        val localEphemeralKeyPair: java.security.KeyPair,
         var remoteNonce: ByteArray? = null,
         var remotePublicKey: ByteArray? = null,
+        var remoteEphemeralPublicKey: ByteArray? = null,
         var remotePeerId: String = "",
         var localProofSent: Boolean = false
     )
     private val peerHandshakes = ConcurrentHashMap<String, PeerHandshakeState>()
+    private val messageSessions = ConcurrentHashMap<String, NearbyMessageCrypto.Session>()
     private val localStableId = context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         .let { prefs ->
             val stored = prefs.getString("nearer_stable_id", null)
@@ -230,12 +233,25 @@ internal object IncomingFilePayloadPolicy {
             scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1800L))
             return
         }
+        val session = messageSessions[pending.endpointId]
+        if (session == null) {
+            scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1800L))
+            return
+        }
+        val securePayload = try {
+            val clear = JSONObject(pending.payload.toString(Charsets.UTF_8))
+            NearbyMessageCrypto.encrypt(session, localStableId, pending.stablePeerId, messageId, pending.payload)
+        } catch (_: Exception) {
+            listener.onStatus("NeaRer could not encrypt a queued message for this connection.")
+            scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1800L))
+            return
+        }
         val timeout = Runnable { scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1800L)) }
         pending.retryTask?.let(deliveryHandler::removeCallbacks)
         pending.retryTask = timeout
         deliveryHandler.postDelayed(timeout, 5000L)
         try {
-            client.sendPayload(pending.endpointId, Payload.fromBytes(pending.payload))
+            client.sendPayload(pending.endpointId, Payload.fromBytes(securePayload))
                 .addOnFailureListener { scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1200L)) }
         } catch (_: Exception) {
             scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1200L))
@@ -328,6 +344,7 @@ internal object IncomingFilePayloadPolicy {
         override fun onDisconnected(id: String) {
             val wasAuthenticated = authenticatedEndpoints.remove(id)
             peerHandshakes.remove(id)
+            messageSessions.remove(id)
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
             pauseOutgoingFilesForEndpoint(id)
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
@@ -436,9 +453,12 @@ internal object IncomingFilePayloadPolicy {
         }
         try {
             val publicKey = SecurePeerIdentity.publicKeyEncoded()
-            val state = PeerHandshakeState(NearbyPeerHandshake.newNonce(), publicKey)
+            val ephemeral = NearbyMessageCrypto.newEphemeralKeyPair()
+            val state = PeerHandshakeState(NearbyPeerHandshake.newNonce(), publicKey, ephemeral)
             peerHandshakes[endpointId] = state
-            client.sendPayload(endpointId, Payload.fromBytes(NearbyPeerHandshake.hello(localStableId, publicKey, state.localNonce)))
+            client.sendPayload(endpointId, Payload.fromBytes(NearbyPeerHandshake.hello(
+                localStableId, publicKey, state.localNonce, ephemeral.public.encoded
+            )))
                 .addOnFailureListener { failPeerHandshake(endpointId, "Could not start secure peer verification.") }
         } catch (_: Exception) {
             failPeerHandshake(endpointId, "This phone could not create its secure NeaRer identity.")
@@ -453,11 +473,16 @@ internal object IncomingFilePayloadPolicy {
             require(hello.peerId == advertisedId && hello.peerId != localStableId)
             require(state.remotePublicKey == null || java.security.MessageDigest.isEqual(state.remotePublicKey, hello.publicKey))
             require(state.remoteNonce == null || java.security.MessageDigest.isEqual(state.remoteNonce, hello.nonce))
+            require(state.remoteEphemeralPublicKey == null || java.security.MessageDigest.isEqual(state.remoteEphemeralPublicKey, hello.ephemeralPublicKey))
             state.remotePeerId = hello.peerId
             state.remotePublicKey = hello.publicKey
             state.remoteNonce = hello.nonce
+            state.remoteEphemeralPublicKey = hello.ephemeralPublicKey
             if (!state.localProofSent) {
-                val challenge = NearbyPeerHandshake.transcriptChallenge(localStableId, state.localNonce, hello.peerId, hello.nonce)
+                val challenge = NearbyPeerHandshake.transcriptChallenge(
+                    localStableId, state.localNonce, state.localEphemeralKeyPair.public.encoded,
+                    hello.peerId, hello.nonce, hello.ephemeralPublicKey
+                )
                 val signature = SecurePeerIdentity.signChallenge(localStableId, state.localPublicKey, challenge)
                 state.localProofSent = true
                 client.sendPayload(endpointId, Payload.fromBytes(NearbyPeerHandshake.proof(localStableId, signature)))
@@ -475,11 +500,20 @@ internal object IncomingFilePayloadPolicy {
             require(state.localProofSent) { "Local proof has not been sent." }
             val remoteKey = state.remotePublicKey ?: throw IllegalArgumentException("Peer key has not been received.")
             val remoteNonce = state.remoteNonce ?: throw IllegalArgumentException("Peer challenge has not been received.")
+            val remoteEphemeral = state.remoteEphemeralPublicKey ?: throw IllegalArgumentException("Peer encryption key has not been received.")
             require(peerId == state.remotePeerId)
-            val challenge = NearbyPeerHandshake.transcriptChallenge(localStableId, state.localNonce, peerId, remoteNonce)
+            val challenge = NearbyPeerHandshake.transcriptChallenge(
+                localStableId, state.localNonce, state.localEphemeralKeyPair.public.encoded,
+                peerId, remoteNonce, remoteEphemeral
+            )
             require(SecurePeerIdentity.verifyChallenge(peerId, remoteKey, challenge, signature))
             when (TrustedPeerKeyStore.checkAndPin(appContext, peerId, remoteKey)) {
                 TrustedPeerKeyStore.Result.FIRST_SEEN, TrustedPeerKeyStore.Result.MATCH -> {
+                    val remoteEcdhKey = NearbyMessageCrypto.decodeEphemeralPublicKey(remoteEphemeral)
+                    val session = NearbyMessageCrypto.deriveSession(
+                        localStableId, peerId, state.localEphemeralKeyPair.private, remoteEcdhKey, challenge
+                    )
+                    messageSessions[endpointId] = session
                     if (authenticatedEndpoints.add(endpointId)) {
                         peerHandshakes.remove(endpointId)
                         val details = synchronized(names) {
@@ -502,6 +536,7 @@ internal object IncomingFilePayloadPolicy {
 
     private fun failPeerHandshake(endpointId: String, reason: String) {
         peerHandshakes.remove(endpointId)
+        messageSessions.remove(endpointId)
         authenticatedEndpoints.remove(endpointId)
         listener.onStatus(reason)
         try { client.disconnectFromEndpoint(endpointId) } catch (_: Exception) { }
@@ -511,10 +546,21 @@ internal object IncomingFilePayloadPolicy {
         try {
             val envelope = JSONObject(bytes?.toString(Charsets.UTF_8).orEmpty())
             when (envelope.optString("kind")) {
-                "peer_hello_v1" -> { handlePeerHello(endpointId, envelope); return }
-                "peer_proof_v1" -> { handlePeerProof(endpointId, envelope); return }
+                "peer_hello_v2" -> { handlePeerHello(endpointId, envelope); return }
+                "peer_proof_v2" -> { handlePeerProof(endpointId, envelope); return }
             }
             if (!authenticatedEndpoints.contains(endpointId)) return
+            if (envelope.optString("kind") == "secure_packet_v1") {
+                val session = messageSessions[endpointId] ?: return
+                val senderId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                val (packetId, cleartext) = NearbyMessageCrypto.decrypt(session, localStableId, senderId, envelope)
+                val inner = JSONObject(cleartext.toString(Charsets.UTF_8))
+                require(inner.optString("id") == packetId) { "Encrypted message ID did not match its authenticated envelope." }
+                handleAuthenticatedMessage(endpointId, inner)
+                return
+            }
+            // Chat and delivery receipts are never accepted as plaintext after v2 pairing.
+            if (envelope.optString("kind") == "message" || envelope.optString("kind") == "ack") return
             if (envelope.optString("kind") == "file_meta") {
                 val payloadId = envelope.optLong("payloadId", -1L)
                 val name = safeFileName(envelope.optString("name", "shared-file"))
@@ -587,50 +633,50 @@ internal object IncomingFilePayloadPolicy {
                 sendPreparedFile(payloadId, outgoing, offset)
                 return
             }
-            val kind = envelope.optString("kind", "message")
-            if (kind == "ack") {
-                val acknowledgedId = envelope.optString("id")
-                // Only the peer we actually sent this message to may confirm it.
-                if (authenticatedEndpoints.contains(endpointId) && acknowledgedId.isNotBlank() && outgoingMessageTargets[acknowledgedId] == endpointId) {
-                    clearPendingOutgoingMessage(acknowledgedId)
-                    listener.onMessageStatus(acknowledgedId, "Delivered")
-                }
-                return
+            if (envelope.optString("kind") == "file_resume_request") {
+                // File-control packets remain link-authenticated but are not yet end-to-end encrypted.
             }
-            if (kind != "message") return
-            val messageId = envelope.optString("id")
-            val body = envelope.optString("body")
-            val ttl = envelope.optInt("ttl", 0)
-            if (messageId.isBlank() || body.isBlank() || body.length > 4000) return
-            if (messageId.length > 80 || ttl !in 0..4) return
-            // A previously saved message is safe to acknowledge again after a lost receipt.
-            if (hasSeenMessageId(messageId)) {
-                sendAcknowledgement(endpointId, messageId)
-                return
-            }
-            // If the same payload arrives while its first copy is being saved, wait for
-            // that save to finish; do not acknowledge a message that is not durable yet.
-            if (!pendingIncomingMessageIds.add(messageId)) return
-            val senderName = synchronized(names) { names[endpointId] ?: "Nearby member" }
-            // Persist the dedupe ID only when the UI confirms that the message itself
-            // has been saved. This closes the crash window between ID and message storage.
-            try {
-                listener.onMessage(endpointId, senderName, messageId, body) {
-                    if (messageId in pendingIncomingMessageIds) {
-                        val dedupeRecordSaved = rememberMessageId(messageId)
-                        pendingIncomingMessageIds.remove(messageId)
-                        if (dedupeRecordSaved) sendAcknowledgement(endpointId, messageId)
-                    }
-                }
-            } catch (error: Exception) {
-                pendingIncomingMessageIds.remove(messageId)
-                throw error
-            }
-            // Direct/private chat messages use ttl=0. Multi-hop forwarding stays disabled
-            // until recipient routing and end-to-end encryption are implemented.
+            handleAuthenticatedMessage(endpointId, envelope)
         } catch (_: Exception) {
             listener.onStatus("A nearby message could not be read and was ignored.")
         }
+    }
+
+    private fun handleAuthenticatedMessage(endpointId: String, envelope: JSONObject) {
+        val kind = envelope.optString("kind", "message")
+        if (kind == "ack") {
+            val acknowledgedId = envelope.optString("id")
+            if (acknowledgedId.isNotBlank() && outgoingMessageTargets[acknowledgedId] == endpointId) {
+                clearPendingOutgoingMessage(acknowledgedId)
+                listener.onMessageStatus(acknowledgedId, "Delivered")
+            }
+            return
+        }
+        if (kind != "message") return
+        val messageId = envelope.optString("id")
+        val body = envelope.optString("body")
+        val ttl = envelope.optInt("ttl", 0)
+        if (messageId.isBlank() || body.isBlank() || body.length > 4000) return
+        if (messageId.length > 80 || ttl !in 0..4) return
+        if (hasSeenMessageId(messageId)) {
+            sendAcknowledgement(endpointId, messageId)
+            return
+        }
+        if (!pendingIncomingMessageIds.add(messageId)) return
+        val senderName = synchronized(names) { names[endpointId] ?: "Nearby member" }
+        try {
+            listener.onMessage(endpointId, senderName, messageId, body) {
+                if (messageId in pendingIncomingMessageIds) {
+                    val dedupeRecordSaved = rememberMessageId(messageId)
+                    pendingIncomingMessageIds.remove(messageId)
+                    if (dedupeRecordSaved) sendAcknowledgement(endpointId, messageId)
+                }
+            }
+        } catch (error: Exception) {
+            pendingIncomingMessageIds.remove(messageId)
+            throw error
+        }
+        // Direct/private chat only. No relay forwarding is enabled.
     }
 
     private fun processCompletedFile(payloadId: Long) {
@@ -792,13 +838,32 @@ internal object IncomingFilePayloadPolicy {
                 false
             }
         }
-        return broadcast(envelope, null)
+        val targets = synchronized(activeEndpoints) { activeEndpoints.filter { authenticatedEndpoints.contains(it) } }
+        if (targets.isEmpty()) return false
+        val clear = envelope.toByteArray(Charsets.UTF_8)
+        var sent = false
+        targets.forEach { endpoint ->
+            val peerId = synchronized(names) { stableIds[endpoint].orEmpty() }
+            val session = messageSessions[endpoint] ?: return@forEach
+            try {
+                val packet = NearbyMessageCrypto.encrypt(session, localStableId, peerId, messageId, clear)
+                client.sendPayload(endpoint, Payload.fromBytes(packet))
+                    .addOnFailureListener { listener.onStatus("A nearby group message could not be sent.") }
+                sent = true
+            } catch (_: Exception) { }
+        }
+        sent
     }
 
     private fun sendAcknowledgement(endpointId: String, messageId: String) {
         try {
+            val session = messageSessions[endpointId] ?: return
+            val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
             val receipt = JSONObject().put("kind", "ack").put("version", 1).put("id", messageId)
-            client.sendPayload(endpointId, Payload.fromBytes(receipt.toString().toByteArray(Charsets.UTF_8)))
+            val packet = NearbyMessageCrypto.encrypt(
+                session, localStableId, peerId, messageId, receipt.toString().toByteArray(Charsets.UTF_8)
+            )
+            client.sendPayload(endpointId, Payload.fromBytes(packet))
         } catch (_: Exception) {
             // The message itself is already safely stored; the sender will retain a pending state.
         }
@@ -826,8 +891,15 @@ internal object IncomingFilePayloadPolicy {
             .toString()
             .toByteArray(Charsets.UTF_8)
         targets.forEach { endpoint ->
-            client.sendPayload(endpoint, Payload.fromBytes(envelope))
-                .addOnFailureListener { listener.onStatus("A group message could not be sent to one nearby member.") }
+            val peerId = synchronized(names) { stableIds[endpoint].orEmpty() }
+            val session = messageSessions[endpoint] ?: return@forEach
+            try {
+                val packet = NearbyMessageCrypto.encrypt(session, localStableId, peerId, messageId, envelope)
+                client.sendPayload(endpoint, Payload.fromBytes(packet))
+                    .addOnFailureListener { listener.onStatus("A group message could not be sent to one nearby member.") }
+            } catch (_: Exception) {
+                listener.onStatus("A group message could not be encrypted for one nearby member.")
+            }
         }
         return true
     }
@@ -1045,6 +1117,7 @@ internal object IncomingFilePayloadPolicy {
         synchronized(activeEndpoints) { activeEndpoints.clear() }
         authenticatedEndpoints.clear()
         peerHandshakes.clear()
+        messageSessions.clear()
     }
     fun stop() {
         stopSearching()
