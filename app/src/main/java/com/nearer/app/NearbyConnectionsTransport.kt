@@ -1089,7 +1089,9 @@ internal object IncomingFilePayloadPolicy {
             val trustedKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, acceptingPeerId) ?: return
             if (!acknowledgement.verify(trustedKey, localStableId, System.currentTimeMillis()) ||
                 acknowledgement.acceptingPeerId != acceptingPeerId) return
-            if (meshReceiptOutbox.remove(acknowledgement.packetId)) {
+            // A different authenticated neighbor must not be able to retire a
+            // receipt merely by signing an ACK with the same packet ID.
+            if (meshReceiptOutbox.acknowledge(acknowledgement.packetId, acceptingPeerId)) {
                 receiptSendInFlightUntil.remove(acknowledgement.packetId)
                 flushPendingMeshReceipts()
             }
@@ -1126,6 +1128,12 @@ internal object IncomingFilePayloadPolicy {
                 .put("kind", "mesh_delivery_receipt_v1")
                 .put("receipt", android.util.Base64.encodeToString(receipt.encode(), android.util.Base64.NO_WRAP))
             try {
+                // Store the expected authenticated next hop before transmission;
+                // receipt ACKs from any other connected peer are ignored.
+                if (!meshReceiptOutbox.setExpectedNextHop(receipt.packetId, route.nextHopPeerId)) {
+                    listener.onStatus("A mesh receipt could not securely record its next hop. It remains queued.")
+                    return@forEach
+                }
                 receiptSendInFlightUntil[receipt.packetId] = now + RECEIPT_RETRY_MS
                 sentAny = true
                 client.sendPayload(endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8)))
