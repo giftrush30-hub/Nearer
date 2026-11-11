@@ -1,3 +1,10 @@
+## Recent safety hardening
+
+- Route-withdrawal replay protection is committed before the in-memory route is removed. A storage failure pauses multi-hop before the withdrawal is applied.
+- When a direct next hop disconnects, all active learned-route tombstones are persisted before route eviction. If this persistence fails, the transport pauses multi-hop and attempts to remove cached routes learned from that neighbor; if that cleanup also fails, it attempts to clear the route cache.
+- A packet's selected next-hop peer ID is persisted with its forwarding lease before transmission. A signed hop acknowledgement is accepted only from that selected peer, not merely from any authenticated neighbor. If the route changes after a retry, the durable expected next hop is updated before the next send.
+- When protected route-withdrawal history is unhealthy, multi-hop recipients are hidden and new mesh sends are rejected; direct nearby chat remains a separate capability.
+
 # NeaRer secure mesh relay protocol — design gate
 
 Status: engineering prototype in a draft branch. Relay participation remains disabled; this is not a release or a claim of physical multi-hop validation.
