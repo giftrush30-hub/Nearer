@@ -335,10 +335,10 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     meshRecipients.clear()
                     recipients.forEach { meshRecipients[it.peerId] = it }
-                    if (selectedMeshRecipientId?.let { it !in meshRecipients.keys } == true) selectedMeshRecipientId = null
+                    // Keep an unreachable selection as an explicit target. Never silently
+                    // switch the recipient to another nearby person after route loss.
                     if (selectedMeshRecipientId == null) {
                         selectedMeshRecipientId = hybridConnectedStableId?.takeIf { it in meshRecipients.keys }
-                            ?: recipients.firstOrNull()?.peerId
                     }
                 }
             }
