@@ -41,11 +41,11 @@ class NearbyPeerHandshakeTest {
         val sessionA = NearbyMessageCrypto.deriveSession("a", "b", a.private, b.public, byteArrayOf(1))
         val sessionB = NearbyMessageCrypto.deriveSession("b", "a", b.private, a.public, byteArrayOf(1))
         val clear = """{"kind":"message","id":"m-1","body":"hello"}""".toByteArray()
-        val packet = JSONObject(NearbyMessageCrypto.encrypt(sessionA, "a", "b", "m-1", clear).toString(Charsets.UTF_8))
-        val opened = NearbyMessageCrypto.decrypt(sessionB, "b", "a", packet)
-        assertEquals("m-1", opened.first)
-        assertArrayEquals(clear, opened.second)
-        packet.put("id", "m-2")
-        assertTrue(runCatching { NearbyMessageCrypto.decrypt(sessionB, "b", "a", packet) }.isFailure)
+        val packet = NearbyMessageCrypto.seal(sessionA, "a", "b", "m-1", clear)
+        assertArrayEquals(clear, NearbyMessageCrypto.open(sessionB, "b", "a", packet))
+        val changedId = packet.copy(messageId = "m-2")
+        assertTrue(runCatching { NearbyMessageCrypto.open(sessionB, "b", "a", changedId) }.isFailure)
+        val changedCiphertext = packet.copy(ciphertext = packet.ciphertext.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() })
+        assertTrue(runCatching { NearbyMessageCrypto.open(sessionB, "b", "a", changedCiphertext) }.isFailure)
     }
 }
