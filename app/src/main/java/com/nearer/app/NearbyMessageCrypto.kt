@@ -40,6 +40,7 @@ internal object NearbyMessageCrypto {
         require(encoded.isNotEmpty() && encoded.size <= 512)
         val key = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(encoded))
         require(key.algorithm.equals("EC", ignoreCase = true))
+        require((key as? java.security.interfaces.ECPublicKey)?.params?.curve?.field?.fieldSize == 256)
         return key
     }
 
