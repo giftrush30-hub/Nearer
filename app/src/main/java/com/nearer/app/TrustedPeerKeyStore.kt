@@ -64,6 +64,19 @@ internal object TrustedPeerKeyStore {
         decodePin(JSONObject(prefs.getString("nearby_peer_encryption_key_pins", "{}") ?: "{}"), publicId)
     } catch (_: Exception) { null }
 
+    @Synchronized
+    fun acceptBindingSequence(context: Context, publicId: String, sequence: Long): Boolean {
+        if (NeaRerIdentity.normalize(publicId) != publicId || sequence < 0L) return false
+        return try {
+            val prefs = context.applicationContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            val sequences = JSONObject(prefs.getString("nearby_peer_binding_sequences", "{}") ?: "{}")
+            val previous = if (sequences.has(publicId)) sequences.getLong(publicId) else -1L
+            if (sequence <= previous) return false
+            sequences.put(publicId, sequence)
+            prefs.edit().putString("nearby_peer_binding_sequences", sequences.toString()).commit()
+        } catch (_: Exception) { false }
+    }
+
     private fun decodePin(pins: JSONObject, id: String): ByteArray? {
         if (!pins.has(id)) return null
         val encoded = pins.optString(id)
