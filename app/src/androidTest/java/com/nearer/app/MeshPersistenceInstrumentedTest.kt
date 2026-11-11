@@ -88,7 +88,7 @@ class MeshPersistenceInstrumentedTest {
                 sign()
             }
         }
-        assertFalse(reopenedStore.recordHopAccepted(
+        assertTrue(reopenedStore.recordHopAccepted(
             correctHopAck, acceptingIdentity.public.encoded, nextHop, localRelay, now + 6L
         ))
 
