@@ -1422,7 +1422,8 @@ class MainActivity : ComponentActivity() {
             var sent = nearbyTransport?.sendMeshMessage(meshRecipient.peerId, body, id) == true
             // Preserve the proven direct-chat path if the new recipient-encrypted route
             // cannot be used for a directly connected peer.
-            if (!sent && meshRecipient.isDirect && hybridConnectedEndpoint != null) {
+            if (!sent && meshRecipient.isDirect &&
+                meshRecipient.peerId == hybridConnectedStableId && hybridConnectedEndpoint != null) {
                 sent = nearbyTransport?.send(body, id, hybridConnectedEndpoint!!) == true
             }
             if (!sent) {
@@ -3507,6 +3508,7 @@ private fun NeaRerHome(
                     meshRecipients = meshRecipients.values.toList(),
                     selectedMeshRecipientId = selectedMeshRecipientId,
                     onSelectMeshRecipient = { selectedMeshRecipientId = it },
+                    connectedPeerStableId = hybridConnectedStableId,
                     chatReady = chatReady,
                     connectedDeviceName = connectedDeviceName,
                     connectionMessage = connectionMessage,
