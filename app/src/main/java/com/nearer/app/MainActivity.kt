@@ -132,6 +132,8 @@ class MainActivity : ComponentActivity() {
     private var ultraSpeedMode by mutableStateOf(false)
     private var ultraSpeedRestartRequired by mutableStateOf(false)
     private val hybridPeers = mutableStateMapOf<String, String>()
+    private val meshRecipients = mutableStateMapOf<String, MeshRecipient>()
+    private var selectedMeshRecipientId by mutableStateOf<String?>(null)
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
     private var onboardingComplete by mutableStateOf(false)
@@ -329,10 +331,29 @@ class MainActivity : ComponentActivity() {
         nearbyTransport = try {
             NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
             override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
+            override fun onMeshRoutesChanged(recipients: List<MeshRecipient>) {
+                runOnUiThread {
+                    meshRecipients.clear()
+                    recipients.forEach { meshRecipients[it.peerId] = it }
+                    if (selectedMeshRecipientId !in meshRecipients.keys) selectedMeshRecipientId = null
+                    if (selectedMeshRecipientId == null) {
+                        selectedMeshRecipientId = hybridConnectedStableId?.takeIf { it in meshRecipients.keys }
+                            ?: recipients.firstOrNull()?.peerId
+                    }
+                }
+            }
             override fun onFound(id: String, name: String, stableId: String) { runOnUiThread { hybridPeers[id] = name; if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId) } }
             override fun onLost(id: String, stableId: String) { runOnUiThread {
                 val name = hybridPeers.remove(id)
                 if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
+                if (hybridConnectedEndpoint == id) {
+                    hybridConnected = false
+                    hybridConnectedEndpoint = null
+                    hybridConnectedStableId = null
+                    chatReady = false
+                    connectedDeviceName = null
+                    connectionMessage = "Direct link lost. Checking available mesh routes…"
+                }
             } }
             override fun onRequest(id: String, name: String, token: String) {
                 runOnUiThread {
@@ -348,6 +369,7 @@ class MainActivity : ComponentActivity() {
                     hybridConnected = true
                     hybridConnectedEndpoint = id
                     hybridConnectedStableId = stableId.ifBlank { null }
+                    selectedMeshRecipientId = stableId.takeIf { it.isNotBlank() }
                     val requestedIncomingResume = nearbyTransport?.requestPendingIncomingFilesForPeer(stableId, id) == true
                     val hasQueuedOutgoingFile = currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()
                     if (hasQueuedOutgoingFile) {
@@ -1381,8 +1403,49 @@ class MainActivity : ComponentActivity() {
 
     private fun sendChatMessage(rawText: String) {
         val body = rawText.trim()
-        if (body.isEmpty() || !chatReady) return
+        if (body.isEmpty()) return
         val id = UUID.randomUUID().toString()
+        val targetPeerId = selectedMeshRecipientId ?: hybridConnectedStableId
+        val meshRecipient = targetPeerId?.let { meshRecipients[it] }
+        if (meshRecipient != null) {
+            chatMessages.add(ChatMessage(
+                id, body, outgoing = true, delivery = "Sending…",
+                conversationId = meshRecipient.peerId,
+                conversationName = meshRecipient.displayName
+            ))
+            if (!persistMessages()) {
+                chatMessages.removeAll { it.id == id }
+                chatNotice = "NeaRer could not save this message on your phone. It was not sent."
+                return
+            }
+            trimChatMessages()
+            var sent = nearbyTransport?.sendMeshMessage(meshRecipient.peerId, body, id) == true
+            // Preserve the proven direct-chat path if the new recipient-encrypted route
+            // cannot be used for a directly connected peer.
+            if (!sent && meshRecipient.isDirect && hybridConnectedEndpoint != null) {
+                sent = nearbyTransport?.send(body, id, hybridConnectedEndpoint!!) == true
+            }
+            if (!sent) {
+                val index = chatMessages.indexOfFirst { it.id == id }
+                if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
+                persistMessages()
+                chatNotice = "No working secure route to ${meshRecipient.displayName}. The message was not delivered."
+                return
+            }
+            chatNotice = if (meshRecipient.isDirect) {
+                "Sent over the secure nearby link • waiting for final delivery."
+            } else {
+                "Queued for ${meshRecipient.displayName} through ${meshRecipient.hopCount} relay(s). Only that recipient can read it."
+            }
+            return
+        }
+        // Never fall back to a different connected phone when the user selected
+        // a remote mesh recipient whose route has disappeared.
+        if (selectedMeshRecipientId != null && selectedMeshRecipientId != hybridConnectedStableId) {
+            chatNotice = "That recipient is no longer reachable. NeaRer has not sent the message to someone else."
+            return
+        }
+        if (!chatReady) return
         if (hybridConnected) {
             val targetEndpoint = hybridConnectedEndpoint
             if (targetEndpoint.isNullOrBlank()) {
@@ -3441,6 +3504,9 @@ private fun NeaRerHome(
 
             if (selectedTab == "Chats") {
                 PremiumChatsScreen(
+                    meshRecipients = meshRecipients.values.toList(),
+                    selectedMeshRecipientId = selectedMeshRecipientId,
+                    onSelectMeshRecipient = { selectedMeshRecipientId = it },
                     chatReady = chatReady,
                     connectedDeviceName = connectedDeviceName,
                     connectionMessage = connectionMessage,
