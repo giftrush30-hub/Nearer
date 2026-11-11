@@ -225,6 +225,17 @@ class MeshPersistenceInstrumentedTest {
     }
 
     @Test
+    fun invalidWithdrawalRecordPermanentlyDisablesRouteRestore() {
+        val invalid = MeshRouteTable.WithdrawalTombstone(
+            destinationId = "NOT-VALID",
+            advertiserId = NeaRerIdentity.generate(),
+            sequence = 12L
+        )
+        assertFalse(MeshRouteWithdrawalStore(context).saveAll(listOf(invalid)))
+        assertEquals(-1, MeshRouteWithdrawalStore(context).restore(MeshRouteTable("CCCCCC")))
+    }
+
+    @Test
     fun receiptOutboxEncryptsRoutingMetadataAtRest() {
         val receipt = MeshDeliveryReceipt.create(
             "receipt-private-meta-01",
