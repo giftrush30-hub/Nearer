@@ -918,8 +918,8 @@ internal object IncomingFilePayloadPolicy {
                 listener.onStatus("Mesh route history could not be saved. Cached routes were cleared and multi-hop is paused on this phone.")
                 return
             }
-            val routeRemoved = meshRouteTable.removeDestinationIfNextHop(
-                withdrawal.destinationId, senderId, withdrawal.sequence
+            val routeBeforeWithdrawal = meshRouteTable.find(
+                withdrawal.destinationId, System.currentTimeMillis()
             )
             // Remember even when another neighbor is selected, so this advertiser's
             // stale route cannot return after the alternate route later disappears.
@@ -933,6 +933,10 @@ internal object IncomingFilePayloadPolicy {
                 listener.onStatus("Mesh route history could not be applied. Cached routes were cleared and multi-hop is paused on this phone.")
                 return
             }
+            // Equal-sequence signed withdrawals also invalidate the selected route.
+            val routeRemoved = routeBeforeWithdrawal?.nextHopPeerId == senderId &&
+                routeBeforeWithdrawal.sequence <= withdrawal.sequence &&
+                meshRouteTable.find(withdrawal.destinationId, System.currentTimeMillis()) == null
             if (routeRemoved) {
                 meshRoutePersistence.removeDestination(withdrawal.destinationId)
                 // Re-sign the withdrawal as this node so downstream peers can invalidate
