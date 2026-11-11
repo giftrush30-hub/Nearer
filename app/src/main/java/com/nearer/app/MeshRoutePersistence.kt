@@ -26,6 +26,14 @@ internal class MeshRoutePersistence(context: Context) {
     }
 
     @Synchronized
+    fun removeDestination(destinationId: String): Boolean {
+        if (NeaRerIdentity.normalize(destinationId) != destinationId) return false
+        val entries = read() ?: return false
+        entries.remove(destinationId)
+        return write(entries)
+    }
+
+    @Synchronized
     fun removeAdvertiser(advertiserId: String): Boolean {
         if (NeaRerIdentity.normalize(advertiserId) != advertiserId) return false
         val entries = read() ?: return false
