@@ -225,6 +225,29 @@ class MeshPersistenceInstrumentedTest {
     }
 
     @Test
+    fun receiptOutboxEncryptsRoutingMetadataAtRest() {
+        val receipt = MeshDeliveryReceipt.create(
+            "receipt-private-meta-01",
+            NeaRerIdentity.generate(),
+            NeaRerIdentity.generate(),
+            System.currentTimeMillis()
+        ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+        val previousHop = NeaRerIdentity.generate()
+        val nextHop = NeaRerIdentity.generate()
+        val outbox = MeshReceiptOutbox(context)
+        assertTrue(outbox.enqueue(receipt, previousHop))
+        assertTrue(outbox.setExpectedNextHop(receipt.packetId, nextHop))
+
+        val stored = context.getSharedPreferences("nearer_mesh_receipt_outbox_v1", 0)
+            .getString("receipts_v1", "").orEmpty()
+        assertTrue(stored.isNotBlank())
+        assertFalse(stored.contains(previousHop))
+        assertFalse(stored.contains(nextHop))
+        assertFalse(stored.contains(receipt.packetId))
+        assertEquals(1, MeshReceiptOutbox(context).pending().size)
+    }
+
+    @Test
     fun receiptOutboxPersistsUntilExplicitNextHopAcknowledgement() {
         val now = System.currentTimeMillis()
         val receipt = MeshDeliveryReceipt.create(
