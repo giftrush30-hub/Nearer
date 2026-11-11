@@ -84,6 +84,47 @@ class MeshRouteTableTest {
         assertFalse(table.update(decoded, "AAAAAA", sender.public.encoded, 2000L, pair().public.encoded))
     }
 
+    @Test fun signedRouteWithdrawalRemovesOnlyItsAdvertiserRouteAndBlocksStaleResurrection() {
+        val sender = pair()
+        val destination = pair()
+        val table = MeshRouteTable("CCCCCC")
+        val ad = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 4L, 0, 1000L, 9000L
+        ) { sign(sender.private, it) }
+        assertTrue(table.update(ad, "AAAAAA", sender.public.encoded, 2000L))
+
+        val withdrawal = MeshRouteWithdrawal.create("AAAAAA", "BBBBBB", 5L, 3000L) {
+            sign(sender.private, it)
+        }
+        val decoded = MeshRouteWithdrawal.decode(withdrawal.encode())
+        assertTrue(decoded.verify(sender.public.encoded, 3500L))
+        assertTrue(table.removeDestinationIfNextHop("BBBBBB", "AAAAAA", decoded.sequence))
+        assertNull(table.find("BBBBBB", 3500L))
+        assertFalse(table.update(ad, "AAAAAA", sender.public.encoded, 3600L))
+
+        val fresh = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 6L, 0, 3700L, 9000L
+        ) { sign(sender.private, it) }
+        assertTrue(table.update(fresh, "AAAAAA", sender.public.encoded, 3800L))
+    }
+
+    @Test fun routeWithdrawalCannotRemoveAnotherNeighborsRoute() {
+        val first = pair()
+        val second = pair()
+        val destination = pair()
+        val table = MeshRouteTable("CCCCCC")
+        val ad = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 4L, 0, 1000L, 9000L
+        ) { sign(first.private, it) }
+        assertTrue(table.update(ad, "AAAAAA", first.public.encoded, 2000L))
+        val withdrawal = MeshRouteWithdrawal.create("DDDDDD", "BBBBBB", 10L, 3000L) {
+            sign(second.private, it)
+        }
+        assertTrue(withdrawal.verify(second.public.encoded, 3500L))
+        assertFalse(table.removeDestinationIfNextHop("BBBBBB", "DDDDDD", withdrawal.sequence))
+        assertNotNull(table.find("BBBBBB", 3500L))
+    }
+
     @Test fun rejectsAdvertisementTampering() {
         val sender = pair()
         val destination = pair()
