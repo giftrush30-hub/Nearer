@@ -1,5 +1,6 @@
 ## Recent safety hardening
 
+- If the withdrawal ledger becomes corrupt, cannot be written, or reaches capacity, a separate persistent fail-closed marker disables routing after restart; the transport also clears the route cache when an incoming withdrawal cannot be committed. The marker is intentionally not auto-cleared.
 - A signed withdrawal with a sequence equal to the selected route's advertisement sequence also removes that route and triggers route-cache/UI reconciliation; stale equal-sequence advertisements remain blocked.
 - Transit participation is enforced inside `NearbyConnectionsTransport`, not just by a UI switch. With relay disabled, a phone still accepts packets addressed to itself and forwards its own outgoing messages/receipts, but rejects third-party transit packets/receipts without ACKing them and does not gossip routes. Disabling transit withdraws previously advertised routes first.
 - Withdrawal replay-protection storage never evicts an unexpired watermark to make room. If the bounded tombstone store is full or contains invalid records, restore/write fails closed and multi-hop pauses rather than risking stale-route resurrection.
