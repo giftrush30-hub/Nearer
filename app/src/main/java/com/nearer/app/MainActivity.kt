@@ -335,7 +335,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     meshRecipients.clear()
                     recipients.forEach { meshRecipients[it.peerId] = it }
-                    if (selectedMeshRecipientId !in meshRecipients.keys) selectedMeshRecipientId = null
+                    if (selectedMeshRecipientId?.let { it !in meshRecipients.keys } == true) selectedMeshRecipientId = null
                     if (selectedMeshRecipientId == null) {
                         selectedMeshRecipientId = hybridConnectedStableId?.takeIf { it in meshRecipients.keys }
                             ?: recipients.firstOrNull()?.peerId
