@@ -51,6 +51,8 @@ class MeshPersistenceInstrumentedTest {
         )
         val previousHop = NeaRerIdentity.generate()
         val localRelay = NeaRerIdentity.generate()
+        val nextHop = NeaRerIdentity.generate()
+        val acceptingIdentity = recipientKeyPair()
         val firstStore = DeadDropStore(context)
         assertTrue(firstStore.enqueueTransit(packet, previousHop, now))
 
@@ -61,17 +63,45 @@ class MeshPersistenceInstrumentedTest {
         assertEquals(previousHop, claimed.single().previousHopPeerId)
         assertTrue(MeshRelayPacketV1.decode(claimed.single().bytes).verifyEmbeddedOrigin(now + 1L))
 
-        val prepared = reopenedStore.prepareForForwarding(packet.packetId, localRelay, now + 2L)
+        val prepared = reopenedStore.prepareForForwarding(packet.packetId, localRelay, now + 2L, nextHop)
         assertNotNull(prepared)
         assertEquals(1, prepared!!.hopsTaken)
+
+        val wrongHopAck = MeshHopAcknowledgement.create(
+            packet.packetId, NeaRerIdentity.generate(), localRelay, now + 3L
+        ) { bytes ->
+            java.security.Signature.getInstance("SHA256withECDSA").run {
+                initSign(acceptingIdentity.private)
+                update(bytes)
+                sign()
+            }
+        }
+        assertFalse(reopenedStore.recordHopAccepted(
+            wrongHopAck, acceptingIdentity.public.encoded, wrongHopAck.acceptingPeerId, localRelay, now + 4L
+        ))
+        val correctHopAck = MeshHopAcknowledgement.create(
+            packet.packetId, nextHop, localRelay, now + 5L
+        ) { bytes ->
+            java.security.Signature.getInstance("SHA256withECDSA").run {
+                initSign(acceptingIdentity.private)
+                update(bytes)
+                sign()
+            }
+        }
+        assertFalse(reopenedStore.recordHopAccepted(
+            correctHopAck, acceptingIdentity.public.encoded, nextHop, localRelay, now + 6L
+        ))
 
         // Reopening and retrying must reuse the prepared hop count, not increment again.
         val afterRestart = DeadDropStore(context)
         val retry = afterRestart.claimDue(now + 31_000L, 1)
         assertEquals(1, retry.size)
-        val preparedAgain = afterRestart.prepareForForwarding(packet.packetId, localRelay, now + 31_001L)
+        val preparedAgain = afterRestart.prepareForForwarding(packet.packetId, localRelay, now + 31_001L, nextHop)
         assertNotNull(preparedAgain)
         assertEquals(1, preparedAgain!!.hopsTaken)
+        assertTrue(afterRestart.recordHopAccepted(
+            correctHopAck, acceptingIdentity.public.encoded, nextHop, localRelay, now + 31_002L
+        ))
 
         // A replay cannot roll the persisted hop count backwards.
         assertFalse(afterRestart.enqueueTransit(packet.copy(hopsTaken = 0), NeaRerIdentity.generate(), now + 31_002L))
