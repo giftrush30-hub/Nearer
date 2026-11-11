@@ -146,9 +146,11 @@ internal data class SignedRouteAdvertisement(
 internal class MeshRouteTable(private val localId: String) {
     data class Route(
         val destinationId: String,
+        /** Authenticated direct neighbor used as the next hop and route advertiser. */
         val nextHopPeerId: String,
         val hopCount: Int,
         val sequence: Long,
+        val issuedAtMs: Long,
         val destinationKeyFingerprint: ByteArray,
         val expiresAtMs: Long
     )
@@ -164,8 +166,9 @@ internal class MeshRouteTable(private val localId: String) {
         knownDestinationEncryptionKey: ByteArray? = null
     ): Boolean {
         if (NeaRerIdentity.normalize(localId) != localId) return false
-        if (authenticatedSenderId != advertisement.advertiserId) return false
-        if (advertisement.destinationId == localId) return false
+        if (NeaRerIdentity.normalize(authenticatedSenderId) != authenticatedSenderId) return false
+        if (authenticatedSenderId == localId || authenticatedSenderId != advertisement.advertiserId) return false
+        if (advertisement.destinationId == localId || advertisement.destinationId == authenticatedSenderId) return false
         if (!advertisement.verify(trustedSenderSigningKey, nowMs)) return false
         if (knownDestinationEncryptionKey != null) {
             val expected = MessageDigest.getInstance("SHA-256").digest(knownDestinationEncryptionKey)
@@ -176,14 +179,23 @@ internal class MeshRouteTable(private val localId: String) {
             authenticatedSenderId,
             advertisement.hopCount + 1,
             advertisement.sequence,
+            advertisement.issuedAtMs,
             advertisement.destinationKeyFingerprint.copyOf(),
             advertisement.expiresAtMs
         )
         if (candidate.hopCount !in 1..4) return false
         val previous = routes[candidate.destinationId]
         if (previous != null && previous.expiresAtMs > nowMs) {
-            if (candidate.sequence < previous.sequence) return false
-            if (candidate.sequence == previous.sequence && candidate.hopCount >= previous.hopCount) return false
+            // Sequence numbers belong to the advertiser, not globally to a
+            // destination. Compare them only when the same neighbor advertised
+            // both routes; otherwise compare signed freshness, then path length.
+            if (candidate.nextHopPeerId == previous.nextHopPeerId) {
+                if (candidate.sequence < previous.sequence) return false
+                if (candidate.sequence == previous.sequence && candidate.hopCount >= previous.hopCount) return false
+            } else {
+                if (candidate.issuedAtMs < previous.issuedAtMs) return false
+                if (candidate.issuedAtMs == previous.issuedAtMs && candidate.hopCount >= previous.hopCount) return false
+            }
         }
         routes[candidate.destinationId] = candidate
         return true
