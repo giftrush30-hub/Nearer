@@ -176,8 +176,11 @@ internal class MeshRouteTable(private val localId: String) {
     )
 
     private val routes = LinkedHashMap<String, Route>()
-    private val withdrawnSequences = HashMap<String, Long>()
-    private companion object { const val MAX_ROUTES = 256 }
+    private val withdrawnSequences = LinkedHashMap<String, Long>()
+    private companion object {
+        const val MAX_ROUTES = 256
+        const val MAX_TOMBSTONES = 512
+    }
 
     /** A successfully authenticated live Nearby connection is a direct route. */
     @Synchronized
@@ -188,6 +191,10 @@ internal class MeshRouteTable(private val localId: String) {
             val key = java.security.KeyFactory.getInstance("EC")
                 .generatePublic(java.security.spec.X509EncodedKeySpec(recipientEncryptionKey))
             require((key as? java.security.interfaces.ECPublicKey)?.params?.curve?.field?.fieldSize == 256)
+            if (!routes.containsKey(peerId) && routes.size >= MAX_ROUTES) {
+                val eviction = routes.values.minByOrNull { it.expiresAtMs } ?: return false
+                routes.remove(eviction.destinationId)
+            }
             val candidate = Route(
                 destinationId = peerId,
                 nextHopPeerId = peerId,
@@ -277,6 +284,10 @@ internal class MeshRouteTable(private val localId: String) {
         routes.remove(destinationId)
         val key = destinationId + "|" + advertiserId
         withdrawnSequences[key] = maxOf(withdrawnSequences[key] ?: -1L, sequence)
+        while (withdrawnSequences.size > MAX_TOMBSTONES) {
+            val oldest = withdrawnSequences.keys.firstOrNull() ?: break
+            withdrawnSequences.remove(oldest)
+        }
         return true
     }
 
