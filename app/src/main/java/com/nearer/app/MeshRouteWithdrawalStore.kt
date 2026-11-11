@@ -11,7 +11,8 @@ internal class MeshRouteWithdrawalStore(context: Context) {
     @Synchronized
     fun record(tombstone: MeshRouteTable.WithdrawalTombstone): Boolean {
         if (!valid(tombstone)) return false
-        val entries = read() ?: return false
+        if (isPermanentlyDisabled()) return false
+        val entries = read() ?: return disableRouting()
         val key = key(tombstone.destinationId, tombstone.advertiserId)
         val old = entries[key] ?: -1L
         // Older/equal verified withdrawals are harmless replays: keep the
@@ -20,14 +21,15 @@ internal class MeshRouteWithdrawalStore(context: Context) {
         if (tombstone.sequence <= old) return true
         // Never evict a live replay-protection watermark to make room. If the
         // bounded store is full, fail closed and pause multi-hop instead.
-        if (old < 0L && entries.size >= MAX_TOMBSTONES) return false
+        if (old < 0L && entries.size >= MAX_TOMBSTONES) return disableRouting()
         entries[key] = tombstone.sequence
-        return write(entries)
+        return if (write(entries)) true else disableRouting()
     }
 
     @Synchronized
     fun saveAll(tombstones: List<MeshRouteTable.WithdrawalTombstone>): Boolean {
-        val entries = read() ?: return false
+        if (isPermanentlyDisabled()) return false
+        val entries = read() ?: return disableRouting()
         tombstones.forEach { tombstone ->
             if (!valid(tombstone)) return false
             val key = key(tombstone.destinationId, tombstone.advertiserId)
@@ -35,27 +37,42 @@ internal class MeshRouteWithdrawalStore(context: Context) {
         }
         // Overflow is a safety failure, not an eviction policy: deleting an
         // unexpired watermark could permit a stale signed route to reappear.
-        if (entries.size > MAX_TOMBSTONES) return false
-        return write(entries)
+        if (entries.size > MAX_TOMBSTONES) return disableRouting()
+        return if (write(entries)) true else disableRouting()
     }
 
     @Synchronized
     fun restore(table: MeshRouteTable): Int {
-        val entries = read() ?: return -1
+        if (isPermanentlyDisabled()) return -1
+        val entries = read() ?: return disableRoutingInt()
         var restored = 0
         val validEntries = LinkedHashMap<String, Long>()
         entries.forEach { (compoundKey, sequence) ->
             val split = compoundKey.split("|")
-            if (split.size != 2) return -1
+            if (split.size != 2) return disableRoutingInt()
             val tombstone = MeshRouteTable.WithdrawalTombstone(split[0], split[1], sequence)
-            if (!valid(tombstone)) return -1
+            if (!valid(tombstone)) return disableRoutingInt()
             validEntries[compoundKey] = sequence
-            if (!table.rememberWithdrawal(tombstone.destinationId, tombstone.advertiserId, sequence)) return -1
+            if (!table.rememberWithdrawal(tombstone.destinationId, tombstone.advertiserId, sequence)) return disableRoutingInt()
             restored += 1
         }
-        if (validEntries.size != entries.size && !write(validEntries)) return -1
+        if (validEntries.size != entries.size && !write(validEntries)) return disableRoutingInt()
         return restored
     }
+
+    /** Permanently fail closed after replay-protection data cannot be trusted or saved. */
+    @Synchronized
+    fun disableRouting(): Boolean = try {
+        prefs.edit().putBoolean(DISABLED_KEY, true).commit()
+    } catch (_: Exception) { false }
+
+    private fun disableRoutingInt(): Int {
+        disableRouting()
+        return -1
+    }
+
+    private fun isPermanentlyDisabled(): Boolean =
+        try { prefs.getBoolean(DISABLED_KEY, false) } catch (_: Exception) { true }
 
     private fun valid(value: MeshRouteTable.WithdrawalTombstone): Boolean =
         NeaRerIdentity.normalize(value.destinationId) == value.destinationId &&
@@ -93,6 +110,7 @@ internal class MeshRouteWithdrawalStore(context: Context) {
 
     private companion object {
         const val KEY = "withdrawals_encrypted_v1"
+        const val DISABLED_KEY = "routing_permanently_disabled_v1"
         const val MAX_TOMBSTONES = 512
     }
 }
