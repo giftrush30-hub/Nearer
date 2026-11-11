@@ -71,6 +71,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         }
     private val meshRouteTable = MeshRouteTable(localStableId)
     private val meshDestinationEncryptionKeys = ConcurrentHashMap<String, ByteArray>()
+    private val routeAdvertisementWindows = ConcurrentHashMap<String, Pair<Long, Int>>()
 
     private fun encodedName(): String = "${localName.take(23)}|$localStableId"
     private fun decodeName(value: String): Pair<String, String> {
@@ -725,10 +726,26 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
+    private fun allowRouteAdvertisement(senderId: String, nowMs: Long): Boolean {
+        var allowed = false
+        routeAdvertisementWindows.compute(senderId) { _, previous ->
+            if (previous == null || nowMs - previous.first >= 60_000L) {
+                allowed = true
+                nowMs to 1
+            } else if (previous.second < 30) {
+                allowed = true
+                previous.first to (previous.second + 1)
+            } else previous
+        }
+        return allowed
+    }
+
     private fun handleMeshRouteAdvertisement(endpointId: String, envelope: JSONObject) {
         if (!authenticatedEndpoints.contains(endpointId)) return
         try {
             val senderId = synchronized(names) { stableIds[endpointId].orEmpty() }
+            val now = System.currentTimeMillis()
+            if (!allowRouteAdvertisement(senderId, now)) return
             val senderKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, senderId) ?: return
             val destinationKey = android.util.Base64.decode(
                 envelope.getString("destinationEncryptionPublicKey"), android.util.Base64.NO_WRAP
@@ -738,7 +755,6 @@ internal object IncomingFilePayloadPolicy {
             )
             val expectedFingerprint = java.security.MessageDigest.getInstance("SHA-256").digest(destinationKey)
             require(java.security.MessageDigest.isEqual(expectedFingerprint, advertisement.destinationKeyFingerprint))
-            val now = System.currentTimeMillis()
             val alreadyDirect = synchronized(activeEndpoints) {
                 activeEndpoints.any { peerEndpoint ->
                     authenticatedEndpoints.contains(peerEndpoint) &&
