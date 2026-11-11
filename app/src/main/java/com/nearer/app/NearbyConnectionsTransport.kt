@@ -737,17 +737,23 @@ internal object IncomingFilePayloadPolicy {
             val expectedFingerprint = java.security.MessageDigest.getInstance("SHA-256").digest(destinationKey)
             require(java.security.MessageDigest.isEqual(expectedFingerprint, advertisement.destinationKeyFingerprint))
             val now = System.currentTimeMillis()
+            val previous = meshRouteTable.find(advertisement.destinationId, now)
             if (!meshRouteTable.update(advertisement, senderId, senderKey, now, destinationKey)) return
             meshDestinationEncryptionKeys[advertisement.destinationId] = destinationKey.copyOf()
-            // Gossip a newly learned route under this device's own signature. The
-            // receiving neighbor becomes the next hop; the remote next-hop claim is
-            // never forwarded or trusted.
+            // Re-advertise only a materially improved/new route. Refreshes from the
+            // same next hop must not trigger endless route-gossip loops.
             val route = meshRouteTable.find(advertisement.destinationId, now) ?: return
-            val peers = synchronized(activeEndpoints) {
-                activeEndpoints.filter { it != endpointId && authenticatedEndpoints.contains(it) }
+            val changed = previous == null ||
+                previous.nextHopPeerId != route.nextHopPeerId ||
+                previous.hopCount != route.hopCount ||
+                !java.security.MessageDigest.isEqual(previous.destinationKeyFingerprint, route.destinationKeyFingerprint)
+            if (changed) {
+                val peers = synchronized(activeEndpoints) {
+                    activeEndpoints.filter { it != endpointId && authenticatedEndpoints.contains(it) }
+                }
+                peers.forEach { publishKnownRoutesTo(it) }
+                listener.onStatus("A verified nearby mesh route was learned (${route.hopCount} hop(s)).")
             }
-            peers.forEach { publishKnownRoutesTo(it) }
-            listener.onStatus("A verified nearby mesh route was learned (${route.hopCount} hop(s)).")
         } catch (_: Exception) {
             listener.onStatus("An invalid or unauthenticated mesh route was rejected.")
         }
