@@ -176,6 +176,7 @@ internal class MeshRouteTable(private val localId: String) {
     )
 
     private val routes = LinkedHashMap<String, Route>()
+    private companion object { const val MAX_ROUTES = 256 }
 
     @Synchronized
     fun update(
@@ -222,6 +223,10 @@ internal class MeshRouteTable(private val localId: String) {
                 if (candidate.hopCount == previous.hopCount && candidate.issuedAtMs == previous.issuedAtMs &&
                     candidate.nextHopPeerId >= previous.nextHopPeerId) return false
             }
+        }
+        if (previous == null && routes.size >= MAX_ROUTES) {
+            val eviction = routes.values.minByOrNull { it.expiresAtMs } ?: return false
+            routes.remove(eviction.destinationId)
         }
         routes[candidate.destinationId] = candidate
         return true
