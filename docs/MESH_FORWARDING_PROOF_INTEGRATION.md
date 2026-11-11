@@ -15,9 +15,11 @@ The separate hop ACK is useful for reliable retry, but it is not a transferable 
 
 ## Required v2 envelope
 
+**Critical binding requirement:** the current Batch Two proof primitive signs the packet ID and origin, but not yet a digest of the immutable origin-signed packet. Before any transport integration, extend each proof record to include a 32-byte SHA-256 digest of the canonical immutable packet bytes, include it in the signed bytes and proof hash, and require the chain verifier to compare it with the packet being forwarded. Do not treat a matching packet ID as a substitute for this content binding.
+
 A future envelope must carry:
 
-- The exact immutable origin-signed packet bytes (or a canonical immutable-packet digest).
+- The exact immutable origin-signed packet bytes (or a canonical immutable-packet digest), cryptographically bound by every proof record.
 - A bounded ordered proof chain, with no public keys accepted from the chain itself.
 - A protocol version and explicit chain length.
 - A total encoded size that remains below Nearby Connections' 32 KiB BYTES limit, including JSON/base64 overhead.
