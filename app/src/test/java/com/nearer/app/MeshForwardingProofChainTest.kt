@@ -113,7 +113,7 @@ class MeshForwardingProofChainTest {
         assertFalse(MeshForwardingProofChain(listOf(first, repeated))
             .verify("packet-3", "AAAAAA", "BBBBBB", { b.public.encoded }, 10_500L))
         assertFalse(runCatching {
-            MeshForwardingProofChain.decode(byteArrayOf(0x4e, 0x52, 0x43, 0x31, 5))
+            MeshForwardingProofChain.decode(byteArrayOf(0x4e, 0x52, 0x43, 0x31, 6))
         }.isSuccess)
     }
 
