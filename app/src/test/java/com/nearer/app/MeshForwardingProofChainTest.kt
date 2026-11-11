@@ -117,4 +117,30 @@ class MeshForwardingProofChainTest {
         }.isSuccess)
     }
 
+
+    @Test fun fiveAcceptanceRecordsCoverFourRelayForwardsAndDestination() {
+        val peers = (1..5).map { pair() }
+        val ids = listOf("AAAAAA", "BBBBBB", "CCCCCC", "DDDDDD", "EEEEEE", "FFFFFF")
+        val proofs = mutableListOf<MeshForwardingProof>()
+        var previousHash = MeshForwardingProof.GENESIS_HASH
+        for (index in 1..5) {
+            val proof = MeshForwardingProof.create(
+                "packet-five", ids.first(), ids[index], ids[index - 1],
+                index, 20_000L + index, previousHash
+            ) { sign(peers[index - 1].private, it) }
+            proofs += proof
+            previousHash = proof.hash()
+        }
+        val keys = ids.drop(1).take(5).zip(peers.map { it.public.encoded }).toMap()
+        val chain = MeshForwardingProofChain(proofs)
+        val decoded = MeshForwardingProofChain.decode(chain.encode())
+        assertTrue(decoded.verify("packet-five", ids.first(), ids[5], { keys[it] }, 21_000L))
+
+        // A sixth acceptance record is outside the v1 hopLimit=4 transport bound.
+        assertFalse(runCatching {
+            MeshForwardingProofChain(proofs + proofs.last())
+                .encode()
+        }.isSuccess)
+    }
+
 }
