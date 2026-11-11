@@ -69,6 +69,9 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
             if (identity != stored) prefs.edit().putString("nearer_stable_id", identity).apply()
             identity
         }
+    private val meshRouteTable = MeshRouteTable(localStableId)
+    private val meshDestinationEncryptionKeys = ConcurrentHashMap<String, ByteArray>()
+
     private fun encodedName(): String = "${localName.take(23)}|$localStableId"
     private fun decodeName(value: String): Pair<String, String> {
         val split = value.lastIndexOf('|')
@@ -353,6 +356,7 @@ internal object IncomingFilePayloadPolicy {
             val wasAuthenticated = authenticatedEndpoints.remove(id)
             peerHandshakes.remove(id)
             messageSessions.remove(id)
+            meshRouteTable.removeNextHop(synchronized(names) { stableIds[id].orEmpty() })
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
             pauseOutgoingFilesForEndpoint(id)
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
@@ -634,6 +638,9 @@ internal object IncomingFilePayloadPolicy {
                 localStableId, peerId, state.localEphemeralKeyPair.private, remoteEcdhKey, challenge
             )
             messageSessions[endpointId] = session
+            val destinationKey = state.remoteRecipientEncryptionPublicKey
+                ?: throw IllegalStateException("Verified recipient encryption key is unavailable.")
+            meshDestinationEncryptionKeys[peerId] = destinationKey.copyOf()
             if (authenticatedEndpoints.add(endpointId)) {
                 peerHandshakes.remove(endpointId, state)
                 val details = synchronized(names) {
@@ -647,9 +654,102 @@ internal object IncomingFilePayloadPolicy {
                     "Encrypted link established with ${details.first} using its previously pinned device identity and fresh signed recipient binding."
                 }
                 listener.onStatus(trustNotice)
+                // Advertise authenticated direct neighbors and learned routes only after
+                // the recipient identity binding has been verified.
+                val endpoints = synchronized(activeEndpoints) { activeEndpoints.filter { authenticatedEndpoints.contains(it) } }
+                endpoints.forEach { publishKnownRoutesTo(it) }
             }
         } catch (error: Exception) {
             failPeerHandshake(endpointId, error.localizedMessage ?: "Secure peer authentication could not be completed.")
+        }
+    }
+
+    private fun nextMeshRouteSequence(): Long {
+        val prefs = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val next = prefs.getLong("nearby_mesh_route_sequence", 0L) + 1L
+        require(next > 0L && prefs.edit().putLong("nearby_mesh_route_sequence", next).commit()) {
+            "NeaRer could not persist its route sequence."
+        }
+        return next
+    }
+
+    private fun sendMeshRouteAdvertisement(
+        endpointId: String,
+        destinationId: String,
+        destinationKey: ByteArray,
+        hopCount: Int
+    ) {
+        if (!authenticatedEndpoints.contains(endpointId) || hopCount !in 0..3) return
+        try {
+            val now = System.currentTimeMillis()
+            val advertisement = SignedRouteAdvertisement.create(
+                advertiserId = localStableId,
+                destinationId = destinationId,
+                destinationPublicKey = destinationKey,
+                sequence = nextMeshRouteSequence(),
+                hopCount = hopCount,
+                issuedAtMs = now,
+                expiresAtMs = now + 10L * 60L * 1000L
+            ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+            val wire = JSONObject()
+                .put("kind", "mesh_route_advert_v1")
+                .put("advertisement", android.util.Base64.encodeToString(advertisement.encode(), android.util.Base64.NO_WRAP))
+                .put("destinationEncryptionPublicKey", android.util.Base64.encodeToString(destinationKey, android.util.Base64.NO_WRAP))
+            client.sendPayload(endpointId, Payload.fromBytes(wire.toString().toByteArray(Charsets.UTF_8)))
+        } catch (error: Exception) {
+            listener.onStatus("A nearby mesh route could not be advertised safely.")
+        }
+    }
+
+    private fun publishKnownRoutesTo(endpointId: String) {
+        if (!authenticatedEndpoints.contains(endpointId)) return
+        val targetPeerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (targetPeerId.isBlank()) return
+        val sent = HashSet<String>()
+        val direct = synchronized(activeEndpoints) {
+            activeEndpoints.filter { it != endpointId && authenticatedEndpoints.contains(it) }
+        }
+        direct.forEach { otherEndpoint ->
+            val peerId = synchronized(names) { stableIds[otherEndpoint].orEmpty() }
+            val key = meshDestinationEncryptionKeys[peerId]
+            if (peerId.isNotBlank() && peerId != targetPeerId && key != null && sent.add(peerId)) {
+                sendMeshRouteAdvertisement(endpointId, peerId, key, 0)
+            }
+        }
+        meshRouteTable.snapshot(System.currentTimeMillis()).forEach { route ->
+            if (route.nextHopPeerId == targetPeerId || route.destinationId == targetPeerId || !sent.add(route.destinationId)) return@forEach
+            val key = meshDestinationEncryptionKeys[route.destinationId] ?: return@forEach
+            sendMeshRouteAdvertisement(endpointId, route.destinationId, key, route.hopCount)
+        }
+    }
+
+    private fun handleMeshRouteAdvertisement(endpointId: String, envelope: JSONObject) {
+        if (!authenticatedEndpoints.contains(endpointId)) return
+        try {
+            val senderId = synchronized(names) { stableIds[endpointId].orEmpty() }
+            val senderKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, senderId) ?: return
+            val destinationKey = android.util.Base64.decode(
+                envelope.getString("destinationEncryptionPublicKey"), android.util.Base64.NO_WRAP
+            )
+            val advertisement = SignedRouteAdvertisement.decode(
+                android.util.Base64.decode(envelope.getString("advertisement"), android.util.Base64.NO_WRAP)
+            )
+            val expectedFingerprint = java.security.MessageDigest.getInstance("SHA-256").digest(destinationKey)
+            require(java.security.MessageDigest.isEqual(expectedFingerprint, advertisement.destinationKeyFingerprint))
+            val now = System.currentTimeMillis()
+            if (!meshRouteTable.update(advertisement, senderId, senderKey, now, destinationKey)) return
+            meshDestinationEncryptionKeys[advertisement.destinationId] = destinationKey.copyOf()
+            // Gossip a newly learned route under this device's own signature. The
+            // receiving neighbor becomes the next hop; the remote next-hop claim is
+            // never forwarded or trusted.
+            val route = meshRouteTable.find(advertisement.destinationId, now) ?: return
+            val peers = synchronized(activeEndpoints) {
+                activeEndpoints.filter { it != endpointId && authenticatedEndpoints.contains(it) }
+            }
+            peers.forEach { publishKnownRoutesTo(it) }
+            listener.onStatus("A verified nearby mesh route was learned (${route.hopCount} hop(s)).")
+        } catch (_: Exception) {
+            listener.onStatus("An invalid or unauthenticated mesh route was rejected.")
         }
     }
 
@@ -668,6 +768,7 @@ internal object IncomingFilePayloadPolicy {
                 "peer_hello_v3" -> { handlePeerHello(endpointId, envelope); return }
                 "peer_proof_v3" -> { handlePeerProof(endpointId, envelope); return }
                 "mesh_identity_binding_v1" -> { handlePeerIdentityBinding(endpointId, envelope); return }
+                "mesh_route_advert_v1" -> { handleMeshRouteAdvertisement(endpointId, envelope); return }
                 "peer_hello_v1", "peer_proof_v1", "peer_hello_v2", "peer_proof_v2" -> {
                     failPeerHandshake(endpointId, "This nearby phone is using an older NeaRer security protocol. Update both phones before connecting.")
                     return
