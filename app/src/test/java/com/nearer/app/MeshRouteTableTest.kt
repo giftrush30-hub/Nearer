@@ -77,4 +77,44 @@ class MeshRouteTableTest {
         assertFalse(ad.copy(hopCount = 2).verify(sender.public.encoded, 2000L))
         assertFalse(ad.copy(destinationId = "DDDDDD").verify(sender.public.encoded, 2000L))
     }
+    @Test fun routeSequenceNumbersAreComparedOnlyWithinTheSameAdvertiser() {
+        val firstAdvertiser = pair()
+        val secondAdvertiser = pair()
+        val destination = pair()
+        val table = MeshRouteTable("CCCCCC")
+        val olderFromA = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 900L, 1, 1000L, 9000L
+        ) { sign(firstAdvertiser.private, it) }
+        val newerFromD = SignedRouteAdvertisement.create(
+            "DDDDDD", "BBBBBB", destination.public.encoded, 1L, 0, 3000L, 9000L
+        ) { sign(secondAdvertiser.private, it) }
+
+        assertTrue(table.update(olderFromA, "AAAAAA", firstAdvertiser.public.encoded, 4000L))
+        // A lower sequence from another authenticated advertiser is not stale:
+        // sequence spaces are local to each advertiser.
+        assertTrue(table.update(newerFromD, "DDDDDD", secondAdvertiser.public.encoded, 4000L))
+        assertEquals("DDDDDD", table.find("BBBBBB", 4000L)!!.nextHopPeerId)
+
+        val staleFromD = SignedRouteAdvertisement.create(
+            "DDDDDD", "BBBBBB", destination.public.encoded, 0L, 0, 2500L, 9000L
+        ) { sign(secondAdvertiser.private, it) }
+        assertFalse(table.update(staleFromD, "DDDDDD", secondAdvertiser.public.encoded, 4000L))
+    }
+
+    @Test fun rejectsRoutesThatPointToTheLocalDeviceOrAdvertiserItself() {
+        val sender = pair()
+        val destination = pair()
+        val table = MeshRouteTable("CCCCCC")
+        val toLocal = SignedRouteAdvertisement.create(
+            "AAAAAA", "CCCCCC", destination.public.encoded, 1L, 0, 1000L, 5000L
+        ) { sign(sender.private, it) }
+        val toAdvertiser = SignedRouteAdvertisement.create(
+            "AAAAAA", "AAAAAA", destination.public.encoded, 2L, 0, 1000L, 5000L
+        ) { sign(sender.private, it) }
+
+        assertFalse(table.update(toLocal, "AAAAAA", sender.public.encoded, 2000L))
+        assertFalse(table.update(toAdvertiser, "AAAAAA", sender.public.encoded, 2000L))
+        assertNull(table.find("CCCCCC", 2000L))
+    }
+
 }
