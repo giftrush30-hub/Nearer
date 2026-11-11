@@ -57,10 +57,12 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         var remoteRecipientEncryptionPublicKey: ByteArray? = null,
         var remotePeerId: String = "",
         var localProofSent: Boolean = false,
+        var localProofSendStarted: Boolean = false,
         var pendingRemoteProof: String? = null,
         var remoteProofVerified: Boolean = false,
         var remoteBindingVerified: Boolean = false,
         var localBindingSent: Boolean = false,
+        var localBindingSendStarted: Boolean = false,
         var pendingRemoteBinding: String? = null,
         var remoteFirstSeen: Boolean = false
     )
@@ -80,6 +82,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val meshRoutePersistence = MeshRoutePersistence(appContext)
     private val meshReceiptOutbox = MeshReceiptOutbox(appContext)
     private val receiptSendInFlightUntil = ConcurrentHashMap<String, Long>()
+    @Volatile private var receiptRetryScheduled = false
     private val localRecipientIdentity by lazy { RecipientEncryptionIdentity.getOrCreate(appContext) }
 
 
@@ -518,14 +521,21 @@ internal object IncomingFilePayloadPolicy {
             state.remoteNonce = hello.nonce
             state.remoteEphemeralPublicKey = hello.ephemeralPublicKey
             state.remoteRecipientEncryptionPublicKey = hello.recipientEncryptionPublicKey
-            if (!state.localProofSent) {
+            if (!state.localProofSent && !state.localProofSendStarted) {
                 val challenge = NearbyPeerHandshake.transcriptChallenge(
                     localStableId, state.localNonce, state.localEphemeralKeyPair.public.encoded, state.localRecipientEncryptionPublicKey,
                     hello.peerId, hello.nonce, hello.ephemeralPublicKey, hello.recipientEncryptionPublicKey
                 )
                 val signature = SecurePeerIdentity.signChallenge(localStableId, state.localPublicKey, challenge)
-                state.localProofSent = true
+                state.localProofSendStarted = true
                 client.sendPayload(endpointId, Payload.fromBytes(NearbyPeerHandshake.proof(localStableId, signature)))
+                    .addOnSuccessListener {
+                        state.localProofSent = true
+                        state.pendingRemoteProof?.let { pending ->
+                            state.pendingRemoteProof = null
+                            handlePeerProof(endpointId, JSONObject(pending))
+                        }
+                    }
                     .addOnFailureListener { failPeerHandshake(endpointId, "Could not send this phone’s secure identity proof.") }
             }
             state.pendingRemoteProof?.let { pending ->
@@ -580,7 +590,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun sendLocalIdentityBinding(endpointId: String, state: PeerHandshakeState) {
-        if (state.localBindingSent) return
+        if (state.localBindingSent || state.localBindingSendStarted) return
         val now = System.currentTimeMillis()
         val prefs = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
         val sequence = prefs.getLong("nearby_local_binding_sequence", 0L) + 1L
@@ -604,8 +614,12 @@ internal object IncomingFilePayloadPolicy {
             .put("issuedAtMs", binding.issuedAtMs)
             .put("expiresAtMs", binding.expiresAtMs)
             .put("signature", android.util.Base64.encodeToString(binding.signature, android.util.Base64.NO_WRAP))
-        state.localBindingSent = true
+        state.localBindingSendStarted = true
         client.sendPayload(endpointId, Payload.fromBytes(wire.toString().toByteArray(Charsets.UTF_8)))
+            .addOnSuccessListener {
+                state.localBindingSent = true
+                completePeerAuthentication(endpointId, state)
+            }
             .addOnFailureListener { failPeerHandshake(endpointId, "Could not send this phone’s signed recipient identity binding.") }
     }
 
@@ -942,8 +956,12 @@ internal object IncomingFilePayloadPolicy {
                 listener.onStatus("A mesh delivery receipt could not reach the next hop. NeaRer will retry.")
             }
         }
-        if (meshReceiptOutbox.size() > 0) {
-            deliveryHandler.postDelayed({ flushPendingMeshReceipts() }, RECEIPT_RETRY_MS)
+        if (meshReceiptOutbox.size() > 0 && !receiptRetryScheduled) {
+            receiptRetryScheduled = true
+            deliveryHandler.postDelayed({
+                receiptRetryScheduled = false
+                flushPendingMeshReceipts()
+            }, RECEIPT_RETRY_MS)
         }
     }
 
