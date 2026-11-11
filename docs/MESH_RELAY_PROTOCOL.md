@@ -16,7 +16,7 @@
 
 # NeaRer secure mesh relay protocol — design gate
 
-Status: engineering prototype in a draft branch. Relay participation remains disabled; this is not a release or a claim of physical multi-hop validation.
+Status: Batch One secure-mesh foundations are integrated into `main` at commit `1a6006463f3e206941e2195e69d7aed818831fa1`. This is an engineering prototype, not a release. Relay participation remains disabled; no physical multi-hop validation is claimed.
 
 ## Why direct-chat E2E keys are not enough
 
@@ -129,7 +129,7 @@ A hop acknowledgement means only that the next hop durably accepted the packet. 
 - Queue retry currently runs only while the Nearby transport instance is alive. WorkManager/foreground-service scheduling for process death, Doze and reboot recovery is not yet implemented.
 - Persistent withdrawal tombstones are now restored before new route advertisements are accepted. Route cache and withdrawal recovery still need adversarial testing, including storage corruption and conflicting paths.
 - Queue limits, expiry, retry policy and battery/storage controls need product-level review.
-- No physical A → B → C → D test, forced process-death/reboot test, multi-manufacturer test, or adversarial field test has passed. Android 35 instrumentation recently crashed before its tests completed; the latest workflow is being rerun with clean emulator snapshots and retained test reports.
-- Relay remains disabled. This draft PR is not release-ready and must not be merged or advertised as complete.
+- No physical A → B → C → D test, forced process-death/reboot test, multi-manufacturer test, or adversarial field test has passed. These are outstanding validation gates; the source integration does not imply that they passed.
+- Relay remains disabled. The Batch One source branch has been merged into the integration branch and consolidated into `main`; this does not authorize relay activation or a public release.
 
-The draft PR must pass exact-head CI and code review before integration. The user must explicitly approve any merge or controlled relay field test.
+The project owner approved source integration into `main`. Any controlled relay field test or activation still requires explicit informed consent, Android permissions, battery/privacy controls, and completion of the security gates above.
