@@ -563,6 +563,10 @@ internal object IncomingFilePayloadPolicy {
             when (envelope.optString("kind")) {
                 "peer_hello_v2" -> { handlePeerHello(endpointId, envelope); return }
                 "peer_proof_v2" -> { handlePeerProof(endpointId, envelope); return }
+                "peer_hello_v1", "peer_proof_v1" -> {
+                    failPeerHandshake(endpointId, "This nearby phone is using an older NeaRer security protocol. Update both phones before connecting.")
+                    return
+                }
             }
             if (!authenticatedEndpoints.contains(endpointId)) return
             if (envelope.optString("kind") == "secure_packet_v1") {
