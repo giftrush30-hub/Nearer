@@ -999,6 +999,7 @@ internal object IncomingFilePayloadPolicy {
 
     /** Returns currently usable routes only for recipients this phone has already trusted. */
     fun reachableMeshRecipients(): List<MeshRecipient> {
+        if (!meshRouteWithdrawalStoreHealthy) return emptyList()
         val now = System.currentTimeMillis()
         return meshRouteTable.snapshot(now).mapNotNull { route ->
             if (endpointForStablePeer(route.nextHopPeerId) == null) return@mapNotNull null
@@ -1303,6 +1304,7 @@ internal object IncomingFilePayloadPolicy {
 
     /** Sends an E2E-encrypted chat packet over the verified mesh route to a previously trusted recipient. */
     fun sendMeshMessage(destinationPeerId: String, body: String, messageId: String = UUID.randomUUID().toString()): Boolean {
+        if (!meshRouteWithdrawalStoreHealthy) return false
         if (body.isBlank() || body.length > 4000 ||
             NeaRerIdentity.normalize(destinationPeerId) != destinationPeerId ||
             messageId.isBlank() || messageId.length > 80) return false
