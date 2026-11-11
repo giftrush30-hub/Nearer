@@ -93,7 +93,16 @@ internal class MeshReceiptOutbox(context: Context) {
 
     private fun read(): LinkedHashMap<String, Entry>? = try {
         val raw = prefs.getString(KEY, null) ?: return LinkedHashMap()
-        val json = JSONObject(raw)
+        if (raw.length > MAX_STORED_CHARS) return null
+        // Older development builds stored the JSON wrapper in plaintext while
+        // encrypting each receipt. Read that shape once for migration; all new
+        // writes encrypt the complete wrapper, including packet/peer IDs.
+        val clear = if (raw.trimStart().startsWith("{")) {
+            raw.toByteArray(Charsets.UTF_8)
+        } else {
+            LocalDataCipher.decrypt(app, raw) ?: return null
+        }
+        val json = JSONObject(clear.toString(Charsets.UTF_8))
         if (json.length() > MAX_ITEMS) return null
         val result = LinkedHashMap<String, Entry>()
         val keys = json.keys()
@@ -122,12 +131,18 @@ internal class MeshReceiptOutbox(context: Context) {
                 .put("previousHopPeerId", entry.previousHopPeerId)
                 .put("expectedNextHopPeerId", entry.expectedNextHopPeerId))
         }
-        return prefs.edit().putString(KEY, json.toString()).commit()
+        val clear = json.toString().toByteArray(Charsets.UTF_8)
+        if (clear.size > MAX_STORED_CHARS) return false
+        return try {
+            val encrypted = LocalDataCipher.encrypt(app, clear)
+            prefs.edit().putString(KEY, encrypted).commit()
+        } catch (_: Exception) { false }
     }
 
     private companion object {
         const val KEY = "receipts_v1"
         const val MAX_ITEMS = 64
         const val MAX_TOTAL_CHARS = 256 * 1024
+        const val MAX_STORED_CHARS = 384 * 1024
     }
 }
