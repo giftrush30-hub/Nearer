@@ -280,10 +280,13 @@ internal class MeshRouteTable(private val localId: String) {
         if (NeaRerIdentity.normalize(destinationId) != destinationId ||
             NeaRerIdentity.normalize(advertiserId) != advertiserId || sequence < 0L) return false
         val route = routes[destinationId]
-        if (route != null && route.nextHopPeerId != advertiserId) return false
         val key = destinationId + "|" + advertiserId
         withdrawnSequences[key] = maxOf(withdrawnSequences[key] ?: -1L, sequence)
-        if (route != null && route.sequence <= sequence) routes.remove(destinationId)
+        // A withdrawal from a non-selected advertiser must still suppress that
+        // advertiser's stale replay, but must never remove another neighbor's route.
+        if (route?.nextHopPeerId == advertiserId && route.sequence <= sequence) {
+            routes.remove(destinationId)
+        }
         while (withdrawnSequences.size > MAX_TOMBSTONES) {
             val oldest = withdrawnSequences.keys.firstOrNull() ?: break
             withdrawnSequences.remove(oldest)
