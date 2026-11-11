@@ -904,7 +904,7 @@ internal object IncomingFilePayloadPolicy {
             if (previous == null || nowMs - previous.first >= 60_000L) {
                 allowed = true
                 nowMs to 1
-            } else if (previous.second < 256) {
+            } else if (previous.second < 30) {
                 allowed = true
                 previous.first to (previous.second + 1)
             } else previous
