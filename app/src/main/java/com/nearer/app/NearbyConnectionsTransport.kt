@@ -46,9 +46,11 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         val localNonce: ByteArray,
         val localPublicKey: ByteArray,
         val localEphemeralKeyPair: java.security.KeyPair,
+        val localRecipientEncryptionPublicKey: ByteArray,
         var remoteNonce: ByteArray? = null,
         var remotePublicKey: ByteArray? = null,
         var remoteEphemeralPublicKey: ByteArray? = null,
+        var remoteRecipientEncryptionPublicKey: ByteArray? = null,
         var remotePeerId: String = "",
         var localProofSent: Boolean = false,
         var pendingRemoteProof: String? = null
@@ -454,11 +456,15 @@ internal object IncomingFilePayloadPolicy {
         }
         try {
             val publicKey = SecurePeerIdentity.publicKeyEncoded()
+            val recipientIdentity = RecipientEncryptionIdentity.getOrCreate(appContext)
             val ephemeral = NearbyMessageCrypto.newEphemeralKeyPair()
-            val state = PeerHandshakeState(NearbyPeerHandshake.newNonce(), publicKey, ephemeral)
+            val state = PeerHandshakeState(
+                NearbyPeerHandshake.newNonce(), publicKey, ephemeral, recipientIdentity.publicKeyEncoded
+            )
             peerHandshakes[endpointId] = state
             client.sendPayload(endpointId, Payload.fromBytes(NearbyPeerHandshake.hello(
-                localStableId, publicKey, state.localNonce, ephemeral.public.encoded
+                localStableId, publicKey, state.localNonce, ephemeral.public.encoded,
+                state.localRecipientEncryptionPublicKey
             )))
                 .addOnFailureListener { failPeerHandshake(endpointId, "Could not start secure peer verification.") }
         } catch (_: Exception) {
@@ -475,14 +481,16 @@ internal object IncomingFilePayloadPolicy {
             require(state.remotePublicKey == null || java.security.MessageDigest.isEqual(state.remotePublicKey, hello.publicKey))
             require(state.remoteNonce == null || java.security.MessageDigest.isEqual(state.remoteNonce, hello.nonce))
             require(state.remoteEphemeralPublicKey == null || java.security.MessageDigest.isEqual(state.remoteEphemeralPublicKey, hello.ephemeralPublicKey))
+            require(state.remoteRecipientEncryptionPublicKey == null || java.security.MessageDigest.isEqual(state.remoteRecipientEncryptionPublicKey, hello.recipientEncryptionPublicKey))
             state.remotePeerId = hello.peerId
             state.remotePublicKey = hello.publicKey
             state.remoteNonce = hello.nonce
             state.remoteEphemeralPublicKey = hello.ephemeralPublicKey
+            state.remoteRecipientEncryptionPublicKey = hello.recipientEncryptionPublicKey
             if (!state.localProofSent) {
                 val challenge = NearbyPeerHandshake.transcriptChallenge(
-                    localStableId, state.localNonce, state.localEphemeralKeyPair.public.encoded,
-                    hello.peerId, hello.nonce, hello.ephemeralPublicKey
+                    localStableId, state.localNonce, state.localEphemeralKeyPair.public.encoded, state.localRecipientEncryptionPublicKey,
+                    hello.peerId, hello.nonce, hello.ephemeralPublicKey, hello.recipientEncryptionPublicKey
                 )
                 val signature = SecurePeerIdentity.signChallenge(localStableId, state.localPublicKey, challenge)
                 state.localProofSent = true
@@ -503,20 +511,22 @@ internal object IncomingFilePayloadPolicy {
         try {
             val (peerId, signature) = NearbyPeerHandshake.decodeProof(envelope)
             if (!state.localProofSent || state.remotePublicKey == null ||
-                state.remoteNonce == null || state.remoteEphemeralPublicKey == null) {
+                state.remoteNonce == null || state.remoteEphemeralPublicKey == null ||
+                state.remoteRecipientEncryptionPublicKey == null) {
                 state.pendingRemoteProof = envelope.toString()
                 return
             }
             val remoteKey = state.remotePublicKey ?: throw IllegalArgumentException("Peer key has not been received.")
             val remoteNonce = state.remoteNonce ?: throw IllegalArgumentException("Peer challenge has not been received.")
             val remoteEphemeral = state.remoteEphemeralPublicKey ?: throw IllegalArgumentException("Peer encryption key has not been received.")
+            val remoteRecipientKey = state.remoteRecipientEncryptionPublicKey ?: throw IllegalArgumentException("Peer recipient key has not been received.")
             require(peerId == state.remotePeerId)
             val challenge = NearbyPeerHandshake.transcriptChallenge(
-                localStableId, state.localNonce, state.localEphemeralKeyPair.public.encoded,
-                peerId, remoteNonce, remoteEphemeral
+                localStableId, state.localNonce, state.localEphemeralKeyPair.public.encoded, state.localRecipientEncryptionPublicKey,
+                peerId, remoteNonce, remoteEphemeral, remoteRecipientKey
             )
             require(SecurePeerIdentity.verifyChallenge(peerId, remoteKey, challenge, signature))
-            val trustResult = TrustedPeerKeyStore.checkAndPin(appContext, peerId, remoteKey)
+            val trustResult = TrustedPeerKeyStore.checkAndPin(appContext, peerId, remoteKey, remoteRecipientKey)
             when (trustResult) {
                 TrustedPeerKeyStore.Result.FIRST_SEEN, TrustedPeerKeyStore.Result.MATCH -> {
                     val remoteEcdhKey = NearbyMessageCrypto.decodeEphemeralPublicKey(remoteEphemeral)
@@ -561,9 +571,9 @@ internal object IncomingFilePayloadPolicy {
         try {
             val envelope = JSONObject(bytes?.toString(Charsets.UTF_8).orEmpty())
             when (envelope.optString("kind")) {
-                "peer_hello_v2" -> { handlePeerHello(endpointId, envelope); return }
-                "peer_proof_v2" -> { handlePeerProof(endpointId, envelope); return }
-                "peer_hello_v1", "peer_proof_v1" -> {
+                "peer_hello_v3" -> { handlePeerHello(endpointId, envelope); return }
+                "peer_proof_v3" -> { handlePeerProof(endpointId, envelope); return }
+                "peer_hello_v1", "peer_proof_v1", "peer_hello_v2", "peer_proof_v2" -> {
                     failPeerHandshake(endpointId, "This nearby phone is using an older NeaRer security protocol. Update both phones before connecting.")
                     return
                 }

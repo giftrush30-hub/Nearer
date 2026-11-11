@@ -114,28 +114,41 @@ internal object NearbyMessageCrypto {
     }
 
     fun transcript(
-        firstId: String, firstNonce: ByteArray, firstEphemeralKey: ByteArray,
-        secondId: String, secondNonce: ByteArray, secondEphemeralKey: ByteArray
+        firstId: String, firstNonce: ByteArray, firstEphemeralKey: ByteArray, firstRecipientKey: ByteArray,
+        secondId: String, secondNonce: ByteArray, secondEphemeralKey: ByteArray, secondRecipientKey: ByteArray
     ): ByteArray {
         require(firstId != secondId && firstNonce.size == 32 && secondNonce.size == 32)
-        require(firstEphemeralKey.isNotEmpty() && firstEphemeralKey.size <= 512)
-        require(secondEphemeralKey.isNotEmpty() && secondEphemeralKey.size <= 512)
+        listOf(firstEphemeralKey, secondEphemeralKey, firstRecipientKey, secondRecipientKey).forEach {
+            require(it.isNotEmpty() && it.size <= 512)
+        }
         val ordered = if (firstId < secondId) {
-            listOf(Triple(firstId, firstNonce, firstEphemeralKey), Triple(secondId, secondNonce, secondEphemeralKey))
+            listOf(
+                listOf(firstId, firstNonce, firstEphemeralKey, firstRecipientKey),
+                listOf(secondId, secondNonce, secondEphemeralKey, secondRecipientKey)
+            )
         } else {
-            listOf(Triple(secondId, secondNonce, secondEphemeralKey), Triple(firstId, firstNonce, firstEphemeralKey))
+            listOf(
+                listOf(secondId, secondNonce, secondEphemeralKey, secondRecipientKey),
+                listOf(firstId, firstNonce, firstEphemeralKey, firstRecipientKey)
+            )
         }
         val output = ByteArrayOutputStream()
         DataOutputStream(output).use { data ->
-            data.write("NeaRer-Nearby-Peer-Handshake-v2".toByteArray(Charsets.US_ASCII))
-            ordered.forEach { (id, nonce, key) ->
+            data.write("NeaRer-Nearby-Peer-Handshake-v3".toByteArray(Charsets.US_ASCII))
+            ordered.forEach { fields ->
+                val id = fields[0] as String
+                val nonce = fields[1] as ByteArray
+                val ephemeral = fields[2] as ByteArray
+                val recipient = fields[3] as ByteArray
                 val encoded = id.toByteArray(Charsets.UTF_8)
                 data.writeShort(encoded.size)
                 data.write(encoded)
                 data.writeByte(nonce.size)
                 data.write(nonce)
-                data.writeShort(key.size)
-                data.write(key)
+                data.writeShort(ephemeral.size)
+                data.write(ephemeral)
+                data.writeShort(recipient.size)
+                data.write(recipient)
             }
         }
         return output.toByteArray()
