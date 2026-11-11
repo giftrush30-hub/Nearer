@@ -84,7 +84,7 @@ class MeshForwardingProofChainTest {
             MeshForwardingProof.GENESIS_HASH
         ) { sign(b.private, it) }
         val second = MeshForwardingProof.create(
-            "packet-2", "AAAAAA", "CCCCCC", "BBBBBB", 2, 10_100L, first.hash()
+            "packet-2", "AAAAAA", "CCCCCC", "BBBBBB", 2, 10_300L, first.hash()
         ) { sign(c.private, it) }
         val keys = mapOf("BBBBBB" to b.public.encoded, "CCCCCC" to c.public.encoded)
         assertFalse(MeshForwardingProofChain(listOf(first, second))
