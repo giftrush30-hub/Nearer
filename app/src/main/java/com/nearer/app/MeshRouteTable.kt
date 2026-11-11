@@ -15,7 +15,9 @@ internal data class SignedRouteAdvertisement(
     val hopCount: Int,
     val issuedAtMs: Long,
     val expiresAtMs: Long,
-    val signature: ByteArray
+    val signature: ByteArray,
+    /** Signed path vector: advertiser, each relay, then destination. */
+    val path: List<String> = listOf(advertiserId, destinationId)
 ) {
     fun signedBytes(): ByteArray {
         val out = ByteArrayOutputStream()
@@ -23,6 +25,8 @@ internal data class SignedRouteAdvertisement(
             data.write("NeaRer-route-advert-v1".toByteArray(Charsets.US_ASCII))
             writeString(data, advertiserId)
             writeString(data, destinationId)
+            data.writeByte(path.size)
+            path.forEach { writeString(data, it) }
             data.writeInt(destinationKeyFingerprint.size)
             data.write(destinationKeyFingerprint)
             data.writeLong(sequence)
@@ -39,6 +43,8 @@ internal data class SignedRouteAdvertisement(
             data.writeInt(0x4E525431) // NRT1
             writeString(data, advertiserId)
             writeString(data, destinationId)
+            data.writeByte(path.size)
+            path.forEach { writeString(data, it) }
             data.writeInt(destinationKeyFingerprint.size)
             data.write(destinationKeyFingerprint)
             data.writeLong(sequence)
@@ -51,10 +57,15 @@ internal data class SignedRouteAdvertisement(
         return out.toByteArray()
     }
 
+    private fun localPathDoesNotLoop(): Boolean = path.none { it == destinationId && it != path.last() }
+
     fun verify(trustedAdvertiserKey: ByteArray, nowMs: Long): Boolean = try {
         require(NeaRerIdentity.normalize(advertiserId) == advertiserId)
         require(NeaRerIdentity.normalize(destinationId) == destinationId)
         require(advertiserId != destinationId)
+        require(path.size in 2..5 && path.first() == advertiserId && path.last() == destinationId)
+        require(path.all { NeaRerIdentity.normalize(it) == it } && path.distinct().size == path.size)
+        require(path.size == hopCount + 2 && localPathDoesNotLoop())
         require(destinationKeyFingerprint.size == 32)
         require(sequence >= 0L && hopCount in 0..3)
         require(issuedAtMs <= nowMs + MAX_CLOCK_SKEW_MS)
@@ -80,6 +91,9 @@ internal data class SignedRouteAdvertisement(
             require(input.readInt() == 0x4E525431)
             val advertiser = readString(input)
             val destination = readString(input)
+            val pathSize = input.readUnsignedByte()
+            require(pathSize in 2..5)
+            val path = List(pathSize) { readString(input) }
             val fingerprintSize = input.readInt()
             require(fingerprintSize == 32)
             val fingerprint = ByteArray(fingerprintSize).also { input.readFully(it) }
@@ -91,7 +105,7 @@ internal data class SignedRouteAdvertisement(
             require(signatureSize in 8..128)
             val signature = ByteArray(signatureSize).also { input.readFully(it) }
             require(input.available() == 0)
-            return SignedRouteAdvertisement(advertiser, destination, fingerprint, sequence, hops, issued, expires, signature)
+            return SignedRouteAdvertisement(advertiser, destination, fingerprint, sequence, hops, issued, expires, signature, path)
         }
 
         private fun readString(input: java.io.DataInputStream): String {
@@ -109,6 +123,7 @@ internal data class SignedRouteAdvertisement(
             hopCount: Int,
             issuedAtMs: Long,
             expiresAtMs: Long,
+            path: List<String> = listOf(advertiserId, destinationId),
             sign: (ByteArray) -> ByteArray
         ): SignedRouteAdvertisement {
             require(NeaRerIdentity.normalize(advertiserId) == advertiserId)
@@ -120,9 +135,12 @@ internal data class SignedRouteAdvertisement(
             val unsigned = SignedRouteAdvertisement(
                 advertiserId, destinationId,
                 MessageDigest.getInstance("SHA-256").digest(destinationPublicKey),
-                sequence, hopCount, issuedAtMs, expiresAtMs, ByteArray(0)
+                sequence, hopCount, issuedAtMs, expiresAtMs, ByteArray(0), path
             )
             require(unsigned.verifyHeader(issuedAtMs))
+            require(path.size in 2..5 && path.first() == advertiserId && path.last() == destinationId)
+            require(path.size == hopCount + 2 && path.distinct().size == path.size)
+            require(path.all { NeaRerIdentity.normalize(it) == it })
             return unsigned.copy(signature = sign(unsigned.signedBytes()))
         }
 
@@ -152,7 +170,9 @@ internal class MeshRouteTable(private val localId: String) {
         val sequence: Long,
         val issuedAtMs: Long,
         val destinationKeyFingerprint: ByteArray,
-        val expiresAtMs: Long
+        val expiresAtMs: Long,
+        /** Complete path from this node to the destination, including both ends. */
+        val path: List<String>
     )
 
     private val routes = LinkedHashMap<String, Route>()
@@ -169,6 +189,7 @@ internal class MeshRouteTable(private val localId: String) {
         if (NeaRerIdentity.normalize(authenticatedSenderId) != authenticatedSenderId) return false
         if (authenticatedSenderId == localId || authenticatedSenderId != advertisement.advertiserId) return false
         if (advertisement.destinationId == localId || advertisement.destinationId == authenticatedSenderId) return false
+        if (localId in advertisement.path) return false
         if (!advertisement.verify(trustedSenderSigningKey, nowMs)) return false
         if (knownDestinationEncryptionKey != null) {
             val expected = MessageDigest.getInstance("SHA-256").digest(knownDestinationEncryptionKey)
@@ -181,9 +202,10 @@ internal class MeshRouteTable(private val localId: String) {
             advertisement.sequence,
             advertisement.issuedAtMs,
             advertisement.destinationKeyFingerprint.copyOf(),
-            advertisement.expiresAtMs
+            advertisement.expiresAtMs,
+            listOf(localId) + advertisement.path
         )
-        if (candidate.hopCount !in 1..4) return false
+        if (candidate.hopCount !in 1..4 || candidate.path.size != candidate.hopCount + 2) return false
         val previous = routes[candidate.destinationId]
         if (previous != null && previous.expiresAtMs > nowMs) {
             // Sequence numbers belong to the advertiser, not globally to a
