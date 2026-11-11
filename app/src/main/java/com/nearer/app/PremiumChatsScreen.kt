@@ -41,6 +41,7 @@ internal fun PremiumChatsScreen(
     meshRecipients: List<MeshRecipient>,
     selectedMeshRecipientId: String?,
     onSelectMeshRecipient: (String) -> Unit,
+    connectedPeerStableId: String?,
     chatReady: Boolean,
     connectedDeviceName: String?,
     connectionMessage: String,
@@ -71,7 +72,11 @@ internal fun PremiumChatsScreen(
     val visibleMessages = if (selectedRecipient != null) {
         messages.filter { it.conversationId == selectedRecipient.peerId }
     } else messages
-    val directConversation = selectedRecipient?.isDirect ?: (selectedMeshRecipientId == null && chatReady)
+    // File transfer still uses the single active direct endpoint. Never offer it
+    // when another direct peer is selected or when the selected peer is remote.
+    val directConversation = chatReady && (
+        selectedRecipient == null || selectedRecipient.peerId == connectedPeerStableId
+    )
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -100,7 +105,7 @@ internal fun PremiumChatsScreen(
                 ) {
                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                         Text(
-                            connectedDeviceName?.take(1)?.uppercase() ?: "N",
+                            activeName?.take(1)?.uppercase() ?: "N",
                             color = White,
                             fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold
