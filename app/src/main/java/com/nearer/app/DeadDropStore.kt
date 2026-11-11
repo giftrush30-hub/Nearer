@@ -52,7 +52,15 @@ internal class DeadDropStore(context: Context) {
             val oldBytes = LocalDataCipher.decrypt(app, existing.encrypted) ?: return false
             val oldPacket = try { MeshRelayPacketV1.decode(oldBytes) } catch (_: Exception) { return false }
             // Never ACK a reused packet ID carrying different signed content.
-            return oldPacket.sameImmutablePacket(packet)
+            if (!oldPacket.sameImmutablePacket(packet)) return false
+            // A duplicate arriving through a different authenticated neighbor may
+            // provide a better non-looping next-hop choice. Persist that previous hop
+            // before ACKing; never reset the retry counter or packet contents.
+            if (previousHopPeerId.isNotEmpty() && existing.previousHopPeerId != previousHopPeerId) {
+                entries[packet.packetId] = existing.copy(previousHopPeerId = previousHopPeerId)
+                return write(entries)
+            }
+            return true
         }
         if (entries.size >= MAX_ITEMS) return false
         val bytes = packet.encode()
