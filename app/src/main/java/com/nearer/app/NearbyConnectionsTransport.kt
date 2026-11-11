@@ -53,7 +53,12 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         var remoteRecipientEncryptionPublicKey: ByteArray? = null,
         var remotePeerId: String = "",
         var localProofSent: Boolean = false,
-        var pendingRemoteProof: String? = null
+        var pendingRemoteProof: String? = null,
+        var remoteProofVerified: Boolean = false,
+        var remoteBindingVerified: Boolean = false,
+        var localBindingSent: Boolean = false,
+        var pendingRemoteBinding: String? = null,
+        var remoteFirstSeen: Boolean = false
     )
     private val peerHandshakes = ConcurrentHashMap<String, PeerHandshakeState>()
     private val messageSessions = ConcurrentHashMap<String, NearbyMessageCrypto.Session>()
@@ -529,25 +534,14 @@ internal object IncomingFilePayloadPolicy {
             val trustResult = TrustedPeerKeyStore.checkAndPin(appContext, peerId, remoteKey, remoteRecipientKey)
             when (trustResult) {
                 TrustedPeerKeyStore.Result.FIRST_SEEN, TrustedPeerKeyStore.Result.MATCH -> {
-                    val remoteEcdhKey = NearbyMessageCrypto.decodeEphemeralPublicKey(remoteEphemeral)
-                    val session = NearbyMessageCrypto.deriveSession(
-                        localStableId, peerId, state.localEphemeralKeyPair.private, remoteEcdhKey, challenge
-                    )
-                    messageSessions[endpointId] = session
-                    if (authenticatedEndpoints.add(endpointId)) {
-                        peerHandshakes.remove(endpointId)
-                        val details = synchronized(names) {
-                            (names[endpointId] ?: "Nearby NeaRer user") to stableIds[endpointId].orEmpty()
-                        }
-                        retryQueuedMessagesForPeer(details.second, endpointId)
-                        listener.onConnected(endpointId, details.first, details.second)
-                        val trustNotice = if (trustResult == TrustedPeerKeyStore.Result.FIRST_SEEN) {
-                            "Encrypted link established with ${details.first}. New key material was pinned for this device ID; this does not prove the person’s real-world identity."
-                        } else {
-                            "Encrypted link established with ${details.first} using its previously pinned device key."
-                        }
-                        listener.onStatus(trustNotice)
+                    state.remoteProofVerified = true
+                    state.remoteFirstSeen = trustResult == TrustedPeerKeyStore.Result.FIRST_SEEN
+                    sendLocalIdentityBinding(endpointId, state)
+                    state.pendingRemoteBinding?.let { pending ->
+                        state.pendingRemoteBinding = null
+                        handlePeerIdentityBinding(endpointId, JSONObject(pending))
                     }
+                    completePeerAuthentication(endpointId, state)
                 }
                 TrustedPeerKeyStore.Result.KEY_CHANGED ->
                     throw SecurityException("This phone’s saved NeaRer identity key has changed. Verify the person before reconnecting.")
@@ -556,6 +550,106 @@ internal object IncomingFilePayloadPolicy {
             }
         } catch (error: Exception) {
             failPeerHandshake(endpointId, error.localizedMessage ?: "Secure peer verification failed.")
+        }
+    }
+
+    private fun sendLocalIdentityBinding(endpointId: String, state: PeerHandshakeState) {
+        if (state.localBindingSent) return
+        val now = System.currentTimeMillis()
+        val prefs = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val sequence = prefs.getLong("nearby_local_binding_sequence", 0L) + 1L
+        if (sequence <= 0L || !prefs.edit().putLong("nearby_local_binding_sequence", sequence).commit()) {
+            throw IllegalStateException("NeaRer could not safely advance its identity-binding sequence.")
+        }
+        val binding = RecipientIdentityBinding.create(
+            localStableId,
+            state.localPublicKey,
+            state.localRecipientEncryptionPublicKey,
+            sequence,
+            now,
+            now + 24L * 60L * 60L * 1000L
+        ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+        val wire = JSONObject()
+            .put("kind", "mesh_identity_binding_v1")
+            .put("deviceId", binding.deviceId)
+            .put("signingKeyFingerprint", android.util.Base64.encodeToString(binding.signingKeyFingerprint, android.util.Base64.NO_WRAP))
+            .put("recipientEncryptionPublicKey", android.util.Base64.encodeToString(binding.recipientEncryptionPublicKey, android.util.Base64.NO_WRAP))
+            .put("sequence", binding.sequence)
+            .put("issuedAtMs", binding.issuedAtMs)
+            .put("expiresAtMs", binding.expiresAtMs)
+            .put("signature", android.util.Base64.encodeToString(binding.signature, android.util.Base64.NO_WRAP))
+        state.localBindingSent = true
+        client.sendPayload(endpointId, Payload.fromBytes(wire.toString().toByteArray(Charsets.UTF_8)))
+            .addOnFailureListener { failPeerHandshake(endpointId, "Could not send this phone’s signed recipient identity binding.") }
+    }
+
+    private fun handlePeerIdentityBinding(endpointId: String, envelope: JSONObject) {
+        val state = peerHandshakes[endpointId] ?: return
+        if (!state.remoteProofVerified) {
+            state.pendingRemoteBinding = envelope.toString()
+            return
+        }
+        try {
+            val remoteId = state.remotePeerId
+            val remoteSigningKey = state.remotePublicKey ?: throw IllegalStateException("The peer signing key is unavailable.")
+            val binding = RecipientIdentityBinding(
+                deviceId = envelope.getString("deviceId"),
+                signingKeyFingerprint = android.util.Base64.decode(envelope.getString("signingKeyFingerprint"), android.util.Base64.NO_WRAP),
+                recipientEncryptionPublicKey = android.util.Base64.decode(envelope.getString("recipientEncryptionPublicKey"), android.util.Base64.NO_WRAP),
+                sequence = envelope.getLong("sequence"),
+                issuedAtMs = envelope.getLong("issuedAtMs"),
+                expiresAtMs = envelope.getLong("expiresAtMs"),
+                signature = android.util.Base64.decode(envelope.getString("signature"), android.util.Base64.NO_WRAP)
+            )
+            require(binding.deviceId == remoteId)
+            require(state.remoteRecipientEncryptionPublicKey?.let {
+                java.security.MessageDigest.isEqual(it, binding.recipientEncryptionPublicKey)
+            } == true) { "Recipient key binding did not match the handshake key." }
+            require(binding.verify(remoteSigningKey, System.currentTimeMillis())) {
+                "The nearby phone’s recipient identity binding was invalid or expired."
+            }
+            require(TrustedPeerKeyStore.acceptBindingSequence(appContext, remoteId, binding.sequence)) {
+                "A replayed or older recipient identity binding was rejected."
+            }
+            state.remoteBindingVerified = true
+            completePeerAuthentication(endpointId, state)
+        } catch (error: Exception) {
+            failPeerHandshake(endpointId, error.localizedMessage ?: "Recipient identity binding verification failed.")
+        }
+    }
+
+    private fun completePeerAuthentication(endpointId: String, state: PeerHandshakeState) {
+        if (!state.remoteProofVerified || !state.remoteBindingVerified || !state.localBindingSent) return
+        if (peerHandshakes[endpointId] !== state) return
+        try {
+            val peerId = state.remotePeerId
+            val remoteEphemeral = state.remoteEphemeralPublicKey ?: throw IllegalStateException("Peer session key is unavailable.")
+            val challenge = NearbyPeerHandshake.transcriptChallenge(
+                localStableId, state.localNonce, state.localEphemeralKeyPair.public.encoded, state.localRecipientEncryptionPublicKey,
+                peerId, state.remoteNonce ?: throw IllegalStateException("Peer nonce is unavailable."),
+                remoteEphemeral, state.remoteRecipientEncryptionPublicKey ?: throw IllegalStateException("Peer recipient key is unavailable.")
+            )
+            val remoteEcdhKey = NearbyMessageCrypto.decodeEphemeralPublicKey(remoteEphemeral)
+            val session = NearbyMessageCrypto.deriveSession(
+                localStableId, peerId, state.localEphemeralKeyPair.private, remoteEcdhKey, challenge
+            )
+            messageSessions[endpointId] = session
+            if (authenticatedEndpoints.add(endpointId)) {
+                peerHandshakes.remove(endpointId, state)
+                val details = synchronized(names) {
+                    (names[endpointId] ?: "Nearby NeaRer user") to stableIds[endpointId].orEmpty()
+                }
+                retryQueuedMessagesForPeer(details.second, endpointId)
+                listener.onConnected(endpointId, details.first, details.second)
+                val trustNotice = if (state.remoteFirstSeen) {
+                    "Encrypted link established with ${details.first}. Signing and recipient keys were verified and pinned; this does not prove the person’s real-world identity."
+                } else {
+                    "Encrypted link established with ${details.first} using its previously pinned device identity and fresh signed recipient binding."
+                }
+                listener.onStatus(trustNotice)
+            }
+        } catch (error: Exception) {
+            failPeerHandshake(endpointId, error.localizedMessage ?: "Secure peer authentication could not be completed.")
         }
     }
 
@@ -573,6 +667,7 @@ internal object IncomingFilePayloadPolicy {
             when (envelope.optString("kind")) {
                 "peer_hello_v3" -> { handlePeerHello(endpointId, envelope); return }
                 "peer_proof_v3" -> { handlePeerProof(endpointId, envelope); return }
+                "mesh_identity_binding_v1" -> { handlePeerIdentityBinding(endpointId, envelope); return }
                 "peer_hello_v1", "peer_proof_v1", "peer_hello_v2", "peer_proof_v2" -> {
                     failPeerHandshake(endpointId, "This nearby phone is using an older NeaRer security protocol. Update both phones before connecting.")
                     return
