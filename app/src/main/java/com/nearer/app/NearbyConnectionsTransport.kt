@@ -881,7 +881,7 @@ internal object IncomingFilePayloadPolicy {
                 sent = true
             } catch (_: Exception) { }
         }
-        sent
+        return sent
     }
 
     private fun sendAcknowledgement(endpointId: String, messageId: String) {
