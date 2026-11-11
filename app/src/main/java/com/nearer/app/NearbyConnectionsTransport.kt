@@ -15,7 +15,7 @@ import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
-internal data class MeshRecipient(
+data class MeshRecipient(
     val peerId: String,
     val displayName: String,
     /** Number of intermediate relays between this phone and the recipient. */
