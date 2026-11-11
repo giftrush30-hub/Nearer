@@ -1,6 +1,5 @@
 package com.nearer.app
 
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -8,46 +7,63 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.security.KeyPairGenerator
+import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 
 class MeshRelayPacketTest {
-    @Test fun forwardingOnlyChangesUnsignedHopCounter() {
-        val recipient = KeyPairGenerator.getInstance("EC").apply {
-            initialize(ECGenParameterSpec("secp256r1"))
-        }.generateKeyPair()
-        val signer = KeyPairGenerator.getInstance("EC").apply {
-            initialize(ECGenParameterSpec("secp256r1"))
-        }.generateKeyPair()
+    private fun pair() = KeyPairGenerator.getInstance("EC").apply {
+        initialize(ECGenParameterSpec("secp256r1"))
+    }.generateKeyPair()
+
+    private fun sign(privateKey: java.security.PrivateKey, bytes: ByteArray): ByteArray =
+        Signature.getInstance("SHA256withECDSA").run {
+            initSign(privateKey); update(bytes); sign()
+        }
+
+    @Test fun onlyRecipientCanOpenAndOriginSignatureSurvivesForwarding() {
+        val recipient = pair()
+        val otherRecipient = pair()
+        val origin = pair()
         val encrypted = RecipientMessageCrypto.encrypt(
             "AAAAAA", "BBBBBB", "packet-1", 1000L, 5000L, 3,
-            recipient.public.encoded, "opaque".toByteArray()
+            recipient.public.encoded, "private body".toByteArray()
         )
-        val packet = MeshRelayPacketV1(
+        val unsigned = MeshRelayPacketV1(
             "packet-1", "AAAAAA", "BBBBBB", 1000L, 5000L, 3, 0,
-            encrypted, signer.public.encoded, ByteArray(64) { 1 }
+            encrypted, origin.public.encoded, ByteArray(0)
         )
+        val packet = unsigned.copy(originSignature = sign(origin.private, unsigned.signedBytes()))
+        assertTrue(packet.verify(origin.public.encoded, 2000L))
         val forwarded = packet.forwarded()
         assertNotNull(forwarded)
         assertEquals(1, forwarded!!.hopsTaken)
-        assertArrayEquals(packet.signedBytes(), forwarded.signedBytes())
-        assertEquals(3, forwarded.hopLimit)
+        assertTrue(forwarded.verify(origin.public.encoded, 2000L))
+        assertEquals(packet.signedBytes().toList(), forwarded.signedBytes().toList())
+        assertTrue(packet.validate(2000L))
+        assertEquals("private body", RecipientMessageCrypto.decrypt(
+            recipient.private, "AAAAAA", "BBBBBB", "packet-1", 1000L, 5000L, 3, encrypted
+        ).toString(Charsets.UTF_8))
+        assertTrue(runCatching {
+            RecipientMessageCrypto.decrypt(
+                otherRecipient.private, "AAAAAA", "BBBBBB", "packet-1", 1000L, 5000L, 3, encrypted
+            )
+        }.isFailure)
+        assertFalse(packet.copy(destinationId = "CCCCCC").verify(origin.public.encoded, 2000L))
+        assertFalse(packet.verify(otherRecipient.public.encoded, 2000L))
     }
 
     @Test fun packetCannotExceedSignedHopLimitOrOutliveItsExpiry() {
-        val recipient = KeyPairGenerator.getInstance("EC").apply {
-            initialize(ECGenParameterSpec("secp256r1"))
-        }.generateKeyPair()
-        val signer = KeyPairGenerator.getInstance("EC").apply {
-            initialize(ECGenParameterSpec("secp256r1"))
-        }.generateKeyPair()
+        val recipient = pair()
+        val origin = pair()
         val encrypted = RecipientMessageCrypto.encrypt(
             "AAAAAA", "BBBBBB", "packet-2", 1000L, 5000L, 1,
             recipient.public.encoded, "opaque".toByteArray()
         )
-        val packet = MeshRelayPacketV1(
+        val unsigned = MeshRelayPacketV1(
             "packet-2", "AAAAAA", "BBBBBB", 1000L, 5000L, 1, 0,
-            encrypted, signer.public.encoded, ByteArray(64) { 2 }
+            encrypted, origin.public.encoded, ByteArray(0)
         )
+        val packet = unsigned.copy(originSignature = sign(origin.private, unsigned.signedBytes()))
         assertNull(packet.forwarded()?.forwarded())
         assertTrue(packet.validate(2000L))
         assertFalse(packet.validate(5001L))
