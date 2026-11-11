@@ -182,6 +182,38 @@ class MeshRouteTableTest {
         assertFalse(repeated.isSuccess)
     }
 
+    @Test fun disconnectingNextHopLeavesTombstoneAgainstStaleRouteReplay() {
+        val sender = pair()
+        val destination = pair()
+        val table = MeshRouteTable("CCCCCC")
+        val original = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 4L, 0, 1000L, 9000L
+        ) { sign(sender.private, it) }
+        assertTrue(table.update(original, "AAAAAA", sender.public.encoded, 2000L))
+        assertEquals(listOf("BBBBBB"), table.removeNextHop("AAAAAA"))
+
+        assertFalse(table.update(original, "AAAAAA", sender.public.encoded, 3000L))
+        val fresh = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 5L, 0, 3100L, 9000L
+        ) { sign(sender.private, it) }
+        assertTrue(table.update(fresh, "AAAAAA", sender.public.encoded, 3200L))
+    }
+
+    @Test fun verifiedWithdrawalCanBeRememberedAfterRouteWasAlreadyEvicted() {
+        val table = MeshRouteTable("CCCCCC")
+        assertTrue(table.rememberWithdrawal("BBBBBB", "AAAAAA", 9L))
+        val sender = pair()
+        val destination = pair()
+        val stale = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 9L, 0, 1000L, 9000L
+        ) { sign(sender.private, it) }
+        val fresh = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 10L, 0, 1100L, 9000L
+        ) { sign(sender.private, it) }
+        assertFalse(table.update(stale, "AAAAAA", sender.public.encoded, 2000L))
+        assertTrue(table.update(fresh, "AAAAAA", sender.public.encoded, 2000L))
+    }
+
     @Test fun rejectsRoutesThatPointToTheLocalDeviceOrAdvertiserItself() {
         val sender = pair()
         val destination = pair()
