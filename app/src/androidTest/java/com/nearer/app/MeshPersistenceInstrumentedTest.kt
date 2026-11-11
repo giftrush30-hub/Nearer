@@ -76,6 +76,29 @@ class MeshPersistenceInstrumentedTest {
     }
 
     @Test
+    fun deadDropEnforcesPerOriginItemQuota() {
+        val now = System.currentTimeMillis()
+        val origin = NeaRerIdentity.generate()
+        val destination = NeaRerIdentity.generate()
+        val previousHop = NeaRerIdentity.generate()
+        val recipient = recipientKeyPair()
+        val store = DeadDropStore(context)
+        repeat(16) { index ->
+            val packet = MeshRelayPacketV1.create(
+                origin, destination, "quota-$index", now, now + 60_000L, 4,
+                recipient.public.encoded, "quota body $index".toByteArray()
+            )
+            assertTrue(store.enqueueTransit(packet, previousHop, now))
+        }
+        val overflow = MeshRelayPacketV1.create(
+            origin, destination, "quota-overflow", now, now + 60_000L, 4,
+            recipient.public.encoded, "must be rejected".toByteArray()
+        )
+        assertFalse(store.enqueueTransit(overflow, previousHop, now))
+        assertEquals(16, store.size())
+    }
+
+    @Test
     fun receiptOutboxPersistsUntilExplicitNextHopAcknowledgement() {
         val now = System.currentTimeMillis()
         val receipt = MeshDeliveryReceipt.create(
