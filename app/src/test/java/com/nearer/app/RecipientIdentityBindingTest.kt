@@ -63,11 +63,20 @@ class RecipientIdentityBindingTest {
     }
 
     @Test fun bindingRejectsInvalidSequenceAndLifetime() {
-        val (negativeSequence, signing) = binding(sequence = -1L)
-        assertFalse(negativeSequence.verify(signing.public.encoded, 2_000L))
-
-        val (longLived, longLivedSigning) = binding(issuedAt = 1_000L, expiresAt = 86_401_001L)
-        assertFalse(longLived.verify(longLivedSigning.public.encoded, 2_000L))
+        val signing = pair()
+        val encryption = pair()
+        assertThrows(IllegalArgumentException::class.java) {
+            RecipientIdentityBinding.create(
+                "AAAAAA", signing.public.encoded, encryption.public.encoded,
+                -1L, 1_000L, 5_000L
+            ) { bytes -> sign(signing.private, bytes) }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RecipientIdentityBinding.create(
+                "AAAAAA", signing.public.encoded, encryption.public.encoded,
+                1L, 1_000L, 86_401_001L
+            ) { bytes -> sign(signing.private, bytes) }
+        }
 
         val (alreadyExpired, expiredSigning) = binding(issuedAt = 1_000L, expiresAt = 1_500L)
         assertFalse(alreadyExpired.verify(expiredSigning.public.encoded, 2_000L))
