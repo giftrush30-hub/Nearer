@@ -16,7 +16,8 @@ internal class DeadDropStore(context: Context) {
         val state: String,
         val dueAt: Long,
         val leaseUntil: Long,
-        val previousHopPeerId: String = ""
+        val previousHopPeerId: String = "",
+        val preparedForNextHop: Boolean = false
     )
 
     private val app = context.applicationContext
@@ -52,10 +53,18 @@ internal class DeadDropStore(context: Context) {
             val oldBytes = LocalDataCipher.decrypt(app, existing.encrypted) ?: return false
             val oldPacket = try { MeshRelayPacketV1.decode(oldBytes) } catch (_: Exception) { return false }
             // Never ACK a reused packet ID carrying different signed content.
-            if (!oldPacket.sameImmutablePacket(packet)) return false
-            // A duplicate arriving through a different authenticated neighbor may
-            // provide a better non-looping next-hop choice. Persist that previous hop
-            // before ACKing; never reset the retry counter or packet contents.
+            if (!oldPacket.sameImmutablePacket(packet) || packet.hopsTaken < oldPacket.hopsTaken) return false
+            // A duplicate arriving through another authenticated neighbor may provide
+            // a better path, but it may never roll back the observed hop counter.
+            if (packet.hopsTaken > oldPacket.hopsTaken) {
+                val encrypted = try { LocalDataCipher.encrypt(app, packet.encode()) } catch (_: Exception) { return false }
+                entries[packet.packetId] = existing.copy(
+                    encrypted = encrypted,
+                    previousHopPeerId = previousHopPeerId.ifEmpty { existing.previousHopPeerId },
+                    preparedForNextHop = false
+                )
+                return write(entries)
+            }
             if (previousHopPeerId.isNotEmpty() && existing.previousHopPeerId != previousHopPeerId) {
                 entries[packet.packetId] = existing.copy(previousHopPeerId = previousHopPeerId)
                 return write(entries)
@@ -185,6 +194,25 @@ internal class DeadDropStore(context: Context) {
         return result
     }
 
+    /**
+     * Persists this node's hop increment exactly once before transmission.
+     * Retries reuse the same prepared packet; process death cannot reset the counter.
+     */
+    @Synchronized
+    fun prepareForForwarding(packetId: String, localPeerId: String, now: Long): MeshRelayPacketV1? {
+        if (NeaRerIdentity.normalize(localPeerId) != localPeerId) return null
+        val entries = read() ?: return null
+        val entry = entries[packetId] ?: return null
+        val clear = LocalDataCipher.decrypt(app, entry.encrypted) ?: return null
+        val packet = try { MeshRelayPacketV1.decode(clear) } catch (_: Exception) { return null }
+        if (!packet.verifyEmbeddedOrigin(now)) return null
+        if (entry.preparedForNextHop) return packet
+        val prepared = if (packet.originId == localPeerId) packet else packet.forwarded() ?: return null
+        val encrypted = try { LocalDataCipher.encrypt(app, prepared.encode()) } catch (_: Exception) { return null }
+        entries[packetId] = entry.copy(encrypted = encrypted, preparedForNextHop = true)
+        return if (write(entries)) prepared else null
+    }
+
     /** Earliest due/lease expiry for a foreground retry scheduler. */
     @Synchronized
     fun nextWakeAt(): Long? {
@@ -215,11 +243,12 @@ internal class DeadDropStore(context: Context) {
             val dueAt = item.getLong("dueAt")
             val leaseUntil = item.optLong("leaseUntil", 0L)
             val previousHopPeerId = item.optString("previousHopPeerId", "")
+            val preparedForNextHop = item.optBoolean("preparedForNextHop", false)
             if (encrypted.isBlank() || encrypted.length > MAX_TOTAL_CHARS ||
                 attempts !in 0..MAX_ATTEMPTS || state !in setOf(QUEUED, FORWARDING, AWAITING_DESTINATION) ||
                 dueAt < 0L || leaseUntil < 0L ||
                 (previousHopPeerId.isNotEmpty() && NeaRerIdentity.normalize(previousHopPeerId) != previousHopPeerId)) return null
-            result[id] = Entry(encrypted, attempts, state, dueAt, leaseUntil, previousHopPeerId)
+            result[id] = Entry(encrypted, attempts, state, dueAt, leaseUntil, previousHopPeerId, preparedForNextHop)
         }
         if (result.values.sumOf { it.encrypted.length } > MAX_TOTAL_CHARS) return null
         result
@@ -230,7 +259,8 @@ internal class DeadDropStore(context: Context) {
         entries.forEach { (id, e) -> json.put(id, JSONObject()
             .put("encrypted", e.encrypted).put("attempts", e.attempts)
             .put("state", e.state).put("dueAt", e.dueAt).put("leaseUntil", e.leaseUntil)
-            .put("previousHopPeerId", e.previousHopPeerId)) }
+            .put("previousHopPeerId", e.previousHopPeerId)
+            .put("preparedForNextHop", e.preparedForNextHop)) }
         return prefs.edit().putString(KEY, json.toString()).commit()
     }
 
