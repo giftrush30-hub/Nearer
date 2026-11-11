@@ -96,7 +96,7 @@ Foundations now present in source:
 - Recipient-only ECDH + HKDF-SHA256 + AES-256-GCM packet encryption, separate from the live direct-chat session keys.
 - An origin-signed opaque packet envelope with immutable signed header/ciphertext, expiry, and bounded hop count.
 - Signed route advertisement verification and a route table that derives its next hop from the authenticated direct advertiser, rather than trusting a remote next-hop claim.
-- A durable encrypted-at-rest Dead Drop queue with bounded storage, packet-ID collision checks, previous-hop tracking, retry backoff, forwarding leases, and distinct hop-accepted vs final-delivery states.
+- A durable encrypted-at-rest Dead Drop queue with bounded storage, packet-ID collision checks, previous-hop tracking, retry backoff, forwarding leases, and distinct hop-accepted vs final-delivery states. Each relay persists its hop-counter increment exactly once before transmission, reuses that count on retry/restart, and rejects duplicate packets that roll the observed counter backwards.
 - Destination-signed final receipt verification before a stored packet can be deleted.
 - A bounded, signed hop-acceptance acknowledgement that binds packet ID, accepting next-hop ID, previous-hop ID and timestamp; Dead Drop requires this proof from the expected next hop before recording hop acceptance.
 - Live Nearby transport now exchanges the signed recipient identity binding, learns authenticated direct and multi-hop routes, and exchanges signed path-vector route advertisements with loop rejection, bounded route state and per-neighbor rate limiting.
@@ -107,7 +107,7 @@ Foundations now present in source:
 - A direct authenticated peer is installed as a reverse route so final receipts can travel back through the mesh.
 
 Still not integrated:
-- Background service/worker scheduling, process-death recovery orchestration, route withdrawal propagation, and persistent route-table storage are not yet implemented. The queue itself has crash-recoverable leases, but no Android background worker currently wakes it after process death.
+- A foreground retry scheduler reclaims expired leases and retries queued packets while the transport remains active. Background service/worker scheduling to wake the queue after Android kills the process or reboots remains outstanding. Route withdrawal propagation and persistent route-table storage are not yet implemented. The queue itself has crash-recoverable leases, but no Android background worker currently wakes it after process death.
 - Route advertisements do not yet carry an independently verifiable destination identity binding for first-contact remote recipients. Sending is therefore restricted to destinations whose recipient encryption key was previously pinned by direct pairing.
 - Intermediate relays forward destination-signed receipts toward the origin, but only a device with the destination's pinned signing key can delete its stored packet copy. Relays that have not directly trusted the destination may retain duplicate packets until expiry.
 - Foreground retry scheduling is active only while the Nearby transport instance is alive. There is not yet a WorkManager/foreground-service worker to wake and resume the queue after Android kills the process or reboots.
