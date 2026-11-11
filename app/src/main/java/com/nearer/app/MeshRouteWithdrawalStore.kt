@@ -40,7 +40,7 @@ internal class MeshRouteWithdrawalStore(context: Context) {
 
     @Synchronized
     fun restore(table: MeshRouteTable): Int {
-        val entries = read() ?: return 0
+        val entries = read() ?: return -1
         var restored = 0
         val validEntries = LinkedHashMap<String, Long>()
         entries.forEach { (compoundKey, sequence) ->
