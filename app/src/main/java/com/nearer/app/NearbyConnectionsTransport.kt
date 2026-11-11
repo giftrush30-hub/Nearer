@@ -879,10 +879,11 @@ internal object IncomingFilePayloadPolicy {
         if (targets.isEmpty()) return false
         // Use the exact versioned envelope understood by handleBytes(). Sending the
         // community packet as raw JSON here caused receivers to reject it as malformed.
+        val messageId = UUID.randomUUID().toString()
         val envelope = JSONObject()
             .put("kind", "message")
             .put("version", 1)
-            .put("id", UUID.randomUUID().toString())
+            .put("id", messageId)
             .put("body", body)
             .put("ttl", 0)
             .put("hops", 0)
