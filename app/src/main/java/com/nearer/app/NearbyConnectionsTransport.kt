@@ -77,6 +77,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val meshDestinationEncryptionKeys = ConcurrentHashMap<String, ByteArray>()
     private val routeAdvertisementWindows = ConcurrentHashMap<String, Pair<Long, Int>>()
     private val deadDropStore = DeadDropStore(appContext)
+    private val meshRoutePersistence = MeshRoutePersistence(appContext)
     private val localRecipientIdentity by lazy { RecipientEncryptionIdentity.getOrCreate(appContext) }
 
 
@@ -163,7 +164,15 @@ internal object IncomingFilePayloadPolicy {
     private val pendingOutgoingMessages = ConcurrentHashMap<String, PendingOutgoingMessage>()
     private val deliveryHandler = Handler(Looper.getMainLooper())
     private val maxMessageAttempts = MessageRetryPolicy.MAX_ATTEMPTS
-    init { restorePendingOutbox() }
+    init {
+        restorePendingOutbox()
+        val restoredRoutes = meshRoutePersistence.restore(
+            meshRouteTable,
+            { peerId -> TrustedPeerKeyStore.pinnedSigningKey(appContext, peerId) },
+            System.currentTimeMillis()
+        )
+        if (restoredRoutes > 0) listener.onStatus("Restored $restoredRoutes previously verified nearby mesh route(s).")
+    }
     private fun persistPendingOutbox(): Boolean {
         return try {
             val array = org.json.JSONArray()
@@ -364,7 +373,9 @@ internal object IncomingFilePayloadPolicy {
             val wasAuthenticated = authenticatedEndpoints.remove(id)
             peerHandshakes.remove(id)
             messageSessions.remove(id)
-            meshRouteTable.removeNextHop(synchronized(names) { stableIds[id].orEmpty() })
+            val lostPeerId = synchronized(names) { stableIds[id].orEmpty() }
+            meshRouteTable.removeNextHop(lostPeerId)
+            if (lostPeerId.isNotBlank()) meshRoutePersistence.removeAdvertiser(lostPeerId)
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
             pauseOutgoingFilesForEndpoint(id)
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
@@ -793,6 +804,9 @@ internal object IncomingFilePayloadPolicy {
             if (alreadyDirect) return
             val previous = meshRouteTable.find(advertisement.destinationId, now)
             if (!meshRouteTable.update(advertisement, senderId, senderKey, now, destinationKey)) return
+            if (!meshRoutePersistence.save(advertisement, destinationKey)) {
+                listener.onStatus("A verified mesh route is active, but could not be saved for the next app session.")
+            }
             meshDestinationEncryptionKeys[advertisement.destinationId] = destinationKey.copyOf()
             // Re-advertise only a materially improved/new route. Refreshes from the
             // same next hop must not trigger endless route-gossip loops.
