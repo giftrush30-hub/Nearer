@@ -1244,6 +1244,8 @@ internal object IncomingFilePayloadPolicy {
             NeaRerIdentity.normalize(destinationPeerId) != destinationPeerId ||
             messageId.isBlank() || messageId.length > 80) return false
         val now = System.currentTimeMillis()
+        // Both halves of the recipient identity must be pinned by a verified direct handshake.
+        if (TrustedPeerKeyStore.pinnedSigningKey(appContext, destinationPeerId) == null) return false
         val pinnedRecipientKey = TrustedPeerKeyStore.pinnedRecipientEncryptionKey(appContext, destinationPeerId)
             ?: return false
         val route = meshRouteTable.find(destinationPeerId, now) ?: return false
