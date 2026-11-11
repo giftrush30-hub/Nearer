@@ -83,6 +83,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val meshReceiptOutbox = MeshReceiptOutbox(appContext)
     private val receiptSendInFlightUntil = ConcurrentHashMap<String, Long>()
     @Volatile private var receiptRetryScheduled = false
+    @Volatile private var meshForwardRetryScheduled = false
     private val localRecipientIdentity by lazy { RecipientEncryptionIdentity.getOrCreate(appContext) }
 
 
@@ -883,6 +884,7 @@ internal object IncomingFilePayloadPolicy {
                     acknowledgement, trustedKey, acceptingPeerId, localStableId, System.currentTimeMillis()
                 )) {
                 listener.onStatus("A nearby relay securely accepted a packet. Waiting for final delivery.")
+                scheduleMeshForwardRetry()
             }
         } catch (_: Exception) {
             listener.onStatus("An invalid mesh hop acknowledgement was rejected.")
@@ -1071,6 +1073,17 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
+    private fun scheduleMeshForwardRetry() {
+        if (meshForwardRetryScheduled) return
+        val nextWake = deadDropStore.nextWakeAt() ?: return
+        val delay = (nextWake - System.currentTimeMillis()).coerceIn(1_000L, 60_000L)
+        meshForwardRetryScheduled = true
+        deliveryHandler.postDelayed({
+            meshForwardRetryScheduled = false
+            forwardDueMeshPackets()
+        }, delay)
+    }
+
     private fun forwardDueMeshPackets() {
         val now = System.currentTimeMillis()
         deadDropStore.purgeExpired(now)
@@ -1092,6 +1105,7 @@ internal object IncomingFilePayloadPolicy {
                 listener.onStatus("A queued mesh packet could not be forwarded and will be retried.")
             }
         }
+        scheduleMeshForwardRetry()
     }
 
     /** Sends an E2E-encrypted chat packet over the verified mesh route to a previously trusted recipient. */
