@@ -72,6 +72,17 @@ internal data class MeshRelayPacketV1(
         return SecurePeerIdentity.verifyDetached(trustedOriginSigningKey, signedBytes(), originSignature)
     }
 
+    /** Checks packet integrity using its embedded signer key; this is NOT identity trust. */
+    fun verifyEmbeddedOrigin(nowMs: Long): Boolean =
+        validate(nowMs) && SecurePeerIdentity.verifyDetached(originSigningPublicKey, signedBytes(), originSignature)
+
+    /** Exact duplicate check used by persistent transit storage. */
+    fun sameImmutablePacket(other: MeshRelayPacketV1): Boolean =
+        packetId == other.packetId &&
+            MessageDigest.isEqual(signedBytes(), other.signedBytes()) &&
+            MessageDigest.isEqual(originSignature, other.originSignature) &&
+            MessageDigest.isEqual(encryptedPayload.ciphertext, other.encryptedPayload.ciphertext)
+
     /** Returns null at the hop limit. Does not alter the origin-signed content. */
     fun forwarded(): MeshRelayPacketV1? =
         if (hopsTaken >= hopLimit) null else copy(hopsTaken = hopsTaken + 1)
