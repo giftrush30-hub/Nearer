@@ -36,6 +36,35 @@ class MeshPersistenceInstrumentedTest {
     }.generateKeyPair()
 
     @Test
+    fun deadDropEncryptsQueueMetadataAtRest() {
+        val now = System.currentTimeMillis()
+        val recipient = recipientKeyPair()
+        val packet = MeshRelayPacketV1.create(
+            originId = NeaRerIdentity.generate(),
+            destinationId = NeaRerIdentity.generate(),
+            packetId = "mesh-private-meta-001",
+            createdAtMs = now,
+            expiresAtMs = now + 60_000L,
+            hopLimit = 4,
+            recipientPublicKey = recipient.public.encoded,
+            plaintext = "private transit body".toByteArray()
+        )
+        val previousHop = NeaRerIdentity.generate()
+        val nextHop = NeaRerIdentity.generate()
+        val store = DeadDropStore(context)
+        assertTrue(store.enqueueTransit(packet, previousHop, now))
+        assertNotNull(store.prepareForForwarding(packet.packetId, NeaRerIdentity.generate(), now + 1L, nextHop))
+
+        val stored = context.getSharedPreferences("nearer_dead_drop_v1", 0)
+            .getString("queue_v1", "").orEmpty()
+        assertTrue(stored.isNotBlank())
+        assertFalse(stored.contains(packet.packetId))
+        assertFalse(stored.contains(previousHop))
+        assertFalse(stored.contains(nextHop))
+        assertEquals(1, DeadDropStore(context).size())
+    }
+
+    @Test
     fun deadDropPersistsOpaquePacketAndPreviousHopAcrossStoreRecreation() {
         val now = System.currentTimeMillis()
         val recipient = recipientKeyPair()
