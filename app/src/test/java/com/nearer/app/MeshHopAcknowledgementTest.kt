@@ -23,13 +23,13 @@ class MeshHopAcknowledgementTest {
     @Test fun acknowledgementRoundTripsAndMustBeSignedByTheAcceptingNextHop() {
         val accepting = pair()
         val acknowledgement = MeshHopAcknowledgement.create(
-            "packet-123", "BBBBBB", "AAAAAA", 2_000L
+            "packet-123", "BBBBBB", "AAAAAA", 400_000L
         ) { sign(accepting.private, it) }
 
         val decoded = MeshHopAcknowledgement.decode(acknowledgement.encode())
-        assertTrue(decoded.verify(accepting.public.encoded, "AAAAAA", 2_500L))
-        assertFalse(decoded.verify(pair().public.encoded, "AAAAAA", 2_500L))
-        assertFalse(decoded.verify(accepting.public.encoded, "CCCCCC", 2_500L))
+        assertTrue(decoded.verify(accepting.public.encoded, "AAAAAA", 400_500L))
+        assertFalse(decoded.verify(pair().public.encoded, "AAAAAA", 400_500L))
+        assertFalse(decoded.verify(accepting.public.encoded, "CCCCCC", 400_500L))
         assertFalse(decoded.verify(accepting.public.encoded, "AAAAAA", 1_000L))
         assertEquals("packet-123", decoded.packetId)
         assertFalse(runCatching {
@@ -40,14 +40,14 @@ class MeshHopAcknowledgementTest {
     @Test fun acknowledgementCannotBeReplayedForAnotherPacketOrPeer() {
         val accepting = pair()
         val acknowledgement = MeshHopAcknowledgement.create(
-            "packet-456", "BBBBBB", "AAAAAA", 2_000L
+            "packet-456", "BBBBBB", "AAAAAA", 400_000L
         ) { sign(accepting.private, it) }
 
         assertFalse(acknowledgement.copy(packetId = "packet-other")
-            .verify(accepting.public.encoded, "AAAAAA", 2_500L))
+            .verify(accepting.public.encoded, "AAAAAA", 400_500L))
         assertFalse(acknowledgement.copy(acceptingPeerId = "DDDDDD")
-            .verify(accepting.public.encoded, "AAAAAA", 2_500L))
+            .verify(accepting.public.encoded, "AAAAAA", 400_500L))
         assertFalse(acknowledgement.copy(previousHopPeerId = "EEEEEE")
-            .verify(accepting.public.encoded, "AAAAAA", 2_500L))
+            .verify(accepting.public.encoded, "AAAAAA", 400_500L))
     }
 }
