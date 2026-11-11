@@ -53,6 +53,21 @@ class MeshRouteTableTest {
         assertNull(table.find("BBBBBB", 5000L))
     }
 
+    @Test fun routeAdvertisementHasBoundedRoundTripEncoding() {
+        val sender = pair()
+        val destination = pair()
+        val ad = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 9L, 1, 1000L, 5000L
+        ) { sign(sender.private, it) }
+        val decoded = SignedRouteAdvertisement.decode(ad.encode())
+        assertTrue(decoded.verify(sender.public.encoded, 2000L))
+        assertEquals(ad.destinationId, decoded.destinationId)
+        assertEquals(ad.sequence, decoded.sequence)
+        assertFalse(runCatching { SignedRouteAdvertisement.decode(ad.encode() + byteArrayOf(1)) }.isSuccess)
+        val table = MeshRouteTable("CCCCCC")
+        assertFalse(table.update(decoded, "AAAAAA", sender.public.encoded, 2000L, pair().public.encoded))
+    }
+
     @Test fun rejectsAdvertisementTampering() {
         val sender = pair()
         val destination = pair()
