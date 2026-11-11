@@ -63,12 +63,15 @@ internal fun PremiumChatsScreen(
 ) {
     var recipientMenuExpanded by remember { mutableStateOf(false) }
     val selectedRecipient = meshRecipients.firstOrNull { it.peerId == selectedMeshRecipientId }
-    val chatAvailable = chatReady || selectedRecipient != null
-    val activeName = selectedRecipient?.displayName ?: connectedDeviceName
+    val selectedRecipientUnavailable = selectedMeshRecipientId != null && selectedRecipient == null
+    val chatAvailable = selectedRecipient != null || (selectedMeshRecipientId == null && chatReady)
+    val activeName = selectedRecipient?.displayName
+        ?: selectedMeshRecipientId?.let { "NeaRer ${it.takeLast(4)}" }
+        ?: connectedDeviceName
     val visibleMessages = if (selectedRecipient != null) {
         messages.filter { it.conversationId == selectedRecipient.peerId }
     } else messages
-    val directConversation = selectedRecipient?.isDirect ?: chatReady
+    val directConversation = selectedRecipient?.isDirect ?: (selectedMeshRecipientId == null && chatReady)
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -121,6 +124,7 @@ internal fun PremiumChatsScreen(
                         ) {}
                         Text(
                             when {
+                                selectedRecipientUnavailable -> "Selected recipient is currently unreachable"
                                 selectedRecipient?.isDirect == false -> "Mesh route · ${selectedRecipient.hopCount} relay(s) away"
                                 chatAvailable -> "Direct nearby · Private chat ready"
                                 else -> "Not connected yet"
@@ -161,7 +165,9 @@ internal fun PremiumChatsScreen(
                     }
                     Surface(shape = RoundedCornerShape(30.dp), color = if (chatAvailable) Color(0xFF174B43) else Color(0xFF3C3540)) {
                         Text(
-                            if (selectedRecipient?.isDirect == false) "MESH ROUTE" else if (chatAvailable) "SECURE LINK" else "OFFLINE",
+                            if (selectedRecipientUnavailable) "ROUTE LOST"
+                            else if (selectedRecipient?.isDirect == false) "MESH ROUTE"
+                            else if (chatAvailable) "SECURE LINK" else "OFFLINE",
                             color = if (chatAvailable) Color(0xFF9DE8C9) else Gold,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
@@ -189,6 +195,7 @@ internal fun PremiumChatsScreen(
                                     Text(activeName ?: "Choose a person", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                     Text(
                                         when {
+                                            selectedRecipientUnavailable -> "Route unavailable · waiting for a path"
                                             selectedRecipient == null -> "Select someone you have securely paired with"
                                             selectedRecipient.isDirect -> "Direct nearby connection"
                                             else -> "Through ${selectedRecipient.hopCount} trusted relay(s)"
@@ -385,10 +392,11 @@ internal fun PremiumChatsScreen(
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                         Text(
-                            if (meshRecipients.isNotEmpty())
-                                "Choose one of your trusted nearby contacts above to send through an available mesh route."
-                            else
-                                "Connect with someone nearby to start a private conversation. NeaRer uses local phone connections; mobile data isn't needed.",
+                            when {
+                                selectedRecipientUnavailable -> "Your selected person is not reachable right now. NeaRer will not send this message to a different phone."
+                                meshRecipients.isNotEmpty() -> "Choose one of your trusted contacts above to send through an available mesh route."
+                                else -> "Connect with someone nearby to start a private conversation. NeaRer uses local phone connections; mobile data isn't needed."
+                            },
                             color = Muted, fontSize = 12.sp, lineHeight = 19.sp
                         )
                         Button(
