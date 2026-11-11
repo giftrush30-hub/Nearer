@@ -739,6 +739,13 @@ internal object IncomingFilePayloadPolicy {
             val expectedFingerprint = java.security.MessageDigest.getInstance("SHA-256").digest(destinationKey)
             require(java.security.MessageDigest.isEqual(expectedFingerprint, advertisement.destinationKeyFingerprint))
             val now = System.currentTimeMillis()
+            val alreadyDirect = synchronized(activeEndpoints) {
+                activeEndpoints.any { peerEndpoint ->
+                    authenticatedEndpoints.contains(peerEndpoint) &&
+                        synchronized(names) { stableIds[peerEndpoint] == advertisement.destinationId }
+                }
+            }
+            if (alreadyDirect) return
             val previous = meshRouteTable.find(advertisement.destinationId, now)
             if (!meshRouteTable.update(advertisement, senderId, senderKey, now, destinationKey)) return
             meshDestinationEncryptionKeys[advertisement.destinationId] = destinationKey.copyOf()
@@ -748,6 +755,7 @@ internal object IncomingFilePayloadPolicy {
             val changed = previous == null ||
                 previous.nextHopPeerId != route.nextHopPeerId ||
                 previous.hopCount != route.hopCount ||
+                previous.path != route.path ||
                 !java.security.MessageDigest.isEqual(previous.destinationKeyFingerprint, route.destinationKeyFingerprint)
             if (changed) {
                 val peers = synchronized(activeEndpoints) {
