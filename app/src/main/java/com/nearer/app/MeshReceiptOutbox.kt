@@ -8,7 +8,7 @@ import org.json.JSONObject
  * A receipt is removed only after the next authenticated hop proves durable acceptance.
  */
 internal class MeshReceiptOutbox(context: Context) {
-    data class Pending(val receipt: MeshDeliveryReceipt, val previousHopPeerId: String)
+    data class Pending(val receipt: MeshDeliveryReceipt, val previousHopPeerId: String, val expectedNextHopPeerId: String)
 
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("nearer_mesh_receipt_outbox_v1", Context.MODE_PRIVATE)
@@ -30,7 +30,7 @@ internal class MeshReceiptOutbox(context: Context) {
             // route recovery. Remember the newest ingress so the receipt is not
             // forwarded straight back along a stale reverse path.
             if (previousHopPeerId.isNotEmpty() && existing.previousHopPeerId != previousHopPeerId) {
-                entries[receipt.packetId] = existing.copy(previousHopPeerId = previousHopPeerId)
+                entries[receipt.packetId] = existing.copy(previousHopPeerId = previousHopPeerId, expectedNextHopPeerId = "")
                 return write(entries)
             }
             return true
@@ -50,8 +50,32 @@ internal class MeshReceiptOutbox(context: Context) {
         return entries.entries.take(limit).mapNotNull { (_, entry) ->
             val clear = LocalDataCipher.decrypt(app, entry.encrypted) ?: return@mapNotNull null
             val receipt = runCatching { MeshDeliveryReceipt.decode(clear) }.getOrNull() ?: return@mapNotNull null
-            Pending(receipt, entry.previousHopPeerId)
+            Pending(receipt, entry.previousHopPeerId, entry.expectedNextHopPeerId)
         }
+    }
+
+    /** Persist the selected outgoing hop before a receipt is put on the wire. */
+    @Synchronized
+    fun setExpectedNextHop(packetId: String, nextHopPeerId: String): Boolean {
+        if (!packetId.matches(Regex("[A-Za-z0-9._:-]{1,80}")) ||
+            NeaRerIdentity.normalize(nextHopPeerId) != nextHopPeerId) return false
+        val entries = read() ?: return false
+        val old = entries[packetId] ?: return false
+        if (old.expectedNextHopPeerId == nextHopPeerId) return true
+        entries[packetId] = old.copy(expectedNextHopPeerId = nextHopPeerId)
+        return write(entries)
+    }
+
+    /** Only the exact next hop selected and persisted before send may retire a receipt. */
+    @Synchronized
+    fun acknowledge(packetId: String, acceptingPeerId: String): Boolean {
+        if (!packetId.matches(Regex("[A-Za-z0-9._:-]{1,80}")) ||
+            NeaRerIdentity.normalize(acceptingPeerId) != acceptingPeerId) return false
+        val entries = read() ?: return false
+        val old = entries[packetId] ?: return false
+        if (old.expectedNextHopPeerId != acceptingPeerId) return false
+        entries.remove(packetId)
+        return write(entries)
     }
 
     @Synchronized
@@ -65,7 +89,7 @@ internal class MeshReceiptOutbox(context: Context) {
     @Synchronized
     fun size(): Int = read()?.size ?: 0
 
-    private data class Entry(val encrypted: String, val previousHopPeerId: String)
+    private data class Entry(val encrypted: String, val previousHopPeerId: String, val expectedNextHopPeerId: String = "")
 
     private fun read(): LinkedHashMap<String, Entry>? = try {
         val raw = prefs.getString(KEY, null) ?: return LinkedHashMap()
@@ -79,9 +103,11 @@ internal class MeshReceiptOutbox(context: Context) {
             val item = json.getJSONObject(id)
             val encrypted = item.getString("encrypted")
             val previousHop = item.optString("previousHopPeerId", "")
+            val expectedNextHop = item.optString("expectedNextHopPeerId", "")
             if (encrypted.isBlank() || encrypted.length > MAX_TOTAL_CHARS ||
-                (previousHop.isNotEmpty() && NeaRerIdentity.normalize(previousHop) != previousHop)) return null
-            result[id] = Entry(encrypted, previousHop)
+                (previousHop.isNotEmpty() && NeaRerIdentity.normalize(previousHop) != previousHop) ||
+                (expectedNextHop.isNotEmpty() && NeaRerIdentity.normalize(expectedNextHop) != expectedNextHop)) return null
+            result[id] = Entry(encrypted, previousHop, expectedNextHop)
         }
         if (result.values.sumOf { it.encrypted.length } > MAX_TOTAL_CHARS) return null
         result
@@ -93,7 +119,8 @@ internal class MeshReceiptOutbox(context: Context) {
         entries.forEach { (id, entry) ->
             json.put(id, JSONObject()
                 .put("encrypted", entry.encrypted)
-                .put("previousHopPeerId", entry.previousHopPeerId))
+                .put("previousHopPeerId", entry.previousHopPeerId)
+                .put("expectedNextHopPeerId", entry.expectedNextHopPeerId))
         }
         return prefs.edit().putString(KEY, json.toString()).commit()
     }
