@@ -178,6 +178,30 @@ internal class MeshRouteTable(private val localId: String) {
     private val routes = LinkedHashMap<String, Route>()
     private companion object { const val MAX_ROUTES = 256 }
 
+    /** A successfully authenticated live Nearby connection is a direct route. */
+    @Synchronized
+    fun addDirectPeer(peerId: String, recipientEncryptionKey: ByteArray, nowMs: Long): Boolean {
+        if (NeaRerIdentity.normalize(localId) != localId ||
+            NeaRerIdentity.normalize(peerId) != peerId || peerId == localId) return false
+        return try {
+            val key = java.security.KeyFactory.getInstance("EC")
+                .generatePublic(java.security.spec.X509EncodedKeySpec(recipientEncryptionKey))
+            require((key as? java.security.interfaces.ECPublicKey)?.params?.curve?.field?.fieldSize == 256)
+            val candidate = Route(
+                destinationId = peerId,
+                nextHopPeerId = peerId,
+                hopCount = 1,
+                sequence = Long.MAX_VALUE,
+                issuedAtMs = nowMs,
+                destinationKeyFingerprint = MessageDigest.getInstance("SHA-256").digest(recipientEncryptionKey),
+                expiresAtMs = nowMs + 24L * 60L * 60L * 1000L,
+                path = listOf(localId, peerId)
+            )
+            routes[peerId] = candidate
+            true
+        } catch (_: Exception) { false }
+    }
+
     @Synchronized
     fun update(
         advertisement: SignedRouteAdvertisement,
