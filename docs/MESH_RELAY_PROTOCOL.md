@@ -48,6 +48,8 @@ Route state is learned only from authenticated direct neighbors. An advertisemen
 - issued-at and expiry timestamps;
 - advertiser identity and signature.
 
+A route sequence is scoped to its advertiser; sequence values from different neighbors are not directly comparable. The local route table compares sequence values only for the same authenticated next hop, and uses the signed advertisement freshness timestamp (then path length) when comparing a different advertiser. A received route must never point back to the local device or to the advertising neighbor itself.
+
 Each node signs only its own next-hop assertion. A node must not treat an unsigned claim from another peer as a verified route. Route freshness, sequence monotonicity, loop prevention, and expiry are mandatory. Route updates are bounded and rate-limited to prevent gossip storms.
 
 ## Dead Drop / store-and-forward
