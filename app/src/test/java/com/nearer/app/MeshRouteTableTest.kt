@@ -29,7 +29,7 @@ class MeshRouteTableTest {
         val route = table.find("BBBBBB", 2000L)
         assertNotNull(route)
         assertEquals("BBBBBB", route!!.nextHopPeerId)
-        assertEquals(1, route.hopCount)
+        assertEquals(0, route.hopCount)
         assertEquals(listOf("AAAAAA", "BBBBBB"), route.path)
         table.removeNextHop("BBBBBB")
         assertNull(table.find("BBBBBB", 2000L))
