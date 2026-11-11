@@ -91,6 +91,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val deadDropStore = DeadDropStore(appContext)
     private val meshRoutePersistence = MeshRoutePersistence(appContext)
     private val meshRouteWithdrawalStore = MeshRouteWithdrawalStore(appContext)
+    @Volatile private var meshRouteWithdrawalStoreHealthy = true
     private val meshReceiptOutbox = MeshReceiptOutbox(appContext)
     private val receiptSendInFlightUntil = ConcurrentHashMap<String, Long>()
     @Volatile private var receiptRetryScheduled = false
@@ -193,6 +194,10 @@ internal object IncomingFilePayloadPolicy {
             meshDestinationEncryptionKeys[peerId] = key.copyOf()
         }
         val restoredWithdrawals = meshRouteWithdrawalStore.restore(meshRouteTable)
+        meshRouteWithdrawalStoreHealthy = restoredWithdrawals >= 0
+        if (!meshRouteWithdrawalStoreHealthy) {
+            listener.onStatus("Mesh route history could not be verified. Multi-hop routing is paused on this phone until its protected route history is repaired.")
+        }
         if (restoredRoutes > 0 || restoredWithdrawals > 0) {
             listener.onStatus("Restored $restoredRoutes verified route(s) and $restoredWithdrawals route-withdrawal protection record(s).")
         }
@@ -400,7 +405,8 @@ internal object IncomingFilePayloadPolicy {
             val lostPeerId = synchronized(names) { stableIds[id].orEmpty() }
             val withdrawnDestinations = meshRouteTable.removeNextHop(lostPeerId)
             if (!meshRouteWithdrawalStore.saveAll(meshRouteTable.withdrawalTombstones())) {
-                listener.onStatus("Some mesh route replay-protection records could not be saved.")
+                meshRouteWithdrawalStoreHealthy = false
+                listener.onStatus("Mesh route history could not be saved. Multi-hop routing is paused on this phone.")
             }
             if (lostPeerId.isNotBlank()) {
                 meshRoutePersistence.removeAdvertiser(lostPeerId)
@@ -845,7 +851,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun handleMeshRouteWithdrawal(endpointId: String, envelope: JSONObject) {
-        if (!authenticatedEndpoints.contains(endpointId)) return
+        if (!meshRouteWithdrawalStoreHealthy || !authenticatedEndpoints.contains(endpointId)) return
         try {
             val senderId = synchronized(names) { stableIds[endpointId].orEmpty() }
             if (senderId.isBlank() || !allowRouteAdvertisement(senderId, System.currentTimeMillis())) return
@@ -867,7 +873,9 @@ internal object IncomingFilePayloadPolicy {
             if (!meshRouteWithdrawalStore.record(
                     MeshRouteTable.WithdrawalTombstone(withdrawal.destinationId, senderId, withdrawal.sequence)
                 )) {
-                listener.onStatus("A route withdrawal was applied, but its replay protection could not be saved.")
+                meshRouteWithdrawalStoreHealthy = false
+                listener.onStatus("Mesh route history could not be saved. Multi-hop routing is paused on this phone.")
+                return
             }
             if (routeRemoved) {
                 meshRoutePersistence.removeDestination(withdrawal.destinationId)
@@ -899,7 +907,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun handleMeshRouteAdvertisement(endpointId: String, envelope: JSONObject) {
-        if (!authenticatedEndpoints.contains(endpointId)) return
+        if (!meshRouteWithdrawalStoreHealthy || !authenticatedEndpoints.contains(endpointId)) return
         try {
             val senderId = synchronized(names) { stableIds[endpointId].orEmpty() }
             val now = System.currentTimeMillis()
