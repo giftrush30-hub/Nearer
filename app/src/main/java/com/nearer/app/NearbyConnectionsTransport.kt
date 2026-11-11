@@ -72,6 +72,9 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val meshRouteTable = MeshRouteTable(localStableId)
     private val meshDestinationEncryptionKeys = ConcurrentHashMap<String, ByteArray>()
     private val routeAdvertisementWindows = ConcurrentHashMap<String, Pair<Long, Int>>()
+    private val deadDropStore = DeadDropStore(appContext)
+    private val localRecipientIdentity by lazy { RecipientEncryptionIdentity.getOrCreate(appContext) }
+
 
     private fun encodedName(): String = "${localName.take(23)}|$localStableId"
     private fun decodeName(value: String): Pair<String, String> {
@@ -642,6 +645,9 @@ internal object IncomingFilePayloadPolicy {
             val destinationKey = state.remoteRecipientEncryptionPublicKey
                 ?: throw IllegalStateException("Verified recipient encryption key is unavailable.")
             meshDestinationEncryptionKeys[peerId] = destinationKey.copyOf()
+            require(meshRouteTable.addDirectPeer(peerId, destinationKey, System.currentTimeMillis())) {
+                "Could not install the authenticated direct mesh route."
+            }
             if (authenticatedEndpoints.add(endpointId)) {
                 peerHandshakes.remove(endpointId, state)
                 val details = synchronized(names) {
@@ -755,6 +761,14 @@ internal object IncomingFilePayloadPolicy {
             )
             val expectedFingerprint = java.security.MessageDigest.getInstance("SHA-256").digest(destinationKey)
             require(java.security.MessageDigest.isEqual(expectedFingerprint, advertisement.destinationKeyFingerprint))
+            // If this destination was previously paired directly, never let a
+            // third party replace its pinned recipient key through route gossip.
+            val pinnedDestinationKey = TrustedPeerKeyStore.pinnedRecipientEncryptionKey(appContext, advertisement.destinationId)
+            if (pinnedDestinationKey != null) {
+                require(java.security.MessageDigest.isEqual(pinnedDestinationKey, destinationKey)) {
+                    "Route advertised a different recipient key for a pinned destination."
+                }
+            }
             val alreadyDirect = synchronized(activeEndpoints) {
                 activeEndpoints.any { peerEndpoint ->
                     authenticatedEndpoints.contains(peerEndpoint) &&
@@ -785,6 +799,214 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
+    private fun endpointForStablePeer(peerId: String): String? =
+        synchronized(activeEndpoints) {
+            activeEndpoints.firstOrNull { endpoint ->
+                authenticatedEndpoints.contains(endpoint) &&
+                    synchronized(names) { stableIds[endpoint] == peerId }
+            }
+        }
+
+    private fun sendMeshHopAcknowledgement(endpointId: String, packetId: String, previousHopId: String) {
+        try {
+            val acknowledgement = MeshHopAcknowledgement.create(
+                packetId, localStableId, previousHopId, System.currentTimeMillis()
+            ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+            val envelope = JSONObject()
+                .put("kind", "mesh_hop_ack_v1")
+                .put("ack", android.util.Base64.encodeToString(acknowledgement.encode(), android.util.Base64.NO_WRAP))
+            client.sendPayload(endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8)))
+        } catch (_: Exception) {
+            listener.onStatus("A mesh hop acknowledgement could not be sent; the packet will be retried.")
+        }
+    }
+
+    private fun handleMeshHopAcknowledgement(endpointId: String, envelope: JSONObject) {
+        val acceptingPeerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (acceptingPeerId.isBlank()) return
+        try {
+            val acknowledgement = MeshHopAcknowledgement.decode(
+                android.util.Base64.decode(envelope.getString("ack"), android.util.Base64.NO_WRAP)
+            )
+            val trustedKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, acceptingPeerId) ?: return
+            if (deadDropStore.recordHopAccepted(
+                    acknowledgement, trustedKey, acceptingPeerId, localStableId, System.currentTimeMillis()
+                )) {
+                listener.onStatus("A nearby relay securely accepted a packet. Waiting for final delivery.")
+            }
+        } catch (_: Exception) {
+            listener.onStatus("An invalid mesh hop acknowledgement was rejected.")
+        }
+    }
+
+    private fun sendMeshReceiptTowardOrigin(receipt: MeshDeliveryReceipt): Boolean {
+        val now = System.currentTimeMillis()
+        val route = meshRouteTable.find(receipt.originId, now) ?: return false
+        val endpointId = endpointForStablePeer(route.nextHopPeerId) ?: return false
+        val envelope = JSONObject()
+            .put("kind", "mesh_delivery_receipt_v1")
+            .put("receipt", android.util.Base64.encodeToString(receipt.encode(), android.util.Base64.NO_WRAP))
+        return try {
+            client.sendPayload(endpointId, Payload.fromBytes(envelope.toString().toByteArray(Charsets.UTF_8)))
+            true
+        } catch (_: Exception) { false }
+    }
+
+    private fun handleMeshDeliveryReceipt(endpointId: String, envelope: JSONObject) {
+        try {
+            val receipt = MeshDeliveryReceipt.decode(
+                android.util.Base64.decode(envelope.getString("receipt"), android.util.Base64.NO_WRAP)
+            )
+            val now = System.currentTimeMillis()
+            if (receipt.originId == localStableId) {
+                val destinationKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, receipt.destinationId)
+                    ?: throw SecurityException("The destination identity has not been verified on this phone.")
+                if (deadDropStore.markDelivered(receipt, destinationKey, now)) {
+                    listener.onMessageStatus(receipt.packetId, "Delivered")
+                }
+                return
+            }
+            // Relays forward the opaque destination-signed receipt toward its origin.
+            // Only the origin removes its copy after checking the destination's pinned key.
+            val destinationKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, receipt.destinationId)
+            if (destinationKey != null) deadDropStore.markDelivered(receipt, destinationKey, now)
+            if (!sendMeshReceiptTowardOrigin(receipt)) {
+                listener.onStatus("A final delivery receipt is waiting for a route back to its sender.")
+            }
+        } catch (_: Exception) {
+            listener.onStatus("An invalid mesh delivery receipt was rejected.")
+        }
+    }
+
+    private fun deliverMeshPacket(packet: MeshRelayPacketV1, previousEndpointId: String) {
+        val trustedOriginKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, packet.originId)
+        if (trustedOriginKey == null || !java.security.MessageDigest.isEqual(trustedOriginKey, packet.originSigningPublicKey)) {
+            listener.onStatus("A relayed message is safely queued, but its sender must be verified on this phone before it can be opened.")
+            return
+        }
+        if (hasSeenMessageId(packet.packetId)) {
+            val duplicateReceipt = MeshDeliveryReceipt.create(
+                packet.packetId, packet.originId, packet.destinationId, System.currentTimeMillis()
+            ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+            sendMeshReceiptTowardOrigin(duplicateReceipt)
+            deadDropStore.markLocallyDelivered(packet.packetId)
+            return
+        }
+        if (!pendingIncomingMessageIds.add(packet.packetId)) return
+        try {
+            val clear = RecipientMessageCrypto.decrypt(
+                localRecipientIdentity.privateKey,
+                packet.originId, packet.destinationId, packet.packetId,
+                packet.createdAtMs, packet.expiresAtMs, packet.hopLimit, packet.encryptedPayload
+            )
+            val message = JSONObject(clear.toString(Charsets.UTF_8))
+            require(message.optString("kind") == "message")
+            require(message.optString("id") == packet.packetId)
+            val body = message.optString("body")
+            require(body.isNotBlank() && body.length <= 4000)
+            val senderName = message.optString("origin").ifBlank { "Nearby NeaRer member" }.take(40)
+            listener.onMeshMessage(packet.originId, senderName, packet.packetId, body) {
+                if (packet.packetId in pendingIncomingMessageIds) {
+                    val saved = rememberMessageId(packet.packetId)
+                    pendingIncomingMessageIds.remove(packet.packetId)
+                    if (saved && deadDropStore.markLocallyDelivered(packet.packetId)) {
+                        val receipt = MeshDeliveryReceipt.create(
+                            packet.packetId, packet.originId, packet.destinationId, System.currentTimeMillis()
+                        ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+                        if (!sendMeshReceiptTowardOrigin(receipt)) {
+                            listener.onStatus("Message saved here. Its final receipt will be retried when a return route is available.")
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            pendingIncomingMessageIds.remove(packet.packetId)
+            listener.onStatus("A relayed message could not be decrypted or validated. It was not delivered.")
+        }
+    }
+
+    private fun handleMeshPacket(endpointId: String, bytes: ByteArray) {
+        if (!authenticatedEndpoints.contains(endpointId)) return
+        val previousHopId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (previousHopId.isBlank()) return
+        try {
+            val packet = MeshRelayPacketV1.decode(bytes)
+            val now = System.currentTimeMillis()
+            require(packet.verifyEmbeddedOrigin(now)) { "Mesh packet origin signature or expiry is invalid." }
+            if (!deadDropStore.enqueueTransit(packet, previousHopId, now)) {
+                listener.onStatus("A mesh packet was rejected because it could not be safely stored.")
+                return
+            }
+            // The hop ACK is sent only after the encrypted packet is committed to disk.
+            sendMeshHopAcknowledgement(endpointId, packet.packetId, previousHopId)
+            if (packet.destinationId == localStableId) {
+                deliverMeshPacket(packet, endpointId)
+            } else {
+                forwardDueMeshPackets()
+            }
+        } catch (_: Exception) {
+            listener.onStatus("An invalid or expired mesh packet was rejected.")
+        }
+    }
+
+    private fun forwardDueMeshPackets() {
+        val now = System.currentTimeMillis()
+        deadDropStore.purgeExpired(now)
+        val due = deadDropStore.claimDue(now, 8) { packet, previousHop ->
+            if (packet.destinationId == localStableId || packet.hopsTaken >= packet.hopLimit) return@claimDue false
+            val route = meshRouteTable.find(packet.destinationId, now) ?: return@claimDue false
+            if (route.nextHopPeerId == previousHop) return@claimDue false
+            endpointForStablePeer(route.nextHopPeerId) != null
+        }
+        due.forEach { pending ->
+            try {
+                val packet = MeshRelayPacketV1.decode(pending.bytes).forwarded() ?: return@forEach
+                val route = meshRouteTable.find(packet.destinationId, System.currentTimeMillis()) ?: return@forEach
+                if (route.nextHopPeerId == pending.previousHopPeerId) return@forEach
+                val endpointId = endpointForStablePeer(route.nextHopPeerId) ?: return@forEach
+                client.sendPayload(endpointId, Payload.fromBytes(packet.encode()))
+                    .addOnFailureListener { listener.onStatus("A mesh relay transfer failed. NeaRer will retry it.") }
+            } catch (_: Exception) {
+                listener.onStatus("A queued mesh packet could not be forwarded and will be retried.")
+            }
+        }
+    }
+
+    /** Sends an E2E-encrypted chat packet over the verified mesh route to a previously trusted recipient. */
+    fun sendMeshMessage(destinationPeerId: String, body: String, messageId: String = UUID.randomUUID().toString()): Boolean {
+        if (body.isBlank() || body.length > 4000 ||
+            NeaRerIdentity.normalize(destinationPeerId) != destinationPeerId ||
+            messageId.isBlank() || messageId.length > 80) return false
+        val now = System.currentTimeMillis()
+        val pinnedRecipientKey = TrustedPeerKeyStore.pinnedRecipientEncryptionKey(appContext, destinationPeerId)
+            ?: return false
+        val route = meshRouteTable.find(destinationPeerId, now) ?: return false
+        val routeKey = meshDestinationEncryptionKeys[destinationPeerId] ?: pinnedRecipientKey
+        if (!java.security.MessageDigest.isEqual(pinnedRecipientKey, routeKey)) return false
+        return try {
+            val content = JSONObject()
+                .put("kind", "message")
+                .put("version", 1)
+                .put("id", messageId)
+                .put("body", body)
+                .put("ttl", 0)
+                .put("hops", 0)
+                .put("origin", localName)
+                .put("createdAt", now)
+                .toString().toByteArray(Charsets.UTF_8)
+            val packet = MeshRelayPacketV1.create(
+                localStableId, destinationPeerId, messageId, now,
+                now + 24L * 60L * 60L * 1000L, 4, pinnedRecipientKey, content
+            )
+            if (!deadDropStore.enqueueVerified(packet, SecurePeerIdentity.publicKeyEncoded(), now)) return false
+            listener.onMessageStatus(messageId, "Queued")
+            forwardDueMeshPackets()
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun failPeerHandshake(endpointId: String, reason: String) {
         peerHandshakes.remove(endpointId)
         messageSessions.remove(endpointId)
@@ -801,12 +1023,18 @@ internal object IncomingFilePayloadPolicy {
                 "peer_proof_v3" -> { handlePeerProof(endpointId, envelope); return }
                 "mesh_identity_binding_v1" -> { handlePeerIdentityBinding(endpointId, envelope); return }
                 "mesh_route_advert_v1" -> { handleMeshRouteAdvertisement(endpointId, envelope); return }
+                "mesh_hop_ack_v1" -> { handleMeshHopAcknowledgement(endpointId, envelope); return }
+                "mesh_delivery_receipt_v1" -> { handleMeshDeliveryReceipt(endpointId, envelope); return }
                 "peer_hello_v1", "peer_proof_v1", "peer_hello_v2", "peer_proof_v2" -> {
                     failPeerHandshake(endpointId, "This nearby phone is using an older NeaRer security protocol. Update both phones before connecting.")
                     return
                 }
             }
             if (!authenticatedEndpoints.contains(endpointId)) return
+            if (envelope.optString("kind") == "mesh_packet_v1") {
+                handleMeshPacket(endpointId, bytes ?: return)
+                return
+            }
             if (envelope.optString("kind") == "secure_packet_v1") {
                 val session = messageSessions[endpointId] ?: return
                 val senderId = synchronized(names) { stableIds[endpointId].orEmpty() }
