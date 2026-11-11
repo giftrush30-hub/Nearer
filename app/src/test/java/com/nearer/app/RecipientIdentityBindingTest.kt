@@ -57,7 +57,7 @@ class RecipientIdentityBindingTest {
                 .verify(signing.public.encoded, 2_000L)
         )
         assertFalse(
-            binding.copy(signature = binding.signature.copyOf().also { it[it.lastIndex] = (it.last() xor 1) })
+            binding.copy(signature = binding.signature.copyOf().also { it[it.lastIndex] = (it.last().toInt() xor 1).toByte() })
                 .verify(signing.public.encoded, 2_000L)
         )
     }
