@@ -86,6 +86,23 @@ A hop acknowledgement means only that the next hop durably accepted the packet. 
 6. Test two phones first, then A → B → C, then A → B → C → D, including disconnects, app restarts, duplicate packets, tampered ciphertext/signatures, changed keys and expired packets.
 7. Only after all tests pass, request explicit approval to enable relay for a controlled field test.
 
-## Current implementation boundary
+## Implementation status on this draft branch
 
-The integration branch has direct-peer authenticated ephemeral ECDH and AES-GCM chat packets. Those session keys are connection-scoped and cannot be reused for multi-hop delivery. The recipient ECDH identity, route advertisements, recipient envelope, Dead Drop, forwarding, and relay acknowledgements described above are not implemented yet. Relay remains disabled.
+Foundations now present in source:
+- A stable P-256 recipient ECDH keypair persisted as LocalDataCipher ciphertext; unreadable existing key material fails closed rather than being silently replaced.
+- A signed binding that associates the recipient ECDH public key with the already pinned device signing identity.
+- Recipient-only ECDH + HKDF-SHA256 + AES-256-GCM packet encryption, separate from the live direct-chat session keys.
+- An origin-signed opaque packet envelope with immutable signed header/ciphertext, expiry, and bounded hop count.
+- Signed route advertisement verification and a route table that derives its next hop from the authenticated direct advertiser, rather than trusting a remote next-hop claim.
+- A durable encrypted-at-rest Dead Drop queue foundation with bounded storage, retry backoff, forwarding leases, and distinct hop-accepted vs final-delivery states.
+- Destination-signed final receipt verification before a stored packet can be deleted.
+
+Still not integrated:
+- The new recipient identity binding is not exchanged during the live Nearby handshake or stored in the trusted-peer directory.
+- The route table is not populated from live authenticated peer events and route advertisements are not gossiped.
+- Dead Drop enqueue/claim/ack/retry/receipt methods are not connected to Nearby transport callbacks or a background worker.
+- Receipt creation is a protocol primitive; no end-to-end receipt exchange exists.
+- There is no A → B → C → D real-device test, no app-restart delivery test, and no adversarial field test.
+- Storage quotas and retry policies need product-level review before field use.
+
+The draft PR must pass the exact-head CI and code review before integration. Relay remains disabled.
