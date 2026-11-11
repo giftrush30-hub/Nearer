@@ -870,11 +870,12 @@ internal object IncomingFilePayloadPolicy {
             val routeRemoved = meshRouteTable.removeDestinationIfNextHop(
                 withdrawal.destinationId, senderId, withdrawal.sequence
             )
-            val routeStillPresent = meshRouteTable.find(withdrawal.destinationId, System.currentTimeMillis()) != null
-            // Even if the route was already evicted, persist this verified sequence
-            // so a replayed old advertisement cannot resurrect it after restart.
-            val tombstoneAccepted = routeRemoved || (!routeStillPresent &&
-                meshRouteTable.rememberWithdrawal(withdrawal.destinationId, senderId, withdrawal.sequence))
+            // Persist this advertiser's sequence even when another neighbor is
+            // currently the selected route. That alternate route stays active,
+            // while a stale replay from this advertiser remains blocked.
+            val tombstoneAccepted = meshRouteTable.rememberWithdrawal(
+                withdrawal.destinationId, senderId, withdrawal.sequence
+            )
             if (!tombstoneAccepted) return
             if (!meshRouteWithdrawalStore.record(
                     MeshRouteTable.WithdrawalTombstone(withdrawal.destinationId, senderId, withdrawal.sequence)
