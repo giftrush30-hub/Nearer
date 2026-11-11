@@ -50,6 +50,20 @@ internal object TrustedPeerKeyStore {
         }
     }
 
+    @Synchronized
+    fun pinnedSigningKey(context: Context, publicId: String): ByteArray? = try {
+        if (NeaRerIdentity.normalize(publicId) != publicId) return null
+        val prefs = context.applicationContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        decodePin(JSONObject(prefs.getString("nearby_peer_key_pins", "{}") ?: "{}"), publicId)
+    } catch (_: Exception) { null }
+
+    @Synchronized
+    fun pinnedRecipientEncryptionKey(context: Context, publicId: String): ByteArray? = try {
+        if (NeaRerIdentity.normalize(publicId) != publicId) return null
+        val prefs = context.applicationContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        decodePin(JSONObject(prefs.getString("nearby_peer_encryption_key_pins", "{}") ?: "{}"), publicId)
+    } catch (_: Exception) { null }
+
     private fun decodePin(pins: JSONObject, id: String): ByteArray? {
         if (!pins.has(id)) return null
         val encoded = pins.optString(id)
