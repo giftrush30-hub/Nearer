@@ -677,7 +677,8 @@ internal object IncomingFilePayloadPolicy {
         endpointId: String,
         destinationId: String,
         destinationKey: ByteArray,
-        hopCount: Int
+        hopCount: Int,
+        path: List<String> = listOf(localStableId, destinationId)
     ) {
         if (!authenticatedEndpoints.contains(endpointId) || hopCount !in 0..3) return
         try {
@@ -689,7 +690,8 @@ internal object IncomingFilePayloadPolicy {
                 sequence = nextMeshRouteSequence(),
                 hopCount = hopCount,
                 issuedAtMs = now,
-                expiresAtMs = now + 10L * 60L * 1000L
+                expiresAtMs = now + 10L * 60L * 1000L,
+                path = path
             ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
             val wire = JSONObject()
                 .put("kind", "mesh_route_advert_v1")
@@ -719,7 +721,7 @@ internal object IncomingFilePayloadPolicy {
         meshRouteTable.snapshot(System.currentTimeMillis()).forEach { route ->
             if (route.nextHopPeerId == targetPeerId || route.destinationId == targetPeerId || !sent.add(route.destinationId)) return@forEach
             val key = meshDestinationEncryptionKeys[route.destinationId] ?: return@forEach
-            sendMeshRouteAdvertisement(endpointId, route.destinationId, key, route.hopCount)
+            sendMeshRouteAdvertisement(endpointId, route.destinationId, key, route.hopCount, route.path)
         }
     }
 
