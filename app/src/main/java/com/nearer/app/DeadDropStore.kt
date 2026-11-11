@@ -8,14 +8,15 @@ import org.json.JSONObject
  * Caller must verify the origin signature against a pinned identity before enqueue.
  */
 internal class DeadDropStore(context: Context) {
-    data class Pending(val packetId: String, val bytes: ByteArray, val attempts: Int)
+    data class Pending(val packetId: String, val bytes: ByteArray, val attempts: Int, val previousHopPeerId: String)
 
     private data class Entry(
         val encrypted: String,
         val attempts: Int,
         val state: String,
         val dueAt: Long,
-        val leaseUntil: Long
+        val leaseUntil: Long,
+        val previousHopPeerId: String = ""
     )
 
     private val app = context.applicationContext
@@ -36,7 +37,7 @@ internal class DeadDropStore(context: Context) {
     @Synchronized
     fun enqueueTransit(packet: MeshRelayPacketV1, now: Long): Boolean {
         if (!packet.verifyEmbeddedOrigin(now)) return false
-        return enqueueValidatedPacket(packet, now)
+        return enqueueValidatedPacket(packet, now, "")
     }
 
     private fun enqueueValidatedPacket(packet: MeshRelayPacketV1, now: Long): Boolean {
@@ -53,13 +54,17 @@ internal class DeadDropStore(context: Context) {
         if (bytes.size > MAX_PACKET_BYTES) return false
         val encrypted = try { LocalDataCipher.encrypt(app, bytes) } catch (_: Exception) { return false }
         if (entries.values.sumOf { it.encrypted.length } + encrypted.length > MAX_TOTAL_CHARS) return false
-        entries[packet.packetId] = Entry(encrypted, 0, QUEUED, now, 0L)
+        entries[packet.packetId] = Entry(encrypted, 0, QUEUED, now, 0L, previousHopPeerId)
         return write(entries)
     }
 
     /** Claims due items; an expired forwarding lease is recovered after process death. */
     @Synchronized
-    fun claimDue(now: Long, limit: Int = 8): List<Pending> {
+    fun claimDue(
+        now: Long,
+        limit: Int = 8,
+        eligible: (MeshRelayPacketV1, String) -> Boolean = { _, _ -> true }
+    ): List<Pending> {
         if (limit !in 1..MAX_ITEMS) return emptyList()
         val entries = read() ?: return emptyList()
         val result = mutableListOf<Pending>()
@@ -72,16 +77,17 @@ internal class DeadDropStore(context: Context) {
             if (!due) return@forEach
             val clear = LocalDataCipher.decrypt(app, entry.encrypted) ?: return@forEach
             val packet = try { MeshRelayPacketV1.decode(clear) } catch (_: Exception) { return@forEach }
-            if (!packet.validate(now)) {
+            if (!packet.verifyEmbeddedOrigin(now)) {
                 entries.remove(id)
                 return@forEach
             }
+            if (!eligible(packet, entry.previousHopPeerId)) return@forEach
             val attempts = entry.attempts + 1
             entries[id] = entry.copy(
                 attempts = attempts, state = FORWARDING,
                 dueAt = now + backoff(attempts), leaseUntil = now + LEASE_MS
             )
-            result += Pending(id, clear, attempts)
+            result += Pending(id, clear, attempts, entry.previousHopPeerId)
         }
         // A lease is useful only if its state reached durable storage. Never
         // transmit a packet whose claim could be lost on process death.
@@ -111,6 +117,16 @@ internal class DeadDropStore(context: Context) {
             dueAt = now + backoff(old.attempts),
             leaseUntil = 0L
         )
+        return write(entries)
+    }
+
+    /** Removes a destination's local transit copy only after its app-level save succeeds. */
+    @Synchronized
+    fun markLocallyDelivered(packetId: String): Boolean {
+        if (!packetId.matches(Regex("[A-Za-z0-9._:-]{1,80}"))) return false
+        val entries = read() ?: return false
+        if (!entries.containsKey(packetId)) return false
+        entries.remove(packetId)
         return write(entries)
     }
 
@@ -170,7 +186,8 @@ internal class DeadDropStore(context: Context) {
         val json = JSONObject()
         entries.forEach { (id, e) -> json.put(id, JSONObject()
             .put("encrypted", e.encrypted).put("attempts", e.attempts)
-            .put("state", e.state).put("dueAt", e.dueAt).put("leaseUntil", e.leaseUntil)) }
+            .put("state", e.state).put("dueAt", e.dueAt).put("leaseUntil", e.leaseUntil)
+            .put("previousHopPeerId", e.previousHopPeerId)) }
         return prefs.edit().putString(KEY, json.toString()).commit()
     }
 
