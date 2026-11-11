@@ -69,6 +69,6 @@ internal object SecurePeerIdentity {
         val fingerprint = MessageDigest.getInstance("SHA-256").digest(publicKey)
             .joinToString("") { "%02x".format(it) }
         val nonce = android.util.Base64.encodeToString(challenge, android.util.Base64.NO_WRAP)
-        return ("NeaRer-peer-proof-v1\\n" + publicId + "\\n" + fingerprint + "\\n" + nonce).toByteArray(Charsets.UTF_8)
+        return ("NeaRer-peer-proof-v1\n" + publicId + "\n" + fingerprint + "\n" + nonce).toByteArray(Charsets.UTF_8)
     }
 }
