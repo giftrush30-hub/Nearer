@@ -409,13 +409,31 @@ internal object IncomingFilePayloadPolicy {
             peerHandshakes.remove(id)
             messageSessions.remove(id)
             val lostPeerId = synchronized(names) { stableIds[id].orEmpty() }
-            val withdrawnDestinations = meshRouteTable.removeNextHop(lostPeerId)
-            if (!meshRouteWithdrawalStore.saveAll(meshRouteTable.withdrawalTombstones())) {
+            // Persist every learned route withdrawal before evicting it in memory.
+            // This closes the crash window where a stale encrypted route-cache entry
+            // could otherwise be restored after the next launch.
+            val now = System.currentTimeMillis()
+            val disconnectTombstones = if (lostPeerId.isBlank()) emptyList() else {
+                meshRouteTable.snapshot(now)
+                    .filter { it.nextHopPeerId == lostPeerId && it.sequence != Long.MAX_VALUE }
+                    .map { MeshRouteTable.WithdrawalTombstone(it.destinationId, lostPeerId, it.sequence) }
+            }
+            val withdrawalHistorySaved = disconnectTombstones.isEmpty() ||
+                meshRouteWithdrawalStore.saveAll(disconnectTombstones)
+            if (!withdrawalHistorySaved) {
                 meshRouteWithdrawalStoreHealthy = false
                 listener.onStatus("Mesh route history could not be saved. Multi-hop routing is paused on this phone.")
             }
+            val withdrawnDestinations = meshRouteTable.removeNextHop(lostPeerId)
             if (lostPeerId.isNotBlank()) {
-                meshRoutePersistence.removeAdvertiser(lostPeerId)
+                val advertiserCacheRemoved = meshRoutePersistence.removeAdvertiser(lostPeerId)
+                // If replay protection could not be committed, remove cached routes
+                // from the lost advertiser as a second fail-closed safeguard.
+                if (!withdrawalHistorySaved && !advertiserCacheRemoved) {
+                    if (!meshRoutePersistence.clearAll()) {
+                        listener.onStatus("Old mesh routes could not be cleared from storage. Multi-hop routing remains disabled.")
+                    }
+                }
                 routeAdvertisementWindows.remove(lostPeerId)
             }
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
@@ -867,21 +885,27 @@ internal object IncomingFilePayloadPolicy {
             )
             require(withdrawal.advertiserId == senderId)
             require(withdrawal.verify(senderKey, System.currentTimeMillis()))
+            // Commit replay protection BEFORE changing either in-memory routes or
+            // the route cache. If storage fails, the old route remains inert behind
+            // the global health gate and cannot be resurrected as a fresh route.
+            val tombstone = MeshRouteTable.WithdrawalTombstone(
+                withdrawal.destinationId, senderId, withdrawal.sequence
+            )
+            if (!meshRouteWithdrawalStore.record(tombstone)) {
+                meshRouteWithdrawalStoreHealthy = false
+                listener.onStatus("Mesh route history could not be saved. Multi-hop routing is paused on this phone.")
+                return
+            }
             val routeRemoved = meshRouteTable.removeDestinationIfNextHop(
                 withdrawal.destinationId, senderId, withdrawal.sequence
             )
-            // Persist this advertiser's sequence even when another neighbor is
-            // currently the selected route. That alternate route stays active,
-            // while a stale replay from this advertiser remains blocked.
-            val tombstoneAccepted = meshRouteTable.rememberWithdrawal(
-                withdrawal.destinationId, senderId, withdrawal.sequence
-            )
-            if (!tombstoneAccepted) return
-            if (!meshRouteWithdrawalStore.record(
-                    MeshRouteTable.WithdrawalTombstone(withdrawal.destinationId, senderId, withdrawal.sequence)
+            // Remember even when another neighbor is selected, so this advertiser's
+            // stale route cannot return after the alternate route later disappears.
+            if (!meshRouteTable.rememberWithdrawal(
+                    withdrawal.destinationId, senderId, withdrawal.sequence
                 )) {
                 meshRouteWithdrawalStoreHealthy = false
-                listener.onStatus("Mesh route history could not be saved. Multi-hop routing is paused on this phone.")
+                listener.onStatus("Mesh route history could not be applied. Multi-hop routing is paused on this phone.")
                 return
             }
             if (routeRemoved) {
