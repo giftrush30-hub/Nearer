@@ -16,11 +16,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +38,10 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 internal fun PremiumChatsScreen(
+    meshRecipients: List<MeshRecipient>,
+    selectedMeshRecipientId: String?,
+    onSelectMeshRecipient: (String) -> Unit,
+    connectedPeerStableId: String?,
     chatReady: Boolean,
     connectedDeviceName: String?,
     connectionMessage: String,
@@ -52,6 +62,22 @@ internal fun PremiumChatsScreen(
     incomingProgress: Float,
     onCancelTransfer: () -> Unit
 ) {
+    var recipientMenuExpanded by remember { mutableStateOf(false) }
+    val selectedRecipient = meshRecipients.firstOrNull { it.peerId == selectedMeshRecipientId }
+    val selectedRecipientUnavailable = selectedMeshRecipientId != null && selectedRecipient == null
+    val chatAvailable = selectedRecipient != null || (selectedMeshRecipientId == null && chatReady)
+    val activeName = selectedRecipient?.displayName
+        ?: selectedMeshRecipientId?.let { "NeaRer ${it.takeLast(4)}" }
+        ?: connectedDeviceName
+    val visibleMessages = if (selectedRecipient != null) {
+        messages.filter { it.conversationId == selectedRecipient.peerId }
+    } else messages
+    // File transfer still uses the single active direct endpoint. Never offer it
+    // when another direct peer is selected or when the selected peer is remote.
+    val directConversation = chatReady && (
+        selectedRecipient == null || selectedRecipient.peerId == connectedPeerStableId
+    )
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -79,7 +105,7 @@ internal fun PremiumChatsScreen(
                 ) {
                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                         Text(
-                            connectedDeviceName?.take(1)?.uppercase() ?: "N",
+                            activeName?.take(1)?.uppercase() ?: "N",
                             color = White,
                             fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold
@@ -88,7 +114,7 @@ internal fun PremiumChatsScreen(
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        connectedDeviceName ?: "Your nearby circle",
+                        activeName ?: "Your nearby circle",
                         color = White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
@@ -99,17 +125,22 @@ internal fun PremiumChatsScreen(
                         Surface(
                             modifier = Modifier.size(7.dp),
                             shape = CircleShape,
-                            color = if (chatReady) Color(0xFF43D7A0) else Gold
+                            color = if (chatAvailable) Color(0xFF43D7A0) else Gold
                         ) {}
                         Text(
-                            if (chatReady) "Connected · Private chat ready" else "Not connected yet",
-                            color = if (chatReady) Color(0xFF9DE8C9) else Muted,
+                            when {
+                                selectedRecipientUnavailable -> "Selected recipient is currently unreachable"
+                                selectedRecipient?.isDirect == false -> "Mesh route · ${selectedRecipient.hopCount} relay(s) away"
+                                chatAvailable -> "Direct nearby · Private chat ready"
+                                else -> "Not connected yet"
+                            },
+                            color = if (chatAvailable) Color(0xFF9DE8C9) else Muted,
                             fontSize = 11.sp,
                             maxLines = 2
                         )
                     }
                 }
-                if (!chatReady) {
+                if (!chatAvailable) {
                     Surface(
                         modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onFindNearby),
                         shape = RoundedCornerShape(12.dp),
@@ -135,12 +166,14 @@ internal fun PremiumChatsScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text("PRIVATE CHAT", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-                        Text(connectedDeviceName ?: "Start a nearby conversation", color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Text(activeName ?: "Choose a nearby recipient", color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     }
-                    Surface(shape = RoundedCornerShape(30.dp), color = if (chatReady) Color(0xFF174B43) else Color(0xFF3C3540)) {
+                    Surface(shape = RoundedCornerShape(30.dp), color = if (chatAvailable) Color(0xFF174B43) else Color(0xFF3C3540)) {
                         Text(
-                            if (chatReady) "SECURE LINK" else "OFFLINE",
-                            color = if (chatReady) Color(0xFF9DE8C9) else Gold,
+                            if (selectedRecipientUnavailable) "ROUTE LOST"
+                            else if (selectedRecipient?.isDirect == false) "MESH ROUTE"
+                            else if (chatAvailable) "SECURE LINK" else "OFFLINE",
+                            color = if (chatAvailable) Color(0xFF9DE8C9) else Gold,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
@@ -148,8 +181,71 @@ internal fun PremiumChatsScreen(
                     }
                 }
 
-                if (chatReady) {
-                    if (messages.isEmpty()) {
+                if (meshRecipients.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("SEND TO A TRUSTED RECIPIENT", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable {
+                                recipientMenuExpanded = true
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFF172A43)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 13.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(activeName ?: "Choose a person", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        when {
+                                            selectedRecipientUnavailable -> "Route unavailable · waiting for a path"
+                                            selectedRecipient == null -> "Select someone you have securely paired with"
+                                            selectedRecipient.isDirect -> "Direct nearby connection"
+                                            else -> "Through ${selectedRecipient.hopCount} trusted relay(s)"
+                                        },
+                                        color = Muted,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                                Text("⌄", color = BlueAccent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Text(
+                            "Multi-hop is available only for people whose device keys you have verified through a previous direct pairing.",
+                            color = Muted,
+                            fontSize = 9.sp,
+                            lineHeight = 13.sp
+                        )
+                        DropdownMenu(
+                            expanded = recipientMenuExpanded,
+                            onDismissRequest = { recipientMenuExpanded = false }
+                        ) {
+                            meshRecipients.forEach { recipient ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(recipient.displayName, color = White, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                if (recipient.isDirect) "Direct nearby" else "Mesh · ${recipient.hopCount} relay(s)",
+                                                color = Muted,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        onSelectMeshRecipient(recipient.peerId)
+                                        recipientMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (chatAvailable) {
+                    if (visibleMessages.isEmpty()) {
                         Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFF142238)) {
                             Column(
                                 modifier = Modifier.fillMaxWidth().padding(18.dp),
@@ -158,7 +254,13 @@ internal fun PremiumChatsScreen(
                             ) {
                                 Text("✦", color = Gold, fontSize = 25.sp)
                                 Text("A fresh conversation", color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                Text("Say hello. Your messages travel over the direct nearby phone connection.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                                Text(
+                                    if (selectedRecipient?.isDirect == false)
+                                        "Send a private message through the nearby mesh. Relays carry encrypted packets; only the selected recipient can read them."
+                                    else
+                                        "Say hello. Your messages travel over the secure nearby phone connection.",
+                                    color = Muted, fontSize = 12.sp, lineHeight = 18.sp
+                                )
                             }
                         }
                     } else {
@@ -166,7 +268,7 @@ internal fun PremiumChatsScreen(
                             modifier = Modifier.fillMaxWidth().height(230.dp).verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(9.dp)
                         ) {
-                            messages.forEach { message ->
+                            visibleMessages.forEach { message ->
                                 Column(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
@@ -219,23 +321,28 @@ internal fun PremiumChatsScreen(
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(9.dp)
+                        horizontalArrangement = Arrangement.spacedBy(9.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Button(
-                            onClick = onChooseFiles,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263B59), contentColor = White)
-                        ) { Text("＋  Share files", fontSize = 12.sp) }
+                        if (chatReady && directConversation) {
+                            Button(
+                                onClick = onChooseFiles,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263B59), contentColor = White)
+                            ) { Text("＋  Share files", fontSize = 12.sp) }
+                        } else {
+                            Text("File sharing needs a direct nearby connection.", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                        }
                         Text(
-                            if (usingNearbyConnections) "Nearby link" else "Wi-Fi Direct link",
+                            if (selectedRecipient?.isDirect == false) "Mesh chat" else if (usingNearbyConnections) "Nearby link" else "Wi-Fi Direct link",
                             color = Muted,
                             fontSize = 10.sp,
                             modifier = Modifier.align(Alignment.CenterVertically)
                         )
                     }
 
-                    incomingTransferName?.let { incomingName ->
+                    if (chatReady && directConversation) incomingTransferName?.let { incomingName ->
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Receiving $incomingName", color = White, fontSize = 11.sp)
                             LinearProgressIndicator(
@@ -246,7 +353,7 @@ internal fun PremiumChatsScreen(
                             )
                         }
                     }
-                    if (outgoingTransferId != null) {
+                    if (chatReady && directConversation && outgoingTransferId != null) {
                         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             Text("Sending file…", color = White, fontSize = 11.sp)
                             LinearProgressIndicator(
@@ -264,7 +371,7 @@ internal fun PremiumChatsScreen(
                         }
                     }
 
-                    receivedFiles.take(3).forEach { fileItem ->
+                    if (chatReady && directConversation) receivedFiles.take(3).forEach { fileItem ->
                         Surface(
                             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).clickable { onOpenFile(fileItem) },
                             shape = RoundedCornerShape(13.dp),
@@ -278,7 +385,7 @@ internal fun PremiumChatsScreen(
                         }
                     }
 
-                    if (transferHistory.isNotEmpty()) {
+                    if (chatReady && directConversation && transferHistory.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             Text("RECENT FILE ACTIVITY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                             transferHistory.take(3).forEach { record ->
@@ -295,7 +402,14 @@ internal fun PremiumChatsScreen(
                     }
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                        Text("Connect with someone nearby to start a private conversation. NeaRer uses supported local phone connections; mobile data isn't needed for this nearby chat.", color = Muted, fontSize = 12.sp, lineHeight = 19.sp)
+                        Text(
+                            when {
+                                selectedRecipientUnavailable -> "Your selected person is not reachable right now. NeaRer will not send this message to a different phone."
+                                meshRecipients.isNotEmpty() -> "Choose one of your trusted contacts above to send through an available mesh route."
+                                else -> "Connect with someone nearby to start a private conversation. NeaRer uses local phone connections; mobile data isn't needed."
+                            },
+                            color = Muted, fontSize = 12.sp, lineHeight = 19.sp
+                        )
                         Button(
                             onClick = onFindNearby,
                             modifier = Modifier.fillMaxWidth().height(52.dp),

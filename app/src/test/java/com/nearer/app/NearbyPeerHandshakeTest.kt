@@ -10,8 +10,10 @@ class NearbyPeerHandshakeTest {
         val bNonce = ByteArray(32) { (it + 65).toByte() }
         val aKey = byteArrayOf(1, 2, 3)
         val bKey = byteArrayOf(4, 5, 6)
-        val fromA = NearbyPeerHandshake.transcriptChallenge("peer-a", aNonce, aKey, "peer-b", bNonce, bKey)
-        val fromB = NearbyPeerHandshake.transcriptChallenge("peer-b", bNonce, bKey, "peer-a", aNonce, aKey)
+        val aRecipientKey = byteArrayOf(7, 8, 9)
+        val bRecipientKey = byteArrayOf(10, 11, 12)
+        val fromA = NearbyPeerHandshake.transcriptChallenge("peer-a", aNonce, aKey, aRecipientKey, "peer-b", bNonce, bKey, bRecipientKey)
+        val fromB = NearbyPeerHandshake.transcriptChallenge("peer-b", bNonce, bKey, bRecipientKey, "peer-a", aNonce, aKey, aRecipientKey)
         assertArrayEquals(fromA, fromB)
     }
 
@@ -20,9 +22,13 @@ class NearbyPeerHandshakeTest {
         val nonceB = ByteArray(32) { (it + 32).toByte() }
         val keyA = byteArrayOf(1, 2, 3)
         val keyB = byteArrayOf(4, 5, 6)
-        val original = NearbyMessageCrypto.transcript("a", nonceA, keyA, "b", nonceB, keyB)
-        val altered = NearbyMessageCrypto.transcript("a", nonceA, keyA, "b", nonceB, byteArrayOf(4, 5, 7))
-        assertFalse(original.contentEquals(altered))
+        val recipientA = byteArrayOf(7, 8, 9)
+        val recipientB = byteArrayOf(10, 11, 12)
+        val original = NearbyMessageCrypto.transcript("a", nonceA, keyA, recipientA, "b", nonceB, keyB, recipientB)
+        val alteredEphemeral = NearbyMessageCrypto.transcript("a", nonceA, keyA, recipientA, "b", nonceB, byteArrayOf(4, 5, 7), recipientB)
+        val alteredRecipient = NearbyMessageCrypto.transcript("a", nonceA, keyA, recipientA, "b", nonceB, keyB, byteArrayOf(10, 11, 13))
+        assertFalse(original.contentEquals(alteredEphemeral))
+        assertFalse(original.contentEquals(alteredRecipient))
     }
 
     @Test fun ecdhDerivesMatchingDirectionalKeys() {

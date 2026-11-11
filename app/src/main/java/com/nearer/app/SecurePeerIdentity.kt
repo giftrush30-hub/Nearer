@@ -57,6 +57,27 @@ internal object SecurePeerIdentity {
         } catch (_: Exception) { false }
     }
 
+    /** Signs an already domain-separated protocol transcript without altering its bytes. */
+    fun signDetached(challenge: ByteArray): ByteArray {
+        ensureKeyPair()
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val privateKey = store.getKey(KEY_ALIAS, null) as java.security.PrivateKey
+        return Signature.getInstance("SHA256withECDSA").run {
+            initSign(privateKey)
+            update(challenge)
+            sign()
+        }
+    }
+
+    fun verifyDetached(publicKey: ByteArray, challenge: ByteArray, signature: ByteArray): Boolean = try {
+        val key = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(publicKey))
+        Signature.getInstance("SHA256withECDSA").run {
+            initVerify(key)
+            update(challenge)
+            verify(signature)
+        }
+    } catch (_: Exception) { false }
+
     fun isValidPublicKey(encoded: ByteArray): Boolean {
         if (encoded.isEmpty() || encoded.size > 512) return false
         return try {

@@ -132,6 +132,8 @@ class MainActivity : ComponentActivity() {
     private var ultraSpeedMode by mutableStateOf(false)
     private var ultraSpeedRestartRequired by mutableStateOf(false)
     private val hybridPeers = mutableStateMapOf<String, String>()
+    private val meshRecipients = mutableStateMapOf<String, MeshRecipient>()
+    private var selectedMeshRecipientId by mutableStateOf<String?>(null)
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
     private var displayName by mutableStateOf("NeaRer User")
     private var onboardingComplete by mutableStateOf(false)
@@ -329,10 +331,29 @@ class MainActivity : ComponentActivity() {
         nearbyTransport = try {
             NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
             override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
+            override fun onMeshRoutesChanged(recipients: List<MeshRecipient>) {
+                runOnUiThread {
+                    meshRecipients.clear()
+                    recipients.forEach { meshRecipients[it.peerId] = it }
+                    // Keep an unreachable selection as an explicit target. Never silently
+                    // switch the recipient to another nearby person after route loss.
+                    if (selectedMeshRecipientId == null) {
+                        selectedMeshRecipientId = hybridConnectedStableId?.takeIf { it in meshRecipients.keys }
+                    }
+                }
+            }
             override fun onFound(id: String, name: String, stableId: String) { runOnUiThread { hybridPeers[id] = name; if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId) } }
             override fun onLost(id: String, stableId: String) { runOnUiThread {
                 val name = hybridPeers.remove(id)
                 if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
+                if (hybridConnectedEndpoint == id) {
+                    hybridConnected = false
+                    hybridConnectedEndpoint = null
+                    hybridConnectedStableId = null
+                    chatReady = false
+                    connectedDeviceName = null
+                    connectionMessage = "Direct link lost. Checking available mesh routes…"
+                }
             } }
             override fun onRequest(id: String, name: String, token: String) {
                 runOnUiThread {
@@ -348,6 +369,9 @@ class MainActivity : ComponentActivity() {
                     hybridConnected = true
                     hybridConnectedEndpoint = id
                     hybridConnectedStableId = stableId.ifBlank { null }
+                    if (selectedMeshRecipientId == null) {
+                        selectedMeshRecipientId = stableId.takeIf { it.isNotBlank() }
+                    }
                     val requestedIncomingResume = nearbyTransport?.requestPendingIncomingFilesForPeer(stableId, id) == true
                     val hasQueuedOutgoingFile = currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()
                     if (hasQueuedOutgoingFile) {
@@ -426,6 +450,29 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     // Never tell the sender "Delivered" unless this phone saved the message.
+                    if (safelyStored) acknowledge()
+                }
+            }
+            override fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
+                runOnUiThread {
+                    var safelyStored = false
+                    if (chatMessages.any { it.id == messageId }) {
+                        safelyStored = true
+                    } else {
+                        chatMessages.add(ChatMessage(
+                            messageId, body, outgoing = false, delivery = "Received",
+                            conversationId = originPeerId,
+                            conversationName = senderName
+                        ))
+                        safelyStored = persistMessages()
+                        if (safelyStored) {
+                            trimChatMessages()
+                            chatNotice = "New offline mesh message received from $senderName."
+                        } else {
+                            chatMessages.removeAll { it.id == messageId }
+                            chatNotice = "Mesh message received, but could not be saved. Delivery was not confirmed."
+                        }
+                    }
                     if (safelyStored) acknowledge()
                 }
             }
@@ -560,6 +607,7 @@ class MainActivity : ComponentActivity() {
             statusMessage = "Nearby services could not initialise: ${error.javaClass.simpleName}. NeaRer opened in safe mode."
             null
         }
+        nearbyTransport?.setMeshTransitEnabled(false)
         if (wifiManager == null && statusMessage == "Ready to find nearby Android phones.") {
             statusMessage = "Wi-Fi Direct is unavailable. Bluetooth nearby features may still work."
         }
@@ -625,6 +673,10 @@ class MainActivity : ComponentActivity() {
                     pairingCode = pairingCode,
                     chatReady = chatReady,
                     usingNearbyConnections = hybridConnected,
+                    meshRecipients = meshRecipients.values.toList(),
+                    selectedMeshRecipientId = selectedMeshRecipientId,
+                    onSelectMeshRecipient = { selectedMeshRecipientId = it },
+                    connectedPeerStableId = hybridConnectedStableId,
                     messages = chatMessages,
                     chatNotice = chatNotice,
                     externalShareUris = pendingExternalShareUris,
@@ -808,10 +860,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateMeshRelayEnabled(enabled: Boolean) {
-        meshRelayEnabled = enabled
-        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", enabled).apply()
+        // Keep transit disabled until the explicit relay-consent onboarding and
+        // safety gates are shipped. The transport also enforces this default.
+        meshRelayEnabled = false
+        nearbyTransport?.setMeshTransitEnabled(false)
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", false).apply()
-        statusMessage = "Community relay is temporarily paused while recipient routing and end-to-end encryption are being built."
+        statusMessage = "Community relay is paused. This phone will not store or forward other people's mesh messages."
     }
 
     private fun saveDisplayName(rawName: String) {
@@ -1358,8 +1412,50 @@ class MainActivity : ComponentActivity() {
 
     private fun sendChatMessage(rawText: String) {
         val body = rawText.trim()
-        if (body.isEmpty() || !chatReady) return
+        if (body.isEmpty()) return
         val id = UUID.randomUUID().toString()
+        val targetPeerId = selectedMeshRecipientId ?: hybridConnectedStableId
+        val meshRecipient = targetPeerId?.let { meshRecipients[it] }
+        if (meshRecipient != null) {
+            chatMessages.add(ChatMessage(
+                id, body, outgoing = true, delivery = "Sending…",
+                conversationId = meshRecipient.peerId,
+                conversationName = meshRecipient.displayName
+            ))
+            if (!persistMessages()) {
+                chatMessages.removeAll { it.id == id }
+                chatNotice = "NeaRer could not save this message on your phone. It was not sent."
+                return
+            }
+            trimChatMessages()
+            var sent = nearbyTransport?.sendMeshMessage(meshRecipient.peerId, body, id) == true
+            // Preserve the proven direct-chat path if the new recipient-encrypted route
+            // cannot be used for a directly connected peer.
+            if (!sent && meshRecipient.isDirect &&
+                meshRecipient.peerId == hybridConnectedStableId && hybridConnectedEndpoint != null) {
+                sent = nearbyTransport?.send(body, id, hybridConnectedEndpoint!!) == true
+            }
+            if (!sent) {
+                val index = chatMessages.indexOfFirst { it.id == id }
+                if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
+                persistMessages()
+                chatNotice = "No working secure route to ${meshRecipient.displayName}. The message was not delivered."
+                return
+            }
+            chatNotice = if (meshRecipient.isDirect) {
+                "Sent over the secure nearby link • waiting for final delivery."
+            } else {
+                "Queued for ${meshRecipient.displayName} through ${meshRecipient.hopCount} relay(s). Only that recipient can read it."
+            }
+            return
+        }
+        // Never fall back to a different connected phone when the user selected
+        // a remote mesh recipient whose route has disappeared.
+        if (selectedMeshRecipientId != null && selectedMeshRecipientId != hybridConnectedStableId) {
+            chatNotice = "That recipient is no longer reachable. NeaRer has not sent the message to someone else."
+            return
+        }
+        if (!chatReady) return
         if (hybridConnected) {
             val targetEndpoint = hybridConnectedEndpoint
             if (targetEndpoint.isNullOrBlank()) {
@@ -2807,6 +2903,10 @@ private fun NeaRerHome(
     pairingCode: String?,
     chatReady: Boolean,
     usingNearbyConnections: Boolean,
+    meshRecipients: List<MeshRecipient>,
+    selectedMeshRecipientId: String?,
+    onSelectMeshRecipient: (String) -> Unit,
+    connectedPeerStableId: String?,
     messages: List<ChatMessage>,
     chatNotice: String,
     receivedFiles: List<ReceivedFile>,
@@ -3418,6 +3518,10 @@ private fun NeaRerHome(
 
             if (selectedTab == "Chats") {
                 PremiumChatsScreen(
+                    meshRecipients = meshRecipients,
+                    selectedMeshRecipientId = selectedMeshRecipientId,
+                    onSelectMeshRecipient = onSelectMeshRecipient,
+                    connectedPeerStableId = connectedPeerStableId,
                     chatReady = chatReady,
                     connectedDeviceName = connectedDeviceName,
                     connectionMessage = connectionMessage,

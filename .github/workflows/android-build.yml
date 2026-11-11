@@ -83,7 +83,17 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_2
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-load -no-snapshot-save -wipe-data -camera-back none
           disable-animations: true
           emulator-boot-timeout: 600000
           script: gradle --no-daemon --stacktrace connectedDebugAndroidTest
+      - name: Preserve Android instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ matrix.api-level }}-instrumentation-report
+          path: |
+            app/build/reports/androidTests/**
+            app/build/outputs/androidTest-results/**
+          if-no-files-found: ignore
+          retention-days: 7
