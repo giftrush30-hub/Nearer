@@ -69,34 +69,47 @@ internal object NearbyMessageCrypto {
         }
     }
 
-    fun encrypt(session: Session, senderId: String, recipientId: String, messageId: String, plaintext: ByteArray): ByteArray {
+    data class EncryptedPayload(val messageId: String, val nonce: ByteArray, val ciphertext: ByteArray)
+
+    /** Pure cryptographic operation, separately testable without Android framework classes. */
+    fun seal(session: Session, senderId: String, recipientId: String, messageId: String, plaintext: ByteArray): EncryptedPayload {
         require(messageId.isNotBlank() && messageId.length <= 80)
         val nonce = ByteArray(NONCE_BYTES).also { SecureRandom().nextBytes(it) }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(session.sendKey, "AES"), GCMParameterSpec(TAG_BITS, nonce))
         cipher.updateAAD(aad(senderId, recipientId, messageId))
-        val encrypted = cipher.doFinal(plaintext)
+        return EncryptedPayload(messageId, nonce, cipher.doFinal(plaintext))
+    }
+
+    fun open(session: Session, recipientId: String, senderId: String, packet: EncryptedPayload): ByteArray {
+        require(packet.messageId.isNotBlank() && packet.messageId.length <= 80)
+        require(packet.nonce.size == NONCE_BYTES && packet.ciphertext.size in 16..16384)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(session.receiveKey, "AES"), GCMParameterSpec(TAG_BITS, packet.nonce))
+        cipher.updateAAD(aad(senderId, recipientId, packet.messageId))
+        return cipher.doFinal(packet.ciphertext)
+    }
+
+    fun encrypt(session: Session, senderId: String, recipientId: String, messageId: String, plaintext: ByteArray): ByteArray {
+        val packet = seal(session, senderId, recipientId, messageId, plaintext)
         return JSONObject()
             .put("kind", "secure_packet_v1")
             .put("version", VERSION)
-            .put("id", messageId)
-            .put("nonce", Base64.encodeToString(nonce, Base64.NO_WRAP))
-            .put("ciphertext", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            .put("id", packet.messageId)
+            .put("nonce", Base64.encodeToString(packet.nonce, Base64.NO_WRAP))
+            .put("ciphertext", Base64.encodeToString(packet.ciphertext, Base64.NO_WRAP))
             .toString().toByteArray(Charsets.UTF_8)
     }
 
     fun decrypt(session: Session, recipientId: String, senderId: String, packet: JSONObject): Pair<String, ByteArray> {
         require(packet.optString("kind") == "secure_packet_v1")
         require(packet.optInt("version", -1) == VERSION)
-        val messageId = packet.getString("id")
-        require(messageId.isNotBlank() && messageId.length <= 80)
-        val nonce = Base64.decode(packet.getString("nonce"), Base64.NO_WRAP)
-        val ciphertext = Base64.decode(packet.getString("ciphertext"), Base64.NO_WRAP)
-        require(nonce.size == NONCE_BYTES && ciphertext.size in 16..16384)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(session.receiveKey, "AES"), GCMParameterSpec(TAG_BITS, nonce))
-        cipher.updateAAD(aad(senderId, recipientId, messageId))
-        return messageId to cipher.doFinal(ciphertext)
+        val encrypted = EncryptedPayload(
+            packet.getString("id"),
+            Base64.decode(packet.getString("nonce"), Base64.NO_WRAP),
+            Base64.decode(packet.getString("ciphertext"), Base64.NO_WRAP)
+        )
+        return encrypted.messageId to open(session, recipientId, senderId, encrypted)
     }
 
     fun transcript(
