@@ -18,11 +18,10 @@ internal class MeshRouteWithdrawalStore(context: Context) {
         // higher watermark and report a healthy store rather than treating the
         // replay itself as a storage failure.
         if (tombstone.sequence <= old) return true
+        // Never evict a live replay-protection watermark to make room. If the
+        // bounded store is full, fail closed and pause multi-hop instead.
+        if (old < 0L && entries.size >= MAX_TOMBSTONES) return false
         entries[key] = tombstone.sequence
-        while (entries.size > MAX_TOMBSTONES) {
-            val oldest = entries.keys.firstOrNull() ?: break
-            entries.remove(oldest)
-        }
         return write(entries)
     }
 
@@ -34,10 +33,9 @@ internal class MeshRouteWithdrawalStore(context: Context) {
             val key = key(tombstone.destinationId, tombstone.advertiserId)
             entries[key] = maxOf(entries[key] ?: -1L, tombstone.sequence)
         }
-        while (entries.size > MAX_TOMBSTONES) {
-            val oldest = entries.keys.firstOrNull() ?: break
-            entries.remove(oldest)
-        }
+        // Overflow is a safety failure, not an eviction policy: deleting an
+        // unexpired watermark could permit a stale signed route to reappear.
+        if (entries.size > MAX_TOMBSTONES) return false
         return write(entries)
     }
 
@@ -48,16 +46,14 @@ internal class MeshRouteWithdrawalStore(context: Context) {
         val validEntries = LinkedHashMap<String, Long>()
         entries.forEach { (compoundKey, sequence) ->
             val split = compoundKey.split("|")
-            if (split.size != 2) return@forEach
+            if (split.size != 2) return -1
             val tombstone = MeshRouteTable.WithdrawalTombstone(split[0], split[1], sequence)
-            if (valid(tombstone)) {
-                validEntries[compoundKey] = sequence
-                if (table.rememberWithdrawal(tombstone.destinationId, tombstone.advertiserId, sequence)) {
-                    restored += 1
-                }
-            }
+            if (!valid(tombstone)) return -1
+            validEntries[compoundKey] = sequence
+            if (!table.rememberWithdrawal(tombstone.destinationId, tombstone.advertiserId, sequence)) return -1
+            restored += 1
         }
-        if (validEntries.size != entries.size) write(validEntries)
+        if (validEntries.size != entries.size && !write(validEntries)) return -1
         return restored
     }
 
