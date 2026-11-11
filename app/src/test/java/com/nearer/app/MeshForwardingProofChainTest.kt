@@ -103,7 +103,7 @@ class MeshForwardingProofChainTest {
             MeshForwardingProof.GENESIS_HASH
         ) { sign(b.private, it) }
         val repeated = MeshForwardingProof.create(
-            "packet-3", "AAAAAA", "BBBBBB", "BBBBBB", 2, 10_100L, first.hash()
+            "packet-3", "AAAAAA", "BBBBBB", "CCCCCC", 2, 10_100L, first.hash()
         ) { sign(b.private, it) }
         assertFalse(MeshForwardingProofChain(listOf(first, repeated))
             .verify("packet-3", "AAAAAA", "BBBBBB", { b.public.encoded }, 10_500L))
