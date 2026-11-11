@@ -23,6 +23,8 @@ class MeshDeliveryReceiptTest {
             }
         }
         assertTrue(receipt.verify(destination.public.encoded, 401000L))
+        val decoded = MeshDeliveryReceipt.decode(receipt.encode())
+        assertTrue(decoded.verify(destination.public.encoded, 401000L))
         assertFalse(receipt.verify(attacker.public.encoded, 401000L))
         assertFalse(receipt.copy(packetId = "packet-2").verify(destination.public.encoded, 401000L))
         assertFalse(receipt.verify(destination.public.encoded, 1000L))
