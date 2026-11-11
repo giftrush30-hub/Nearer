@@ -1,5 +1,6 @@
 ## Recent safety hardening
 
+- Withdrawal replay-protection storage never evicts an unexpired watermark to make room. If the bounded tombstone store is full or contains invalid records, restore/write fails closed and multi-hop pauses rather than risking stale-route resurrection.
 - Receipt forwarding now persists the exact selected outgoing next-hop identity before transmission. A signed receipt-hop ACK from a different authenticated neighbor cannot delete the queued receipt; the expected next hop survives process restart.
 - Route-withdrawal replay protection is committed before the in-memory route is removed. A storage failure pauses multi-hop before the withdrawal is applied.
 - When a direct next hop disconnects, all active learned-route tombstones are persisted before route eviction. If this persistence fails, the transport pauses multi-hop and attempts to remove cached routes learned from that neighbor; if that cleanup also fails, it attempts to clear the route cache.
