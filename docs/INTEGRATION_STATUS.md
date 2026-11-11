@@ -1,6 +1,6 @@
 # NeaRer integration checkpoint
 
-This branch is a protected integration workspace. It is not a release and must not be merged to main until CI and device tests pass.
+Batch One source integration is complete. The consolidated tree is on `main` and `integration/nearer-complete-app` at commit `98adcd4a0d56e288a26ce71108d8184149838d6e`. This is an engineering milestone, not a release certification. Source integration was explicitly approved; relay activation and release publication remain separate decisions.
 
 ## Integrated into this branch
 
@@ -28,7 +28,7 @@ This branch is a protected integration workspace. It is not a release and must n
 ## Known limitations to keep visible
 
 - Delivery acknowledgements are not read receipts.
-- Multi-hop mesh relay remains disabled. Chat encryption now exists in the direct Nearby message path, but relay routing, encrypted store-and-forward envelopes, hop authentication, delivery/expiry policy and A → B → C → D physical-device tests are not integrated. Do not enable relay yet.
+- Multi-hop mesh foundations are integrated: recipient-addressed ECDH/HKDF/AES-GCM envelopes, origin signatures, signed path-vector routes and withdrawals, encrypted Dead Drop storage, retry/lease handling, authenticated hop acknowledgements, destination-signed delivery receipts, and an encrypted receipt outbox. Relay remains disabled. Outstanding release gates are cryptographic binding of legacy peer IDs to stable identities for remote first contact, independently verifiable chained per-hop forwarding proofs, intermediate receipt-copy cleanup when destination keys are not pinned, process-death/Doze/reboot retry scheduling, and physical A → B → C → D plus adversarial device validation.
 - Internet multiplayer and live voice calls are not part of the current offline Ludo implementation.
 - No speed or unlimited-size claims should be made without device measurements.
 - AppShare's complete installed-app catalogue uses Android package-visibility access and may require Google Play policy review before Play Store publication.
@@ -36,7 +36,7 @@ This branch is a protected integration workspace. It is not a release and must n
 
 ## Release gate
 
-Only publish an APK after unit tests, Android emulator launch tests, and real-device two-phone chat/file-transfer tests pass. A workflow run from an earlier commit is not evidence for this branch head.
+Only publish a release APK after the exact-head build/validation workflow and real-device two-phone chat/file-transfer tests pass. Physical multi-hop relay tests and the mesh security gates above are additionally required before any relay feature is enabled. A source merge or a workflow run from an earlier commit is not evidence of release readiness.
 
 
 ## Latest validation feedback
