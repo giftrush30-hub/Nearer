@@ -72,6 +72,18 @@ internal class DeadDropStore(context: Context) {
             return true
         }
         if (entries.size >= MAX_ITEMS) return false
+        var originItems = 0
+        var originEncryptedChars = 0
+        entries.values.forEach { entry ->
+            val existingClear = LocalDataCipher.decrypt(app, entry.encrypted) ?: return false
+            val existingPacket = try { MeshRelayPacketV1.decode(existingClear) } catch (_: Exception) { return false }
+            if (existingPacket.originId == packet.originId) {
+                originItems += 1
+                originEncryptedChars += entry.encrypted.length
+            }
+        }
+        if (originItems >= MAX_PER_ORIGIN_ITEMS ||
+            originEncryptedChars >= MAX_PER_ORIGIN_CHARS) return false
         val bytes = packet.encode()
         if (bytes.size > MAX_PACKET_BYTES) return false
         val encrypted = try { LocalDataCipher.encrypt(app, bytes) } catch (_: Exception) { return false }
@@ -271,6 +283,8 @@ internal class DeadDropStore(context: Context) {
     companion object {
         private const val KEY = "queue_v1"
         private const val MAX_ITEMS = 64
+        private const val MAX_PER_ORIGIN_ITEMS = 16
+        private const val MAX_PER_ORIGIN_CHARS = 512 * 1024
         private const val MAX_PACKET_BYTES = 40 * 1024
         private const val MAX_TOTAL_CHARS = 2 * 1024 * 1024
         private const val MAX_ATTEMPTS = 8
