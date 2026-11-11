@@ -52,6 +52,25 @@ class MeshRelayPacketTest {
         assertFalse(packet.verify(otherRecipient.public.encoded, 2000L))
     }
 
+    @Test fun embeddedOriginSignatureProvesIntegrityButNotTrustedIdentity() {
+        val recipient = pair()
+        val origin = pair()
+        val encrypted = RecipientMessageCrypto.encrypt(
+            "AAAAAA", "BBBBBB", "packet-self-check", 1000L, 5000L, 2,
+            recipient.public.encoded, "payload".toByteArray()
+        )
+        val unsigned = MeshRelayPacketV1(
+            "packet-self-check", "AAAAAA", "BBBBBB", 1000L, 5000L, 2, 0,
+            encrypted, origin.public.encoded, ByteArray(0)
+        )
+        val packet = unsigned.copy(originSignature = sign(origin.private, unsigned.signedBytes()))
+        assertTrue(packet.verifyEmbeddedOrigin(2000L))
+        assertFalse(packet.verify(origin.public.encoded.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() }, 2000L))
+        assertTrue(packet.sameImmutablePacket(packet.forwarded()!!))
+        assertFalse(packet.sameImmutablePacket(packet.copy(packetId = "different-id")))
+        assertFalse(packet.copy(originSignature = packet.originSignature.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() }).verifyEmbeddedOrigin(2000L))
+    }
+
     @Test fun packetCannotExceedSignedHopLimitOrOutliveItsExpiry() {
         val recipient = pair()
         val origin = pair()
