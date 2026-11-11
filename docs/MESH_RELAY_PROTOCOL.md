@@ -1,5 +1,6 @@
 ## Recent safety hardening
 
+- Dead Drop retry attempts no longer terminate after eight sends. The persisted retry level saturates at a bounded value, backoff caps at one hour, and queued packets continue retrying until their signed expiry time; an instrumentation test exercises retries beyond the old limit.
 - The Dead Drop queue now encrypts its complete persisted wrapper, including packet IDs, attempts, delivery state and previous/expected next-hop IDs. A compatibility reader migrates earlier development-format entries on their next write; instrumentation verifies the metadata is not exposed in SharedPreferences.
 - Outgoing mesh routing now compares the selected route's destination-key fingerprint directly with the locally pinned recipient encryption key, even when the in-memory advertised-key cache is absent. Invalid tombstone batches also persist the fail-closed marker.
 - The receipt outbox now encrypts its complete persisted wrapper, including packet IDs and previous/expected next-hop IDs. A compatibility reader migrates earlier development-format entries on their next write; instrumentation checks that routing metadata is not visible in SharedPreferences.
