@@ -185,17 +185,23 @@ internal object IncomingFilePayloadPolicy {
     private companion object { const val RECEIPT_RETRY_MS = 15_000L }
     init {
         restorePendingOutbox()
-        val restoredRoutes = meshRoutePersistence.restore(
-            meshRouteTable,
-            { peerId -> TrustedPeerKeyStore.pinnedSigningKey(appContext, peerId) },
-            System.currentTimeMillis()
-        )
-        meshRoutePersistence.destinationKeys().forEach { (peerId, key) ->
-            meshDestinationEncryptionKeys[peerId] = key.copyOf()
-        }
+        // Restore replay protection before any cached route can become usable.
         val restoredWithdrawals = meshRouteWithdrawalStore.restore(meshRouteTable)
         meshRouteWithdrawalStoreHealthy = restoredWithdrawals >= 0
-        if (!meshRouteWithdrawalStoreHealthy) {
+        val restoredRoutes = if (meshRouteWithdrawalStoreHealthy) {
+            meshRoutePersistence.restore(
+                meshRouteTable,
+                { peerId -> TrustedPeerKeyStore.pinnedSigningKey(appContext, peerId) },
+                System.currentTimeMillis()
+            )
+        } else {
+            0
+        }
+        if (meshRouteWithdrawalStoreHealthy) {
+            meshRoutePersistence.destinationKeys().forEach { (peerId, key) ->
+                meshDestinationEncryptionKeys[peerId] = key.copyOf()
+            }
+        } else {
             listener.onStatus("Mesh route history could not be verified. Multi-hop routing is paused on this phone until its protected route history is repaired.")
         }
         if (restoredRoutes > 0 || restoredWithdrawals > 0) {
