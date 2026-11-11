@@ -1247,6 +1247,8 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun forwardDueMeshPackets() {
+        // Do not act as a transit relay if replay-protection history is unavailable.
+        if (!meshRouteWithdrawalStoreHealthy) return
         val now = System.currentTimeMillis()
         deadDropStore.purgeExpired(now)
         val due = deadDropStore.claimDue(now, 8) { packet, previousHop ->
