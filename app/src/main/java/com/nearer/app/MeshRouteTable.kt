@@ -82,14 +82,14 @@ internal data class SignedRouteAdvertisement(
             val destination = readString(input)
             val fingerprintSize = input.readInt()
             require(fingerprintSize == 32)
-            val fingerprint = ByteArray(fingerprintSize).also(input::readFully)
+            val fingerprint = ByteArray(fingerprintSize).also { input.readFully(it) }
             val sequence = input.readLong()
             val hops = input.readInt()
             val issued = input.readLong()
             val expires = input.readLong()
             val signatureSize = input.readInt()
             require(signatureSize in 8..128)
-            val signature = ByteArray(signatureSize).also(input::readFully)
+            val signature = ByteArray(signatureSize).also { input.readFully(it) }
             require(input.available() == 0)
             return SignedRouteAdvertisement(advertiser, destination, fingerprint, sequence, hops, issued, expires, signature)
         }
