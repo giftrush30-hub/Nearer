@@ -33,6 +33,24 @@ internal data class SignedRouteAdvertisement(
         return out.toByteArray()
     }
 
+    fun encode(): ByteArray {
+        val out = ByteArrayOutputStream()
+        DataOutputStream(out).use { data ->
+            data.writeInt(0x4E525431) // NRT1
+            writeString(data, advertiserId)
+            writeString(data, destinationId)
+            data.writeInt(destinationKeyFingerprint.size)
+            data.write(destinationKeyFingerprint)
+            data.writeLong(sequence)
+            data.writeInt(hopCount)
+            data.writeLong(issuedAtMs)
+            data.writeLong(expiresAtMs)
+            data.writeInt(signature.size)
+            data.write(signature)
+        }
+        return out.toByteArray()
+    }
+
     fun verify(trustedAdvertiserKey: ByteArray, nowMs: Long): Boolean = try {
         require(NeaRerIdentity.normalize(advertiserId) == advertiserId)
         require(NeaRerIdentity.normalize(destinationId) == destinationId)
@@ -55,6 +73,33 @@ internal data class SignedRouteAdvertisement(
     companion object {
         private const val MAX_CLOCK_SKEW_MS = 5L * 60L * 1000L
         private const val MAX_ROUTE_LIFETIME_MS = 10L * 60L * 1000L
+
+        fun decode(encoded: ByteArray): SignedRouteAdvertisement {
+            require(encoded.size in 1..2048)
+            val input = java.io.DataInputStream(encoded.inputStream())
+            require(input.readInt() == 0x4E525431)
+            val advertiser = readString(input)
+            val destination = readString(input)
+            val fingerprintSize = input.readInt()
+            require(fingerprintSize == 32)
+            val fingerprint = ByteArray(fingerprintSize).also(input::readFully)
+            val sequence = input.readLong()
+            val hops = input.readInt()
+            val issued = input.readLong()
+            val expires = input.readLong()
+            val signatureSize = input.readInt()
+            require(signatureSize in 8..128)
+            val signature = ByteArray(signatureSize).also(input::readFully)
+            require(input.available() == 0)
+            return SignedRouteAdvertisement(advertiser, destination, fingerprint, sequence, hops, issued, expires, signature)
+        }
+
+        private fun readString(input: java.io.DataInputStream): String {
+            val size = input.readUnsignedShort()
+            require(size in 1..64)
+            val bytes = ByteArray(size).also(input::readFully)
+            return bytes.toString(Charsets.UTF_8)
+        }
 
         fun create(
             advertiserId: String,
@@ -115,12 +160,17 @@ internal class MeshRouteTable(private val localId: String) {
         advertisement: SignedRouteAdvertisement,
         authenticatedSenderId: String,
         trustedSenderSigningKey: ByteArray,
-        nowMs: Long
+        nowMs: Long,
+        knownDestinationEncryptionKey: ByteArray? = null
     ): Boolean {
         if (NeaRerIdentity.normalize(localId) != localId) return false
         if (authenticatedSenderId != advertisement.advertiserId) return false
         if (advertisement.destinationId == localId) return false
         if (!advertisement.verify(trustedSenderSigningKey, nowMs)) return false
+        if (knownDestinationEncryptionKey != null) {
+            val expected = MessageDigest.getInstance("SHA-256").digest(knownDestinationEncryptionKey)
+            if (!MessageDigest.isEqual(expected, advertisement.destinationKeyFingerprint)) return false
+        }
         val candidate = Route(
             advertisement.destinationId,
             authenticatedSenderId,
