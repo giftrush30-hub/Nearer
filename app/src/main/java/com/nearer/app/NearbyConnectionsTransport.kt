@@ -1097,7 +1097,11 @@ internal object IncomingFilePayloadPolicy {
         }
         due.forEach { pending ->
             try {
-                val packet = MeshRelayPacketV1.decode(pending.bytes).forwarded() ?: return@forEach
+                val queuedPacket = MeshRelayPacketV1.decode(pending.bytes)
+                val packet = deadDropStore.prepareForForwarding(
+                    pending.packetId, localStableId, System.currentTimeMillis()
+                ) ?: return@forEach
+                require(packet.sameImmutablePacket(queuedPacket)) { "Queued packet changed while preparing its forwarding hop." }
                 val route = meshRouteTable.find(packet.destinationId, System.currentTimeMillis()) ?: return@forEach
                 if (route.nextHopPeerId == pending.previousHopPeerId) return@forEach
                 val endpointId = endpointForStablePeer(route.nextHopPeerId) ?: return@forEach
