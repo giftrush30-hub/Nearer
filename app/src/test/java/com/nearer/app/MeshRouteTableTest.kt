@@ -22,6 +22,19 @@ class MeshRouteTableTest {
             sign()
         }
 
+    @Test fun authenticatedDirectPeerBecomesAnExpiringReverseRoute() {
+        val peer = pair()
+        val table = MeshRouteTable("AAAAAA")
+        assertTrue(table.addDirectPeer("BBBBBB", peer.public.encoded, 1000L))
+        val route = table.find("BBBBBB", 2000L)
+        assertNotNull(route)
+        assertEquals("BBBBBB", route!!.nextHopPeerId)
+        assertEquals(1, route.hopCount)
+        assertEquals(listOf("AAAAAA", "BBBBBB"), route.path)
+        table.removeNextHop("BBBBBB")
+        assertNull(table.find("BBBBBB", 2000L))
+    }
+
     @Test fun acceptsOnlyFreshSignedRouteFromTheAuthenticatedAdvertiser() {
         val sender = pair()
         val destination = pair()
