@@ -71,6 +71,12 @@ class MeshRelayPacketTest {
         assertFalse(packet.copy(originSignature = packet.originSignature.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() }).verifyEmbeddedOrigin(2000L))
     }
 
+    @Test fun decoderRejectsPacketsBeyondNearbyBytesPayloadLimit() {
+        assertFalse(runCatching {
+            MeshRelayPacketV1.decode(ByteArray(MeshRelayPacketV1.MAX_NEARBY_BYTES + 1))
+        }.isSuccess)
+    }
+
     @Test fun packetCannotExceedSignedHopLimitOrOutliveItsExpiry() {
         val recipient = pair()
         val origin = pair()
