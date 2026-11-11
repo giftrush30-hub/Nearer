@@ -28,6 +28,7 @@ class MeshPersistenceInstrumentedTest {
     fun cleanMeshStores() {
         context.getSharedPreferences("nearer_dead_drop_v1", 0).edit().clear().commit()
         context.getSharedPreferences("nearer_mesh_receipt_outbox_v1", 0).edit().clear().commit()
+        context.getSharedPreferences("nearer_mesh_route_withdrawals_v1", 0).edit().clear().commit()
     }
 
     private fun recipientKeyPair() = KeyPairGenerator.getInstance("EC").apply {
