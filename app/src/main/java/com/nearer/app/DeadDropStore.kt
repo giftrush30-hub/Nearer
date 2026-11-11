@@ -297,7 +297,7 @@ internal class DeadDropStore(context: Context) {
         private const val MAX_ITEMS = 64
         private const val MAX_PER_ORIGIN_ITEMS = 16
         private const val MAX_PER_ORIGIN_CHARS = 512 * 1024
-        private const val MAX_PACKET_BYTES = 40 * 1024
+        private const val MAX_PACKET_BYTES = MeshRelayPacketV1.MAX_NEARBY_BYTES
         private const val MAX_TOTAL_CHARS = 2 * 1024 * 1024
         private const val MAX_ATTEMPTS = 8
         private const val LEASE_MS = 30_000L
