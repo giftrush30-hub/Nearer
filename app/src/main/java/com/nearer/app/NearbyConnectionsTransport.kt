@@ -92,12 +92,22 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val meshRoutePersistence = MeshRoutePersistence(appContext)
     private val meshRouteWithdrawalStore = MeshRouteWithdrawalStore(appContext)
     @Volatile private var meshRouteWithdrawalStoreHealthy = true
+    @Volatile private var meshTransitEnabled = false
     private val meshReceiptOutbox = MeshReceiptOutbox(appContext)
     private val receiptSendInFlightUntil = ConcurrentHashMap<String, Long>()
     @Volatile private var receiptRetryScheduled = false
     @Volatile private var meshForwardRetryScheduled = false
     private val localRecipientIdentity by lazy { RecipientEncryptionIdentity.getOrCreate(appContext) }
 
+
+    /** Transit relay is opt-in and defaults off; direct recipient delivery still works. */
+    fun setMeshTransitEnabled(enabled: Boolean) {
+        meshTransitEnabled = enabled
+        if (enabled) {
+            forwardDueMeshPackets()
+            flushPendingMeshReceipts()
+        }
+    }
 
     private fun encodedName(): String = "${localName.take(23)}|$localStableId"
     private fun decodeName(value: String): Pair<String, String> {
@@ -795,7 +805,7 @@ internal object IncomingFilePayloadPolicy {
         hopCount: Int,
         path: List<String> = listOf(localStableId, destinationId)
     ) {
-        if (!meshRouteWithdrawalStoreHealthy || !authenticatedEndpoints.contains(endpointId) || hopCount !in 0..3) return
+        if (!meshTransitEnabled || !meshRouteWithdrawalStoreHealthy || !authenticatedEndpoints.contains(endpointId) || hopCount !in 0..3) return
         try {
             val now = System.currentTimeMillis()
             val advertisement = SignedRouteAdvertisement.create(
@@ -819,7 +829,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun publishKnownRoutesTo(endpointId: String) {
-        if (!meshRouteWithdrawalStoreHealthy || !authenticatedEndpoints.contains(endpointId)) return
+        if (!meshTransitEnabled || !meshRouteWithdrawalStoreHealthy || !authenticatedEndpoints.contains(endpointId)) return
         val targetPeerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (targetPeerId.isBlank()) return
         val sent = HashSet<String>()
@@ -856,6 +866,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun broadcastMeshRouteWithdrawals(destinationIds: List<String>, exceptEndpointId: String? = null) {
+        if (!meshTransitEnabled) return
         val destinations = destinationIds.distinct().filter { NeaRerIdentity.normalize(it) == it }.take(256)
         if (destinations.isEmpty()) return
         val endpoints = synchronized(activeEndpoints) {
@@ -1117,6 +1128,7 @@ internal object IncomingFilePayloadPolicy {
         var waitingForAck = false
         meshReceiptOutbox.pending().forEach { pending ->
             val receipt = pending.receipt
+            if (receipt.destinationId != localStableId && !meshTransitEnabled) return@forEach
             if ((receiptSendInFlightUntil[receipt.packetId] ?: 0L) > now) {
                 waitingForAck = true
                 return@forEach
@@ -1166,6 +1178,10 @@ internal object IncomingFilePayloadPolicy {
             val now = System.currentTimeMillis()
             val previousHopId = synchronized(names) { stableIds[endpointId].orEmpty() }
             require(previousHopId.isNotBlank())
+            if (receipt.originId != localStableId && !meshTransitEnabled) {
+                listener.onStatus("This phone is not participating as a relay. The receipt was not accepted or acknowledged.")
+                return
+            }
             if (receipt.originId == localStableId) {
                 val destinationKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, receipt.destinationId)
                     ?: throw SecurityException("The destination identity has not been verified on this phone.")
@@ -1252,6 +1268,10 @@ internal object IncomingFilePayloadPolicy {
             val packet = MeshRelayPacketV1.decode(bytes)
             val now = System.currentTimeMillis()
             require(packet.verifyEmbeddedOrigin(now)) { "Mesh packet origin signature or expiry is invalid." }
+            if (packet.destinationId != localStableId && !meshTransitEnabled) {
+                listener.onStatus("This phone is not participating as a relay. The packet was not accepted or acknowledged.")
+                return
+            }
             if (packet.destinationId != localStableId && !meshRouteWithdrawalStoreHealthy) {
                 listener.onStatus("This phone cannot safely relay right now because protected route history is unavailable.")
                 return
@@ -1291,6 +1311,7 @@ internal object IncomingFilePayloadPolicy {
         val now = System.currentTimeMillis()
         deadDropStore.purgeExpired(now)
         val due = deadDropStore.claimDue(now, 8) { packet, previousHop ->
+            if (packet.originId != localStableId && !meshTransitEnabled) return@claimDue false
             if (packet.destinationId == localStableId || packet.hopsTaken >= packet.hopLimit) return@claimDue false
             val route = meshRouteTable.find(packet.destinationId, now) ?: return@claimDue false
             if (route.nextHopPeerId == previousHop) return@claimDue false
