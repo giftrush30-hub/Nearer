@@ -212,6 +212,12 @@ internal fun PremiumChatsScreen(
                                 Text("⌄", color = BlueAccent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                             }
                         }
+                        Text(
+                            "Multi-hop is available only for people whose device keys you have verified through a previous direct pairing.",
+                            color = Muted,
+                            fontSize = 9.sp,
+                            lineHeight = 13.sp
+                        )
                         DropdownMenu(
                             expanded = recipientMenuExpanded,
                             onDismissRequest = { recipientMenuExpanded = false }
