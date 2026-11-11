@@ -132,6 +132,27 @@ class MeshPersistenceInstrumentedTest {
     }
 
     @Test
+    fun olderWithdrawalReplayDoesNotLowerPersistentSequenceWatermark() {
+        val store = MeshRouteWithdrawalStore(context)
+        assertTrue(store.record(MeshRouteTable.WithdrawalTombstone("BBBBBB", "AAAAAA", 12L)))
+        assertTrue(store.record(MeshRouteTable.WithdrawalTombstone("BBBBBB", "AAAAAA", 9L)))
+        val restored = MeshRouteTable("CCCCCC")
+        assertEquals(1, store.restore(restored))
+        val sender = recipientKeyPair()
+        val destination = recipientKeyPair()
+        val replay = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 12L, 0, 1000L, 9000L
+        ) { bytes ->
+            java.security.Signature.getInstance("SHA256withECDSA").run {
+                initSign(sender.private)
+                update(bytes)
+                sign()
+            }
+        }
+        assertFalse(restored.update(replay, "AAAAAA", sender.public.encoded, 2000L))
+    }
+
+    @Test
     fun corruptedWithdrawalStoreFailsClosedAndDoesNotRestoreUnverifiedTombstones() {
         val prefs = context.getSharedPreferences("nearer_mesh_route_withdrawals_v1", 0)
         prefs.edit().putString("withdrawals_encrypted_v1", "not-valid-ciphertext").commit()
