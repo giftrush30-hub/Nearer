@@ -795,7 +795,7 @@ internal object IncomingFilePayloadPolicy {
         hopCount: Int,
         path: List<String> = listOf(localStableId, destinationId)
     ) {
-        if (!authenticatedEndpoints.contains(endpointId) || hopCount !in 0..3) return
+        if (!meshRouteWithdrawalStoreHealthy || !authenticatedEndpoints.contains(endpointId) || hopCount !in 0..3) return
         try {
             val now = System.currentTimeMillis()
             val advertisement = SignedRouteAdvertisement.create(
@@ -819,7 +819,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun publishKnownRoutesTo(endpointId: String) {
-        if (!authenticatedEndpoints.contains(endpointId)) return
+        if (!meshRouteWithdrawalStoreHealthy || !authenticatedEndpoints.contains(endpointId)) return
         val targetPeerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (targetPeerId.isBlank()) return
         val sent = HashSet<String>()
@@ -1109,6 +1109,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun flushPendingMeshReceipts() {
+        if (!meshRouteWithdrawalStoreHealthy) return
         val now = System.currentTimeMillis()
         var sentAny = false
         var waitingForAck = false
@@ -1243,6 +1244,10 @@ internal object IncomingFilePayloadPolicy {
             val packet = MeshRelayPacketV1.decode(bytes)
             val now = System.currentTimeMillis()
             require(packet.verifyEmbeddedOrigin(now)) { "Mesh packet origin signature or expiry is invalid." }
+            if (packet.destinationId != localStableId && !meshRouteWithdrawalStoreHealthy) {
+                listener.onStatus("This phone cannot safely relay right now because protected route history is unavailable.")
+                return
+            }
             if (!deadDropStore.enqueueTransit(packet, previousHopId, now)) {
                 listener.onStatus("A mesh packet was rejected because it could not be safely stored.")
                 return
