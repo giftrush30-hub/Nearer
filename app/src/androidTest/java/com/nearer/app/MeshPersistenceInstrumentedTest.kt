@@ -132,6 +132,28 @@ class MeshPersistenceInstrumentedTest {
     }
 
     @Test
+    fun corruptedWithdrawalStoreFailsClosedAndDoesNotRestoreUnverifiedTombstones() {
+        val prefs = context.getSharedPreferences("nearer_mesh_route_withdrawals_v1", 0)
+        prefs.edit().putString("withdrawals_encrypted_v1", "not-valid-ciphertext").commit()
+        val table = MeshRouteTable("CCCCCC")
+        assertEquals(0, MeshRouteWithdrawalStore(context).restore(table))
+        val sender = recipientKeyPair()
+        val destination = recipientKeyPair()
+        val stale = SignedRouteAdvertisement.create(
+            "AAAAAA", "BBBBBB", destination.public.encoded, 7L, 0, 1000L, 9000L
+        ) { bytes ->
+            java.security.Signature.getInstance("SHA256withECDSA").run {
+                initSign(sender.private)
+                update(bytes)
+                sign()
+            }
+        }
+        // A corrupt local store must not cause the app to invent a withdrawal.
+        // The caller must surface storage failure and keep relay disabled.
+        assertTrue(table.update(stale, "AAAAAA", sender.public.encoded, 2000L))
+    }
+
+    @Test
     fun receiptOutboxPersistsUntilExplicitNextHopAcknowledgement() {
         val now = System.currentTimeMillis()
         val receipt = MeshDeliveryReceipt.create(
