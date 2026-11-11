@@ -178,6 +178,9 @@ internal object IncomingFilePayloadPolicy {
             { peerId -> TrustedPeerKeyStore.pinnedSigningKey(appContext, peerId) },
             System.currentTimeMillis()
         )
+        meshRoutePersistence.destinationKeys().forEach { (peerId, key) ->
+            meshDestinationEncryptionKeys[peerId] = key.copyOf()
+        }
         if (restoredRoutes > 0) listener.onStatus("Restored $restoredRoutes previously verified nearby mesh route(s).")
     }
     private fun persistPendingOutbox(): Boolean {
@@ -382,9 +385,13 @@ internal object IncomingFilePayloadPolicy {
             messageSessions.remove(id)
             val lostPeerId = synchronized(names) { stableIds[id].orEmpty() }
             val withdrawnDestinations = meshRouteTable.removeNextHop(lostPeerId)
-            if (lostPeerId.isNotBlank()) meshRoutePersistence.removeAdvertiser(lostPeerId)
+            if (lostPeerId.isNotBlank()) {
+                meshRoutePersistence.removeAdvertiser(lostPeerId)
+                routeAdvertisementWindows.remove(lostPeerId)
+            }
             val empty = synchronized(activeEndpoints) { activeEndpoints.remove(id); activeEndpoints.isEmpty() }
-            withdrawnDestinations.forEach { broadcastMeshRouteWithdrawal(it) }
+            pruneMeshDestinationKeys()
+            broadcastMeshRouteWithdrawals(withdrawnDestinations)
             pauseOutgoingFilesForEndpoint(id)
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
             if (wasAuthenticated && empty) listener.onDisconnected(id, details.first, details.second)
@@ -717,14 +724,19 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
-    private fun nextMeshRouteSequence(): Long {
+    private fun reserveMeshRouteSequences(count: Int): LongRange {
+        require(count in 1..256)
         val prefs = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-        val next = prefs.getLong("nearby_mesh_route_sequence", 0L) + 1L
-        require(next > 0L && prefs.edit().putLong("nearby_mesh_route_sequence", next).commit()) {
+        val current = prefs.getLong("nearby_mesh_route_sequence", 0L)
+        val last = current + count.toLong()
+        require(current >= 0L && last > current &&
+            prefs.edit().putLong("nearby_mesh_route_sequence", last).commit()) {
             "NeaRer could not persist its route sequence."
         }
-        return next
+        return (current + 1L)..last
     }
+
+    private fun nextMeshRouteSequence(): Long = reserveMeshRouteSequences(1).first
 
     private fun sendMeshRouteAdvertisement(
         endpointId: String,
@@ -778,11 +790,11 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
-    private fun sendMeshRouteWithdrawal(endpointId: String, destinationId: String) {
+    private fun sendMeshRouteWithdrawal(endpointId: String, destinationId: String, sequence: Long) {
         if (!authenticatedEndpoints.contains(endpointId)) return
         try {
             val withdrawal = MeshRouteWithdrawal.create(
-                localStableId, destinationId, nextMeshRouteSequence(), System.currentTimeMillis()
+                localStableId, destinationId, sequence, System.currentTimeMillis()
             ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
             val envelope = JSONObject()
                 .put("kind", "mesh_route_withdraw_v1")
@@ -793,13 +805,23 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
-    private fun broadcastMeshRouteWithdrawal(destinationId: String, exceptEndpointId: String? = null) {
+    private fun broadcastMeshRouteWithdrawals(destinationIds: List<String>, exceptEndpointId: String? = null) {
+        val destinations = destinationIds.distinct().filter { NeaRerIdentity.normalize(it) == it }.take(256)
+        if (destinations.isEmpty()) return
         val endpoints = synchronized(activeEndpoints) {
-            activeEndpoints.filter {
-                it != exceptEndpointId && authenticatedEndpoints.contains(it)
-            }
+            activeEndpoints.filter { it != exceptEndpointId && authenticatedEndpoints.contains(it) }
         }
-        endpoints.forEach { sendMeshRouteWithdrawal(it, destinationId) }
+        if (endpoints.isEmpty()) return
+        val sequences = reserveMeshRouteSequences(destinations.size).iterator()
+        destinations.forEach { destinationId ->
+            val sequence = sequences.next()
+            endpoints.forEach { endpointId -> sendMeshRouteWithdrawal(endpointId, destinationId, sequence) }
+        }
+    }
+
+    private fun pruneMeshDestinationKeys() {
+        val reachable = meshRouteTable.snapshot(System.currentTimeMillis()).mapTo(HashSet()) { it.destinationId }
+        meshDestinationEncryptionKeys.keys.removeIf { it !in reachable }
     }
 
     private fun handleMeshRouteWithdrawal(endpointId: String, envelope: JSONObject) {
@@ -819,7 +841,7 @@ internal object IncomingFilePayloadPolicy {
             meshRoutePersistence.removeDestination(withdrawal.destinationId)
             // Re-sign the withdrawal as this node so downstream peers can invalidate
             // routes whose authenticated next hop is this device.
-            broadcastMeshRouteWithdrawal(withdrawal.destinationId, endpointId)
+            broadcastMeshRouteWithdrawals(listOf(withdrawal.destinationId), endpointId)
             listener.onStatus("A lost mesh route was withdrawn from the nearby network.")
             forwardDueMeshPackets()
             flushPendingMeshReceipts()
@@ -878,6 +900,7 @@ internal object IncomingFilePayloadPolicy {
                 listener.onStatus("A verified mesh route is active, but could not be saved for the next app session.")
             }
             meshDestinationEncryptionKeys[advertisement.destinationId] = destinationKey.copyOf()
+            pruneMeshDestinationKeys()
             // Re-advertise only a materially improved/new route. Refreshes from the
             // same next hop must not trigger endless route-gossip loops.
             val route = meshRouteTable.find(advertisement.destinationId, now) ?: return
