@@ -65,13 +65,24 @@ internal class DeadDropStore(context: Context) {
         return result
     }
 
-    /** Next-hop acceptance is not final delivery; retain the packet. */
+    /**
+     * A hop ACK is accepted only when signed by the expected next hop and
+     * explicitly addressed to this device. It never deletes the packet.
+     */
     @Synchronized
-    fun recordHopAccepted(packetId: String, now: Long): Boolean {
+    fun recordHopAccepted(
+        acknowledgement: MeshHopAcknowledgement,
+        trustedAcceptingPeerKey: ByteArray,
+        expectedAcceptingPeerId: String,
+        localPeerId: String,
+        now: Long
+    ): Boolean {
+        if (acknowledgement.acceptingPeerId != expectedAcceptingPeerId ||
+            !acknowledgement.verify(trustedAcceptingPeerKey, localPeerId, now)) return false
         val entries = read() ?: return false
-        val old = entries[packetId] ?: return false
+        val old = entries[acknowledgement.packetId] ?: return false
         if (old.state != FORWARDING) return false
-        entries[packetId] = old.copy(
+        entries[acknowledgement.packetId] = old.copy(
             state = AWAITING_DESTINATION,
             dueAt = now + backoff(old.attempts),
             leaseUntil = 0L
