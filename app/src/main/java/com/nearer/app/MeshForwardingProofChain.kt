@@ -96,7 +96,7 @@ internal data class MeshForwardingProof(
         private const val MIN_SIGNATURE_BYTES = 8
         private const val MAX_SIGNATURE_BYTES = 128
         private const val MAX_CLOCK_SKEW_MS = 300_000L
-        const val MAX_HOPS = 4
+        const val MAX_HOPS = 5
         private val PACKET_ID_PATTERN = Regex("[A-Za-z0-9._:-]{1,80}")
         val GENESIS_HASH: ByteArray get() = ByteArray(HASH_BYTES)
 
