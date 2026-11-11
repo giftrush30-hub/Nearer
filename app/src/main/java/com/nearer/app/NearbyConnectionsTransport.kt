@@ -649,15 +649,15 @@ internal object IncomingFilePayloadPolicy {
             require(binding.verify(remoteSigningKey, System.currentTimeMillis())) {
                 "The nearby phone’s recipient identity binding was invalid or expired."
             }
+            require(TrustedPeerKeyStore.acceptBindingSequence(appContext, remoteId, binding.sequence)) {
+                "A replayed or older recipient identity binding was rejected."
+            }
             val pinResult = TrustedPeerKeyStore.checkAndPin(
                 appContext, remoteId, remoteSigningKey, binding.recipientEncryptionPublicKey
             )
             require(pinResult == TrustedPeerKeyStore.Result.FIRST_SEEN ||
                 pinResult == TrustedPeerKeyStore.Result.MATCH) {
                 "The nearby phone's identity key changed or could not be safely pinned."
-            }
-            require(TrustedPeerKeyStore.acceptBindingSequence(appContext, remoteId, binding.sequence)) {
-                "A replayed or older recipient identity binding was rejected."
             }
             state.remoteBindingVerified = true
             completePeerAuthentication(endpointId, state)
@@ -783,7 +783,7 @@ internal object IncomingFilePayloadPolicy {
             if (previous == null || nowMs - previous.first >= 60_000L) {
                 allowed = true
                 nowMs to 1
-            } else if (previous.second < 30) {
+            } else if (previous.second < 256) {
                 allowed = true
                 previous.first to (previous.second + 1)
             } else previous
