@@ -176,6 +176,7 @@ internal class MeshRouteTable(private val localId: String) {
     )
 
     private val routes = LinkedHashMap<String, Route>()
+    private val withdrawnSequences = HashMap<String, Long>()
     private companion object { const val MAX_ROUTES = 256 }
 
     /** A successfully authenticated live Nearby connection is a direct route. */
@@ -216,6 +217,8 @@ internal class MeshRouteTable(private val localId: String) {
         if (advertisement.destinationId == localId || advertisement.destinationId == authenticatedSenderId) return false
         if (localId in advertisement.path) return false
         if (!advertisement.verify(trustedSenderSigningKey, nowMs)) return false
+        val withdrawalKey = advertisement.destinationId + "|" + advertisement.advertiserId
+        if (advertisement.sequence <= (withdrawnSequences[withdrawalKey] ?: -1L)) return false
         if (knownDestinationEncryptionKey != null) {
             val expected = MessageDigest.getInstance("SHA-256").digest(knownDestinationEncryptionKey)
             if (!MessageDigest.isEqual(expected, advertisement.destinationKeyFingerprint)) return false
@@ -264,9 +267,24 @@ internal class MeshRouteTable(private val localId: String) {
         return routes[destinationId]
     }
 
+    /** Apply a signed withdrawal only to the route asserted by that neighbor. */
     @Synchronized
-    fun removeNextHop(peerId: String) {
+    fun removeDestinationIfNextHop(destinationId: String, advertiserId: String, sequence: Long): Boolean {
+        if (NeaRerIdentity.normalize(destinationId) != destinationId ||
+            NeaRerIdentity.normalize(advertiserId) != advertiserId || sequence < 0L) return false
+        val route = routes[destinationId] ?: return false
+        if (route.nextHopPeerId != advertiserId || sequence <= route.sequence) return false
+        routes.remove(destinationId)
+        val key = destinationId + "|" + advertiserId
+        withdrawnSequences[key] = maxOf(withdrawnSequences[key] ?: -1L, sequence)
+        return true
+    }
+
+    @Synchronized
+    fun removeNextHop(peerId: String): List<String> {
+        val removed = routes.values.filter { it.nextHopPeerId == peerId }.map { it.destinationId }
         routes.entries.removeAll { it.value.nextHopPeerId == peerId }
+        return removed
     }
 
     @Synchronized
