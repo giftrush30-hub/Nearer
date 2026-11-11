@@ -1047,6 +1047,10 @@ internal object IncomingFilePayloadPolicy {
             if (TrustedPeerKeyStore.pinnedSigningKey(appContext, route.destinationId) == null) return@mapNotNull null
             val pinnedKey = TrustedPeerKeyStore.pinnedRecipientEncryptionKey(appContext, route.destinationId)
                 ?: return@mapNotNull null
+            val pinnedFingerprint = java.security.MessageDigest.getInstance("SHA-256").digest(pinnedKey)
+            if (!java.security.MessageDigest.isEqual(pinnedFingerprint, route.destinationKeyFingerprint)) {
+                return@mapNotNull null
+            }
             val advertisedKey = meshDestinationEncryptionKeys[route.destinationId]
             if (advertisedKey != null && !java.security.MessageDigest.isEqual(advertisedKey, pinnedKey)) {
                 return@mapNotNull null
@@ -1378,6 +1382,8 @@ internal object IncomingFilePayloadPolicy {
         val pinnedRecipientKey = TrustedPeerKeyStore.pinnedRecipientEncryptionKey(appContext, destinationPeerId)
             ?: return false
         val route = meshRouteTable.find(destinationPeerId, now) ?: return false
+        val pinnedFingerprint = java.security.MessageDigest.getInstance("SHA-256").digest(pinnedRecipientKey)
+        if (!java.security.MessageDigest.isEqual(pinnedFingerprint, route.destinationKeyFingerprint)) return false
         val routeKey = meshDestinationEncryptionKeys[destinationPeerId] ?: pinnedRecipientKey
         if (!java.security.MessageDigest.isEqual(pinnedRecipientKey, routeKey)) return false
         return try {
