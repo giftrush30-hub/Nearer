@@ -108,12 +108,12 @@ class MeshRouteTableTest {
         val toLocal = SignedRouteAdvertisement.create(
             "AAAAAA", "CCCCCC", destination.public.encoded, 1L, 0, 1000L, 5000L
         ) { sign(sender.private, it) }
-        val toAdvertiser = SignedRouteAdvertisement.create(
-            "AAAAAA", "AAAAAA", destination.public.encoded, 2L, 0, 1000L, 5000L
-        ) { sign(sender.private, it) }
+        val localAdvertiser = SignedRouteAdvertisement.create(
+            "CCCCCC", "DDDDDD", destination.public.encoded, 2L, 0, 1000L, 5000L
+        ) { sign(destination.private, it) }
 
         assertFalse(table.update(toLocal, "AAAAAA", sender.public.encoded, 2000L))
-        assertFalse(table.update(toAdvertiser, "AAAAAA", sender.public.encoded, 2000L))
+        assertFalse(table.update(localAdvertiser, "CCCCCC", destination.public.encoded, 2000L))
         assertNull(table.find("CCCCCC", 2000L))
     }
 
