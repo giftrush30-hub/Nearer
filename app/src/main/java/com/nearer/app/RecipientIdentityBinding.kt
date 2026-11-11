@@ -50,6 +50,7 @@ internal data class RecipientIdentityBinding(
         require(expiresAtMs - issuedAtMs <= MAX_BINDING_LIFETIME_MS)
         require(signature.size in 8..128)
         val signingKey = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(pinnedSigningPublicKey))
+        require((signingKey as? java.security.interfaces.ECPublicKey)?.params?.curve?.field?.fieldSize == 256)
         val verifier = Signature.getInstance("SHA256withECDSA")
         verifier.initVerify(signingKey)
         verifier.update(signedBytes())
@@ -68,6 +69,12 @@ internal data class RecipientIdentityBinding(
             expiresAtMs: Long,
             sign: (ByteArray) -> ByteArray
         ): RecipientIdentityBinding {
+            val signingKey = KeyFactory.getInstance("EC")
+                .generatePublic(X509EncodedKeySpec(signingPublicKey))
+            val encryptionKey = KeyFactory.getInstance("EC")
+                .generatePublic(X509EncodedKeySpec(recipientEncryptionPublicKey))
+            require((signingKey as? java.security.interfaces.ECPublicKey)?.params?.curve?.field?.fieldSize == 256)
+            require((encryptionKey as? java.security.interfaces.ECPublicKey)?.params?.curve?.field?.fieldSize == 256)
             val unsigned = RecipientIdentityBinding(
                 deviceId,
                 MessageDigest.getInstance("SHA-256").digest(signingPublicKey),
