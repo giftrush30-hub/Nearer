@@ -137,6 +137,34 @@ class MeshPersistenceInstrumentedTest {
     }
 
     @Test
+    fun deadDropKeepsRetryingAtCappedBackoffUntilPacketExpiry() {
+        val now = System.currentTimeMillis()
+        val recipient = recipientKeyPair()
+        val packet = MeshRelayPacketV1.create(
+            originId = NeaRerIdentity.generate(),
+            destinationId = NeaRerIdentity.generate(),
+            packetId = "mesh-retry-until-expiry",
+            createdAtMs = now,
+            expiresAtMs = now + 3L * 24L * 60L * 60L * 1000L,
+            hopLimit = 4,
+            recipientPublicKey = recipient.public.encoded,
+            plaintext = "retry until expiry".toByteArray()
+        )
+        val store = DeadDropStore(context)
+        assertTrue(store.enqueueTransit(packet, NeaRerIdentity.generate(), now))
+        var current = now + 1L
+        var lastAttempt = 0
+        repeat(20) {
+            val claimed = store.claimDue(current, 1)
+            assertEquals(1, claimed.size)
+            lastAttempt = claimed.single().attempts
+            current += 3_600_001L
+        }
+        assertEquals(16, lastAttempt)
+        assertEquals(1, store.claimDue(current, 1).size)
+    }
+
+    @Test
     fun deadDropEnforcesPerOriginItemQuota() {
         val now = System.currentTimeMillis()
         val origin = NeaRerIdentity.generate()
