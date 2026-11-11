@@ -69,7 +69,7 @@ internal data class MeshRelayPacketV1(
 
     fun verify(trustedOriginSigningKey: ByteArray, nowMs: Long): Boolean {
         if (!validate(nowMs) || !MessageDigest.isEqual(originSigningPublicKey, trustedOriginSigningKey)) return false
-        return SecurePeerIdentity.verifyChallenge(originId, trustedOriginSigningKey, signedBytes(), originSignature)
+        return SecurePeerIdentity.verifyDetached(trustedOriginSigningKey, signedBytes(), originSignature)
     }
 
     /** Returns null at the hop limit. Does not alter the origin-signed content. */
@@ -120,7 +120,7 @@ internal data class MeshRelayPacketV1(
                 packetId, originId, destinationId, createdAtMs, expiresAtMs,
                 hopLimit, 0, encrypted, signingPublicKey, ByteArray(0)
             )
-            val signature = SecurePeerIdentity.signChallenge(originId, signingPublicKey, unsigned.signedBytes())
+            val signature = SecurePeerIdentity.signDetached(unsigned.signedBytes())
             return unsigned.copy(originSignature = signature)
         }
 
