@@ -1,5 +1,6 @@
 ## Recent safety hardening
 
+- Transit participation is enforced inside `NearbyConnectionsTransport`, not just by a UI switch. With relay disabled, a phone still accepts packets addressed to itself and forwards its own outgoing messages/receipts, but rejects third-party transit packets/receipts without ACKing them and does not gossip routes. Disabling transit withdraws previously advertised routes first.
 - Withdrawal replay-protection storage never evicts an unexpired watermark to make room. If the bounded tombstone store is full or contains invalid records, restore/write fails closed and multi-hop pauses rather than risking stale-route resurrection.
 - Receipt forwarding now persists the exact selected outgoing next-hop identity before transmission. A signed receipt-hop ACK from a different authenticated neighbor cannot delete the queued receipt; the expected next hop survives process restart.
 - Route-withdrawal replay protection is committed before the in-memory route is removed. A storage failure pauses multi-hop before the withdrawal is applied.
