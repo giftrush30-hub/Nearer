@@ -237,8 +237,10 @@ internal class MeshRouteTable(private val localId: String) {
             // destination. Compare them only when the same neighbor advertised
             // both routes; otherwise compare signed freshness, then path length.
             if (candidate.nextHopPeerId == previous.nextHopPeerId) {
-                if (candidate.sequence < previous.sequence) return false
-                if (candidate.sequence == previous.sequence && candidate.hopCount >= previous.hopCount) return false
+                // A signed advertisement sequence is strictly monotonic for one advertiser.
+                // A fresh sequence may improve a path, but must not degrade a shorter route.
+                if (candidate.sequence <= previous.sequence) return false
+                if (candidate.hopCount > previous.hopCount) return false
             } else {
                 // Prefer a shorter loop-free path. Freshness breaks ties between
                 // equally short routes; timestamps never make a longer route win.
