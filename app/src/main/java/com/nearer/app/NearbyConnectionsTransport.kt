@@ -207,6 +207,9 @@ internal object IncomingFilePayloadPolicy {
     private val outgoingMessageTargets = ConcurrentHashMap<String, String>()
     private data class PendingOutgoingMessage(@field:Volatile var endpointId: String, val stablePeerId: String, val payload: ByteArray, var attempts: Int = 0, var retryTask: Runnable? = null)
     private val pendingOutgoingMessages = ConcurrentHashMap<String, PendingOutgoingMessage>()
+    // Bounded ACK history lets the UI reconcile receipt state if the process dies
+    // after transport retirement but before the community UI has saved its receipt.
+    private val completedOutgoingMessageIds = LinkedHashSet<String>()
     private val deliveryHandler = Handler(Looper.getMainLooper())
     private val maxMessageAttempts = MessageRetryPolicy.MAX_ATTEMPTS
     private companion object { const val RECEIPT_RETRY_MS = 15_000L }
@@ -243,7 +246,12 @@ internal object IncomingFilePayloadPolicy {
                 val encryptedPayload = LocalDataCipher.encrypt(appContext, p.payload)
                 array.put(JSONObject().put("id", id).put("peer", p.stablePeerId).put("payload", encryptedPayload))
             }
-            val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("nearby_outbox", array.toString()).commit()
+            val completed = org.json.JSONArray()
+            completedOutgoingMessageIds.forEach(completed::put)
+            val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+                .putString("nearby_outbox", array.toString())
+                .putString("nearby_completed_outgoing_ids", completed.toString())
+                .commit()
             if (!saved) listener.onStatus("NeaRer could not save its pending-message queue.")
             saved
         } catch (_: Exception) {
@@ -253,8 +261,19 @@ internal object IncomingFilePayloadPolicy {
     }
     private fun restorePendingOutbox() {
         try {
-            val raw = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-                .getString("nearby_outbox", "[]") ?: "[]"
+            val preferences = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            val completedRaw = preferences.getString("nearby_completed_outgoing_ids", "[]") ?: "[]"
+            val completedArray = org.json.JSONArray(completedRaw)
+            completedOutgoingMessageIds.clear()
+            for (i in 0 until completedArray.length()) {
+                val id = completedArray.optString(i)
+                if (id.isNotBlank() && id.length <= 80) {
+                    val next = OutgoingReceiptHistoryPolicy.append(completedOutgoingMessageIds.toList(), id)
+                    completedOutgoingMessageIds.clear()
+                    completedOutgoingMessageIds.addAll(next)
+                }
+            }
+            val raw = preferences.getString("nearby_outbox", "[]") ?: "[]"
             val array = org.json.JSONArray(raw)
             var skipped = false
             var migratedLegacyPayload = false
@@ -307,6 +326,9 @@ internal object IncomingFilePayloadPolicy {
         }
     }
     fun pendingMessageIds(): Set<String> = pendingOutgoingMessages.keys.toSet()
+
+    @Synchronized
+    fun completedMessageIds(): Set<String> = completedOutgoingMessageIds.toSet()
 
     private fun retryQueuedMessagesForPeer(peerId: String, endpointId: String) {
         if (peerId.isBlank()) return
@@ -368,12 +390,18 @@ internal object IncomingFilePayloadPolicy {
     @Synchronized
     private fun clearPendingOutgoingMessage(messageId: String): Boolean {
         val removed = pendingOutgoingMessages.remove(messageId) ?: return false
+        val previousCompleted = completedOutgoingMessageIds.toList()
+        completedOutgoingMessageIds.clear()
+        completedOutgoingMessageIds.addAll(
+            OutgoingReceiptHistoryPolicy.append(previousCompleted, messageId)
+        )
         removed.retryTask?.let(deliveryHandler::removeCallbacks)
         outgoingMessageTargets.remove(messageId)
-        // Do not report final delivery unless the queue removal is durable. If the
-        // write fails, retain a queued copy for a later reconnect; receiver-side
-        // duplicate suppression makes that retry safe.
+        // Commit queue retirement and the bounded completed-ACK marker together.
+        // If storage fails, retain the queued copy and do not report delivery.
         if (persistPendingOutbox()) return true
+        completedOutgoingMessageIds.clear()
+        completedOutgoingMessageIds.addAll(previousCompleted)
         removed.endpointId = ""
         pendingOutgoingMessages[messageId] = removed
         return false
