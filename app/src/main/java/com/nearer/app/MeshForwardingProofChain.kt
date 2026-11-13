@@ -69,6 +69,9 @@ internal data class MeshForwardingProof(
         DataOutputStream(out).use { data ->
             data.writeInt(MAGIC)
             writeString(data, packetId)
+            // The decoder and signature verifier require the exact digest bytes.
+            // Omitting this field corrupts the record and breaks every chain round-trip.
+            data.write(packetDigest)
             writeString(data, originPeerId)
             writeString(data, acceptingPeerId)
             writeString(data, previousHopPeerId)
