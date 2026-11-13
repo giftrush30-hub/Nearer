@@ -16,6 +16,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -33,6 +35,7 @@ import androidx.compose.ui.Modifier
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -71,6 +74,23 @@ internal fun PremiumChatsScreen(
     incomingProgress: Float,
     onCancelTransfer: () -> Unit
 ) {
+    pendingDeleteMessage?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteMessage = null },
+            title = { Text("Delete this message?") },
+            text = { Text("This removes the message from this phone only. It will still remain on the other person's phone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (onDeleteMessage(target.id) && replyingTo?.id == target.id) replyingTo = null
+                    pendingDeleteMessage = null
+                }) { Text("Delete for me", color = Color(0xFFE6A0A0)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteMessage = null }) { Text("Cancel") }
+            }
+        )
+    }
+
     if (selectedMeshRecipientId == null && !chatReady) {
         PremiumChatsInboxScreen(
             meshRecipients = meshRecipients,
@@ -84,6 +104,7 @@ internal fun PremiumChatsScreen(
     var recipientMenuExpanded by remember { mutableStateOf(false) }
     var replyingTo by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
     var expandedMessageActions by remember { mutableStateOf<String?>(null) }
+    var pendingDeleteMessage by remember { mutableStateOf<ChatMessage?>(null) }
     val context = LocalContext.current
     val selectedRecipient = meshRecipients.firstOrNull { it.peerId == selectedMeshRecipientId }
     val selectedRecipientUnavailable = selectedMeshRecipientId != null && selectedRecipient == null
@@ -336,6 +357,7 @@ internal fun PremiumChatsScreen(
                                                             onClick = {
                                                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                                                 clipboard.setPrimaryClip(ClipData.newPlainText("NeaRer message", message.body))
+                                                                Toast.makeText(context, "Message copied", Toast.LENGTH_SHORT).show()
                                                                 expandedMessageActions = null
                                                             }
                                                         )
@@ -343,7 +365,7 @@ internal fun PremiumChatsScreen(
                                                             text = { Text("Delete for me") },
                                                             onClick = {
                                                                 expandedMessageActions = null
-                                                                if (onDeleteMessage(message.id) && replyingTo?.id == message.id) replyingTo = null
+                                                                pendingDeleteMessage = message
                                                             }
                                                         )
                                                     }
