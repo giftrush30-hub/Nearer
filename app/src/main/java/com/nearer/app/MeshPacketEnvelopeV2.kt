@@ -15,9 +15,10 @@ internal object MeshPacketEnvelopeV2 {
     private const val MAGIC = 0x4E524D32 // NRM2
     private const val HEADER_BYTES = 12
     const val MAX_PROOF_BYTES = 5 * 1024
+    const val MAX_PACKET_BYTES = MeshRelayPacketV1.MAX_NEARBY_BYTES - HEADER_BYTES - MAX_PROOF_BYTES
 
     fun encode(packetBytes: ByteArray, proofChainBytes: ByteArray): ByteArray {
-        require(packetBytes.size in 1..MeshRelayPacketV1.MAX_NEARBY_BYTES)
+        require(packetBytes.size in 1..MAX_PACKET_BYTES)
         require(proofChainBytes.size <= MAX_PROOF_BYTES)
         val out = ByteArrayOutputStream(HEADER_BYTES + packetBytes.size + proofChainBytes.size)
         DataOutputStream(out).use { data ->
@@ -42,7 +43,7 @@ internal object MeshPacketEnvelopeV2 {
         val input = DataInputStream(ByteArrayInputStream(bytes))
         require(input.readInt() == MAGIC)
         val packetSize = input.readInt()
-        require(packetSize in 1..MeshRelayPacketV1.MAX_NEARBY_BYTES)
+        require(packetSize in 1..MAX_PACKET_BYTES)
         require(packetSize <= input.available() - 4)
         val packet = ByteArray(packetSize).also(input::readFully)
         val proofSize = input.readInt()
