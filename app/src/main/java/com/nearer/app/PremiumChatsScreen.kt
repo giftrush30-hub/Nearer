@@ -257,7 +257,7 @@ internal fun PremiumChatsScreen(
                     }
                 }
 
-                if (chatAvailable) {
+                if (chatAvailable || selectedRecipientUnavailable) {
                     if (visibleMessages.isEmpty()) {
                         Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFF142238)) {
                             Column(
@@ -266,12 +266,13 @@ internal fun PremiumChatsScreen(
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
                                 Text("✦", color = Gold, fontSize = 25.sp)
-                                Text("A fresh conversation", color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Text(if (selectedRecipientUnavailable) "Conversation saved on this phone" else "A fresh conversation", color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                 Text(
-                                    if (selectedRecipient?.isDirect == false)
-                                        "Send a private message through the nearby mesh. Relays carry encrypted packets; only the selected recipient can read them."
-                                    else
-                                        "Say hello. Your messages travel over the secure nearby phone connection.",
+                                    when {
+                                        selectedRecipientUnavailable -> "This person is offline. Your previous messages remain available here; reconnect when they are nearby to continue."
+                                        selectedRecipient?.isDirect == false -> "Send a private message through the nearby mesh. Relays carry encrypted packets; only the selected recipient can read them."
+                                        else -> "Say hello. Your messages travel over the secure nearby phone connection."
+                                    },
                                     color = Muted, fontSize = 12.sp, lineHeight = 18.sp
                                 )
                             }
@@ -310,26 +311,33 @@ internal fun PremiumChatsScreen(
                         Text(chatNotice, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = draft,
-                            onValueChange = onDraftChange,
-                            modifier = Modifier.weight(1f),
-                            placeholder = { Text("Write a message…", color = Muted, fontSize = 13.sp) },
-                            shape = RoundedCornerShape(18.dp),
-                            singleLine = true
-                        )
-                        Button(
-                            onClick = { if (draft.isNotBlank()) onSendMessage(draft) },
-                            enabled = draft.isNotBlank(),
-                            modifier = Modifier.height(54.dp),
-                            shape = RoundedCornerShape(17.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
-                        ) { Text("Send", fontWeight = FontWeight.Bold) }
+                    if (chatAvailable) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = draft,
+                                onValueChange = onDraftChange,
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text("Write a message…", color = Muted, fontSize = 13.sp) },
+                                shape = RoundedCornerShape(18.dp),
+                                singleLine = true
+                            )
+                            Button(
+                                onClick = { if (draft.isNotBlank()) onSendMessage(draft) },
+                                enabled = draft.isNotBlank(),
+                                modifier = Modifier.height(54.dp),
+                                shape = RoundedCornerShape(17.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                            ) { Text("Send", fontWeight = FontWeight.Bold) }
+                        }
+                    } else {
+                        Surface(color = Color(0xFF142238), shape = RoundedCornerShape(14.dp)) {
+                            Text("Offline · reconnect to send a new message", color = Muted, fontSize = 11.sp,
+                                modifier = Modifier.fillMaxWidth().padding(13.dp))
+                        }
                     }
 
                     Row(
