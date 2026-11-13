@@ -219,7 +219,7 @@ internal fun PremiumChatsScreen(
                                             selectedRecipientUnavailable -> "Route unavailable · waiting for a path"
                                             selectedRecipient == null -> "Select someone you have securely paired with"
                                             selectedRecipient.isDirect -> "Direct nearby connection"
-                                            else -> "Through ${selectedRecipient.hopCount} trusted relay(s)"
+                                            else -> "Through ${selectedRecipient.hopCount} trusted nearby helper(s)"
                                         },
                                         color = Muted,
                                         fontSize = 10.sp
@@ -429,7 +429,7 @@ internal fun PremiumChatsScreen(
                         Text(
                             when {
                                 selectedRecipientUnavailable -> "Your selected person is not reachable right now. NeaRer will not send this message to a different phone."
-                                meshRecipients.isNotEmpty() -> "Choose one of your trusted contacts above to send through an available mesh route."
+                                meshRecipients.isNotEmpty() -> "Choose one of your trusted contacts above to send through nearby helpers."
                                 else -> "Connect with someone nearby to start a private conversation. NeaRer uses local phone connections; mobile data isn't needed."
                             },
                             color = Muted, fontSize = 12.sp, lineHeight = 19.sp
@@ -601,7 +601,7 @@ private fun PremiumChatsInboxScreen(
                             Text(
                                 when {
                                     recipient?.isDirect == true -> "ONLINE"
-                                    recipient != null -> "MESH"
+                                    recipient != null -> "VIA OTHERS"
                                     else -> "OFFLINE"
                                 },
                                 color = if (recipient != null) Color(0xFF8FE0B9) else Muted,
