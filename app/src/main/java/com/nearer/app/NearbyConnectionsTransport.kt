@@ -1313,6 +1313,16 @@ internal object IncomingFilePayloadPolicy {
             val packet = MeshRelayPacketV1.decode(packetBytes)
             val now = System.currentTimeMillis()
             require(packet.verifyEmbeddedOrigin(now)) { "Mesh packet origin signature or expiry is invalid." }
+            if (proofBytes.isEmpty()) {
+                // The first acceptance must bind the packet's embedded origin key
+                // to the authenticated direct sender, not merely trust a self-signed key.
+                require(previousHopId == packet.originId) { "An initial packet without a proof chain did not come directly from its claimed origin." }
+                val pinnedOriginKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, packet.originId)
+                    ?: throw SecurityException("The origin identity is not pinned on this phone.")
+                require(packet.verify(pinnedOriginKey, now)) { "The packet origin key does not match the authenticated sender identity." }
+            } else {
+                require(previousHopId != packet.originId) { "A packet from its origin unexpectedly included a relay proof chain." }
+            }
             if (!MeshRelayParticipationPolicy.mayAcceptPacket(meshTransitEnabled, packet.destinationId, localStableId)) {
                 listener.onStatus("This phone is not participating as a relay. The packet was not accepted or acknowledged.")
                 return
