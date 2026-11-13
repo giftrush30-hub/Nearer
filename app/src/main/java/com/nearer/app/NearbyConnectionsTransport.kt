@@ -32,9 +32,15 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         fun onConnected(id: String, name: String, stableId: String)
         fun onDisconnected(id: String, stableId: String, name: String)
         fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit)
+        fun onMessageWithReply(id: String, senderName: String, messageId: String, body: String, replyToMessageId: String?, replyToPreview: String?, replyToSender: String?, acknowledge: () -> Unit) {
+            onMessage(id, senderName, messageId, body, acknowledge)
+        }
         /** Message whose sender is the original end-to-end identity, not the immediate relay. */
         fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
             onMessage(originPeerId, senderName, messageId, body, acknowledge)
+        }
+        fun onMeshMessageWithReply(originPeerId: String, senderName: String, messageId: String, body: String, replyToMessageId: String?, replyToPreview: String?, replyToSender: String?, acknowledge: () -> Unit) {
+            onMeshMessage(originPeerId, senderName, messageId, body, acknowledge)
         }
         fun onMessageStatus(messageId: String, status: String)
         /** Available routes only to recipients whose signing and encryption keys are pinned. */
@@ -1324,7 +1330,12 @@ internal object IncomingFilePayloadPolicy {
             val body = message.optString("body")
             require(body.isNotBlank() && body.length <= 4000)
             val senderName = message.optString("origin").ifBlank { "Nearby NeaRer member" }.take(40)
-            listener.onMeshMessage(packet.originId, senderName, packet.packetId, body) {
+            val replyId = message.optString("replyToMessageId").takeIf { it.isNotBlank() }
+            val replyPreview = message.optString("replyToPreview").takeIf { it.isNotBlank() }
+            val replySender = message.optString("replyToSender").takeIf { it.isNotBlank() }
+            val hasReplyFields = replyId != null || replyPreview != null || replySender != null
+            require(!hasReplyFields || ChatReplyPolicy.isValidIncomingQuote(replyId, replyPreview, replySender))
+            listener.onMeshMessageWithReply(packet.originId, senderName, packet.packetId, body, replyId, replyPreview, replySender) {
                 if (packet.packetId in pendingIncomingMessageIds) {
                     val saved = rememberMessageId(packet.packetId)
                     pendingIncomingMessageIds.remove(packet.packetId)
@@ -1470,7 +1481,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     /** Sends an E2E-encrypted chat packet over the verified mesh route to a previously trusted recipient. */
-    fun sendMeshMessage(destinationPeerId: String, body: String, messageId: String = UUID.randomUUID().toString()): Boolean {
+    fun sendMeshMessage(destinationPeerId: String, body: String, messageId: String = UUID.randomUUID().toString(), replyQuote: ChatReplyPolicy.Quote? = null): Boolean {
         if (!meshRouteWithdrawalStoreHealthy) return false
         if (body.isBlank() || body.length > 4000 ||
             NeaRerIdentity.normalize(destinationPeerId) != destinationPeerId ||
@@ -1495,6 +1506,11 @@ internal object IncomingFilePayloadPolicy {
                 .put("hops", 0)
                 .put("origin", localName)
                 .put("createdAt", now)
+                .apply { if (replyQuote != null) {
+                    put("replyToMessageId", replyQuote.messageId)
+                    put("replyToPreview", replyQuote.preview)
+                    put("replyToSender", replyQuote.sender)
+                } }
                 .toString().toByteArray(Charsets.UTF_8)
             val packet = MeshRelayPacketV1.create(
                 localStableId, destinationPeerId, messageId, now,
@@ -1663,6 +1679,11 @@ internal object IncomingFilePayloadPolicy {
         val messageId = envelope.optString("id")
         val body = envelope.optString("body")
         val ttl = envelope.optInt("ttl", 0)
+        val replyId = envelope.optString("replyToMessageId").takeIf { it.isNotBlank() }
+        val replyPreview = envelope.optString("replyToPreview").takeIf { it.isNotBlank() }
+        val replySender = envelope.optString("replyToSender").takeIf { it.isNotBlank() }
+        val hasReplyFields = replyId != null || replyPreview != null || replySender != null
+        if (hasReplyFields && !ChatReplyPolicy.isValidIncomingQuote(replyId, replyPreview, replySender)) return
         if (messageId.isBlank() || body.isBlank() || body.length > 4000) return
         if (messageId.length > 80 || ttl !in 0..4) return
         if (hasSeenMessageId(messageId)) {
@@ -1672,7 +1693,7 @@ internal object IncomingFilePayloadPolicy {
         if (!pendingIncomingMessageIds.add(messageId)) return
         val senderName = synchronized(names) { names[endpointId] ?: "Nearby member" }
         try {
-            listener.onMessage(endpointId, senderName, messageId, body) {
+            listener.onMessageWithReply(endpointId, senderName, messageId, body, replyId, replyPreview, replySender) {
                 if (messageId in pendingIncomingMessageIds) {
                     val dedupeRecordSaved = rememberMessageId(messageId)
                     pendingIncomingMessageIds.remove(messageId)
@@ -1818,13 +1839,19 @@ internal object IncomingFilePayloadPolicy {
     fun send(
         body: String,
         messageId: String = UUID.randomUUID().toString(),
-        targetEndpointId: String? = null
+        targetEndpointId: String? = null,
+        replyQuote: ChatReplyPolicy.Quote? = null
     ): Boolean {
         if (body.isBlank() || body.length > 4000) return false
         val envelope = JSONObject().put("kind", "message").put("version", 1)
             .put("id", messageId).put("body", body)
             .put("ttl", 0).put("hops", 0).put("origin", localName)
-            .put("createdAt", System.currentTimeMillis()).toString()
+            .put("createdAt", System.currentTimeMillis())
+            .apply { if (replyQuote != null) {
+                put("replyToMessageId", replyQuote.messageId)
+                put("replyToPreview", replyQuote.preview)
+                put("replyToSender", replyQuote.sender)
+            } }.toString()
         if (targetEndpointId != null) {
             if (!authenticatedEndpoints.contains(targetEndpointId) || synchronized(activeEndpoints) { !activeEndpoints.contains(targetEndpointId) }) return false
             return try {
