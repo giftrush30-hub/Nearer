@@ -2419,11 +2419,17 @@ internal object IncomingFilePayloadPolicy {
                     staged!!.delete()
                     return@execute
                 }
-                preparingHyperStreams.remove(payloadId)
                 val state = OutgoingHyperStream(
                     endpointId, peerId, name, staged!!, item, transferId, copied.sha256, prepared
                 )
                 outgoingHyperStreams[payloadId] = state
+                preparingHyperStreams.remove(payloadId)
+                if (cancelledOutgoingPreparations.remove(payloadId) || outgoingHyperStreams[payloadId] !== state) {
+                    outgoingHyperStreams.remove(payloadId, state)
+                    prepared.close()
+                    staged!!.delete()
+                    return@execute
+                }
                 val initialSpeed = transferSpeedMeters.computeIfAbsent(payloadId) { TransferSpeedMeter() }
                     .record(0L, item.sizeBytes)
                 listener.onFileTransferUpdate(endpointId, payloadId, name, 0L, item.sizeBytes, false, initialSpeed)
