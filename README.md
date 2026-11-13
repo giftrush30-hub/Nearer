@@ -58,3 +58,9 @@ The integration branch has GitHub Actions checks for JVM unit tests, debug APK a
 - [Nearby Connections overview](https://developers.google.com/nearby/connections/overview)
 - [Nearby Connections: exchange data](https://developers.google.com/nearby/connections/android/exchange-data)
 - [Android Keystore system](https://developer.android.com/privacy-and-security/keystore)
+
+## SmartConnect — Phase 1 implementation
+
+The Phase 1 SmartConnect branch adds automatic Nearby Connections startup after first-run permissions are granted and whenever the app returns to the foreground. It uses the flexible multi-peer cluster strategy by default, so users do not need to configure a matching one-to-one speed mode. Nearby person cards open the connection flow with one tap. Peers whose signing and recipient-encryption keys were previously pinned can reconnect without repeating first-contact approval; the authenticated handshake still verifies key continuity before application data is accepted. First-time peers still require explicit approval and a security-code comparison.
+
+SmartConnect does not silently enable Bluetooth or Wi-Fi and does not bypass Android permissions. Discovery currently remains dependent on Android radio availability and foreground/app-process lifecycle; continuous background discovery and two-physical-phone verification are separate release gates. The existing Android minimum is API 26 (Android 8.0).
