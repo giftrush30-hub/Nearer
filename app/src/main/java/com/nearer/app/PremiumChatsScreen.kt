@@ -53,7 +53,7 @@ internal fun PremiumChatsScreen(
     chatNotice: String,
     draft: String,
     onDraftChange: (String) -> Unit,
-    onSendMessage: (String) -> Unit,
+    onSendMessage: (String, ChatMessage?) -> Unit,
     onFindNearby: () -> Unit,
     onBackToInbox: () -> Unit,
     onChooseFiles: () -> Unit,
@@ -77,6 +77,7 @@ internal fun PremiumChatsScreen(
     }
 
     var recipientMenuExpanded by remember { mutableStateOf(false) }
+    var replyingTo by remember { mutableStateOf<ChatMessage?>(null) }
     val selectedRecipient = meshRecipients.firstOrNull { it.peerId == selectedMeshRecipientId }
     val selectedRecipientUnavailable = selectedMeshRecipientId != null && selectedRecipient == null
     val chatAvailable = selectedRecipient != null || (selectedMeshRecipientId == null && chatReady)
@@ -301,8 +302,20 @@ internal fun PremiumChatsScreen(
                                         modifier = Modifier.fillMaxWidth(0.88f)
                                     ) {
                                         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                            if (!message.replyToPreview.isNullOrBlank()) {
+                                                Surface(color = Color(0xFF10243A), shape = RoundedCornerShape(9.dp)) {
+                                                    Column(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                        Text(message.replyToSender ?: "Reply", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                        Text(message.replyToPreview.orEmpty(), color = Muted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                                    }
+                                                }
+                                            }
                                             Text(message.body, color = White, fontSize = 14.sp, lineHeight = 20.sp)
-                                            Text(if (message.outgoing) ChatDeliveryLabelPolicy.label(message.delivery) else "Received", color = if (message.outgoing) Color(0xFF9BD8FF) else Muted, fontSize = 9.sp)
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                Text(if (message.outgoing) ChatDeliveryLabelPolicy.label(message.delivery) else "Received", color = if (message.outgoing) Color(0xFF9BD8FF) else Muted, fontSize = 9.sp)
+                                                Text("Reply", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.clickable { replyingTo = message }.padding(start = 12.dp))
+                                            }
                                         }
                                     }
                                 }
@@ -315,6 +328,17 @@ internal fun PremiumChatsScreen(
                     }
 
                     if (chatAvailable) {
+                        replyingTo?.let { target ->
+                            Surface(color = Color(0xFF142238), shape = RoundedCornerShape(12.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text("Replying to " + if (target.outgoing) "your message" else target.conversationName, color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        Text(target.body, color = Muted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Text("Cancel", color = BlueAccent, fontSize = 11.sp, modifier = Modifier.clickable { replyingTo = null }.padding(6.dp))
+                                }
+                            }
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -329,7 +353,7 @@ internal fun PremiumChatsScreen(
                                 singleLine = true
                             )
                             Button(
-                                onClick = { if (draft.isNotBlank()) onSendMessage(draft) },
+                                onClick = { if (draft.isNotBlank()) { onSendMessage(draft, replyingTo); replyingTo = null } },
                                 enabled = draft.isNotBlank(),
                                 modifier = Modifier.height(54.dp),
                                 shape = RoundedCornerShape(17.dp),
