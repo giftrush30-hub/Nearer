@@ -6,6 +6,10 @@ The existing hop acknowledgement proves that one authenticated next hop durably 
 
 Batch Two introduces a bounded proof-chain primitive. Each record is signed by the accepting peer and commits to the SHA-256 hash of the preceding record. The current primitive binds every record to one packet ID, origin, and the 32-byte SHA-256 digest of the immutable origin-signed packet (including its origin signature), enforces sequential hop indexes, previous-hop continuity, unique peers, monotonic acceptance times, and a maximum of five acceptance records (four relay forwards plus the final destination).
 
+## Network-scale semantics
+
+The five-record limit is a **v1 packet-path implementation bound**, not a limit on the number of phones that may participate in a NeaRer mesh. A mesh may contain many more peers than any single packet's route. The current MeshRelayPacketV1 still restricts one packet to four relay-forward operations; do not describe this as support for 100-hop delivery. A future negotiated envelope must define a per-packet TTL, bounded proof encoding, loop prevention, route freshness, and congestion/power controls before longer paths are enabled.
+
 ## Trust model
 
 A proof contains no self-asserted public key. Verification requires the caller to resolve each accepting peer's signing key from an independently trusted identity store. Missing keys fail closed. A valid chain therefore proves that each trusted signer signed its specific acceptance statement and that the statements form one ordered hash-linked chain.
