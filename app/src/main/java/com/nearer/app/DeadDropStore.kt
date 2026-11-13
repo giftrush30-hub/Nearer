@@ -8,7 +8,14 @@ import org.json.JSONObject
  * Caller must verify the origin signature against a pinned identity before enqueue.
  */
 internal class DeadDropStore(context: Context) {
-    data class Pending(val packetId: String, val bytes: ByteArray, val attempts: Int, val previousHopPeerId: String)
+    data class Pending(
+        val packetId: String,
+        val bytes: ByteArray,
+        val attempts: Int,
+        val previousHopPeerId: String,
+        /** Verified, locally appended acceptance chain; empty only at the origin. */
+        val proofChain: ByteArray = ByteArray(0)
+    )
 
     private data class Entry(
         val encrypted: String,
@@ -18,7 +25,9 @@ internal class DeadDropStore(context: Context) {
         val leaseUntil: Long,
         val previousHopPeerId: String = "",
         val preparedForNextHop: Boolean = false,
-        val expectedNextHopPeerId: String = ""
+        val expectedNextHopPeerId: String = "",
+        /** Stored inside the encrypted queue wrapper and committed with the packet. */
+        val proofChain: String = ""
     )
 
     private val app = context.applicationContext
@@ -41,6 +50,78 @@ internal class DeadDropStore(context: Context) {
         if (!packet.verifyEmbeddedOrigin(now) ||
             NeaRerIdentity.normalize(previousHopPeerId) != previousHopPeerId) return false
         return enqueueValidatedPacket(packet, now, previousHopPeerId)
+    }
+
+    /**
+     * Verifies the authenticated previous-hop proof prefix, appends this node's
+     * signed acceptance, and commits packet + chain in one encrypted preference
+     * transaction. The caller may send a hop ACK only after this returns true.
+     */
+    @Synchronized
+    fun enqueueTransitWithProof(
+        packet: MeshRelayPacketV1,
+        previousHopPeerId: String,
+        incomingProofBytes: ByteArray,
+        trustedAcceptingSigningKey: (String) -> ByteArray?,
+        localPeerId: String,
+        now: Long,
+        sign: (ByteArray) -> ByteArray
+    ): Boolean {
+        if (!packet.verifyEmbeddedOrigin(now) ||
+            NeaRerIdentity.normalize(previousHopPeerId) != previousHopPeerId ||
+            NeaRerIdentity.normalize(localPeerId) != localPeerId ||
+            localPeerId == packet.originId) return false
+        return try {
+            val incoming = if (incomingProofBytes.isEmpty()) {
+                MeshForwardingProofChain(emptyList())
+            } else {
+                MeshForwardingProofChain.decode(incomingProofBytes)
+            }
+            if (!incoming.verifyPrefix(
+                    packet.packetId, packet.immutablePacketDigest(), packet.originId,
+                    previousHopPeerId, trustedAcceptingSigningKey, now
+                )) return false
+
+            val entries = read() ?: return false
+            val existing = entries[packet.packetId]
+            if (existing != null) {
+                val oldBytes = LocalDataCipher.decrypt(app, existing.encrypted) ?: return false
+                val oldPacket = MeshRelayPacketV1.decode(oldBytes)
+                if (!oldPacket.sameImmutablePacket(packet) || packet.hopsTaken < oldPacket.hopsTaken) return false
+                // Repeated delivery of an already committed packet is idempotent.
+                // Never replace a stronger stored proof chain with a shorter prefix.
+                return existing.proofChain.isNotEmpty() &&
+                    existing.previousHopPeerId == previousHopPeerId
+            }
+
+            val accepted = incoming.appendAcceptance(
+                packet.packetId, packet.immutablePacketDigest(), packet.originId,
+                localPeerId, now, sign
+            )
+            val encodedProof = accepted.encode()
+            val encodedPacket = packet.encode()
+            if (encodedPacket.size > MAX_PACKET_BYTES || entries.size >= MAX_ITEMS) return false
+            var originItems = 0
+            var originChars = 0
+            entries.values.forEach { entry ->
+                val clear = LocalDataCipher.decrypt(app, entry.encrypted) ?: return false
+                val old = MeshRelayPacketV1.decode(clear)
+                if (old.originId == packet.originId) {
+                    originItems++
+                    originChars += entry.encrypted.length
+                }
+            }
+            if (originItems >= MAX_PER_ORIGIN_ITEMS || originChars >= MAX_PER_ORIGIN_CHARS) return false
+            val encryptedPacket = LocalDataCipher.encrypt(app, encodedPacket)
+            if (originChars + encryptedPacket.length > MAX_PER_ORIGIN_CHARS ||
+                entries.values.sumOf { it.encrypted.length } + encryptedPacket.length > MAX_TOTAL_CHARS) return false
+            val proofText = android.util.Base64.encodeToString(encodedProof, android.util.Base64.NO_WRAP)
+            entries[packet.packetId] = Entry(
+                encryptedPacket, 0, QUEUED, now, 0L, previousHopPeerId,
+                proofChain = proofText
+            )
+            write(entries)
+        } catch (_: Exception) { false }
     }
 
     private fun enqueueValidatedPacket(
@@ -130,7 +211,11 @@ internal class DeadDropStore(context: Context) {
                 attempts = attempts, state = FORWARDING,
                 dueAt = now + backoff(attempts), leaseUntil = now + LEASE_MS
             )
-            result += Pending(id, clear, attempts, entry.previousHopPeerId)
+            result += Pending(
+                id, clear, attempts, entry.previousHopPeerId,
+                if (entry.proofChain.isBlank()) ByteArray(0)
+                else android.util.Base64.decode(entry.proofChain, android.util.Base64.NO_WRAP)
+            )
         }
         // A lease is useful only if its state reached durable storage. Never
         // transmit a packet whose claim could be lost on process death.
@@ -301,12 +386,18 @@ internal class DeadDropStore(context: Context) {
             val previousHopPeerId = item.optString("previousHopPeerId", "")
             val preparedForNextHop = item.optBoolean("preparedForNextHop", false)
             val expectedNextHopPeerId = item.optString("expectedNextHopPeerId", "")
+            val proofChain = item.optString("proofChain", "")
             if (encrypted.isBlank() || encrypted.length > MAX_TOTAL_CHARS ||
                 attempts !in 0..MAX_RETRY_LEVEL || state !in setOf(QUEUED, FORWARDING, AWAITING_DESTINATION) ||
                 dueAt < 0L || leaseUntil < 0L ||
                 (previousHopPeerId.isNotEmpty() && NeaRerIdentity.normalize(previousHopPeerId) != previousHopPeerId) ||
-                (expectedNextHopPeerId.isNotEmpty() && NeaRerIdentity.normalize(expectedNextHopPeerId) != expectedNextHopPeerId)) return null
-            result[id] = Entry(encrypted, attempts, state, dueAt, leaseUntil, previousHopPeerId, preparedForNextHop, expectedNextHopPeerId)
+                (expectedNextHopPeerId.isNotEmpty() && NeaRerIdentity.normalize(expectedNextHopPeerId) != expectedNextHopPeerId) ||
+                proofChain.length > 8 * 1024) return null
+            if (proofChain.isNotEmpty()) {
+                val decodedProof = android.util.Base64.decode(proofChain, android.util.Base64.NO_WRAP)
+                MeshForwardingProofChain.decode(decodedProof)
+            }
+            result[id] = Entry(encrypted, attempts, state, dueAt, leaseUntil, previousHopPeerId, preparedForNextHop, expectedNextHopPeerId, proofChain)
         }
         if (result.values.sumOf { it.encrypted.length } > MAX_TOTAL_CHARS) return null
         result
@@ -320,7 +411,8 @@ internal class DeadDropStore(context: Context) {
             .put("state", e.state).put("dueAt", e.dueAt).put("leaseUntil", e.leaseUntil)
             .put("previousHopPeerId", e.previousHopPeerId)
             .put("preparedForNextHop", e.preparedForNextHop)
-            .put("expectedNextHopPeerId", e.expectedNextHopPeerId)) }
+            .put("expectedNextHopPeerId", e.expectedNextHopPeerId)
+            .put("proofChain", e.proofChain)) }
         val clear = json.toString().toByteArray(Charsets.UTF_8)
         if (clear.size > MAX_TOTAL_CHARS + MAX_METADATA_CHARS) return false
         return try {
