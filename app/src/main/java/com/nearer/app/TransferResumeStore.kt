@@ -122,7 +122,14 @@ internal class TransferResumeStore(
                 transferId = checkpoint.transferId,
                 item = item,
                 sourceModifiedAtMillis = checkpoint.sourceModifiedAtMillis
-            )
+            )?.takeIf { candidate ->
+                // A zero-byte checkpoint cannot save any retransmission work,
+                // while an EOF checkpoint is complete rather than resumable.
+                // Leave valid journal entries intact for a future finalization
+                // coordinator, but do not present either as resumable work.
+                candidate.checkpoint.committedOffsetBytes > 0L &&
+                    candidate.checkpoint.committedOffsetBytes < candidate.checkpoint.expectedSizeBytes
+            }
         }.sortedWith(
             compareBy<Candidate> { it.checkpoint.transferId }
                 .thenBy { it.checkpoint.relativePath }
