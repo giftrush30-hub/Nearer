@@ -237,7 +237,6 @@ class TransferResumeExchangeTrackerTest {
                     "decision" -> tracker.recordDecision("peer", decisionEnvelope())
                     "payload" -> tracker.recordDataPayload("peer", 7L)
                 }
-                assertNull("Legacy takeReady must not consume stream state: $order", tracker.takeReady("peer", 7L))
             }
             val ready = tracker.takeReadyForStream("peer", 7L)
             assertNotNull("Missing stream exchange for order $order", ready)
@@ -246,6 +245,16 @@ class TransferResumeExchangeTrackerTest {
             assertEquals(decision, ready.decision)
             assertNull(tracker.takeReadyForStream("peer", 7L))
         }
+    }
+
+    @Test fun legacyTakeReadyCannotConsumeAnAlreadyRecognizedStreamExchange() {
+        val tracker = TransferResumeExchangeTracker()
+        tracker.recordMetadata("peer", streamMetadata)
+        tracker.recordProposal("peer", proposalEnvelope())
+        tracker.recordDecision("peer", decisionEnvelope())
+        tracker.recordDataPayload("peer", 7L)
+        assertNull(tracker.takeReady("peer", 7L))
+        assertNotNull(tracker.takeReadyForStream("peer", 7L))
     }
 
     @Test fun streamExchangeCanStartFromZeroWithoutAResumeCandidate() {
