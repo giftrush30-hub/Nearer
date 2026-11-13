@@ -211,6 +211,7 @@ internal object IncomingFilePayloadPolicy {
     private val pendingIncomingHyperPayloads = ConcurrentHashMap<Long, Payload>()
     private val incomingHyperEndpoints = ConcurrentHashMap<Long, String>()
     private val streamCapablePeers = ConcurrentHashMap.newKeySet<String>()
+    private val cancelledStreamPayloads = ConcurrentHashMap.newKeySet<Long>()
     private val streamController = NearbyStreamExchangeController()
     private val transferSpeedMeters = ConcurrentHashMap<Long, TransferSpeedMeter>()
     /** Snapshot access for diagnostics and future speed UI. */
@@ -2213,7 +2214,102 @@ internal object IncomingFilePayloadPolicy {
         return sent
     }
 
+    private fun sendHyperTransferStream(endpointId: String, uri: Uri, displayName: String): Long? {
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (NeaRerIdentity.normalize(peerId) == null) return null
+        val prepared = try { streamPayloadBridge.prepareOutgoingPayload() } catch (_: Exception) {
+            listener.onFileStatus("Could not prepare a resumable stream for this file.")
+            return null
+        }
+        val payloadId = prepared.payloadId
+        prepared.payload.setSensitive(true)
+        listener.onFileStatus("Preparing a verified transfer for " + safeFileName(displayName) + "…")
+        transferPreparation.execute {
+            var staged: File? = null
+            try {
+                val staging = File(appContext.cacheDir, "nearer-transfer-staging").apply { mkdirs() }
+                staged = File.createTempFile("nearer-hyper-", ".bin", staging)
+                val input = appContext.contentResolver.openInputStream(uri)
+                    ?: throw IllegalStateException("The selected file could not be opened")
+                val copied = input.use { source ->
+                    staged!!.outputStream().buffered().use { output ->
+                        TransferStreamCopy.copyAndSha256(source, output)
+                    }
+                }
+                if (!staged!!.isFile || staged!!.length() != copied.bytesCopied) {
+                    throw IllegalStateException("The staged file length did not match the copied byte count")
+                }
+                val name = safeFileName(displayName)
+                val item = TransferBundleItem(
+                    copied.sha256.take(32), name, name, copied.bytesCopied, null
+                )
+                val transferId = UUID.nameUUIDFromBytes(
+                    (localStableId + "|" + peerId + "|" + item.sizeBytes + "|" + copied.sha256 + "|" + name)
+                        .toByteArray(Charsets.UTF_8)
+                ).toString()
+                val state = OutgoingHyperStream(
+                    endpointId, peerId, name, staged!!, item, transferId, copied.sha256, prepared
+                )
+                outgoingHyperStreams[payloadId] = state
+                val metadata = TransferResumeStreamMetadataCodec.Metadata(
+                    payloadId, transferId, item, null, copied.sha256
+                )
+                client.sendPayload(endpointId, Payload.fromBytes(TransferResumeStreamMetadataCodec.encode(metadata)))
+                    .addOnSuccessListener {
+                        val timeout = Runnable {
+                            if (outgoingHyperStreams.remove(payloadId, state)) {
+                                // If the peer did not answer the stream handshake, retain the proven FILE fallback.
+                                state.prepared.close()
+                                val filePayload = Payload.fromFile(state.sourceFile)
+                                filePayload.setFileName(state.name)
+                                filePayload.setSensitive(true)
+                                val legacy = OutgoingFile(
+                                    state.endpointId, state.stablePeerId, state.name,
+                                    state.item.sizeBytes, filePayload, state.sourceFile
+                                )
+                                legacy.sha256 = state.sha256
+                                outgoingFiles[filePayload.id] = legacy
+                                listener.onFileStatus("Using standard file transfer with this nearby phone.")
+                                sendPreparedFile(filePayload.id, legacy)
+                            }
+                        }
+                        state.timeout = timeout
+                        deliveryHandler.postDelayed(timeout, 12_000L)
+                    }
+                    .addOnFailureListener {
+                        outgoingHyperStreams.remove(payloadId, state)
+                        prepared.close()
+                        staged?.delete()
+                        listener.onFileStatus("Could not send transfer details to the nearby phone.")
+                    }
+            } catch (error: Exception) {
+                outgoingHyperStreams.remove(payloadId)
+                prepared.close()
+                staged?.delete()
+                listener.onFileStatus("File preparation failed: " + (error.localizedMessage ?: "please try again"))
+            }
+        }
+        return payloadId
+    }
+
+    private fun handleHyperStreamCapability(endpointId: String) {
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (authenticatedEndpoints.contains(endpointId) && NeaRerIdentity.normalize(peerId) != null) {
+            streamCapablePeers.add(peerId)
+        }
+    }
+
+    private fun announceHyperStreamCapability(endpointId: String) {
+        if (!authenticatedEndpoints.contains(endpointId)) return
+        val message = JSONObject()
+            .put("kind", "hypertransfer_stream_capabilities")
+            .put("version", 1)
+        client.sendPayload(endpointId, Payload.fromBytes(message.toString().toByteArray(Charsets.UTF_8)))
+    }
+
     fun sendFile(endpointId: String, uri: Uri, displayName: String): Long? {
+        val knownPeer = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (streamCapablePeers.contains(knownPeer)) return sendHyperTransferStream(endpointId, uri, displayName)
         if (!authenticatedEndpoints.contains(endpointId) || synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
             listener.onFileStatus("The nearby connection is not securely verified or is no longer active.")
             return null
