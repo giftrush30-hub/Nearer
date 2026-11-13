@@ -63,6 +63,7 @@ internal fun PremiumChatsScreen(
     onDraftChange: (String) -> Unit,
     onSendMessage: (String, ChatMessage?) -> Unit,
     onDeleteMessage: (String) -> Boolean,
+    onReactToMessage: (String, String) -> Unit,
     onFindNearby: () -> Unit,
     onBackToInbox: () -> Unit,
     onChooseFiles: () -> Unit,
@@ -88,6 +89,7 @@ internal fun PremiumChatsScreen(
     var recipientMenuExpanded by remember { mutableStateOf(false) }
     var replyingTo by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
     var expandedMessageActions by remember { mutableStateOf<String?>(null) }
+    var reactingToMessageId by remember { mutableStateOf<String?>(null) }
     var pendingDeleteMessage by remember { mutableStateOf<ChatMessage?>(null) }
     val context = LocalContext.current
     pendingDeleteMessage?.let { target ->
@@ -350,6 +352,13 @@ internal fun PremiumChatsScreen(
                                                         onDismissRequest = { expandedMessageActions = null }
                                                     ) {
                                                         DropdownMenuItem(
+                                                            text = { Text("React") },
+                                                            onClick = {
+                                                                reactingToMessageId = if (reactingToMessageId == message.id) null else message.id
+                                                                expandedMessageActions = null
+                                                            }
+                                                        )
+                                                        DropdownMenuItem(
                                                             text = { Text("Reply") },
                                                             onClick = { replyingTo = message; expandedMessageActions = null }
                                                         )
@@ -370,6 +379,45 @@ internal fun PremiumChatsScreen(
                                                             }
                                                         )
                                                     }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (message.reactions.isNotEmpty()) {
+                                        val counts = message.reactions.values.groupingBy { it }.eachCount()
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(0.88f),
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            counts.forEach { (emoji, count) ->
+                                                Surface(
+                                                    color = Color(0xFF263B59),
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    modifier = Modifier.clickable {
+                                                        onReactToMessage(message.id, emoji)
+                                                    }
+                                                ) {
+                                                    Text("$emoji $count", color = White, fontSize = 11.sp,
+                                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (reactingToMessageId == message.id) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(0.88f),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            listOf("👍", "❤️", "😂", "😮", "😢", "🙏").forEach { emoji ->
+                                                Surface(
+                                                    color = Color(0xFF263B59),
+                                                    shape = CircleShape,
+                                                    modifier = Modifier.clickable {
+                                                        onReactToMessage(message.id, emoji)
+                                                        reactingToMessageId = null
+                                                    }
+                                                ) {
+                                                    Text(emoji, fontSize = 18.sp, modifier = Modifier.padding(7.dp))
                                                 }
                                             }
                                         }
