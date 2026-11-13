@@ -56,20 +56,17 @@ internal class NearbyStreamPayloadBridge(
      */
     fun receive(
         payload: Payload,
-        expectedPayloadId: Long,
-        transferId: String,
-        item: TransferBundleItem,
-        sourceModifiedAtMillis: Long?,
+        metadata: TransferResumeStreamMetadataCodec.Metadata,
         authenticatedSourcePeerId: String,
         proposal: TransferResumeNegotiation.Proposal?,
         decision: TransferResumeNegotiation.Decision,
         destination: java.io.File,
-        expectedWholeFileSha256: String,
         onComplete: (Result<TransferResumeCoordinator.ReceiveResult>) -> Unit
     ): Boolean {
-        if (!HyperTransferStreamAdmissionPolicy.mayConsume(
+        val metadataValid = runCatching { TransferResumeStreamMetadataCodec.validate(metadata) }.isSuccess
+        if (!metadataValid || !HyperTransferStreamAdmissionPolicy.mayConsume(
                 authenticatedSourcePeerId = authenticatedSourcePeerId,
-                expectedPayloadId = expectedPayloadId,
+                expectedPayloadId = metadata.payloadId,
                 actualPayloadId = payload.id,
                 isStreamPayload = payload.type == Payload.Type.STREAM,
                 proposal = proposal,
@@ -93,14 +90,14 @@ internal class NearbyStreamPayloadBridge(
                     val stream = payload.asStream()?.asInputStream()
                         ?: throw IllegalStateException("Nearby did not provide a readable stream.")
                     val result = coordinator.receiveStreamAndFinalize(
-                        transferId = transferId,
-                        item = item,
-                        sourceModifiedAtMillis = sourceModifiedAtMillis,
+                        transferId = metadata.transferId,
+                        item = metadata.item,
+                        sourceModifiedAtMillis = metadata.sourceModifiedAtMillis,
                         authenticatedSourcePeerId = authenticatedSourcePeerId,
                         acceptedOffsetBytes = decision.acceptedOffsetBytes,
                         input = stream,
                         destination = destination,
-                        expectedWholeFileSha256 = expectedWholeFileSha256
+                        expectedWholeFileSha256 = metadata.wholeFileSha256
                     )
                     deliver(Result.success(result))
                 } catch (error: Exception) {
