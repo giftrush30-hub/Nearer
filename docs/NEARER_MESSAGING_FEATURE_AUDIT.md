@@ -109,3 +109,13 @@ The chat bubble's **More** menu now provides:
 - **Delete for me** — removes the message from this phone's retained chat history and writes the change to local storage. If saving fails, the message is restored in its original position.
 
 “Delete for me” is deliberately local-only. It does not claim to retract a message from the other person's phone or from a helper device. Previously sent replies that quote a deleted message keep their bounded quote snapshot, so the conversation remains understandable. The menu uses ordinary, familiar labels rather than technical transport actions.
+
+## Reactions and message editing
+
+The messaging branch now includes:
+- **React** — six familiar emoji reactions, separate per verified peer, with change/remove behavior and replay-safe encrypted control events.
+- **Edit** — available only for the local sender's own messages. Revision numbers prevent duplicate or older updates from overwriting the latest text.
+- Incoming edits are accepted only when the authenticated sender matches the conversation and the target is an incoming message. The edit body and revision metadata are validated before persistence.
+- Edit state is stored locally and restored after restart; older messages load as revision zero.
+
+These features are implemented in the open messaging PR and are not yet release-verified. CI, compatibility with older app versions, and real-device testing remain outstanding.
