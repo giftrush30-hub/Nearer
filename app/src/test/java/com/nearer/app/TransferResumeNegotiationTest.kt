@@ -8,19 +8,31 @@ class TransferResumeNegotiationTest {
     private val item = TransferBundleItem("item-1", "Videos/clip.mp4", "clip.mp4", chunk * 3, "video/mp4")
     private val checkpoint = TransferResumeCheckpoint(
         "transfer-1", item.id, item.relativePath, item.sizeBytes, 123L,
-        chunk, "a".repeat(64)
+        chunk, "a".repeat(64), "ABCDEF234567"
     )
 
     @Test fun proposesOnlyVerifiedCompatiblePartialCheckpoints() {
-        assertNotNull(TransferResumeNegotiation.propose(checkpoint, true, true, true))
-        assertNull(TransferResumeNegotiation.propose(checkpoint, false, true, true))
-        assertNull(TransferResumeNegotiation.propose(checkpoint, true, true, false))
-        assertNull(TransferResumeNegotiation.propose(checkpoint.copy(committedOffsetBytes = 0L), true, true, true))
-        assertNull(TransferResumeNegotiation.propose(checkpoint.copy(committedOffsetBytes = item.sizeBytes), true, true, true))
+        assertNotNull(TransferResumeNegotiation.propose(checkpoint, true, true, true, "ABCDEF234567"))
+        assertNull(TransferResumeNegotiation.propose(checkpoint, false, true, true, "ABCDEF234567"))
+        assertNull(TransferResumeNegotiation.propose(checkpoint, true, true, false, "ABCDEF234567"))
+        assertNull(TransferResumeNegotiation.propose(checkpoint.copy(committedOffsetBytes = 0L), true, true, true, "ABCDEF234567"))
+        assertNull(TransferResumeNegotiation.propose(checkpoint.copy(committedOffsetBytes = item.sizeBytes), true, true, true, "ABCDEF234567"))
+    }
+
+    @Test fun proposesOffsetsOnlyForTheExactAuthenticatedSender() {
+        assertNull(TransferResumeNegotiation.propose(
+            checkpoint, true, true, true, "BCDEFG234567"
+        ))
+        assertNull(TransferResumeNegotiation.propose(
+            checkpoint.copy(sourcePeerId = null), true, true, true, "ABCDEF234567"
+        ))
+        assertNotNull(TransferResumeNegotiation.propose(
+            checkpoint, true, true, true, "ABCDEF234567"
+        ))
     }
 
     @Test fun acceptsOnlyMatchingSourceAndAlignedOffset() {
-        val proposal = TransferResumeNegotiation.propose(checkpoint, true, true, true)
+        val proposal = TransferResumeNegotiation.propose(checkpoint, true, true, true, "ABCDEF234567")
         val accepted = TransferResumeNegotiation.decide(proposal, "transfer-1", item, 123L, true, true, "a".repeat(64))
         assertEquals(chunk, accepted.acceptedOffsetBytes)
         assertEquals(TransferResumeNegotiation.Reason.RESUME_ACCEPTED, accepted.reason)
@@ -31,7 +43,7 @@ class TransferResumeNegotiationTest {
     }
 
     @Test fun rejectsUnsupportedPeersAndMalformedOffsets() {
-        val proposal = TransferResumeNegotiation.propose(checkpoint, true, true, true)!!
+        val proposal = TransferResumeNegotiation.propose(checkpoint, true, true, true, "ABCDEF234567")!!
         val unsupported = TransferResumeNegotiation.decide(proposal, "transfer-1", item, 123L, true, false, "a".repeat(64))
         assertEquals(TransferResumeNegotiation.Reason.PEER_UNSUPPORTED, unsupported.reason)
 
