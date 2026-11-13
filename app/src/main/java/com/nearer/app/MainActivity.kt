@@ -1719,8 +1719,19 @@ class MainActivity : ComponentActivity() {
         communityGroups.add(0, CommunityGroup(code, name, listOf(displayName), localPeerId, listOf(localPeerId)))
         selectedCommunityCode = code
         persistCommunityData()
-        communityNotice = "Created $name. Share group code $code with nearby people."
-        sendCommunityPacket(JSONObject().put("type", "group_created").put("code", code).put("name", name).put("sender", displayName))
+        val announced = nearbyTransport?.send(
+            "NR_COMMUNITY:" + JSONObject()
+                .put("type", "group_created")
+                .put("code", code)
+                .put("name", name)
+                .put("sender", displayName)
+                .put("ownerPeerId", localPeerId)
+        ) == true
+        communityNotice = if (announced) {
+            "Created $name. Share group code $code with nearby people."
+        } else {
+            "Created $name locally. Connect through NeaRer Nearby to announce and verify group members."
+        }
     }
     private fun joinCommunityGroup(raw: String) {
         val code = raw.filter { it.isDigit() }.take(6)
@@ -1742,8 +1753,14 @@ class MainActivity : ComponentActivity() {
         }
         selectedCommunityCode = code
         persistCommunityData()
-        sendCommunityPacket(JSONObject().put("type", "group_join").put("code", code).put("sender", displayName))
-        communityNotice = "Group $code saved locally. Join notice sent if connected."
+        val joinSent = nearbyTransport?.send(
+            "NR_COMMUNITY:" + JSONObject().put("type", "group_join").put("code", code).put("sender", displayName)
+        ) == true
+        communityNotice = if (joinSent) {
+            "Group $code saved locally. Waiting for the verified group roster."
+        } else {
+            "Group $code saved locally. Connect through NeaRer Nearby to request verified membership."
+        }
     }
     private fun sendGroupMembers(code: String) {
         val group = communityGroups.firstOrNull { it.code == code } ?: return
@@ -1756,7 +1773,7 @@ class MainActivity : ComponentActivity() {
         // The roster is a control update, not a group chat payload. It is encrypted
         // separately for connected peers; receivers accept it only from the recorded
         // owner identity (or pin the first trusted roster sender for legacy groups).
-        sendCommunityPacket(packet)
+        nearbyTransport?.send("NR_COMMUNITY:$packet")
     }
 
     private fun sendCommunityGroupMessage(raw: String) {
