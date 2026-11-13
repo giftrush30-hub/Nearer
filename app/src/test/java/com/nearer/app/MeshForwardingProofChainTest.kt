@@ -162,4 +162,43 @@ class MeshForwardingProofChainTest {
         }.isSuccess)
     }
 
+
+    @Test fun emptyAndPartialPrefixesVerifyBeforeEachNodeAppendsItsDurableAcceptance() {
+        val b = pair()
+        val c = pair()
+        val digest = packetDigest()
+        val origin = "AAAAAA"
+        val relay = "BBBBBB"
+        val destination = "CCCCCC"
+        val empty = MeshForwardingProofChain(emptyList())
+        assertTrue(empty.verifyPrefix(
+            "packet-prefix", digest, origin, origin, { null }, 10_000L
+        ))
+        assertFalse(empty.verifyPrefix(
+            "packet-prefix", digest, origin, relay, { null }, 10_000L
+        ))
+
+        val afterRelay = empty.appendAcceptance(
+            "packet-prefix", digest, origin, relay, 10_100L
+        ) { sign(b.private, it) }
+        assertTrue(afterRelay.verifyPrefix(
+            "packet-prefix", digest, origin, relay,
+            { peer -> if (peer == relay) b.public.encoded else null }, 10_200L
+        ))
+        assertFalse(afterRelay.verifyPrefix(
+            "packet-prefix", digest, origin, destination,
+            { peer -> if (peer == relay) b.public.encoded else null }, 10_200L
+        ))
+
+        val complete = afterRelay.appendAcceptance(
+            "packet-prefix", digest, origin, destination, 10_300L
+        ) { sign(c.private, it) }
+        val trusted = mapOf(relay to b.public.encoded, destination to c.public.encoded)
+        assertTrue(complete.verify(
+            "packet-prefix", digest, origin, destination, { trusted[it] }, 10_400L
+        ))
+        assertFalse(complete.verifyPrefix(
+            "packet-prefix", digest, origin, "DDDDDD", { trusted[it] }, 10_400L
+        ))
+    }
 }
