@@ -450,6 +450,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
             override fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
+                onMessageWithReply(id, senderName, messageId, body, null, null, null, acknowledge)
+            }
+            override fun onMessageWithReply(
+                id: String, senderName: String, messageId: String, body: String,
+                replyToMessageId: String?, replyToPreview: String?, replyToSender: String?,
+                acknowledge: () -> Unit
+            ) {
                 runOnUiThread {
                     var safelyStored = false
                     if (body.startsWith("NR_COMMUNITY:")) {
@@ -473,12 +480,8 @@ class MainActivity : ComponentActivity() {
                                 }.orEmpty()
                                 val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
                                 group != null && CommunityRosterPolicy.mayAcknowledgeRosterUpdate(
-                                    packetOwnerId,
-                                    senderPeerId,
-                                    incomingPeerIds,
-                                    localPeerId,
-                                    group.ownerPeerId,
-                                    group.memberPeerIds
+                                    packetOwnerId, senderPeerId, incomingPeerIds, localPeerId,
+                                    group.ownerPeerId, group.memberPeerIds
                                 )
                             }
                             "group_message" -> {
@@ -486,53 +489,70 @@ class MainActivity : ComponentActivity() {
                                 group != null && CommunityRosterPolicy.mayAcceptGroupMessage(senderPeerId, group.memberPeerIds) &&
                                     id.isNotBlank() && communityMessages.any { it.id == id && it.groupCode == code }
                             }
-                            "broadcast" -> true
-                            "ludo_invite", "ludo_accept", "ludo_reject", "ludo_action", "ludo_chat",
-                            "ludo_end", "ludo_rematch", "ludo_state", "ludo_sync" -> true
+                            "broadcast", "ludo_invite", "ludo_accept", "ludo_reject", "ludo_action",
+                            "ludo_chat", "ludo_end", "ludo_rematch", "ludo_state", "ludo_sync" -> true
                             else -> false
                         }
-                        // Reject/withhold transport ACKs for unknown or unauthorized community packets.
                         safelyStored = accepted && persistCommunityData()
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
-                        chatMessages.add(ChatMessage(
-                            messageId, body, outgoing = false, delivery = "Received",
-                            conversationId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty(),
-                            conversationName = senderName
-                        ))
-                        safelyStored = persistMessages()
-                        if (safelyStored) {
-                            trimChatMessages()
-                            chatNotice = "New offline message received from $senderName."
-                        }
-                        else {
-                            chatMessages.removeAll { it.id == messageId }
-                            chatNotice = "Message received, but could not be saved. Delivery was not confirmed."
+                        val quoteValid = ChatReplyPolicy.isValidIncomingQuote(replyToMessageId, replyToPreview, replyToSender)
+                        if ((replyToMessageId != null || replyToPreview != null || replyToSender != null) && !quoteValid) {
+                            chatNotice = "A message with invalid reply details was rejected."
+                        } else {
+                            chatMessages.add(ChatMessage(
+                                messageId, body, outgoing = false, delivery = "Received",
+                                conversationId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty(),
+                                conversationName = senderName,
+                                replyToMessageId = replyToMessageId,
+                                replyToPreview = replyToPreview,
+                                replyToSender = replyToSender
+                            ))
+                            safelyStored = persistMessages()
+                            if (safelyStored) {
+                                trimChatMessages()
+                                chatNotice = "New offline message received from $senderName."
+                            } else {
+                                chatMessages.removeAll { it.id == messageId }
+                                chatNotice = "Message received, but could not be saved. Delivery was not confirmed."
+                            }
                         }
                     }
-                    // Never tell the sender "Delivered" unless this phone saved the message.
                     if (safelyStored) acknowledge()
                 }
             }
             override fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
+                onMeshMessageWithReply(originPeerId, senderName, messageId, body, null, null, null, acknowledge)
+            }
+            override fun onMeshMessageWithReply(
+                originPeerId: String, senderName: String, messageId: String, body: String,
+                replyToMessageId: String?, replyToPreview: String?, replyToSender: String?,
+                acknowledge: () -> Unit
+            ) {
                 runOnUiThread {
                     var safelyStored = false
                     if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
-                        chatMessages.add(ChatMessage(
-                            messageId, body, outgoing = false, delivery = "Received",
-                            conversationId = originPeerId,
-                            conversationName = senderName
-                        ))
-                        safelyStored = persistMessages()
-                        if (safelyStored) {
-                            trimChatMessages()
-                            chatNotice = "New offline mesh message received from $senderName."
+                        val quoteValid = ChatReplyPolicy.isValidIncomingQuote(replyToMessageId, replyToPreview, replyToSender)
+                        if ((replyToMessageId != null || replyToPreview != null || replyToSender != null) && !quoteValid) {
+                            chatNotice = "A message with invalid reply details was rejected."
                         } else {
-                            chatMessages.removeAll { it.id == messageId }
-                            chatNotice = "Mesh message received, but could not be saved. Delivery was not confirmed."
+                            chatMessages.add(ChatMessage(
+                                messageId, body, outgoing = false, delivery = "Received",
+                                conversationId = originPeerId, conversationName = senderName,
+                                replyToMessageId = replyToMessageId, replyToPreview = replyToPreview,
+                                replyToSender = replyToSender
+                            ))
+                            safelyStored = persistMessages()
+                            if (safelyStored) {
+                                trimChatMessages()
+                                chatNotice = "New offline message received from $senderName."
+                            } else {
+                                chatMessages.removeAll { it.id == messageId }
+                                chatNotice = "Message received, but could not be saved. Delivery was not confirmed."
+                            }
                         }
                     }
                     if (safelyStored) acknowledge()
@@ -1512,7 +1532,10 @@ class MainActivity : ComponentActivity() {
                         delivery = item.optString("delivery", "Sent"),
                         timestamp = item.optLong("timestamp", System.currentTimeMillis()),
                         conversationId = item.optString("conversationId", ""),
-                        conversationName = item.optString("conversationName", "")
+                        conversationName = item.optString("conversationName", ""),
+                        replyToMessageId = item.optString("replyToMessageId").takeIf { it.isNotBlank() },
+                        replyToPreview = item.optString("replyToPreview").takeIf { it.isNotBlank() },
+                        replyToSender = item.optString("replyToSender").takeIf { it.isNotBlank() }
                     )
                     chatMessages.add(message)
                     if (!message.outgoing) receivedMessageIds.add(message.id)
@@ -1575,7 +1598,10 @@ class MainActivity : ComponentActivity() {
                     .put("delivery", message.delivery)
                     .put("timestamp", message.timestamp)
                     .put("conversationId", message.conversationId)
-                    .put("conversationName", message.conversationName))
+                    .put("conversationName", message.conversationName)
+                    .put("replyToMessageId", message.replyToMessageId)
+                    .put("replyToPreview", message.replyToPreview)
+                    .put("replyToSender", message.replyToSender))
             }
             // commit() is intentional here: a delivery receipt must follow the disk write,
             // not just an in-memory SharedPreferences update queued by apply().
@@ -1605,17 +1631,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun sendChatMessage(rawText: String) {
+    private fun sendChatMessage(rawText: String, replyTarget: ChatMessage? = null) {
         val body = rawText.trim()
         if (body.isEmpty()) return
         val id = UUID.randomUUID().toString()
         val targetPeerId = selectedMeshRecipientId ?: hybridConnectedStableId
+        val conversationIdForReply = targetPeerId ?: connectedDeviceName?.let { "direct:$it" }.orEmpty()
+        val replyQuote = if (replyTarget != null) ChatReplyPolicy.createQuote(
+            replyTarget, conversationIdForReply, if (replyTarget.outgoing) "You" else replyTarget.conversationName
+        ) else null
+        if (replyTarget != null && replyQuote == null) {
+            chatNotice = "That message cannot be quoted in this conversation."
+            return
+        }
         val meshRecipient = targetPeerId?.let { meshRecipients[it] }
         if (meshRecipient != null) {
             chatMessages.add(ChatMessage(
                 id, body, outgoing = true, delivery = "Sending…",
                 conversationId = meshRecipient.peerId,
-                conversationName = meshRecipient.displayName
+                conversationName = meshRecipient.displayName,
+                replyToMessageId = replyQuote?.messageId, replyToPreview = replyQuote?.preview,
+                replyToSender = replyQuote?.sender
             ))
             if (!persistMessages()) {
                 chatMessages.removeAll { it.id == id }
@@ -1623,12 +1659,12 @@ class MainActivity : ComponentActivity() {
                 return
             }
             trimChatMessages()
-            var sent = nearbyTransport?.sendMeshMessage(meshRecipient.peerId, body, id) == true
+            var sent = nearbyTransport?.sendMeshMessage(meshRecipient.peerId, body, id, replyQuote) == true
             // Preserve the proven direct-chat path if the new recipient-encrypted route
             // cannot be used for a directly connected peer.
             if (!sent && meshRecipient.isDirect &&
                 meshRecipient.peerId == hybridConnectedStableId && hybridConnectedEndpoint != null) {
-                sent = nearbyTransport?.send(body, id, hybridConnectedEndpoint!!) == true
+                sent = nearbyTransport?.send(body, id, hybridConnectedEndpoint!!, replyQuote) == true
             }
             if (!sent) {
                 val index = chatMessages.indexOfFirst { it.id == id }
@@ -1661,7 +1697,9 @@ class MainActivity : ComponentActivity() {
             chatMessages.add(ChatMessage(
                 id, body, outgoing = true, delivery = "Sending…",
                 conversationId = nearbyTransport?.stableIdentityForEndpoint(targetEndpoint).orEmpty(),
-                conversationName = nearbyTransport?.displayNameForEndpoint(targetEndpoint).orEmpty()
+                conversationName = nearbyTransport?.displayNameForEndpoint(targetEndpoint).orEmpty(),
+                replyToMessageId = replyQuote?.messageId, replyToPreview = replyQuote?.preview,
+                replyToSender = replyQuote?.sender
             ))
             if (!persistMessages()) {
                 chatMessages.removeAll { it.id == id }
@@ -1669,7 +1707,7 @@ class MainActivity : ComponentActivity() {
                 return
             }
             trimChatMessages()
-            if (nearbyTransport?.send(body, id, targetEndpoint) != true) {
+            if (nearbyTransport?.send(body, id, targetEndpoint, replyQuote) != true) {
                 val index = chatMessages.indexOfFirst { it.id == id }
                 if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
                 persistMessages()
@@ -1677,6 +1715,10 @@ class MainActivity : ComponentActivity() {
                 return
             }
             chatNotice = "Sent over the offline link • waiting for the recipient's NeaRer app to acknowledge it."
+            return
+        }
+        if (replyQuote != null) {
+            chatNotice = "Replies need the updated secure nearby connection. Reconnect before sending this reply."
             return
         }
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
@@ -3343,7 +3385,7 @@ private fun NeaRerHome(
     externalShareUris: List<Uri>,
     onExternalShareConsumed: () -> Unit,
     transferHistory: List<NearbyTransferRecord>,
-    onSendMessage: (String) -> Unit,
+    onSendMessage: (String, ChatMessage?) -> Unit,
     groups: List<CommunityGroup>,
     groupMessages: List<CommunityChatMessage>,
     selectedGroupCode: String?,
@@ -3972,7 +4014,7 @@ private fun NeaRerHome(
                     chatNotice = chatNotice,
                     draft = draft,
                     onDraftChange = { draft = it.take(2000) },
-                    onSendMessage = { onSendMessage(it); draft = "" },
+                    onSendMessage = { text, reply -> onSendMessage(text, reply); draft = "" },
                     onFindNearby = { selectedTab = "Nearby"; onFindNearby() },
                     onBackToInbox = { onSelectMeshRecipient(null) },
                     onChooseFiles = { chatAttachmentPicker.launch(arrayOf("*/*")) },
@@ -4432,7 +4474,10 @@ internal data class ChatMessage(
     val delivery: String,
     val timestamp: Long = System.currentTimeMillis(),
     val conversationId: String = "",
-    val conversationName: String = ""
+    val conversationName: String = "",
+    val replyToMessageId: String? = null,
+    val replyToPreview: String? = null,
+    val replyToSender: String? = null
 )
 
 private fun isNeaRerAppBundle(file: File): Boolean {
