@@ -540,12 +540,18 @@ class MainActivity : ComponentActivity() {
                     if (ref != null) {
                         val communityIndex = communityMessages.indexOfFirst { it.id == ref.communityMessageId }
                         if (communityIndex >= 0) {
-                            val message = communityMessages[communityIndex]
-                            communityMessages[communityIndex] = message.copy(
-                                deliveryByPeerId = message.deliveryByPeerId + (ref.peerId to status)
+                            val previous = communityMessages[communityIndex]
+                            communityMessages[communityIndex] = previous.copy(
+                                deliveryByPeerId = previous.deliveryByPeerId + (ref.peerId to status)
                             )
                             if (status == "Delivered") communityDeliveryRefs.remove(messageId)
-                            persistCommunityData()
+                            if (!persistCommunityData()) {
+                                // Keep the transport-to-message link if receipt state could
+                                // not be committed; a later duplicate ACK can safely retry it.
+                                communityMessages[communityIndex] = previous
+                                communityDeliveryRefs[messageId] = ref
+                                communityNotice = "A group delivery receipt could not be saved. It will be reconciled when NeaRer reconnects."
+                            }
                         } else if (status == "Delivered") {
                             communityDeliveryRefs.remove(messageId)
                             persistCommunityData()
@@ -4302,7 +4308,21 @@ private fun CommunityHub(
                 Text("GROUP CHAT • " + selected.name, color = BlueAccent, fontWeight = FontWeight.Bold)
                 Text("Share code " + selected.code + " with connected members.", color = Muted, fontSize = 10.sp)
                 Column(Modifier.fillMaxWidth().height(130.dp).verticalScroll(rememberScrollState())) {
-                    messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { Text(it.sender + ": " + it.body, color = White, fontSize = 12.sp) }
+                    messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { message ->
+                        Text(message.sender + ": " + message.body, color = White, fontSize = 12.sp)
+                        if (message.deliveryByPeerId.isNotEmpty()) {
+                            val statuses = message.deliveryByPeerId.values
+                            val delivered = statuses.count { it == "Delivered" }
+                            val queued = statuses.count { it == "Queued" }
+                            val unverified = statuses.count { it == "Not verified" }
+                            val receiptText = buildList {
+                                add("${delivered}/${statuses.size} delivered")
+                                if (queued > 0) add("${queued} queued")
+                                if (unverified > 0) add("${unverified} not verified")
+                            }.joinToString(" • ")
+                            Text(receiptText, color = Muted, fontSize = 9.sp)
+                        }
+                    }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(groupText, { groupText = it.take(1500) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Group message") })
