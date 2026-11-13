@@ -3860,6 +3860,7 @@ private fun NeaRerHome(
                     onDraftChange = { draft = it.take(2000) },
                     onSendMessage = { onSendMessage(it); draft = "" },
                     onFindNearby = { selectedTab = "Nearby"; onFindNearby() },
+                    onBackToInbox = { selectedMeshRecipientId = null },
                     onChooseFiles = { selectedTab = "Share" },
                     receivedFiles = receivedFiles,
                     onOpenFile = onOpenFile,
