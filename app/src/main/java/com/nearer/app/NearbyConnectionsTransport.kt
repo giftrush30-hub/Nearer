@@ -2398,8 +2398,23 @@ internal object IncomingFilePayloadPolicy {
                 val input = appContext.contentResolver.openInputStream(uri)
                     ?: throw IllegalStateException("The selected file could not be opened")
                 val copied = input.use { source ->
+                    val cancellationAware = object : java.io.FilterInputStream(source) {
+                        private fun checkCancelled() {
+                            if (cancelledOutgoingPreparations.contains(payloadId)) {
+                                throw java.io.InterruptedIOException("Transfer cancelled during preparation")
+                            }
+                        }
+                        override fun read(): Int {
+                            checkCancelled()
+                            return super.read()
+                        }
+                        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                            checkCancelled()
+                            return super.read(buffer, offset, length)
+                        }
+                    }
                     staged!!.outputStream().buffered().use { output ->
-                        TransferStreamCopy.copyAndSha256(source, output)
+                        TransferStreamCopy.copyAndSha256(cancellationAware, output)
                     }
                 }
                 if (!staged!!.isFile || staged!!.length() != copied.bytesCopied) {
