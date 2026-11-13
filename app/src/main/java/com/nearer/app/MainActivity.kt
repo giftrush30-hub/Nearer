@@ -135,6 +135,9 @@ class MainActivity : ComponentActivity() {
     private val meshRecipients = mutableStateMapOf<String, MeshRecipient>()
     private var selectedMeshRecipientId by mutableStateOf<String?>(null)
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
+    // Endpoint IDs are temporary; the tracker prevents duplicate reconnects
+    // without ever treating a transient endpoint as a person's identity.
+    private val trustedPeerReconnectTracker = TrustedPeerReconnectTracker()
     private var displayName by mutableStateOf("NeaRer User")
     private var onboardingComplete by mutableStateOf(false)
     private var profileAvatarId by mutableStateOf("orbit")
@@ -195,11 +198,8 @@ class MainActivity : ComponentActivity() {
     private var nearbyQueueCompleted = 0
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
-    private var outgoingLastSampleBytes = 0L
-    private var outgoingLastSampleAt = 0L
+    // These rates come from the transport's monotonic rolling-window meter.
     private var outgoingRateBytesPerSecond = 0L
-    private var incomingLastSampleBytes = 0L
-    private var incomingLastSampleAt = 0L
     private var incomingRateBytesPerSecond = 0L
     private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
@@ -356,8 +356,27 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            override fun onFound(id: String, name: String, stableId: String) { runOnUiThread { hybridPeers[id] = name; if (stableId.isNotBlank()) recentlySeenPeers.remove(stableId) } }
+            override fun onFound(id: String, name: String, stableId: String) { runOnUiThread {
+                hybridPeers[id] = name
+                if (stableId.isNotBlank()) {
+                    recentlySeenPeers.remove(stableId)
+                    // Only identities whose cryptographic key was trusted in an
+                    // earlier in-person pairing are reconnected automatically.
+                    // First-time peers still require the existing comparison/approval.
+                    val alreadyTrusted = TrustedPeerKeyStore.hasPinnedPeer(this@MainActivity, stableId)
+                    if (trustedPeerReconnectTracker.shouldRequest(id, stableId, alreadyTrusted, hybridConnected)) {
+                        statusMessage = "Reconnecting securely to $name…"
+                        val transport = nearbyTransport
+                        if (transport != null) {
+                            transport.request(id) { trustedPeerReconnectTracker.clear(id) }
+                        } else {
+                            trustedPeerReconnectTracker.clear(id)
+                        }
+                    }
+                }
+            } }
             override fun onLost(id: String, stableId: String) { runOnUiThread {
+                trustedPeerReconnectTracker.clear(id)
                 val name = hybridPeers.remove(id)
                 if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
                 if (hybridConnectedEndpoint == id) {
@@ -389,6 +408,7 @@ class MainActivity : ComponentActivity() {
             }
             override fun onConnected(id: String, name: String, stableId: String) {
                 runOnUiThread {
+                    trustedPeerReconnectTracker.clear(id)
                     hybridSearching = false
                     hybridConnected = true
                     hybridConnectedEndpoint = id
@@ -573,56 +593,44 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            // The transport's combined callback below handles ordinary progress updates.
+            // This legacy callback remains for the completed-payload notification path.
             override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {
-                runOnUiThread {
-                    val fraction = if (total > 0L) (transferred.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
-                    val now = android.os.SystemClock.elapsedRealtime()
-                    val previousBytes = if (incoming) incomingLastSampleBytes else outgoingLastSampleBytes
-                    val previousAt = if (incoming) incomingLastSampleAt else outgoingLastSampleAt
-                    var rate = if (incoming) incomingRateBytesPerSecond else outgoingRateBytesPerSecond
-                    val sampleDue = previousAt == 0L || transferred < previousBytes || now - previousAt >= 500L
-                    if (previousAt == 0L || transferred < previousBytes) {
-                        rate = 0L
-                    } else if (sampleDue) {
-                        rate = ((transferred - previousBytes) * 1000L / (now - previousAt).coerceAtLeast(1L)).coerceAtLeast(0L)
+                if (incoming && total > 0L && transferred >= total) {
+                    runOnUiThread {
+                        incomingTransferName = name
+                        incomingProgress = 1f
                     }
+                }
+            }
+            override fun onFileTransferUpdate(
+                id: String,
+                payloadId: Long,
+                name: String,
+                transferred: Long,
+                total: Long,
+                incoming: Boolean,
+                snapshot: TransferSpeedSnapshot
+            ) {
+                runOnUiThread {
+                    // One main-thread dispatch now carries both progress and measured
+                    // throughput; the old path queued two UI tasks for every SDK update.
+                    val rate = snapshot.recentBytesPerSecond.toLong().coerceAtLeast(0L)
+                    val peak = snapshot.peakWindowBytesPerSecond.toLong().coerceAtLeast(0L)
                     if (incoming) {
-                        if (sampleDue) {
-                            incomingLastSampleBytes = transferred
-                            incomingLastSampleAt = now
-                        }
                         incomingRateBytesPerSecond = rate
                         incomingTransferName = name
-                        incomingProgress = fraction
                     } else {
-                        if (sampleDue) {
-                            outgoingLastSampleBytes = transferred
-                            outgoingLastSampleAt = now
-                        }
                         outgoingRateBytesPerSecond = rate
                         activeOutgoingFileName = name
                         activeOutgoingFileBytes = total
                         outgoingTransferId = "nearby:$payloadId"
-                        outgoingProgress = fraction
                     }
-                    val rateText = if (rate >= 1_000_000L) " • ${String.format(java.util.Locale.US, "%.1f", rate / 1_000_000.0)} MB/s"
-                        else if (rate >= 1_000L) " • ${String.format(java.util.Locale.US, "%.0f", rate / 1_000.0)} KB/s" else ""
-                    val remaining = if (total > transferred && rate > 0L) (total - transferred) / rate else -1L
-                    val etaText = if (remaining >= 0L) " • ~${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')} left" else ""
-                    val action = if (incoming) "Receiving" else "Sending"
-                    chatNotice = if (total > 0L) "$action $name • ${(fraction * 100).toInt()}%$rateText$etaText" else "$action $name…"
-                }
-            }
-            override fun onFileSpeed(id: String, payloadId: Long, name: String, snapshot: TransferSpeedSnapshot, incoming: Boolean) {
-                runOnUiThread {
-                    // Use the transport's monotonic rolling-window measurement rather
-                    // than estimating speed from UI callback timing.
-                    val rate = snapshot.recentBytesPerSecond.toLong().coerceAtLeast(0L)
-                    val peak = snapshot.peakWindowBytesPerSecond.toLong().coerceAtLeast(0L)
-                    if (incoming) incomingRateBytesPerSecond = rate else outgoingRateBytesPerSecond = rate
-                    val total = snapshot.totalBytes
-                    val transferred = snapshot.transferredBytes
-                    val fraction = snapshot.progressFraction ?: 0f
+                    val fraction = snapshot.progressFraction
+                        ?: if (total > 0L) (transferred.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
+                        else 0f
+                    if (incoming) incomingProgress = fraction else outgoingProgress = fraction
+
                     val currentRateText = when {
                         rate >= 1_000_000L -> String.format(java.util.Locale.US, "%.1f MB/s", rate / 1_000_000.0)
                         rate >= 1_000L -> String.format(java.util.Locale.US, "%.0f KB/s", rate / 1_000.0)
@@ -832,7 +840,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun completeOnboarding(rawName: String, avatarId: String, photoUri: Uri?, answers: Map<String, String>) {
+    private fun completeOnboarding(rawName: String, avatarId: String, photoUri: Uri?, answers: Map<String, String>, optionalPhoneNumber: String?) {
         val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
         if (cleanName.isBlank()) return
         val photoPath = photoUri?.let(::storeProfilePhoto)
@@ -842,6 +850,7 @@ class MainActivity : ComponentActivity() {
             .putString("display_name", cleanName)
             .putString("profile_avatar_id", avatarId)
             .putString("profile_photo_path", photoPath)
+            .putString("optional_phone_number", optionalPhoneNumber?.trim()?.take(24)?.ifBlank { null })
             .putString("onboarding_answers", answerJson.toString())
             .apply()
         displayName = cleanName
@@ -932,7 +941,7 @@ class MainActivity : ComponentActivity() {
         if (!SmartConnectPolicy.shouldStartDiscovery(
                 onboardingComplete = onboardingComplete,
                 permissionsGranted = hasNearbyPermissions(),
-                radioAvailable = bluetoothOn || wifiOn,
+                radioAvailable = SmartConnectPolicy.hasUsableRadio(bluetoothOn, wifiOn),
                 alreadySearching = hybridSearching,
                 alreadyConnected = hybridConnected
             )) {
@@ -3322,7 +3331,7 @@ private fun NeaRerHome(
     usingNearbyConnections: Boolean,
     meshRecipients: List<MeshRecipient>,
     selectedMeshRecipientId: String?,
-    onSelectMeshRecipient: (String) -> Unit,
+    onSelectMeshRecipient: (String?) -> Unit,
     connectedPeerStableId: String?,
     messages: List<ChatMessage>,
     chatNotice: String,
@@ -3386,6 +3395,9 @@ private fun NeaRerHome(
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
     var selectedConversationKey by remember { mutableStateOf<String?>(null) }
+    val chatAttachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) onSendFiles(uris)
+    }
     LaunchedEffect(externalShareUris) { if (externalShareUris.isNotEmpty()) selectedTab = "Share" }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
@@ -3856,6 +3868,18 @@ private fun NeaRerHome(
                 }
             }
 
+            if (selectedTab == "People") {
+                PeopleScreen(
+                    meshRecipients = meshRecipients,
+                    hybridPeers = hybridPeers,
+                    scanning = scanning,
+                    onSelectMeshRecipient = onSelectMeshRecipient,
+                    onOpenChat = { selectedTab = "Chats" },
+                    onFindNearby = onFindNearby,
+                    onConnectNearby = onHybridConnect
+                )
+            }
+
             if (selectedTab == "Share") {
                 FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, externalShareUris = externalShareUris, onExternalShareConsumed = onExternalShareConsumed, modifier = Modifier.weight(1f))
             }
@@ -3946,7 +3970,8 @@ private fun NeaRerHome(
                     onDraftChange = { draft = it.take(2000) },
                     onSendMessage = { onSendMessage(it); draft = "" },
                     onFindNearby = { selectedTab = "Nearby"; onFindNearby() },
-                    onChooseFiles = { selectedTab = "Share" },
+                    onBackToInbox = { onSelectMeshRecipient(null) },
+                    onChooseFiles = { chatAttachmentPicker.launch(arrayOf("*/*")) },
                     receivedFiles = receivedFiles,
                     onOpenFile = onOpenFile,
                     transferHistory = transferHistory,
@@ -4231,7 +4256,7 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Chats" to "▤", "Share" to "⇧", "Share Hub" to "⌁", "Games" to "♟").forEach { item ->
+                    listOf("Chats" to "▤", "People" to "♙", "Share" to "⇧", "Share Hub" to "⌁", "Games" to "♟").forEach { item ->
                         val selected = selectedTab == item.first
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
