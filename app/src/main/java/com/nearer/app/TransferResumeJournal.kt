@@ -61,9 +61,13 @@ internal class TransferResumeJournal(private val directory: File) {
     @Synchronized
     fun loadAll(): List<TransferResumeCheckpoint> {
         if (!directory.isDirectory) return emptyList()
-        val files = directory.listFiles()?.filter { it.isFile }?.sortedBy { it.name } ?: return emptyList()
+        val files = directory.listFiles() ?: return emptyList()
         val valid = ArrayList<TransferResumeCheckpoint>(MAX_DISCOVERED_ENTRIES)
+        var inspected = 0
         for (file in files) {
+            if (!file.isFile) continue
+            if (inspected >= MAX_SCANNED_ENTRIES) break
+            inspected++
             // A temp file is never a committed checkpoint: save() only publishes
             // after fsync + rename. It is safe to remove crash-leftover temp files.
             if (file.name.startsWith(".") && file.name.endsWith(".tmp")) {
@@ -107,6 +111,7 @@ internal class TransferResumeJournal(private val directory: File) {
     private companion object {
         const val MAX_ENCODED_BYTES = 6_144
         const val MAX_DISCOVERED_ENTRIES = 10_000
+        const val MAX_SCANNED_ENTRIES = 20_000
     }
 
     private fun checkpointFile(transferId: String, itemId: String): File {
