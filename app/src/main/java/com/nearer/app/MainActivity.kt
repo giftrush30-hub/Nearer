@@ -459,7 +459,10 @@ class MainActivity : ComponentActivity() {
             ) {
                 runOnUiThread {
                     var safelyStored = false
-                    if (body.startsWith("NR_COMMUNITY:")) {
+                    if (body.startsWith("NR_REACTION:")) {
+                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), actorPeerId)
+                    } else if (body.startsWith("NR_COMMUNITY:")) {
                         val senderPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
                         val communityBody = body.removePrefix("NR_COMMUNITY:")
                         val packet = try { JSONObject(communityBody) } catch (_: Exception) { JSONObject() }
@@ -532,7 +535,9 @@ class MainActivity : ComponentActivity() {
             ) {
                 runOnUiThread {
                     var safelyStored = false
-                    if (chatMessages.any { it.id == messageId }) {
+                    if (body.startsWith("NR_REACTION:")) {
+                        safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), originPeerId)
+                    } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
                         val quoteValid = ChatReplyPolicy.isValidIncomingQuote(replyToMessageId, replyToPreview, replyToSender)
@@ -792,6 +797,7 @@ class MainActivity : ComponentActivity() {
                     transferHistory = nearbyTransferHistory.toList(),
                     onSendMessage = ::sendChatMessage,
                     onDeleteMessage = ::deleteChatMessage,
+                    onReactToMessage = ::sendChatReaction,
                     groups = communityGroups.toList(),
                     groupMessages = communityMessages.toList(),
                     selectedGroupCode = selectedCommunityCode,
@@ -1536,7 +1542,17 @@ class MainActivity : ComponentActivity() {
                         conversationName = item.optString("conversationName", ""),
                         replyToMessageId = item.optString("replyToMessageId").takeIf { it.isNotBlank() },
                         replyToPreview = item.optString("replyToPreview").takeIf { it.isNotBlank() },
-                        replyToSender = item.optString("replyToSender").takeIf { it.isNotBlank() }
+                        replyToSender = item.optString("replyToSender").takeIf { it.isNotBlank() },
+                        reactions = item.optJSONObject("reactions")?.let { reactionObject ->
+                            buildMap {
+                                val keys = reactionObject.keys()
+                                while (keys.hasNext()) {
+                                    val key = keys.next()
+                                    val emoji = reactionObject.optString(key)
+                                    if (ChatReactionPolicy.isValidActor(key) && ChatReactionPolicy.isValidEmoji(emoji)) put(key, emoji)
+                                }
+                            }
+                        }.orEmpty()
                     )
                     chatMessages.add(message)
                     if (!message.outgoing) receivedMessageIds.add(message.id)
@@ -1588,6 +1604,63 @@ class MainActivity : ComponentActivity() {
 
     private fun trimChatMessages() { ChatHistoryPolicy.trim(chatMessages) }
 
+    private fun applyIncomingChatReaction(payload: String, actorPeerId: String): Boolean {
+        val packet = try { JSONObject(payload) } catch (_: Exception) { return false }
+        val targetId = packet.optString("messageId")
+        val emoji = packet.optString("emoji")
+        if (!ChatReactionPolicy.isValidActor(actorPeerId) ||
+            targetId.isBlank() || targetId.length > 80 ||
+            !ChatReactionPolicy.isValidEmoji(emoji)) return false
+        val index = chatMessages.indexOfFirst {
+            it.id == targetId && it.conversationId == actorPeerId
+        }
+        if (index < 0) return false
+        val previous = chatMessages[index]
+        val updated = ChatReactionPolicy.toggle(previous.reactions, actorPeerId, emoji)
+        chatMessages[index] = previous.copy(reactions = updated)
+        if (persistMessages()) return true
+        chatMessages[index] = previous
+        chatNotice = "A reaction arrived but could not be saved. It was not confirmed."
+        return false
+    }
+
+    private fun sendChatReaction(messageId: String, emoji: String) {
+        val index = chatMessages.indexOfFirst { it.id == messageId }
+        if (index < 0 || !ChatReactionPolicy.isValidEmoji(emoji)) return
+        val target = chatMessages[index]
+        val peerId = target.conversationId
+        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+        if (!ChatReactionPolicy.isValidActor(localPeerId) || !ChatReactionPolicy.isValidActor(peerId)) {
+            chatNotice = "Reactions need a verified NeaRer connection."
+            return
+        }
+        val previous = target
+        chatMessages[index] = target.copy(reactions = ChatReactionPolicy.toggle(target.reactions, localPeerId, emoji))
+        if (!persistMessages()) {
+            chatMessages[index] = previous
+            chatNotice = "Couldn't save your reaction. It was not sent."
+            return
+        }
+        val packet = "NR_REACTION:" + JSONObject()
+            .put("messageId", messageId)
+            .put("emoji", emoji)
+            .toString()
+        val eventId = UUID.randomUUID().toString()
+        val meshRecipient = meshRecipients[peerId]
+        val sent = if (meshRecipient != null) {
+            nearbyTransport?.sendMeshMessage(peerId, packet, eventId) == true
+        } else if (peerId == hybridConnectedStableId && !hybridConnectedEndpoint.isNullOrBlank()) {
+            nearbyTransport?.send(packet, eventId, hybridConnectedEndpoint) == true
+        } else false
+        if (!sent) {
+            chatMessages[index] = previous
+            persistMessages()
+            chatNotice = "Reaction not sent. Reconnect to this person and try again."
+        } else {
+            chatNotice = "Reaction sent over the secure nearby connection."
+        }
+    }
+
     private fun deleteChatMessage(messageId: String): Boolean {
         val index = chatMessages.indexOfFirst { it.id == messageId }
         if (index < 0) return false
@@ -1615,7 +1688,8 @@ class MainActivity : ComponentActivity() {
                     .put("conversationName", message.conversationName)
                     .put("replyToMessageId", message.replyToMessageId)
                     .put("replyToPreview", message.replyToPreview)
-                    .put("replyToSender", message.replyToSender))
+                    .put("replyToSender", message.replyToSender)
+                    .put("reactions", JSONObject(message.reactions)))
             }
             // commit() is intentional here: a delivery receipt must follow the disk write,
             // not just an in-memory SharedPreferences update queued by apply().
@@ -4493,7 +4567,8 @@ internal data class ChatMessage(
     val conversationName: String = "",
     val replyToMessageId: String? = null,
     val replyToPreview: String? = null,
-    val replyToSender: String? = null
+    val replyToSender: String? = null,
+    val reactions: Map<String, String> = emptyMap()
 )
 
 private fun isNeaRerAppBundle(file: File): Boolean {
