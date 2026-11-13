@@ -101,8 +101,8 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
 
 
     /**
-     * Transit relay remains hard-disabled until forwarding proofs are connected to
-     * authenticated packet acceptance and the encrypted Dead Drop transaction.
+     * Transit relay remains hard-disabled after proof-chain integration until
+     * trust/key-rotation, recovery, security review and physical multi-phone gates pass.
      * Direct delivery and receipt handling for this phone's own messages remain
      * available. This transport-level guard is intentional defense in depth: a
      * future UI toggle or stale preference must not activate unverified transit.
