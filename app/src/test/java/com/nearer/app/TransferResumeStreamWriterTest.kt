@@ -280,7 +280,9 @@ class TransferResumeStreamWriterTest {
             assertEquals(0L, result.resumedFromBytes)
             assertEquals(sha256(byteArrayOf()), result.sha256)
             assertEquals(0L, result.partialFile.length())
-            assertNull(store.findValid("transfer-stream", selected, null))
+            val emptyCheckpoint = store.findValid("transfer-stream", selected, null)
+            assertNotNull("An empty file still needs a durable EOF checkpoint", emptyCheckpoint)
+            assertEquals(0L, emptyCheckpoint!!.checkpoint.committedOffsetBytes)
         } finally {
             root.deleteRecursively()
         }
