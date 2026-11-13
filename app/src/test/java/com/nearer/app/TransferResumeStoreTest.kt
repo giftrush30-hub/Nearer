@@ -120,7 +120,7 @@ class TransferResumeStoreTest {
                 parentFile?.mkdirs()
                 writeBytes(firstBytes)
             }
-            firstStore.checkpoint("transfer-a", firstItem, 100L, chunk.toLong())
+            firstStore.checkpoint("transfer-a", firstItem, 100L, chunk.toLong(), "ABCDEF234567")
 
             val secondItem = firstItem.copy(
                 id = "item-2",
@@ -132,7 +132,7 @@ class TransferResumeStoreTest {
                 parentFile?.mkdirs()
                 writeBytes(secondBytes)
             }
-            firstStore.checkpoint("transfer-b", secondItem, 200L, chunk.toLong())
+            firstStore.checkpoint("transfer-b", secondItem, 200L, chunk.toLong(), "BCDEFG234567")
 
             // Simulate process death: use a new store and journal instance.
             val restartedStore = store(root)
@@ -158,14 +158,14 @@ class TransferResumeStoreTest {
                 parentFile?.mkdirs()
                 writeBytes(validBytes)
             }
-            firstStore.checkpoint("transfer-valid", validItem, 100L, chunk.toLong())
+            firstStore.checkpoint("transfer-valid", validItem, 100L, chunk.toLong(), "ABCDEF234567")
 
             val corruptItem = validItem.copy(id = "corrupt-item", relativePath = "Videos/corrupt.mp4", displayName = "corrupt.mp4")
             val corruptPartial = firstStore.partialFileFor("transfer-corrupt", corruptItem.id).apply {
                 parentFile?.mkdirs()
                 writeBytes(ByteArray(chunk) { 7 })
             }
-            firstStore.checkpoint("transfer-corrupt", corruptItem, 200L, chunk.toLong())
+            firstStore.checkpoint("transfer-corrupt", corruptItem, 200L, chunk.toLong(), "BCDEFG234567")
             corruptPartial.writeBytes(ByteArray(chunk) { 8 })
 
             val missingItem = validItem.copy(id = "missing-item", relativePath = "Videos/missing.mp4", displayName = "missing.mp4")
@@ -173,7 +173,7 @@ class TransferResumeStoreTest {
                 parentFile?.mkdirs()
                 writeBytes(ByteArray(chunk) { 9 })
             }
-            firstStore.checkpoint("transfer-missing", missingItem, 300L, chunk.toLong())
+            firstStore.checkpoint("transfer-missing", missingItem, 300L, chunk.toLong(), "CDEFGH234567")
             assertTrue(missingPartial.delete())
 
             val restartedStore = store(root)
@@ -319,6 +319,77 @@ class TransferResumeStoreTest {
                 fail("Existing destination must not be overwritten")
             } catch (_: IllegalArgumentException) { }
             assertEquals("keep existing file", destination.readText())
+            assertTrue(partial.exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+
+    @Test fun restartDiscoveryRequiresAuthenticatedStablePeerBinding() {
+        val root = Files.createTempDirectory("nearer-resume-peer-binding").toFile()
+        try {
+            val store = store(root)
+            val selected = item()
+            val bytes = ByteArray(chunk) { (it % 211).toByte() }
+            val partial = store.partialFileFor("transfer-peer", selected.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(bytes)
+            }
+            // Legacy/unbound checkpoint remains readable for migration but is not
+            // exposed as a restart candidate because endpoint IDs are ephemeral.
+            store.checkpoint("transfer-peer", selected, 100L, chunk.toLong())
+            assertTrue(store(root).discoverVerifiedCandidates().isEmpty())
+
+            store.discard("transfer-peer", selected.id)
+            partial.writeBytes(bytes)
+            store.checkpoint("transfer-peer", selected, 100L, chunk.toLong(), "ABCDEF234567")
+            val restarted = store(root)
+            assertEquals(1, restarted.discoverVerifiedCandidates().size)
+            assertNull(restarted.findValid("transfer-peer", selected, 100L, "BCDEFG234567"))
+            assertNotNull(restarted.findValid("transfer-peer", selected, 100L, "ABCDEF234567"))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun checkpointCodecReadsLegacyVersionOneAndRoundTripsPeerBinding() {
+        val legacy = java.io.ByteArrayOutputStream().also { bytes ->
+            java.io.DataOutputStream(bytes).use { data ->
+                data.writeInt(0x4E524331)
+                data.writeInt(1)
+                fun write(value: String) {
+                    val encoded = value.toByteArray(Charsets.UTF_8)
+                    data.writeInt(encoded.size)
+                    data.write(encoded)
+                }
+                write("legacy-transfer")
+                write("item-1")
+                write("Videos/clip.mp4")
+                data.writeLong(chunk.toLong() * 2L)
+                data.writeBoolean(false)
+                data.writeLong(chunk.toLong())
+                write("a".repeat(64))
+            }
+        }.toByteArray()
+        val decodedLegacy = TransferResumeCheckpointCodec.decode(legacy)
+        assertNull(decodedLegacy.sourcePeerId)
+
+        val root = Files.createTempDirectory("nearer-resume-peer-codec").toFile()
+        try {
+            val store = store(root)
+            val selected = item()
+            val partial = store.partialFileFor("bound-transfer", selected.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(ByteArray(chunk) { 3 })
+            }
+            val checkpoint = store.checkpoint(
+                "bound-transfer", selected, 456L, chunk.toLong(), "ABCDEF234567"
+            )
+            val encoded = TransferResumeCheckpointCodec.encode(checkpoint)
+            val decoded = TransferResumeCheckpointCodec.decode(encoded)
+            assertEquals("ABCDEF234567", decoded.sourcePeerId)
+            assertEquals(checkpoint, decoded)
             assertTrue(partial.exists())
         } finally {
             root.deleteRecursively()
