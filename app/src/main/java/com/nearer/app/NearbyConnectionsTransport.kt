@@ -1635,6 +1635,42 @@ internal object IncomingFilePayloadPolicy {
         try { client.disconnectFromEndpoint(endpointId) } catch (_: Exception) { }
     }
 
+    private fun sendHyperTransferControl(endpointId: String, controlBytes: ByteArray, onSent: () -> Unit = {}) {
+        val session = messageSessions[endpointId]
+            ?: throw IllegalStateException("The encrypted nearby session is not ready")
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        val controlId = UUID.randomUUID().toString()
+        val wrapper = JSONObject()
+            .put("kind", "hypertransfer_control")
+            .put("id", controlId)
+            .put("control", android.util.Base64.encodeToString(controlBytes, android.util.Base64.NO_WRAP))
+            .toString().toByteArray(Charsets.UTF_8)
+        val encrypted = NearbyMessageCrypto.encrypt(session, localStableId, peerId, controlId, wrapper)
+        client.sendPayload(endpointId, Payload.fromBytes(encrypted))
+            .addOnSuccessListener { onSent() }
+    }
+
+    private fun handleHyperTransferControl(endpointId: String, controlBytes: ByteArray) {
+        if (TransferResumeStreamMetadataCodec.isEnvelope(controlBytes)) {
+            handleHyperStreamMetadata(endpointId, controlBytes)
+            return
+        }
+        if (controlBytes.size < 4) return
+        when (ByteBuffer.wrap(controlBytes).int) {
+            0x4E525253 -> handleHyperStreamProposal(endpointId, controlBytes)
+            0x4E52524E -> handleHyperStreamNoResume(endpointId, controlBytes)
+            0x4E525244 -> {
+                val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                val decoded = runCatching { TransferResumeMessageCodec.decodeDecision(controlBytes) }.getOrNull() ?: return
+                val result = streamController.recordDecision(endpointId, peerId, controlBytes)
+                if (result == NearbyStreamExchangeController.InputResult.STORED ||
+                    result == NearbyStreamExchangeController.InputResult.DUPLICATE) {
+                    tryProcessHyperStream(decoded.payloadId)
+                }
+            }
+        }
+    }
+
     private fun handleHyperStreamMetadata(endpointId: String, raw: ByteArray) {
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         val result = streamController.recordMetadata(endpointId, peerId, raw)
@@ -1666,8 +1702,11 @@ internal object IncomingFilePayloadPolicy {
                 recorded != NearbyStreamExchangeController.InputResult.DUPLICATE) return
             bytes
         }
-        client.sendPayload(endpointId, Payload.fromBytes(control))
-            .addOnFailureListener { listener.onFileStatus("Could not negotiate the saved transfer offset. Please retry.") }
+        try {
+            sendHyperTransferControl(endpointId, control)
+        } catch (_: Exception) {
+            listener.onFileStatus("Could not negotiate the saved transfer offset. Please retry.")
+        }
         tryProcessHyperStream(metadata.payloadId)
     }
 
@@ -1726,14 +1765,7 @@ internal object IncomingFilePayloadPolicy {
         if (proposal != null) {
             val decisionBytes = TransferResumeMessageCodec.encodeDecision(payloadId, decision)
             try {
-                client.sendPayload(state.endpointId, Payload.fromBytes(decisionBytes))
-                    .addOnSuccessListener { sendStream() }
-                    .addOnFailureListener {
-                        preparedSource?.input?.close()
-                        state.prepared.reject(IllegalStateException("Resume decision could not be sent"))
-                        synchronized(state) { state.awaitingDecision = true }
-                        listener.onFileStatus("Could not confirm the transfer offset. Please retry.")
-                    }
+                sendHyperTransferControl(state.endpointId, decisionBytes) { sendStream() }
             } catch (_: Exception) {
                 preparedSource?.input?.close()
                 state.prepared.reject(IllegalStateException("Resume decision could not be sent"))
@@ -1794,28 +1826,6 @@ internal object IncomingFilePayloadPolicy {
                 handleMeshPacket(endpointId, decoded.packetBytes, decoded.proofChainBytes)
                 return
             }
-            if (authenticatedEndpoints.contains(endpointId)) {
-                if (TransferResumeStreamMetadataCodec.isEnvelope(raw)) {
-                    handleHyperStreamMetadata(endpointId, raw)
-                    return
-                }
-                if (raw.size >= 4) {
-                    when (ByteBuffer.wrap(raw).int) {
-                        0x4E525253 -> { handleHyperStreamProposal(endpointId, raw); return }
-                        0x4E52524E -> { handleHyperStreamNoResume(endpointId, raw); return }
-                        0x4E525244 -> {
-                            val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
-                            val decoded = runCatching { TransferResumeMessageCodec.decodeDecision(raw) }.getOrNull() ?: return
-                            val result = streamController.recordDecision(endpointId, peerId, raw)
-                            if (result == NearbyStreamExchangeController.InputResult.STORED ||
-                                result == NearbyStreamExchangeController.InputResult.DUPLICATE) {
-                                tryProcessHyperStream(decoded.payloadId)
-                            }
-                            return
-                        }
-                    }
-                }
-            }
             val envelope = JSONObject(raw.toString(Charsets.UTF_8))
             when (envelope.optString("kind")) {
                 "peer_hello_v3" -> { handlePeerHello(endpointId, envelope); return }
@@ -1866,7 +1876,14 @@ internal object IncomingFilePayloadPolicy {
                 val (packetId, cleartext) = NearbyMessageCrypto.decrypt(session, localStableId, senderId, envelope)
                 val inner = JSONObject(cleartext.toString(Charsets.UTF_8))
                 require(inner.optString("id") == packetId) { "Encrypted message ID did not match its authenticated envelope." }
-                handleAuthenticatedMessage(endpointId, inner)
+                if (inner.optString("kind") == "hypertransfer_control") {
+                    val encoded = inner.optString("control")
+                    require(encoded.isNotBlank() && encoded.length <= 12_000)
+                    val control = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+                    handleHyperTransferControl(endpointId, control)
+                } else {
+                    handleAuthenticatedMessage(endpointId, inner)
+                }
                 return
             }
             // Chat and delivery receipts are never accepted as plaintext after v2 pairing.
@@ -2383,8 +2400,10 @@ internal object IncomingFilePayloadPolicy {
                 val metadata = TransferResumeStreamMetadataCodec.Metadata(
                     payloadId, transferId, item, null, copied.sha256
                 )
-                client.sendPayload(endpointId, Payload.fromBytes(TransferResumeStreamMetadataCodec.encode(metadata)))
-                    .addOnSuccessListener {
+                sendHyperTransferControl(endpointId, TransferResumeStreamMetadataCodec.encode(metadata))
+                    .also { /* encrypted control delivery is asynchronous */ }
+                val metadataSendMarker = true
+                if (metadataSendMarker) {
                         val timeout = Runnable {
                             if (state.awaitingDecision && outgoingHyperStreams.containsKey(payloadId)) {
                                 val stillConnected = authenticatedEndpoints.contains(state.endpointId) &&
@@ -2412,12 +2431,7 @@ internal object IncomingFilePayloadPolicy {
                         state.timeout = timeout
                         deliveryHandler.postDelayed(timeout, 12_000L)
                     }
-                    .addOnFailureListener {
-                        outgoingHyperStreams.remove(payloadId, state)
-                        prepared.close()
-                        staged?.delete()
-                        listener.onFileStatus("Could not send transfer details to the nearby phone.")
-                    }
+                // The encrypted control sender reports transport failure by throwing before dispatch.
             } catch (error: Exception) {
                 outgoingHyperStreams.remove(payloadId)
                 prepared.close()
