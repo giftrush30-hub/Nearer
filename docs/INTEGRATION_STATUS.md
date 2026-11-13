@@ -191,6 +191,7 @@ The checkpoint format is now version 2 and stores the authenticated sender's sta
 - New stream checkpoints can persist the authenticated sender ID.
 - Discovery returns only candidates bound to a valid stable sender ID.
 - Resume validation requires an exact sender-ID match. A different authenticated peer gets a security rejection, and its attempt does not delete or overwrite the original peer's partial.
+- The negotiation layer also requires the exact authenticated stable sender ID before it will propose a saved offset. Sender ownership is checked before manifest mismatch cleanup, so a different peer cannot invalidate the owner's partial by reusing transfer/item IDs with altered metadata.
 - Codec tests cover version-1 migration and version-2 round trips; store tests cover unbound legacy exclusion, correct-peer acceptance, and wrong-peer rejection without data loss.
 
 The current transport still does not pass its authenticated peer ID into the durable stream writer or route FILE payload bytes through that writer. This change establishes the identity boundary needed for that integration; it does not yet make Nearby process-death resume operational.
