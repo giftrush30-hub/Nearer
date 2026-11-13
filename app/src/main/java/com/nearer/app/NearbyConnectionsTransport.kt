@@ -1897,14 +1897,21 @@ internal object IncomingFilePayloadPolicy {
     private fun queueDurableFanout(body: String, peerIds: Set<String>): Boolean {
         if (peerIds.isEmpty()) return false
         val queuedIds = mutableListOf<String>()
+        var skippedUnverifiedPeer = false
         peerIds.distinct().forEach { peerId ->
             if (peerId == localStableId || NeaRerIdentity.normalize(peerId) != peerId ||
-                !TrustedPeerKeyStore.hasPinnedPeer(appContext, peerId)) return@forEach
+                !TrustedPeerKeyStore.hasPinnedPeer(appContext, peerId)) {
+                skippedUnverifiedPeer = true
+                return@forEach
+            }
             val endpoint = endpointForStablePeer(peerId).orEmpty()
             if (endpoint.isNotBlank() &&
                 (!authenticatedEndpoints.contains(endpoint) ||
                     !synchronized(activeEndpoints) { activeEndpoints.contains(endpoint) } ||
-                    messageSessions[endpoint] == null)) return@forEach
+                    messageSessions[endpoint] == null)) {
+                skippedUnverifiedPeer = true
+                return@forEach
+            }
 
             val messageId = UUID.randomUUID().toString()
             val envelope = JSONObject()
@@ -1922,6 +1929,9 @@ internal object IncomingFilePayloadPolicy {
             pendingOutgoingMessages[messageId] = PendingOutgoingMessage(endpoint, peerId, envelope)
             if (endpoint.isNotBlank()) outgoingMessageTargets[messageId] = endpoint
             queuedIds += messageId
+        }
+        if (skippedUnverifiedPeer) {
+            listener.onStatus("Some group members are not identity-verified on this phone; their message copies were not queued.")
         }
         if (queuedIds.isEmpty()) return false
 
