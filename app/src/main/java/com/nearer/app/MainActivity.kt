@@ -1719,15 +1719,47 @@ class MainActivity : ComponentActivity() {
         if (body.isBlank()) return
         val id = UUID.randomUUID().toString()
         val packet = JSONObject().put("type", "group_message").put("code", code).put("sender", displayName).put("body", body).put("id", id)
-        if (sendCommunityToNames("NR_COMMUNITY:$packet", group.members.toSet()) == true) {
-            communityMessages.add(CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis()))
-            persistCommunityData()
-        } else communityNotice = "No connected member of this group is available right now."
+        val localMessage = CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis())
+
+        // Commit the sender's local copy before any recipient can receive and ACK it.
+        communityMessages.add(localMessage)
+        if (!persistCommunityData()) {
+            communityMessages.remove(localMessage)
+            communityNotice = "This group message could not be saved on this phone, so it was not sent."
+            return
+        }
+
+        val wireBody = "NR_COMMUNITY:$packet"
+        val queued = if (hybridConnected) {
+            nearbyTransport?.sendDurableToNames(wireBody, group.members.toSet()) == true
+        } else {
+            // The legacy single-peer Wi-Fi Direct fallback has no stable peer-key
+            // outbox binding yet, so it retains its existing immediate-send path.
+            sendCommunityToNames(wireBody, group.members.toSet())
+        }
+        communityNotice = if (queued) {
+            "Group message saved locally and queued securely for connected members. Unacknowledged copies retry when those same phones reconnect."
+        } else {
+            "Group message saved on this phone, but no eligible group member is connected to receive it yet."
+        }
     }
+
     private fun sendCommunityBroadcast(raw: String) {
         val body = raw.trim().take(500)
-        if (body.isNotBlank() && sendCommunityPacket(JSONObject().put("type", "broadcast").put("sender", displayName).put("body", body))) {
-            communityNotice = "Broadcast sent to connected nearby phones."
+        if (body.isBlank()) return
+        val packetBody = "NR_COMMUNITY:" + JSONObject()
+            .put("type", "broadcast")
+            .put("sender", displayName)
+            .put("body", body)
+        val queued = if (hybridConnected) {
+            nearbyTransport?.sendDurableToAll(packetBody) == true
+        } else {
+            sendCommunityPacket(JSONObject().put("type", "broadcast").put("sender", displayName).put("body", body))
+        }
+        communityNotice = if (queued) {
+            "Broadcast queued securely for connected nearby phones. Unacknowledged copies retry when those same phones reconnect."
+        } else {
+            "No authenticated nearby phone is connected to receive this broadcast."
         }
     }
     private fun handleCommunityPacket(sender: String, raw: String) {
