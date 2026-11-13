@@ -31,7 +31,7 @@ internal object ChatReplyPolicy {
         if (preview.isBlank()) return null
         val sender = senderLabel.trim().take(MAX_SENDER_LENGTH).ifBlank {
             if (target.outgoing) "You" else target.conversationName.take(MAX_SENDER_LENGTH)
-        }
+        }.ifBlank { "Contact" }
         return Quote(messageId, preview, sender)
     }
 
