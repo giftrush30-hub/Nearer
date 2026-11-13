@@ -1857,25 +1857,6 @@ internal object IncomingFilePayloadPolicy {
                 }
             }
             if (!authenticatedEndpoints.contains(endpointId)) return
-            if (TransferResumeStreamMetadataCodec.isEnvelope(raw)) {
-                handleHyperStreamMetadata(endpointId, raw)
-                return
-            }
-            if (raw.size >= 4) {
-                when (ByteBuffer.wrap(raw).int) {
-                    0x4E525253 -> { handleHyperStreamProposal(endpointId, raw); return }
-                    0x4E52524E -> { handleHyperStreamNoResume(endpointId, raw); return }
-                    0x4E525244 -> {
-                        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
-                        val decoded = runCatching { TransferResumeMessageCodec.decodeDecision(raw) }.getOrNull() ?: return
-                        val result = streamController.recordDecision(endpointId, peerId, raw)
-                        if (result != NearbyStreamExchangeController.InputResult.STORED &&
-                            result != NearbyStreamExchangeController.InputResult.DUPLICATE) return
-                        tryProcessHyperStream(decoded.payloadId)
-                        return
-                    }
-                }
-            }
             if (envelope.optString("kind") == "mesh_packet_v1") {
                 // Legacy packets carry no verifiable forwarding history and are rejected.
                 listener.onStatus("An older mesh packet without forwarding proofs was rejected. Update both phones.")
@@ -2415,38 +2396,12 @@ internal object IncomingFilePayloadPolicy {
                 val metadata = TransferResumeStreamMetadataCodec.Metadata(
                     payloadId, transferId, item, null, copied.sha256
                 )
-                sendHyperTransferControl(endpointId, TransferResumeStreamMetadataCodec.encode(metadata))
-                    .also { /* encrypted control delivery is asynchronous */ }
-                val metadataSendMarker = true
-                if (metadataSendMarker) {
-                        val timeout = Runnable {
-                            if (state.awaitingDecision && outgoingHyperStreams.containsKey(payloadId)) {
-                                val stillConnected = authenticatedEndpoints.contains(state.endpointId) &&
-                                    synchronized(activeEndpoints) { activeEndpoints.contains(state.endpointId) }
-                                if (!stillConnected) {
-                                    state.endpointId = ""
-                                    state.prepared.close()
-                                } else if (outgoingHyperStreams.remove(payloadId, state)) {
-                                    // If the peer did not answer the stream handshake, retain the proven FILE fallback.
-                                    state.prepared.close()
-                                    val filePayload = Payload.fromFile(state.sourceFile)
-                                    filePayload.setFileName(state.name)
-                                    filePayload.setSensitive(true)
-                                    val legacy = OutgoingFile(
-                                        state.endpointId, state.stablePeerId, state.name,
-                                        state.item.sizeBytes, filePayload, state.sourceFile
-                                    )
-                                    legacy.sha256 = state.sha256
-                                    outgoingFiles[filePayload.id] = legacy
-                                    listener.onFileStatus("Using standard file transfer with this nearby phone.")
-                                    sendPreparedFile(filePayload.id, legacy)
-                                }
-                            }
-                        }
-                        state.timeout = timeout
-                        deliveryHandler.postDelayed(timeout, 12_000L)
-                    }
-                // The encrypted control sender reports transport failure by throwing before dispatch.
+                sendHyperTransferControl(
+                    endpointId,
+                    TransferResumeStreamMetadataCodec.encode(metadata),
+                    onFailure = { fallbackHyperStreamToFile(state) }
+                )
+                armHyperStreamTimeout(state)
             } catch (error: Exception) {
                 outgoingHyperStreams.remove(payloadId)
                 prepared.close()
@@ -2455,6 +2410,43 @@ internal object IncomingFilePayloadPolicy {
             }
         }
         return payloadId
+    }
+
+    private fun fallbackHyperStreamToFile(state: OutgoingHyperStream) {
+        val payloadId = state.prepared.payloadId
+        if (!state.awaitingDecision || !outgoingHyperStreams.remove(payloadId, state)) return
+        state.timeout?.let(deliveryHandler::removeCallbacks)
+        state.prepared.close()
+        val filePayload = try { Payload.fromFile(state.sourceFile) } catch (_: Exception) {
+            state.sourceFile.delete()
+            listener.onFileStatus("The stream could not start and the standard file fallback was unavailable.")
+            return
+        }
+        filePayload.setFileName(state.name)
+        filePayload.setSensitive(true)
+        val legacy = OutgoingFile(
+            state.endpointId, state.stablePeerId, state.name,
+            state.item.sizeBytes, filePayload, state.sourceFile
+        )
+        legacy.sha256 = state.sha256
+        outgoingFiles[filePayload.id] = legacy
+        listener.onFileStatus("Using standard file transfer with this nearby phone.")
+        sendPreparedFile(filePayload.id, legacy)
+    }
+
+    private fun armHyperStreamTimeout(state: OutgoingHyperStream) {
+        val timeout = Runnable {
+            if (!state.awaitingDecision || outgoingHyperStreams[state.prepared.payloadId] !== state) return@Runnable
+            val connected = authenticatedEndpoints.contains(state.endpointId) &&
+                synchronized(activeEndpoints) { activeEndpoints.contains(state.endpointId) }
+            if (connected) fallbackHyperStreamToFile(state)
+            else {
+                state.endpointId = ""
+                state.prepared.close()
+            }
+        }
+        state.timeout = timeout
+        deliveryHandler.postDelayed(timeout, 12_000L)
     }
 
     private fun scheduleHyperStreamRetry(state: OutgoingHyperStream) {
@@ -2489,28 +2481,12 @@ internal object IncomingFilePayloadPolicy {
             val metadata = TransferResumeStreamMetadataCodec.Metadata(
                 prepared.payloadId, next.transferId, next.item, null, next.sha256
             )
-            client.sendPayload(endpointId, Payload.fromBytes(TransferResumeStreamMetadataCodec.encode(metadata)))
-                .addOnSuccessListener {
-                    val timeout = Runnable {
-                        if (next.awaitingDecision && outgoingHyperStreams.remove(prepared.payloadId, next)) {
-                            next.prepared.close()
-                            val filePayload = Payload.fromFile(next.sourceFile)
-                            filePayload.setFileName(next.name)
-                            filePayload.setSensitive(true)
-                            val legacy = OutgoingFile(endpointId, peerId, next.name, next.item.sizeBytes, filePayload, next.sourceFile)
-                            legacy.sha256 = next.sha256
-                            outgoingFiles[filePayload.id] = legacy
-                            sendPreparedFile(filePayload.id, legacy)
-                        }
-                    }
-                    next.timeout = timeout
-                    deliveryHandler.postDelayed(timeout, 12_000L)
-                }
-                .addOnFailureListener {
-                    outgoingHyperStreams.remove(prepared.payloadId, next)
-                    prepared.close()
-                    listener.onFileStatus("Could not restart the saved HyperTransfer handshake.")
-                }
+            sendHyperTransferControl(
+                endpointId,
+                TransferResumeStreamMetadataCodec.encode(metadata),
+                onFailure = { fallbackHyperStreamToFile(next) }
+            )
+            armHyperStreamTimeout(next)
         }
     }
 
@@ -2553,8 +2529,6 @@ internal object IncomingFilePayloadPolicy {
             val streamId = sendHyperTransferStream(endpointId, uri, displayName)
             if (streamId != null) return streamId
         }
-        val knownPeer = synchronized(names) { stableIds[endpointId].orEmpty() }
-        if (streamCapablePeers.contains(knownPeer)) return sendHyperTransferStream(endpointId, uri, displayName)
         if (!authenticatedEndpoints.contains(endpointId) || synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
             listener.onFileStatus("The nearby connection is not securely verified or is no longer active.")
             return null
