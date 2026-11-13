@@ -37,41 +37,58 @@ internal class TransferResumeJournal(private val directory: File) {
     @Synchronized
     fun load(transferId: String, itemId: String): TransferResumeCheckpoint? {
         val file = checkpointFile(transferId, itemId)
-        // A journal entry is tiny by design. Check its on-disk length before
-        // allocating a byte array so a damaged or externally modified file cannot
-        // trigger an unbounded read during resume discovery.
-        if (!file.isFile || file.length() !in 1..MAX_ENCODED_BYTES.toLong()) return null
-        return try {
-            TransferResumeCheckpointCodec.decode(file.readBytes()).takeIf {
-                it.transferId == transferId && it.itemId == itemId &&
-                    it.validationError() == null
-            }
+        if (!file.isFile) return null
+        // Corrupt and oversized entries are not resumable. Remove them now so
+        // repeated app launches do not keep rediscovering the same dead record.
+        if (file.length() !in 1..MAX_ENCODED_BYTES.toLong()) {
+            file.delete()
+            return null
+        }
+        val checkpoint = try {
+            TransferResumeCheckpointCodec.decode(file.readBytes())
         } catch (_: Exception) {
             null
         }
+        if (checkpoint == null || checkpoint.transferId != transferId ||
+            checkpoint.itemId != itemId || checkpoint.validationError() != null) {
+            file.delete()
+            return null
+        }
+        return checkpoint
     }
 
-    /** Enumerate valid checkpoints after process restart; corrupt or misnamed entries are ignored. */
+    /** Enumerate valid checkpoints after process restart; repair corrupt journal debris. */
     @Synchronized
     fun loadAll(): List<TransferResumeCheckpoint> {
         if (!directory.isDirectory) return emptyList()
-        return directory.listFiles()
-            ?.asSequence()
-            ?.filter { it.isFile && it.name.endsWith(".nrc") && it.length() in 1..MAX_ENCODED_BYTES.toLong() }
-            ?.take(MAX_DISCOVERED_ENTRIES)
-            ?.mapNotNull { file ->
-                try {
-                    TransferResumeCheckpointCodec.decode(file.readBytes()).takeIf { checkpoint ->
-                        checkpointFile(checkpoint.transferId, checkpoint.itemId).name == file.name &&
-                            checkpoint.validationError() == null
-                    }
-                } catch (_: Exception) {
-                    null
-                }
+        val files = directory.listFiles()?.filter { it.isFile }?.sortedBy { it.name } ?: return emptyList()
+        val valid = ArrayList<TransferResumeCheckpoint>(MAX_DISCOVERED_ENTRIES)
+        for (file in files) {
+            // A temp file is never a committed checkpoint: save() only publishes
+            // after fsync + rename. It is safe to remove crash-leftover temp files.
+            if (file.name.startsWith(".") && file.name.endsWith(".tmp")) {
+                file.delete()
+                continue
             }
-            ?.sortedWith(compareBy<TransferResumeCheckpoint> { it.transferId }.thenBy { it.itemId })
-            ?.toList()
-            ?: emptyList()
+            if (!file.name.endsWith(".nrc")) continue
+            if (file.length() !in 1..MAX_ENCODED_BYTES.toLong()) {
+                file.delete()
+                continue
+            }
+            val checkpoint = try {
+                TransferResumeCheckpointCodec.decode(file.readBytes())
+            } catch (_: Exception) {
+                null
+            }
+            if (checkpoint == null || checkpoint.validationError() != null ||
+                checkpointFile(checkpoint.transferId, checkpoint.itemId).name != file.name) {
+                file.delete()
+                continue
+            }
+            valid.add(checkpoint)
+            if (valid.size >= MAX_DISCOVERED_ENTRIES) break
+        }
+        return valid.sortedWith(compareBy<TransferResumeCheckpoint> { it.transferId }.thenBy { it.itemId })
     }
 
     @Synchronized
