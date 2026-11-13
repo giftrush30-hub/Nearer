@@ -1959,7 +1959,9 @@ internal object IncomingFilePayloadPolicy {
             return emptyMap()
         }
 
-        queuedIds.forEach(::attemptOutgoingMessage)
+        // Defer first transmission until the caller has had a chance to persist
+        // the transport-ID -> community-message receipt mapping returned below.
+        queuedIds.forEach { id -> deliveryHandler.post { attemptOutgoingMessage(id) } }
         return queuedRecipients
     }
 
