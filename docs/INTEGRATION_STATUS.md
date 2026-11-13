@@ -195,3 +195,13 @@ The checkpoint format is now version 2 and stores the authenticated sender's sta
 - Codec tests cover version-1 migration and version-2 round trips; store tests cover unbound legacy exclusion, correct-peer acceptance, and wrong-peer rejection without data loss.
 
 The current transport still does not pass its authenticated peer ID into the durable stream writer or route FILE payload bytes through that writer. This change establishes the identity boundary needed for that integration; it does not yet make Nearby process-death resume operational.
+
+
+### Nearby STREAM transport call-site integration — 13 November 2026
+- The transport integration branch now connects the authenticated Nearby BYTES/STREAM callbacks to the verified HyperTransfer coordinator and bridge.
+- New peers advertise stream support after the signed identity handshake. A sender uses the resumable STREAM path only after the other peer advertises support; peers that do not answer the stream handshake fall back to the existing FILE transfer path.
+- Sender metadata binds the payload ID, deterministic transfer identity, file name/path, size and whole-file SHA-256. The transfer identity is derived from the authenticated sender/receiver IDs and content identity so reselecting the same file after an app restart can find the receiver's saved partial.
+- The receiver checks its peer-bound journal and sends either a saved-prefix proposal or an explicit no-resume response. The sender independently verifies the source prefix and sends the decision before providing the stream. The receiver correlates metadata, proposal/decision and STREAM callback regardless of callback order.
+- Incoming STREAM bytes are drained on the file I/O executor, checkpointed by the durable writer, checked against the whole-file digest, and published through the no-overwrite finalizer. Interrupted transfers retain only verified checkpoints; reconnect creates a fresh Nearby payload ID and repeats the authenticated handshake.
+- The legacy Nearby FILE path remains available for peers that do not advertise stream support and as a timeout fallback. Existing same-process FILE resume remains intact.
+- This is source integration awaiting exact-head CI. No emulator or physical-device testing is claimed. The first real-phone gate must verify both directions, app process death/restart, same-file re-selection, interrupted transfer, zero-byte files, old-peer FILE fallback, and Android storage behavior (including hard-link publication).
