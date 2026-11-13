@@ -14,7 +14,7 @@ import java.io.File
  */
 internal object FileCentreIndexCache {
     private const val FILE_NAME = "nearer_file_catalog_index.json"
-    private const val MAX_ENTRIES = 8000
+    private const val MAX_ENTRIES = 20000
     private val cachedCategories = setOf(
         FileCentreCategory.APPS,
         FileCentreCategory.PICTURES,
@@ -24,7 +24,7 @@ internal object FileCentreIndexCache {
 
     fun read(context: Context): List<FileCentreItem> = runCatching {
         val file = File(context.filesDir, FILE_NAME)
-        if (!file.isFile || file.length() <= 0L || file.length() > 8L * 1024L * 1024L) {
+        if (!file.isFile || file.length() <= 0L || file.length() > 16L * 1024L * 1024L) {
             return@runCatching emptyList()
         }
         val array = JSONArray(file.readText(Charsets.UTF_8))
@@ -60,7 +60,7 @@ internal object FileCentreIndexCache {
             val array = JSONArray()
             items.asSequence()
                 .filter { it.category in cachedCategories }
-                .sortedByDescending { it.modifiedSeconds }
+                .sortedWith(compareByDescending<FileCentreItem> { it.category == FileCentreCategory.APPS }.thenByDescending { it.modifiedSeconds })
                 .take(MAX_ENTRIES)
                 .forEach { item ->
                     array.put(JSONObject().apply {
