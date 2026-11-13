@@ -37,7 +37,7 @@ class ChatInboxPolicyTest {
             message("c", "offline", 3, "three")
         )
         assertEquals(listOf("direct"), ChatInboxPolicy.conversationIds(messages, recipients, filter = "Nearby"))
-        assertEquals(listOf("mesh"), ChatInboxPolicy.conversationIds(messages, recipients, filter = "Mesh"))
+        assertEquals(listOf("mesh"), ChatInboxPolicy.conversationIds(messages, recipients, filter = "Via others"))
         assertEquals(listOf("offline"), ChatInboxPolicy.conversationIds(messages, recipients, filter = "Offline"))
     }
 
