@@ -1481,7 +1481,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     /** Sends an E2E-encrypted chat packet over the verified mesh route to a previously trusted recipient. */
-    fun sendMeshMessage(destinationPeerId: String, body: String, messageId: String = UUID.randomUUID().toString(), replyQuote: ChatReplyPolicy.Quote? = null): Boolean {
+    internal fun sendMeshMessage(destinationPeerId: String, body: String, messageId: String = UUID.randomUUID().toString(), replyQuote: ChatReplyPolicy.Quote? = null): Boolean {
         if (!meshRouteWithdrawalStoreHealthy) return false
         if (body.isBlank() || body.length > 4000 ||
             NeaRerIdentity.normalize(destinationPeerId) != destinationPeerId ||
@@ -1836,7 +1836,7 @@ internal object IncomingFilePayloadPolicy {
     fun accept(id: String) { client.acceptConnection(id, payloads).addOnFailureListener { listener.onStatus("Could not accept nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun reject(id: String) { client.rejectConnection(id).addOnFailureListener { listener.onStatus("Could not reject nearby connection: ${it.localizedMessage ?: "try again"}") } }
 
-    fun send(
+    internal fun send(
         body: String,
         messageId: String = UUID.randomUUID().toString(),
         targetEndpointId: String? = null,
