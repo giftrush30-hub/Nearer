@@ -805,7 +805,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun completeOnboarding(rawName: String, avatarId: String, photoUri: Uri?, answers: Map<String, String>) {
+    private fun completeOnboarding(rawName: String, avatarId: String, photoUri: Uri?, answers: Map<String, String>, optionalPhoneNumber: String?) {
         val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
         if (cleanName.isBlank()) return
         val photoPath = photoUri?.let(::storeProfilePhoto)
@@ -815,6 +815,7 @@ class MainActivity : ComponentActivity() {
             .putString("display_name", cleanName)
             .putString("profile_avatar_id", avatarId)
             .putString("profile_photo_path", photoPath)
+            .putString("optional_phone_number", optionalPhoneNumber?.trim()?.take(24)?.ifBlank { null })
             .putString("onboarding_answers", answerJson.toString())
             .apply()
         displayName = cleanName
