@@ -448,7 +448,6 @@ private fun PremiumChatsInboxScreen(
         .filter { it.conversationId.isNotBlank() }
         .groupBy { it.conversationId }
         .mapValues { (_, conversation) -> conversation.maxByOrNull { it.timestamp }!! }
-    val recipientIds = meshRecipients.map { it.peerId }.toSet()
     val conversationIds = (latestMessages.keys + recipientIds).distinct().sortedByDescending { id ->
         latestMessages[id]?.timestamp ?: 0L
     }
