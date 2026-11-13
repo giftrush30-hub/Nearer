@@ -34,6 +34,16 @@ class ChatReactionPolicyTest {
     }
 
     @Test
+    fun applyingTheSameIncomingReactionTwiceIsIdempotent() {
+        val first = ChatReactionPolicy.set(emptyMap(), peerA, "👍")
+        val replayed = ChatReactionPolicy.set(first, peerA, "👍")
+        assertEquals(first, replayed)
+        val removed = ChatReactionPolicy.set(replayed, peerA, null)
+        val replayedRemoval = ChatReactionPolicy.set(removed, peerA, null)
+        assertEquals(emptyMap<String, String>(), replayedRemoval)
+    }
+
+    @Test
     fun doesNotMutateTheOriginalMap() {
         val original = mapOf(peerA to "👍")
         val updated = ChatReactionPolicy.toggle(original, peerB, "❤️")
