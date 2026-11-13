@@ -36,9 +36,30 @@ internal class TransferResumeStreamWriter(
         sourceModifiedAtMillis: Long?,
         input: InputStream,
         isCancelled: () -> Boolean = { false }
+    ): Result = write(
+        transferId = transferId,
+        item = item,
+        sourceModifiedAtMillis = sourceModifiedAtMillis,
+        input = input,
+        sourcePeerId = null,
+        isCancelled = isCancelled
+    )
+
+    /**
+     * Peer-bound variant for transports that have authenticated the sender.
+     * The compatibility overload above preserves the original trailing-lambda
+     * cancellation API for existing callers.
+     */
+    fun write(
+        transferId: String,
+        item: TransferBundleItem,
+        sourceModifiedAtMillis: Long?,
+        input: InputStream,
+        sourcePeerId: String?,
+        isCancelled: () -> Boolean = { false }
     ): Result {
         require(item.kind == TransferBundleItem.Kind.FILE) { "Only files can be resumed" }
-        val candidate = store.findValid(transferId, item, sourceModifiedAtMillis)
+        val candidate = store.findValid(transferId, item, sourceModifiedAtMillis, sourcePeerId)
         val partial = candidate?.partialFile ?: store.partialFileFor(transferId, item.id)
         val offset = candidate?.checkpoint?.committedOffsetBytes ?: 0L
 
@@ -99,7 +120,7 @@ internal class TransferResumeStreamWriter(
 
                 if (received == nextCheckpoint || received == item.sizeBytes) {
                     output.fd.sync()
-                    store.checkpoint(transferId, item, sourceModifiedAtMillis, received)
+                    store.checkpoint(transferId, item, sourceModifiedAtMillis, received, sourcePeerId)
                     nextCheckpoint = nextCheckpointAfter(received, item.sizeBytes)
                 }
             }

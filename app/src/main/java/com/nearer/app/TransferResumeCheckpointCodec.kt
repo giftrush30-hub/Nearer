@@ -13,7 +13,7 @@ import java.nio.charset.CodingErrorAction
  */
 internal object TransferResumeCheckpointCodec {
     private const val MAGIC = 0x4E524331 // "NRC1"
-    private const val VERSION = 1
+    private const val VERSION = 2
     private const val MAX_ENCODED_BYTES = 6_144
     private const val MAX_ID_BYTES = 512
     private const val MAX_PATH_BYTES = TransferBundleManifest.MAX_PATH_LENGTH * 4
@@ -30,6 +30,7 @@ internal object TransferResumeCheckpointCodec {
             data.writeLong(checkpoint.expectedSizeBytes)
             data.writeBoolean(checkpoint.sourceModifiedAtMillis != null)
             checkpoint.sourceModifiedAtMillis?.let(data::writeLong)
+            writeString(data, checkpoint.sourcePeerId.orEmpty(), 64)
             data.writeLong(checkpoint.committedOffsetBytes)
             writeString(data, checkpoint.prefixSha256.lowercase(), 64)
         }
@@ -44,17 +45,19 @@ internal object TransferResumeCheckpointCodec {
         }
         val data = DataInputStream(ByteArrayInputStream(bytes))
         require(data.readInt() == MAGIC) { "Invalid resume checkpoint signature" }
-        require(data.readInt() == VERSION) { "Unsupported resume checkpoint version" }
+        val version = data.readInt()
+        require(version in 1..VERSION) { "Unsupported resume checkpoint version" }
         val transferId = readString(data, MAX_ID_BYTES)
         val itemId = readString(data, MAX_ID_BYTES)
         val path = readString(data, MAX_PATH_BYTES)
         val size = data.readLong()
         val modifiedAt = if (data.readBoolean()) data.readLong() else null
+        val sourcePeerId = if (version >= 2) readString(data, 64).ifEmpty { null } else null
         val offset = data.readLong()
         val digest = readString(data, 64)
         require(data.available() == 0) { "Unexpected trailing resume checkpoint data" }
         val checkpoint = TransferResumeCheckpoint(
-            transferId, itemId, path, size, modifiedAt, offset, digest
+            transferId, itemId, path, size, modifiedAt, offset, digest, sourcePeerId
         )
         val error = checkpoint.validationError()
         require(error == null) { error ?: "Invalid resume checkpoint" }

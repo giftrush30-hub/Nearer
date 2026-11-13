@@ -163,3 +163,35 @@ The follow-up adds a transport-message-ID to community-message/recipient mapping
 - If saving a receipt fails, the updated state remains in memory and the app retries the write on Activity pause/resume. If storage continues failing and the process is killed before a successful retry, that latest receipt may not survive the restart.
 
 PR #129 is merged into main at commit `271e2bfabcffab9209af5aae23f10cc185bd2c92`; exact-head JVM tests and debug APK assembly passed. It has not been validated on physical phones. It does not add background delivery while the app process is stopped or Android Doze suspends execution.
+
+## HyperTransfer restart-discovery foundation — 13 November 2026
+
+The follow-up branch `feature/hypertransfer-restart-discovery` adds a bounded, restart-safe discovery operation to the existing local resume store:
+
+- `TransferResumeStore.discoverVerifiedCandidates()` enumerates the journal's bounded checkpoint list after process recreation, reconstructs the item identity from each checkpoint, and re-verifies the on-disk committed prefix before returning a candidate.
+- Missing, truncated, oversized, or digest-mismatched partial files are discarded together with their journal entry instead of being surfaced as resumable work.
+- Results are deterministic (transfer ID, then relative path), so a future recovery UI/coordinator can restore a stable list.
+- Tests simulate a new store instance after process death, multiple transfer discovery, and cleanup of missing/corrupt partials.
+
+This is intentionally a storage/recovery foundation, not a claim that Nearby FILE payloads can yet resume across process death. A candidate must still be bound to the authenticated stable peer and confirmed by the sender's current source identity and prefix digest before a transport applies any offset. The actual Nearby FILE payload lifecycle is still not wired to the durable stream writer/checkpoint protocol. No emulator or physical-device test is claimed.
+
+The same recovery foundation now includes a guarded completion operation, `TransferResumeStore.finalizeVerifiedComplete()`:
+
+- It accepts only a locally re-verified EOF checkpoint and checks the sender-provided whole-file SHA-256 before publishing.
+- It publishes the completed partial using atomic same-filesystem hard-link creation, which fails if the destination already exists (including a competing writer winning a race). If hard links are unsupported, it fails closed and keeps the partial rather than exposing a half-copied destination.
+- It refuses an existing destination, does not derive the destination from the untrusted manifest path, and removes the journal record after successful publication.
+- Unit tests cover successful publication, incomplete data, digest mismatch, and destination collision.
+
+This is still a storage primitive. The receive UI/transport must choose a safe destination and call it only after authenticated resume negotiation and complete stream validation. No Nearby payload integration or physical-device validation is claimed.
+
+### Stable sender binding for restart recovery
+
+The checkpoint format is now version 2 and stores the authenticated sender's stable NeaRer ID. Version-1 journal entries remain readable as legacy, unbound checkpoints, but are deliberately excluded from post-restart discovery because the previous Nearby endpoint ID is transient and cannot prove who owns the transfer.
+
+- New stream checkpoints can persist the authenticated sender ID.
+- Discovery returns only candidates bound to a valid stable sender ID.
+- Resume validation requires an exact sender-ID match. A different authenticated peer gets a security rejection, and its attempt does not delete or overwrite the original peer's partial.
+- The negotiation layer also requires the exact authenticated stable sender ID before it will propose a saved offset. Sender ownership is checked before manifest mismatch cleanup, so a different peer cannot invalidate the owner's partial by reusing transfer/item IDs with altered metadata.
+- Codec tests cover version-1 migration and version-2 round trips; store tests cover unbound legacy exclusion, correct-peer acceptance, and wrong-peer rejection without data loss.
+
+The current transport still does not pass its authenticated peer ID into the durable stream writer or route FILE payload bytes through that writer. This change establishes the identity boundary needed for that integration; it does not yet make Nearby process-death resume operational.

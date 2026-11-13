@@ -37,10 +37,16 @@ internal object TransferResumeNegotiation {
         checkpoint: TransferResumeCheckpoint?,
         receiverPrefixVerified: Boolean,
         senderSupportsOffsets: Boolean,
-        receiverSupportsOffsets: Boolean
+        receiverSupportsOffsets: Boolean,
+        authenticatedSourcePeerId: String?
     ): Proposal? {
         if (!senderSupportsOffsets || !receiverSupportsOffsets || !receiverPrefixVerified) return null
         checkpoint ?: return null
+        // A durable offset is useful only when the local checkpoint belongs to
+        // the exact peer authenticated on the current connection. Never offer
+        // legacy/unbound checkpoints or silently fall back to an endpoint ID.
+        val authenticatedPeer = NeaRerIdentity.normalize(authenticatedSourcePeerId) ?: return null
+        if (checkpoint.sourcePeerId != authenticatedPeer) return null
         if (checkpoint.validationError() != null || checkpoint.committedOffsetBytes <= 0L ||
             checkpoint.committedOffsetBytes >= checkpoint.expectedSizeBytes) return null
         return Proposal(

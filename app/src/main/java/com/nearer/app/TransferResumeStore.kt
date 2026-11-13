@@ -3,6 +3,7 @@ package com.nearer.app
 import java.io.File
 import java.io.FileInputStream
 import java.io.RandomAccessFile
+import java.nio.file.Files
 import java.security.MessageDigest
 
 /**
@@ -25,7 +26,8 @@ internal class TransferResumeStore(
         transferId: String,
         item: TransferBundleItem,
         sourceModifiedAtMillis: Long?,
-        bytesSynced: Long
+        bytesSynced: Long,
+        sourcePeerId: String? = null
     ): TransferResumeCheckpoint {
         require(transferId.isNotBlank() && transferId.length <= 128) { "Invalid transfer ID" }
         require(item.id.isNotBlank() && item.id.length <= 128) { "Invalid bundle item ID" }
@@ -34,6 +36,9 @@ internal class TransferResumeStore(
         }
         require(sourceModifiedAtMillis == null || sourceModifiedAtMillis >= 0L) {
             "Invalid source modification time"
+        }
+        require(sourcePeerId == null || NeaRerIdentity.normalize(sourcePeerId) == sourcePeerId) {
+            "Invalid authenticated source peer identity"
         }
         require(item.kind == TransferBundleItem.Kind.FILE) { "Only files can be resumed" }
         require(item.sizeBytes >= 0L && bytesSynced in 0L..item.sizeBytes) {
@@ -64,7 +69,8 @@ internal class TransferResumeStore(
             expectedSizeBytes = item.sizeBytes,
             sourceModifiedAtMillis = sourceModifiedAtMillis,
             committedOffsetBytes = committedOffset,
-            prefixSha256 = digest
+            prefixSha256 = digest,
+            sourcePeerId = sourcePeerId
         )
         val error = checkpoint.validationError()
         require(error == null) { error ?: "Invalid resume checkpoint" }
@@ -76,13 +82,19 @@ internal class TransferResumeStore(
     fun findValid(
         transferId: String,
         item: TransferBundleItem,
-        sourceModifiedAtMillis: Long?
+        sourceModifiedAtMillis: Long?,
+        expectedSourcePeerId: String? = null
     ): Candidate? {
         val checkpoint = journal.load(transferId, item.id) ?: return null
         val partial = partialFileFor(transferId, item.id)
-        // A checkpoint tied to a changed source is never reusable. Remove both
-        // halves so stale bytes cannot linger and later be mistaken for a valid
-        // candidate if the same transfer identity is retried.
+        // Check sender ownership before inspecting caller-supplied manifest fields.
+        // Otherwise a different peer could reuse the same transfer/item IDs with a
+        // changed size or path and trigger stale-checkpoint cleanup for the real owner.
+        if (checkpoint.sourcePeerId != expectedSourcePeerId) {
+            throw SecurityException("Resume checkpoint belongs to a different authenticated sender")
+        }
+        // Only the authenticated owner may invalidate a checkpoint by presenting
+        // changed source metadata. This prevents cross-peer deletion of valid data.
         if (!checkpoint.matches(transferId, item, sourceModifiedAtMillis)) {
             discard(transferId, item.id)
             return null
@@ -94,6 +106,114 @@ internal class TransferResumeStore(
             return null
         }
         return Candidate(checkpoint, partial)
+    }
+
+    /**
+     * Re-discovers receiver-owned partials after process death.
+     *
+     * The original manifest may no longer be in memory when the app restarts,
+     * so the bounded journal is the source of candidate identities. Every
+     * candidate is re-verified against its on-disk prefix before it is returned;
+     * damaged or missing partials are discarded. This does not authorize a
+     * resume by itself: the sender must still confirm the same transfer/item,
+     * source size and modification time, and the negotiated prefix digest before
+     * any transport is allowed to continue at the returned offset.
+     */
+    @Synchronized
+    fun discoverVerifiedCandidates(): List<Candidate> {
+        return journal.loadAll().mapNotNull { checkpoint ->
+            val item = TransferBundleItem(
+                id = checkpoint.itemId,
+                relativePath = checkpoint.relativePath,
+                displayName = checkpoint.relativePath.substringAfterLast('/'),
+                sizeBytes = checkpoint.expectedSizeBytes,
+                mimeType = null,
+                kind = TransferBundleItem.Kind.FILE
+            )
+            findValid(
+                transferId = checkpoint.transferId,
+                item = item,
+                sourceModifiedAtMillis = checkpoint.sourceModifiedAtMillis,
+                expectedSourcePeerId = checkpoint.sourcePeerId
+            )?.takeIf { candidate ->
+                // Legacy checkpoints without a stable sender binding cannot be
+                // offered after process death: the new endpoint ID is unrelated.
+                // A zero-byte checkpoint cannot save any retransmission work,
+                // while an EOF checkpoint is complete rather than resumable.
+                // Leave valid journal entries intact for a future finalization
+                // coordinator, but do not present either as resumable work.
+                candidate.checkpoint.sourcePeerId != null &&
+                    candidate.checkpoint.committedOffsetBytes > 0L &&
+                    candidate.checkpoint.committedOffsetBytes < candidate.checkpoint.expectedSizeBytes
+            }
+        }.sortedWith(
+            compareBy<Candidate> { it.checkpoint.transferId }
+                .thenBy { it.checkpoint.relativePath }
+        )
+    }
+
+    /**
+     * Publishes a fully received partial only after its durable EOF checkpoint and
+     * whole-file digest have been verified. An atomic hard-link creation publishes
+     * the completed bytes without replacing an existing destination. If the
+     * filesystem cannot create a same-filesystem hard link, publication fails closed.
+     *
+     * The destination must be chosen by the trusted receive flow, not from an
+     * untrusted manifest path. Existing destination files are never overwritten.
+     */
+    @Synchronized
+    fun finalizeVerifiedComplete(
+        transferId: String,
+        item: TransferBundleItem,
+        sourceModifiedAtMillis: Long?,
+        destination: File,
+        expectedSha256: String,
+        sourcePeerId: String? = null
+    ): File {
+        require(Regex("^[a-fA-F0-9]{64}$").matches(expectedSha256)) {
+            "A valid whole-file SHA-256 is required"
+        }
+        val candidate = findValid(transferId, item, sourceModifiedAtMillis, sourcePeerId)
+            ?: throw IllegalStateException("No verified partial is available to finalize")
+        require(candidate.checkpoint.committedOffsetBytes == item.sizeBytes) {
+            "The partial file has not reached its declared end"
+        }
+        require(candidate.partialFile.length() == item.sizeBytes) {
+            "The completed partial has an unexpected size"
+        }
+        val actualSha256 = sha256Prefix(candidate.partialFile, item.sizeBytes)
+        require(MessageDigest.isEqual(
+            actualSha256.toByteArray(Charsets.US_ASCII),
+            expectedSha256.lowercase().toByteArray(Charsets.US_ASCII)
+        )) { "Completed file digest does not match the sender's digest" }
+
+        val target = destination.absoluteFile
+        require(target != candidate.partialFile.absoluteFile) {
+            "Final destination must differ from the partial file"
+        }
+        val parent = target.parentFile
+            ?: throw IllegalArgumentException("Final destination must have a parent folder")
+        if (!parent.exists() && !parent.mkdirs()) {
+            throw IllegalStateException("Could not create the final destination folder")
+        }
+        require(parent.isDirectory) { "Final destination parent is not a folder" }
+        require(!target.exists()) { "Final destination already exists" }
+
+        // Unlike ATOMIC_MOVE, createLink has no replace-existing mode ambiguity:
+        // creation fails if another file already owns the destination, including
+        // when a competing writer wins the race after the existence check above.
+        Files.createLink(target.toPath(), candidate.partialFile.toPath())
+        // Both names now refer to the same fully verified inode. If unlinking the
+        // private partial fails, keep the published file and clear its journal entry;
+        // this can leave a harmless duplicate name, never a partially copied file.
+        if (!candidate.partialFile.delete()) {
+            journal.remove(transferId, item.id)
+            return target
+        }
+        // If journal cleanup fails, the next discovery sees the missing partial
+        // and removes the stale record; the already-published file remains safe.
+        journal.remove(transferId, item.id)
+        return target
     }
 
     @Synchronized
