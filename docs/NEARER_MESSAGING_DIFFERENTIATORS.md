@@ -158,12 +158,17 @@ A practical feature for Nigerian environments: when someone nearby does not have
 ## Product sequence
 
 ### Now — make one-to-one chat dependable
+Implemented in the current messaging PR (pending integration and physical-device validation):
 1. Replies/quotes with message IDs and safe legacy packet compatibility.
-2. Reactions with per-message, per-user state.
-3. Copy, select and message details.
-4. Edit own messages with a bounded edit window and authenticated edit events.
-5. Delete-for-me first; delete-for-everyone only with signed tombstones and offline reconciliation.
-6. Voice notes after audio storage, cancellation, transfer resume and playback are reliable.
+2. Reactions with per-message, per-user state and replay-safe encrypted control events.
+3. Copy message and delete-for-me with confirmation and local rollback on save failure.
+4. Edit own messages with bounded revision numbers, authenticated sender checks, persistence and stale/duplicate update handling.
+5. Search, pin, archive, local unread counts and plain-language delivery labels.
+
+Still to build:
+6. Message forwarding with clear original-sender attribution and privacy safeguards.
+7. Delete-for-everyone only after signed tombstones and offline reconciliation are designed and tested.
+8. Voice notes after audio storage, cancellation, transfer resume and playback are reliable.
 
 ### Next — make nearby use feel special
 1. Nearby Pulse.
