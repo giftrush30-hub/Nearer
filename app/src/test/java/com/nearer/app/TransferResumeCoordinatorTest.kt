@@ -148,6 +148,14 @@ class TransferResumeCoordinatorTest {
                     "transfer-2", item, 456L, peerId, chunk.toLong(),
                     ByteArrayInputStream(remainder), destination, sha256(bytes)
                 )
+                fail("A resume offset without its checkpoint must be rejected")
+            } catch (_: SecurityException) { }
+
+            try {
+                coordinator.receiveStreamAndFinalize(
+                    "transfer-3", item, 456L, peerId, 0L,
+                    ByteArrayInputStream(bytes), destination, sha256(bytes)
+                )
                 fail("Existing destination must never be replaced")
             } catch (_: IllegalArgumentException) { }
         } finally {
