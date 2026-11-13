@@ -48,7 +48,7 @@ internal class TransferSpeedMeter(
             if (samples.isNotEmpty()) samples.removeFirst()
             samples.addFirst(oldest)
         }
-        updatePeakWindowRate(now)
+        updatePeakWindowRate()
         return snapshotAt(now)
     }
 
@@ -72,23 +72,17 @@ internal class TransferSpeedMeter(
         }
     }
 
-    private fun updatePeakWindowRate(now: Long) {
-        val rate = rateWithinWindow(now)
+    private fun updatePeakWindowRate() {
+        val rate = rateWithinWindow()
         peakWindowBytesPerSecond = maxOf(peakWindowBytesPerSecond, rate)
     }
 
-    private fun rateWithinWindow(now: Long): Double {
-        val cutoff = now - windowMillis
-        var first: Sample? = null
-        var last: Sample? = null
-        for (sample in samples) {
-            if (sample.timeMillis >= cutoff) {
-                if (first == null) first = sample
-                last = sample
-            }
-        }
-        val firstSample = first ?: return 0.0
-        val lastSample = last ?: return 0.0
+    private fun rateWithinWindow(): Double {
+        // record() and snapshotAt() prune samples against the rolling cutoff.
+        // Deque endpoints therefore represent the current window without scanning
+        // every retained callback during a high-frequency progress burst.
+        val firstSample = samples.peekFirst() ?: return 0.0
+        val lastSample = samples.peekLast() ?: return 0.0
         if (firstSample === lastSample) return 0.0
         val elapsed = lastSample.timeMillis - firstSample.timeMillis
         if (elapsed <= 0L) return 0.0
@@ -96,12 +90,14 @@ internal class TransferSpeedMeter(
     }
 
     private fun snapshotAt(now: Long): TransferSpeedSnapshot {
+        // Idle transfers must age out old samples too, not just new callbacks.
+        prune(now)
         val started = startedAtMillis
         val elapsed = if (started == null) 0L else (now - started).coerceAtLeast(0L)
         val bytesDuringMeasurement = (transferredBytes - baselineBytes).coerceAtLeast(0L)
         val averageRate = if (elapsed > 0L) bytesDuringMeasurement * 1000.0 / elapsed else 0.0
 
-        val recentRate = rateWithinWindow(now)
+        val recentRate = rateWithinWindow()
 
         return TransferSpeedSnapshot(
             transferredBytes = transferredBytes,
