@@ -468,8 +468,8 @@ internal class DeadDropStore(context: Context) {
         private const val MAX_PER_ORIGIN_CHARS = 512 * 1024
         private const val MAX_PACKET_BYTES = MeshRelayPacketV1.MAX_NEARBY_BYTES
         private const val MAX_TOTAL_CHARS = 2 * 1024 * 1024
-        private const val MAX_METADATA_CHARS = 64 * 1024
-        private const val MAX_STORED_CHARS = 3 * 1024 * 1024
+        private const val MAX_METADATA_CHARS = 640 * 1024
+        private const val MAX_STORED_CHARS = 4 * 1024 * 1024
         private const val MAX_RETRY_LEVEL = 16
         private const val LEASE_MS = 30_000L
         private const val QUEUED = "queued"
