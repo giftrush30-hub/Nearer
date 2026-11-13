@@ -3761,6 +3761,15 @@ private fun NeaRerHome(
                 }
             }
 
+            if (selectedTab == "People") {
+                PeopleScreen(
+                    meshRecipients = meshRecipients,
+                    onSelectMeshRecipient = onSelectMeshRecipient,
+                    onOpenChat = { selectedTab = "Chats" },
+                    onFindNearby = { selectedTab = "Nearby"; onFindNearby() }
+                )
+            }
+
             if (selectedTab == "Share") {
                 FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, externalShareUris = externalShareUris, onExternalShareConsumed = onExternalShareConsumed, modifier = Modifier.weight(1f))
             }
@@ -4136,7 +4145,7 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Chats" to "▤", "Share" to "⇧", "Share Hub" to "⌁", "Games" to "♟").forEach { item ->
+                    listOf("Chats" to "▤", "People" to "♙", "Share" to "⇧", "Share Hub" to "⌁", "Games" to "♟").forEach { item ->
                         val selected = selectedTab == item.first
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
