@@ -686,8 +686,9 @@ class MainActivity : ComponentActivity() {
         runCatching { restoreNearbyTransferHistory() }
         runCatching { restoreNearbyFileQueue() }
         val queuedAfterRestart = runCatching { nearbyTransport?.pendingMessageIds().orEmpty() }.getOrDefault(emptySet())
+        val deliveredAfterRestart = runCatching { nearbyTransport?.completedMessageIds().orEmpty() }.getOrDefault(emptySet())
         val recoveredChatStates = runCatching {
-            ChatRestartRecoveryPolicy.reconcile(chatMessages, queuedAfterRestart)
+            ChatRestartRecoveryPolicy.reconcile(chatMessages, queuedAfterRestart, deliveredAfterRestart)
         }.getOrDefault(false)
         if (recoveredChatStates) {
             runCatching { persistMessages() }
@@ -699,6 +700,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         runCatching { restoreCommunityData() }
+        runCatching { reconcileCommunityDeliveryReceipts(deliveredAfterRestart) }
         displayName = runCatching {
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
@@ -1776,6 +1778,25 @@ class MainActivity : ComponentActivity() {
             }
         } catch (_: Exception) { communityGroups.clear(); communityMessages.clear(); communityDeliveryRefs.clear() }
     }
+    private fun reconcileCommunityDeliveryReceipts(deliveredTransportIds: Set<String>) {
+        if (deliveredTransportIds.isEmpty() || communityDeliveryRefs.isEmpty()) return
+        var changed = false
+        communityDeliveryRefs.entries.toList().forEach { (transportId, ref) ->
+            if (transportId !in deliveredTransportIds) return@forEach
+            val index = communityMessages.indexOfFirst { it.id == ref.communityMessageId }
+            if (index >= 0) {
+                val message = communityMessages[index]
+                val updated = CommunityDeliveryPolicy.applyStatus(message.deliveryByPeerId, ref.peerId, "Delivered")
+                if (updated != null) communityMessages[index] = message.copy(deliveryByPeerId = updated)
+            }
+            communityDeliveryRefs.remove(transportId)
+            changed = true
+        }
+        if (changed && !persistCommunityData()) {
+            communityNotice = "Some saved group delivery receipts could not yet be reconciled to disk."
+        }
+    }
+
     private fun sendCommunityPacket(packet: JSONObject): Boolean {
         val body = "NR_COMMUNITY:$packet"
         if (nearbyTransport?.send(body) == true) return true
