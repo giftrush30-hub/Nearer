@@ -935,7 +935,7 @@ class MainActivity : ComponentActivity() {
         if (!SmartConnectPolicy.shouldStartDiscovery(
                 onboardingComplete = onboardingComplete,
                 permissionsGranted = hasNearbyPermissions(),
-                radioAvailable = bluetoothOn || wifiOn,
+                radioAvailable = SmartConnectPolicy.hasUsableRadio(bluetoothOn, wifiOn),
                 alreadySearching = hybridSearching,
                 alreadyConnected = hybridConnected
             )) {
