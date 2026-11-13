@@ -649,6 +649,8 @@ internal object IncomingFilePayloadPolicy {
                     listener.onFileTransferUpdate(id, payloadId, label, expected, expected, incomingFlag,
                         meter.record(expected, expected))
                     if (outgoingStream != null && outgoingHyperStreams.remove(payloadId, outgoingStream)) {
+                        transferSpeedMeters.remove(payloadId)
+                        cancelledStreamPayloads.remove(payloadId)
                         outgoingStream.timeout?.let(deliveryHandler::removeCallbacks)
                         outgoingStream.prepared.close()
                         outgoingStream.sourceFile.delete()
@@ -658,6 +660,7 @@ internal object IncomingFilePayloadPolicy {
                     return
                 }
                 if (outgoingStream != null) {
+                    transferSpeedMeters.remove(payloadId)
                     outgoingStream.timeout?.let(deliveryHandler::removeCallbacks)
                     outgoingStream.awaitingDecision = true
                     outgoingStream.endpointId = ""
@@ -2423,6 +2426,7 @@ internal object IncomingFilePayloadPolicy {
         val payloadId = state.prepared.payloadId
         if (!state.awaitingDecision || !outgoingHyperStreams.remove(payloadId, state)) return
         state.timeout?.let(deliveryHandler::removeCallbacks)
+        transferSpeedMeters.remove(payloadId)
         state.prepared.close()
         val filePayload = try { Payload.fromFile(state.sourceFile) } catch (_: Exception) {
             state.sourceFile.delete()
@@ -2482,6 +2486,7 @@ internal object IncomingFilePayloadPolicy {
                 return@forEach
             }
             prepared.payload.setSensitive(true)
+            transferSpeedMeters.remove(previous.prepared.payloadId)
             previous.prepared.close()
             val next = previous.copy(endpointId = endpointId, prepared = prepared, awaitingDecision = true, timeout = null)
             outgoingHyperStreams[prepared.payloadId] = next
