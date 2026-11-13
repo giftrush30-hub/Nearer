@@ -108,6 +108,7 @@ internal class DeadDropStore(context: Context) {
                         android.util.Base64.decode(existing.proofChain, android.util.Base64.NO_WRAP)
                     )
                 } catch (_: Exception) { return false }
+                if (oldProof != null && oldProof.proofs.size != oldPacket.hopsTaken + 1) return false
                 if (oldProof != null &&
                     oldProof.verifyPrefix(
                         packet.packetId, packet.immutablePacketDigest(), packet.originId,
