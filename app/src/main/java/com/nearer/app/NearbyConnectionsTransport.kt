@@ -205,7 +205,16 @@ internal object IncomingFilePayloadPolicy {
     // An ID becomes "seen" only after the UI confirms local persistence.
     private val pendingIncomingMessageIds = ConcurrentHashMap.newKeySet<String>()
     private val outgoingMessageTargets = ConcurrentHashMap<String, String>()
-    private data class PendingOutgoingMessage(@field:Volatile var endpointId: String, val stablePeerId: String, val payload: ByteArray, var attempts: Int = 0, var retryTask: Runnable? = null)
+    private data class PendingOutgoingMessage(
+        @field:Volatile var endpointId: String,
+        val stablePeerId: String,
+        val payload: ByteArray,
+        val messageId: String,
+        var attempts: Int = 0,
+        var retryTask: Runnable? = null
+    )
+    // A group message has one independently acknowledged delivery per recipient.
+    // The map key is a stable messageId+peerId key; messageId remains the UI identity.
     private val pendingOutgoingMessages = ConcurrentHashMap<String, PendingOutgoingMessage>()
     private val deliveryHandler = Handler(Looper.getMainLooper())
     private val maxMessageAttempts = MessageRetryPolicy.MAX_ATTEMPTS
@@ -238,9 +247,9 @@ internal object IncomingFilePayloadPolicy {
     private fun persistPendingOutbox(): Boolean {
         return try {
             val array = org.json.JSONArray()
-            pendingOutgoingMessages.forEach { (id, p) ->
+            pendingOutgoingMessages.forEach { (key, p) ->
                 val encryptedPayload = LocalDataCipher.encrypt(appContext, p.payload)
-                array.put(JSONObject().put("id", id).put("peer", p.stablePeerId).put("payload", encryptedPayload))
+                array.put(JSONObject().put("id", p.messageId).put("key", key).put("peer", p.stablePeerId).put("payload", encryptedPayload))
             }
             val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("nearby_outbox", array.toString()).commit()
             if (!saved) listener.onStatus("NeaRer could not save its pending-message queue.")
@@ -265,9 +274,11 @@ internal object IncomingFilePayloadPolicy {
                         continue
                     }
                     val id = item.optString("id")
+                    val storedKey = item.optString("key")
                     val peer = item.optString("peer")
+                    val key = MessageDeliveryKey.restoreKey(id, peer, storedKey)
                     val storedPayload = item.optString("payload")
-                    if (id.isBlank() || id.length > 80 || peer.isBlank() || peer.length > 64 ||
+                    if (key == null || NeaRerIdentity.normalize(peer) != peer ||
                         storedPayload.isBlank() || storedPayload.length > 24000) {
                         skipped = true
                         continue
@@ -292,7 +303,7 @@ internal object IncomingFilePayloadPolicy {
                         skipped = true
                         continue
                     }
-                    pendingOutgoingMessages[id] = PendingOutgoingMessage("", peer, payloadBytes)
+                    pendingOutgoingMessages[key] = PendingOutgoingMessage("", peer, payloadBytes, id)
                 } catch (_: Exception) {
                     skipped = true
                 }
@@ -305,27 +316,37 @@ internal object IncomingFilePayloadPolicy {
             listener.onStatus("The saved pending-message queue could not be read.")
         }
     }
-    fun pendingMessageIds(): Set<String> = pendingOutgoingMessages.keys.toSet()
+    fun pendingMessageIds(): Set<String> = pendingOutgoingMessages.values.map { it.messageId }.toSet()
 
     private fun retryQueuedMessagesForPeer(peerId: String, endpointId: String) {
         if (peerId.isBlank()) return
-        pendingOutgoingMessages.forEach { (id, p) -> if (p.stablePeerId == peerId) { p.retryTask?.let(deliveryHandler::removeCallbacks); p.endpointId = endpointId; p.attempts = 0; outgoingMessageTargets[id] = endpointId; persistPendingOutbox(); attemptOutgoingMessage(id) } }
+        pendingOutgoingMessages.forEach { (deliveryKey, pending) ->
+            if (pending.stablePeerId == peerId) {
+                pending.retryTask?.let(deliveryHandler::removeCallbacks)
+                pending.endpointId = endpointId
+                pending.attempts = 0
+                outgoingMessageTargets[deliveryKey] = endpointId
+                persistPendingOutbox()
+                attemptOutgoingMessage(deliveryKey)
+            }
+        }
     }
 
-    private fun attemptOutgoingMessage(messageId: String) {
-        val pending = pendingOutgoingMessages[messageId] ?: return
-        if (pending.attempts >= maxMessageAttempts) { pending.endpointId = ""; pending.attempts = 0; outgoingMessageTargets.remove(messageId); persistPendingOutbox(); listener.onMessageStatus(messageId, "Queued"); return }
+    private fun attemptOutgoingMessage(deliveryKey: String) {
+        val pending = pendingOutgoingMessages[deliveryKey] ?: return
+        val messageId = pending.messageId
+        if (pending.attempts >= maxMessageAttempts) { pending.endpointId = ""; pending.attempts = 0; outgoingMessageTargets.remove(deliveryKey); persistPendingOutbox(); listener.onMessageStatus(messageId, "Queued"); return }
         // Count unavailable-link attempts too, so a disconnected peer cannot cause
         // an endless retry loop.
         if (pending.endpointId.isBlank()) return
         pending.attempts += 1
         if (!authenticatedEndpoints.contains(pending.endpointId) || synchronized(activeEndpoints) { !activeEndpoints.contains(pending.endpointId) }) {
-            scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1800L))
+            scheduleMessageRetry(deliveryKey, MessageRetryPolicy.delayMillis(pending.attempts, 1800L))
             return
         }
         val session = messageSessions[pending.endpointId]
         if (session == null) {
-            scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1800L))
+            scheduleMessageRetry(deliveryKey, MessageRetryPolicy.delayMillis(pending.attempts, 1800L))
             return
         }
         val securePayload = try {
@@ -333,41 +354,48 @@ internal object IncomingFilePayloadPolicy {
             NearbyMessageCrypto.encrypt(session, localStableId, pending.stablePeerId, messageId, pending.payload)
         } catch (_: Exception) {
             listener.onStatus("NeaRer could not encrypt a queued message for this connection.")
-            scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1800L))
+            scheduleMessageRetry(deliveryKey, MessageRetryPolicy.delayMillis(pending.attempts, 1800L))
             return
         }
-        val timeout = Runnable { scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1800L)) }
+        val timeout = Runnable { scheduleMessageRetry(deliveryKey, MessageRetryPolicy.delayMillis(pending.attempts, 1800L)) }
         pending.retryTask?.let(deliveryHandler::removeCallbacks)
         pending.retryTask = timeout
         deliveryHandler.postDelayed(timeout, 5000L)
         try {
             client.sendPayload(pending.endpointId, Payload.fromBytes(securePayload))
-                .addOnFailureListener { scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1200L)) }
+                .addOnFailureListener { scheduleMessageRetry(deliveryKey, MessageRetryPolicy.delayMillis(pending.attempts, 1200L)) }
         } catch (_: Exception) {
-            scheduleMessageRetry(messageId, MessageRetryPolicy.delayMillis(pending.attempts, 1200L))
+            scheduleMessageRetry(deliveryKey, MessageRetryPolicy.delayMillis(pending.attempts, 1200L))
         }
     }
 
-    private fun scheduleMessageRetry(messageId: String, delayMs: Long) {
-        val pending = pendingOutgoingMessages[messageId] ?: return
+    private fun scheduleMessageRetry(deliveryKey: String, delayMs: Long) {
+        val pending = pendingOutgoingMessages[deliveryKey] ?: return
         pending.retryTask?.let(deliveryHandler::removeCallbacks)
         if (pending.attempts >= maxMessageAttempts) {
             pending.endpointId = ""
             pending.attempts = 0
-            outgoingMessageTargets.remove(messageId)
+            outgoingMessageTargets.remove(deliveryKey)
             persistPendingOutbox()
-            listener.onMessageStatus(messageId, "Queued")
+            listener.onMessageStatus(pending.messageId, "Queued")
             return
         }
-        val retry = Runnable { attemptOutgoingMessage(messageId) }
+        val retry = Runnable { attemptOutgoingMessage(deliveryKey) }
         pending.retryTask = retry
         deliveryHandler.postDelayed(retry, delayMs)
     }
 
-    private fun clearPendingOutgoingMessage(messageId: String) {
-        pendingOutgoingMessages.remove(messageId)?.retryTask?.let(deliveryHandler::removeCallbacks)
-        outgoingMessageTargets.remove(messageId)
-        persistPendingOutbox()
+    private fun clearPendingOutgoingMessage(deliveryKey: String): Boolean {
+        val removed = pendingOutgoingMessages.remove(deliveryKey) ?: return false
+        removed.retryTask?.let(deliveryHandler::removeCallbacks)
+        outgoingMessageTargets.remove(deliveryKey)
+        // Do not report delivery as final unless removal of the durable queue entry
+        // also commits. If storage fails, keep it queued for a later reconnect; the
+        // receiver's duplicate-ID protection makes a retry safe.
+        if (persistPendingOutbox()) return true
+        removed.endpointId = ""
+        pendingOutgoingMessages[deliveryKey] = removed
+        return false
     }
 
     private fun hasSeenMessageId(messageId: String): Boolean =
@@ -1610,9 +1638,21 @@ internal object IncomingFilePayloadPolicy {
         val kind = envelope.optString("kind", "message")
         if (kind == "ack") {
             val acknowledgedId = envelope.optString("id")
-            if (acknowledgedId.isNotBlank() && outgoingMessageTargets[acknowledgedId] == endpointId) {
-                clearPendingOutgoingMessage(acknowledgedId)
-                listener.onMessageStatus(acknowledgedId, "Delivered")
+            val acknowledgingPeerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+            val deliveryKey = if (acknowledgedId.isNotBlank() && acknowledgingPeerId.isNotBlank()) {
+                MessageDeliveryKey.forPeer(acknowledgedId, acknowledgingPeerId)
+            } else ""
+            if (deliveryKey.isNotBlank() && outgoingMessageTargets[deliveryKey] == endpointId &&
+                pendingOutgoingMessages[deliveryKey]?.stablePeerId == acknowledgingPeerId) {
+                val queueRetired = clearPendingOutgoingMessage(deliveryKey)
+                val stillWaiting = pendingOutgoingMessages.values.any { it.messageId == acknowledgedId }
+                // One chat row represents the whole group, so report Delivered only
+                // after every recipient has ACKed and its queue retirement is durable.
+                if (!queueRetired || stillWaiting) {
+                    listener.onMessageStatus(acknowledgedId, "Queued")
+                } else {
+                    listener.onMessageStatus(acknowledgedId, "Delivered")
+                }
             }
             return
         }
@@ -1772,51 +1812,51 @@ internal object IncomingFilePayloadPolicy {
     fun accept(id: String) { client.acceptConnection(id, payloads).addOnFailureListener { listener.onStatus("Could not accept nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun reject(id: String) { client.rejectConnection(id).addOnFailureListener { listener.onStatus("Could not reject nearby connection: ${it.localizedMessage ?: "try again"}") } }
 
+    private fun queueMessageForTargets(body: String, messageId: String, targets: List<String>): Boolean {
+        if (body.isBlank() || body.length > 4000 || messageId.isBlank() || messageId.length > 80) return false
+        val payload = JSONObject().put("kind", "message").put("version", 1)
+            .put("id", messageId).put("body", body)
+            .put("ttl", 0).put("hops", 0).put("origin", localName)
+            .put("createdAt", System.currentTimeMillis()).toString().toByteArray(Charsets.UTF_8)
+        val recipients = targets.distinct().mapNotNull { endpoint ->
+            if (!authenticatedEndpoints.contains(endpoint) ||
+                synchronized(activeEndpoints) { !activeEndpoints.contains(endpoint) }) return@mapNotNull null
+            val peerId = synchronized(names) { stableIds[endpoint].orEmpty() }
+            if (peerId.isBlank() || NeaRerIdentity.normalize(peerId) != peerId) return@mapNotNull null
+            Triple(endpoint, peerId, MessageDeliveryKey.forPeer(messageId, peerId))
+        }.distinctBy { it.third }
+        if (recipients.isEmpty()) return false
+        val addedKeys = mutableListOf<String>()
+        synchronized(pendingOutgoingMessages) {
+            if (recipients.any { (_, _, key) -> pendingOutgoingMessages.containsKey(key) }) return false
+            recipients.forEach { (endpoint, peerId, key) ->
+                pendingOutgoingMessages[key] = PendingOutgoingMessage(endpoint, peerId, payload, messageId)
+                addedKeys += key
+            }
+            if (!persistPendingOutbox()) {
+                addedKeys.forEach { pendingOutgoingMessages.remove(it) }
+                return false
+            }
+            recipients.forEach { (endpoint, _, key) -> outgoingMessageTargets[key] = endpoint }
+        }
+        addedKeys.forEach(::attemptOutgoingMessage)
+        return true
+    }
+
     fun send(
         body: String,
         messageId: String = UUID.randomUUID().toString(),
         targetEndpointId: String? = null
     ): Boolean {
-        if (body.isBlank() || body.length > 4000) return false
-        val envelope = JSONObject().put("kind", "message").put("version", 1)
-            .put("id", messageId).put("body", body)
-            .put("ttl", 0).put("hops", 0).put("origin", localName)
-            .put("createdAt", System.currentTimeMillis()).toString()
-        if (targetEndpointId != null) {
-            if (!authenticatedEndpoints.contains(targetEndpointId) || synchronized(activeEndpoints) { !activeEndpoints.contains(targetEndpointId) }) return false
-            return try {
-                val payload = envelope.toByteArray(Charsets.UTF_8)
-                val stablePeerId = synchronized(names) { stableIds[targetEndpointId].orEmpty() }
-                if (stablePeerId.isBlank()) return false
-                outgoingMessageTargets[messageId] = targetEndpointId
-                pendingOutgoingMessages[messageId] = PendingOutgoingMessage(targetEndpointId, stablePeerId, payload)
-                if (!persistPendingOutbox()) {
-                    pendingOutgoingMessages.remove(messageId)
-                    outgoingMessageTargets.remove(messageId)
-                    return false
-                }
-                attemptOutgoingMessage(messageId)
-                true
-            } catch (_: Exception) {
-                clearPendingOutgoingMessage(messageId)
-                false
-            }
+        if (targetEndpointId != null &&
+            (!authenticatedEndpoints.contains(targetEndpointId) ||
+                synchronized(activeEndpoints) { !activeEndpoints.contains(targetEndpointId) })) return false
+        val targets = if (targetEndpointId != null) {
+            listOf(targetEndpointId)
+        } else {
+            synchronized(activeEndpoints) { activeEndpoints.filter { authenticatedEndpoints.contains(it) } }
         }
-        val targets = synchronized(activeEndpoints) { activeEndpoints.filter { authenticatedEndpoints.contains(it) } }
-        if (targets.isEmpty()) return false
-        val clear = envelope.toByteArray(Charsets.UTF_8)
-        var sent = false
-        targets.forEach { endpoint ->
-            val peerId = synchronized(names) { stableIds[endpoint].orEmpty() }
-            val session = messageSessions[endpoint] ?: return@forEach
-            try {
-                val packet = NearbyMessageCrypto.encrypt(session, localStableId, peerId, messageId, clear)
-                client.sendPayload(endpoint, Payload.fromBytes(packet))
-                    .addOnFailureListener { listener.onStatus("A nearby group message could not be sent.") }
-                sent = true
-            } catch (_: Exception) { }
-        }
-        return sent
+        return queueMessageForTargets(body, messageId, targets)
     }
 
     private fun sendAcknowledgement(endpointId: String, messageId: String) {
@@ -1837,36 +1877,12 @@ internal object IncomingFilePayloadPolicy {
         if (body.isBlank() || targetNames.isEmpty()) return false
         val targets = synchronized(activeEndpoints) {
             activeEndpoints.filter { endpoint ->
-                authenticatedEndpoints.contains(endpoint) && synchronized(names) { names[endpoint]?.let { it in targetNames } == true }
+                authenticatedEndpoints.contains(endpoint) && synchronized(names) {
+                    names[endpoint]?.let { it in targetNames } == true
+                }
             }
         }
-        if (targets.isEmpty()) return false
-        // Use the exact versioned envelope understood by handleBytes(). Sending the
-        // community packet as raw JSON here caused receivers to reject it as malformed.
-        val messageId = UUID.randomUUID().toString()
-        val envelope = JSONObject()
-            .put("kind", "message")
-            .put("version", 1)
-            .put("id", messageId)
-            .put("body", body)
-            .put("ttl", 0)
-            .put("hops", 0)
-            .put("origin", localName)
-            .put("createdAt", System.currentTimeMillis())
-            .toString()
-            .toByteArray(Charsets.UTF_8)
-        targets.forEach { endpoint ->
-            val peerId = synchronized(names) { stableIds[endpoint].orEmpty() }
-            val session = messageSessions[endpoint] ?: return@forEach
-            try {
-                val packet = NearbyMessageCrypto.encrypt(session, localStableId, peerId, messageId, envelope)
-                client.sendPayload(endpoint, Payload.fromBytes(packet))
-                    .addOnFailureListener { listener.onStatus("A group message could not be sent to one nearby member.") }
-            } catch (_: Exception) {
-                listener.onStatus("A group message could not be encrypted for one nearby member.")
-            }
-        }
-        return true
+        return queueMessageForTargets(body, UUID.randomUUID().toString(), targets)
     }
 
     fun sendFile(endpointId: String, uri: Uri, displayName: String): Long? {
