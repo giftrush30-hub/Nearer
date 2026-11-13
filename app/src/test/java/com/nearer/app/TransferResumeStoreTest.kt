@@ -346,7 +346,11 @@ class TransferResumeStoreTest {
             store.checkpoint("transfer-peer", selected, 100L, chunk.toLong(), "ABCDEF234567")
             val restarted = store(root)
             assertEquals(1, restarted.discoverVerifiedCandidates().size)
-            try {\n                restarted.findValid("transfer-peer", selected, 100L, "BCDEFG234567")\n                fail("A different authenticated sender must not reuse the checkpoint")\n            } catch (_: SecurityException) { }\n            assertTrue("mismatched peer must not destroy the valid partial", partial.exists())
+            try {
+                restarted.findValid("transfer-peer", selected, 100L, "BCDEFG234567")
+                fail("A different authenticated sender must not reuse the checkpoint")
+            } catch (_: SecurityException) { }
+            assertTrue("mismatched peer must not destroy the valid partial", partial.exists())
             assertNotNull(restarted.findValid("transfer-peer", selected, 100L, "ABCDEF234567"))
         } finally {
             root.deleteRecursively()
