@@ -14,6 +14,7 @@ import java.util.UUID
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.nio.ByteBuffer
 
 data class MeshRecipient(
     val peerId: String,
