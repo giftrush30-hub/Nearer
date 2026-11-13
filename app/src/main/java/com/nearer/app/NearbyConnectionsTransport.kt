@@ -2450,6 +2450,7 @@ internal object IncomingFilePayloadPolicy {
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (authenticatedEndpoints.contains(endpointId) && NeaRerIdentity.normalize(peerId) != null) {
             streamCapablePeers.add(peerId)
+            resumeHyperStreamsForPeer(peerId, endpointId)
         }
     }
 
