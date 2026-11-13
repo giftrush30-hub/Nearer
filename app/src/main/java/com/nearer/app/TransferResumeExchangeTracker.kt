@@ -21,7 +21,7 @@ internal class TransferResumeExchangeTracker(
 
     data class ReadyExchange(
         val key: Key,
-        val proposal: TransferResumeNegotiation.Proposal,
+        val proposal: TransferResumeNegotiation.Proposal?,
         val decision: TransferResumeNegotiation.Decision,
         val metadata: TransferResumeStreamMetadataCodec.Metadata? = null
     )
@@ -137,10 +137,27 @@ internal class TransferResumeExchangeTracker(
         val key = key(endpointId, payloadId) ?: return null
         val entry = entries[key] ?: return null
         if (entry.consumed || !entry.dataPayloadSeen) return null
-        val proposal = entry.proposal ?: return null
+        val proposal = entry.proposal
         val decision = entry.decision ?: return null
         val metadata = entry.metadata
-        if (requireMetadata && metadata == null) return null
+        if (requireMetadata) {
+            if (metadata == null) return null
+            // A normal no-checkpoint transfer has no proposal; the receiver may
+            // synthesize a zero-offset NO_VALID_CHECKPOINT decision locally.
+            if (proposal == null && decision.reason != TransferResumeNegotiation.Reason.NO_VALID_CHECKPOINT) return null
+            if (proposal != null && (
+                    metadata.transferId != proposal.transferId ||
+                    metadata.item.id != proposal.itemId ||
+                    metadata.item.relativePath != proposal.relativePath ||
+                    metadata.item.sizeBytes != proposal.expectedSizeBytes ||
+                    metadata.sourceModifiedAtMillis != proposal.sourceModifiedAtMillis
+                )) {
+                invalidate(key)
+                return null
+            }
+        } else if (proposal == null) {
+            return null
+        }
         entry.consumed = true
         entries.remove(key)
         rememberTerminal(key)
