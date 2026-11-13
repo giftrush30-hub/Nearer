@@ -101,7 +101,9 @@ internal class DeadDropStore(context: Context) {
                 if (oldProof != null &&
                     oldProof.verifyPrefix(
                         packet.packetId, packet.immutablePacketDigest(), packet.originId,
-                        localPeerId, trustedAcceptingSigningKey, now
+                        localPeerId,
+                        { peerId -> if (peerId == localPeerId) localSigningPublicKey else trustedAcceptingSigningKey(peerId) },
+                        now
                     ) &&
                     oldProof.proofs.lastOrNull()?.previousHopPeerId == previousHopPeerId &&
                     oldProof.proofs.size >= accepted.proofs.size) {
