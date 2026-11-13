@@ -1686,6 +1686,12 @@ class MainActivity : ComponentActivity() {
             .put("body", revision.body)
             .put("editedAt", revision.editedAt)
             .toString()
+        if (packet.toByteArray(Charsets.UTF_8).size > 4000) {
+            chatMessages[index] = previous
+            persistMessages()
+            chatNotice = "That edit is too large to send. Shorten it and try again."
+            return false
+        }
         val eventId = UUID.randomUUID().toString()
         val meshRecipient = meshRecipients[peerId]
         var sent = if (meshRecipient != null) {
