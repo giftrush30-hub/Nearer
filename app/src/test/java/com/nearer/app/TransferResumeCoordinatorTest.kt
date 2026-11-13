@@ -117,23 +117,23 @@ class TransferResumeCoordinatorTest {
         try {
             val store = store(root)
             val coordinator = TransferResumeCoordinator(store, TransferResumeStreamWriter(store))
-            val bytes = ByteArray(chunk + 32) { (it % 223).toByte() }
+            val bytes = ByteArray(chunk * 3) { (it % 223).toByte() }
             val item = item(bytes.size.toLong())
             val partial = store.partialFileFor("transfer-offset", item.id).apply {
                 parentFile?.mkdirs()
-                writeBytes(bytes.copyOfRange(0, chunk))
+                writeBytes(bytes.copyOfRange(0, chunk * 2))
             }
-            store.checkpoint("transfer-offset", item, 321L, chunk.toLong(), peerId)
+            store.checkpoint("transfer-offset", item, 321L, (chunk * 2).toLong(), peerId)
             try {
                 coordinator.receiveStreamAndFinalize(
-                    "transfer-offset", item, 321L, peerId, 0L,
-                    ByteArrayInputStream(bytes), File(root, "received/file.bin"), sha256(bytes)
+                    "transfer-offset", item, 321L, peerId, chunk.toLong(),
+                    ByteArrayInputStream(bytes.copyOfRange(chunk, bytes.size)), File(root, "received/file.bin"), sha256(bytes)
                 )
                 fail("Offset disagreement must be rejected before writing")
             } catch (_: SecurityException) { }
             assertTrue("existing verified partial must not be deleted or overwritten", partial.isFile)
-            assertEquals(chunk.toLong(), partial.length())
-            assertEquals(chunk.toLong(), store.findValid("transfer-offset", item, 321L, peerId)!!.checkpoint.committedOffsetBytes)
+            assertEquals((chunk * 2).toLong(), partial.length())
+            assertEquals((chunk * 2).toLong(), store.findValid("transfer-offset", item, 321L, peerId)!!.checkpoint.committedOffsetBytes)
         } finally {
             root.deleteRecursively()
         }
