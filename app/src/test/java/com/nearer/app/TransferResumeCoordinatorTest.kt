@@ -59,6 +59,9 @@ class TransferResumeCoordinatorTest {
                 offers.single().proposal, "transfer-1", item, source, source.lastModified(),
                 "BCDEFG234567", true, true
             ) ?: throw AssertionError("A verified source should open at the accepted offset")
+            // Simulate the source growing after the descriptor is opened. The
+            // bounded stream must expose only the declared transfer remainder.
+            source.appendBytes(byteArrayOf(88, 89))
             opened.use { stream ->
                 assertEquals(chunk.toLong(), stream.acceptedOffsetBytes)
                 assertEquals((bytes.size - chunk).toLong(), stream.remainingBytes)
