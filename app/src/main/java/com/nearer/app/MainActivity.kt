@@ -461,7 +461,7 @@ class MainActivity : ComponentActivity() {
                             "group_join" -> group != null && group.ownerPeerId == nearbyTransport?.localIdentityId() &&
                                 senderPeerId in group.memberPeerIds
                             "group_members" -> group != null && group.ownerPeerId == senderPeerId &&
-                                nearbyTransport?.localIdentityId() in group.memberPeerIds
+                                group.memberPeerIds.contains(nearbyTransport?.localIdentityId().orEmpty())
                             "group_message" -> {
                                 val id = packet.optString("id")
                                 group != null && CommunityRosterPolicy.mayAcceptGroupMessage(senderPeerId, group.memberPeerIds) &&
