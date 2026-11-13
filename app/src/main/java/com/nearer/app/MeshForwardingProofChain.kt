@@ -22,6 +22,7 @@ import java.security.spec.X509EncodedKeySpec
  */
 internal data class MeshForwardingProof(
     val packetId: String,
+    val packetDigest: ByteArray,
     val originPeerId: String,
     val acceptingPeerId: String,
     val previousHopPeerId: String,
@@ -35,6 +36,7 @@ internal data class MeshForwardingProof(
         DataOutputStream(out).use { data ->
             data.write(DOMAIN.toByteArray(Charsets.US_ASCII))
             writeString(data, packetId)
+            data.write(packetDigest)
             writeString(data, originPeerId)
             writeString(data, acceptingPeerId)
             writeString(data, previousHopPeerId)
@@ -80,7 +82,7 @@ internal data class MeshForwardingProof(
     }
 
     private fun validHeader(): Boolean =
-        packetId.matches(PACKET_ID_PATTERN) &&
+        packetId.matches(PACKET_ID_PATTERN) && packetDigest.size == HASH_BYTES &&
             NeaRerIdentity.normalize(originPeerId) == originPeerId &&
             NeaRerIdentity.normalize(acceptingPeerId) == acceptingPeerId &&
             NeaRerIdentity.normalize(previousHopPeerId) == previousHopPeerId &&
@@ -88,8 +90,8 @@ internal data class MeshForwardingProof(
             hopIndex in 1..MAX_HOPS && acceptedAtMs > 0L && previousProofHash.size == HASH_BYTES
 
     companion object {
-        private const val MAGIC = 0x4E524631 // NRF1
-        private const val DOMAIN = "NeaRer-forward-proof-v1"
+        private const val MAGIC = 0x4E524632 // NRF2
+        private const val DOMAIN = "NeaRer-forward-proof-v2"
         private const val MAX_RECORD_BYTES = 1024
         private const val MAX_STRING_BYTES = 80
         private const val HASH_BYTES = 32
@@ -118,6 +120,7 @@ internal data class MeshForwardingProof(
             val input = DataInputStream(ByteArrayInputStream(bytes))
             require(input.readInt() == MAGIC)
             val packetId = readString(input)
+            val packetDigest = ByteArray(HASH_BYTES).also(input::readFully)
             val origin = readString(input)
             val accepting = readString(input)
             val previous = readString(input)
@@ -128,12 +131,13 @@ internal data class MeshForwardingProof(
             require(signatureSize in MIN_SIGNATURE_BYTES..MAX_SIGNATURE_BYTES)
             val signature = ByteArray(signatureSize).also(input::readFully)
             require(input.available() == 0)
-            return MeshForwardingProof(packetId, origin, accepting, previous, index, acceptedAt, previousHash, signature)
+            return MeshForwardingProof(packetId, packetDigest, origin, accepting, previous, index, acceptedAt, previousHash, signature)
                 .also { require(it.validHeader()) }
         }
 
         fun create(
             packetId: String,
+            packetDigest: ByteArray,
             originPeerId: String,
             acceptingPeerId: String,
             previousHopPeerId: String,
@@ -143,7 +147,7 @@ internal data class MeshForwardingProof(
             sign: (ByteArray) -> ByteArray
         ): MeshForwardingProof {
             val unsigned = MeshForwardingProof(
-                packetId, originPeerId, acceptingPeerId, previousHopPeerId,
+                packetId, packetDigest.copyOf(), originPeerId, acceptingPeerId, previousHopPeerId,
                 hopIndex, acceptedAtMs, previousProofHash.copyOf(), ByteArray(0)
             )
             require(unsigned.validHeader())
@@ -158,12 +162,14 @@ internal data class MeshForwardingProof(
 internal data class MeshForwardingProofChain(val proofs: List<MeshForwardingProof>) {
     fun verify(
         packetId: String,
+        packetDigest: ByteArray,
         originPeerId: String,
         destinationPeerId: String,
         trustedSigningKey: (String) -> ByteArray?,
         nowMs: Long
     ): Boolean = try {
         require(proofs.size in 1..MeshForwardingProof.MAX_HOPS)
+        require(packetDigest.size == 32)
         require(NeaRerIdentity.normalize(originPeerId) == originPeerId)
         require(NeaRerIdentity.normalize(destinationPeerId) == destinationPeerId)
         var previousPeer = originPeerId
@@ -172,6 +178,7 @@ internal data class MeshForwardingProofChain(val proofs: List<MeshForwardingProo
         val visited = linkedSetOf(originPeerId)
         proofs.forEachIndexed { index, proof ->
             require(proof.packetId == packetId && proof.originPeerId == originPeerId)
+            require(MessageDigest.isEqual(proof.packetDigest, packetDigest))
             require(proof.hopIndex == index + 1)
             require(proof.previousHopPeerId == previousPeer)
             require(MessageDigest.isEqual(proof.previousProofHash, previousHash))
@@ -203,7 +210,7 @@ internal data class MeshForwardingProofChain(val proofs: List<MeshForwardingProo
     }
 
     companion object {
-        private const val MAGIC = 0x4E524331 // NRC1
+        private const val MAGIC = 0x4E524332 // NRC2
         private const val MAX_CHAIN_BYTES = 5 * 1024
 
         fun decode(bytes: ByteArray): MeshForwardingProofChain {
