@@ -103,6 +103,24 @@ class TransferResumeMessageCodecTest {
         } catch (_: IllegalArgumentException) { }
     }
 
+    @Test fun roundTripsExplicitNoResumeSignalAndRejectsInvalidPayloadIds() {
+        val encoded = TransferResumeMessageCodec.encodeNoResume(123L)
+        val decoded = TransferResumeMessageCodec.decodeNoResume(encoded)
+        assertEquals(123L, decoded.payloadId)
+        try {
+            TransferResumeMessageCodec.encodeNoResume(-1L)
+            fail("Negative no-resume payload IDs must be rejected")
+        } catch (_: IllegalArgumentException) { }
+        try {
+            TransferResumeMessageCodec.decodeNoResume(encoded + byteArrayOf(0))
+            fail("Trailing no-resume bytes must be rejected")
+        } catch (_: IllegalArgumentException) { }
+        try {
+            TransferResumeMessageCodec.decodeNoResume(encoded.copyOf().also { it[0] = 0 })
+            fail("Wrong no-resume signature must be rejected")
+        } catch (_: IllegalArgumentException) { }
+    }
+
     @Test fun rejectsMalformedDecisionAndProposalCrossDecoding() {
         val decision = TransferResumeNegotiation.Decision(
             chunk, TransferResumeNegotiation.Reason.RESUME_ACCEPTED
