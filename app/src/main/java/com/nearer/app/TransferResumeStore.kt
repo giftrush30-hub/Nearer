@@ -93,7 +93,7 @@ internal class TransferResumeStore(
         // halves so stale bytes cannot linger and later be mistaken for a valid
         // candidate if the same transfer identity is retried.
         if (!checkpoint.matches(transferId, item, sourceModifiedAtMillis) ||
-            (expectedSourcePeerId != null && checkpoint.sourcePeerId != expectedSourcePeerId)) {
+            checkpoint.sourcePeerId != expectedSourcePeerId) {
             discard(transferId, item.id)
             return null
         }
