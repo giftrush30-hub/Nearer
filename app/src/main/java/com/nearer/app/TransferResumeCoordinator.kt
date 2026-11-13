@@ -242,7 +242,7 @@ internal class TransferResumeCoordinator(
         expectedWholeFileSha256: String,
         isCancelled: () -> Boolean = { false }
     ): ReceiveResult {
-        val key = "$transferId\\u0000${item.id}"
+        val key = "${transferId.length}:$transferId${item.id}"
         val lock = acquireReceiveLock(key)
         try {
             return receiveStreamAndFinalizeLocked(
