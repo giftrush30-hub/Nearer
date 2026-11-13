@@ -609,6 +609,7 @@ internal object IncomingFilePayloadPolicy {
                     }
                     pendingIncomingHyperPayloads[payload.id] = payload
                     incomingHyperEndpoints[payload.id] = id
+                    schedulePendingHyperStreamExpiry(payload.id)
                     tryProcessHyperStream(payload.id)
                 }
                 Payload.Type.FILE -> {
@@ -1703,6 +1704,17 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
+    private fun schedulePendingHyperStreamExpiry(payloadId: Long) {
+        deliveryHandler.postDelayed({
+            if (!activeIncomingHyperPayloads.containsKey(payloadId)) {
+                pendingIncomingHyperPayloads.remove(payloadId)?.let { runCatching { it.close() } }
+                incomingHyperMetadata.remove(payloadId)
+                incomingHyperEndpoints.remove(payloadId)
+                transferSpeedMeters.remove(payloadId)
+            }
+        }, 125_000L)
+    }
+
     private fun handleHyperStreamMetadata(endpointId: String, raw: ByteArray) {
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         val result = streamController.recordMetadata(endpointId, peerId, raw)
@@ -1714,14 +1726,7 @@ internal object IncomingFilePayloadPolicy {
         val metadata = TransferResumeStreamMetadataCodec.decode(raw)
         incomingHyperMetadata[metadata.payloadId] = metadata
         incomingHyperEndpoints[metadata.payloadId] = endpointId
-        deliveryHandler.postDelayed({
-            if (!pendingIncomingHyperPayloads.containsKey(metadata.payloadId) &&
-                !activeIncomingHyperPayloads.containsKey(metadata.payloadId)) {
-                incomingHyperMetadata.remove(metadata.payloadId)
-                incomingHyperEndpoints.remove(metadata.payloadId)
-                transferSpeedMeters.remove(metadata.payloadId)
-            }
-        }, 125_000L)
+        schedulePendingHyperStreamExpiry(metadata.payloadId)
         val initialSpeed = transferSpeedMeters.computeIfAbsent(metadata.payloadId) { TransferSpeedMeter() }
             .record(0L, metadata.item.sizeBytes)
         listener.onFileTransferUpdate(
