@@ -207,3 +207,11 @@ The current transport still does not pass its authenticated peer ID into the dur
 - Added coordinator tests for authenticated candidate discovery, source-prefix mismatch, resumed stream completion, destination collision, whole-file digest rejection, offset disagreement without partial damage, invalid peer identity, and empty-file completion.
 - **Transport boundary remains explicit:** this coordinator is not yet called by `NearbyConnectionsTransport`. Its caller must use a Nearby STREAM payload (not the existing FILE payload), bind all negotiation to the authenticated stable peer identity, position the sender stream at the accepted offset, and close the stream cleanly. PR #139 continues to own the current transport reconnect hook. Do not advertise app-kill recovery as live until that hook and the stream lifecycle are integrated and tested on two physical phones.
 - No emulator or physical-device testing is claimed for this work.
+
+
+### HyperTransfer sender-side stream positioning — 13 November 2026
+- Added `TransferResumeCoordinator.openValidatedSourceAtOffset(...)` to the stacked stream-coordinator PR.
+- It re-hashes the receiver-approved prefix from the same open source-file descriptor that will feed the outgoing stream, rechecks source size/modification metadata, seeks to the exact accepted offset, and returns a stream bounded to the declared remaining byte count.
+- This removes a fragile transport-side requirement to independently skip bytes or risk sending the prefix twice. The transport must still authenticate the receiver, negotiate the offset, and close the stream after the declared bytes.
+- Added a JVM test asserting the returned stream begins exactly at the approved offset and exposes no bytes beyond the declared remainder.
+- This is still a transport-neutral helper, not a live Nearby STREAM integration. The PR remains stacked on #137; exact-head CI has not run for this stacked base. No emulator or physical-device testing is claimed.
