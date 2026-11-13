@@ -195,11 +195,8 @@ class MainActivity : ComponentActivity() {
     private var nearbyQueueCompleted = 0
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
-    private var outgoingLastSampleBytes = 0L
-    private var outgoingLastSampleAt = 0L
+    // These rates come from the transport's monotonic rolling-window meter.
     private var outgoingRateBytesPerSecond = 0L
-    private var incomingLastSampleBytes = 0L
-    private var incomingLastSampleAt = 0L
     private var incomingRateBytesPerSecond = 0L
     private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
@@ -573,56 +570,44 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            // The transport's combined callback below handles ordinary progress updates.
+            // This legacy callback remains for the completed-payload notification path.
             override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {
-                runOnUiThread {
-                    val fraction = if (total > 0L) (transferred.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
-                    val now = android.os.SystemClock.elapsedRealtime()
-                    val previousBytes = if (incoming) incomingLastSampleBytes else outgoingLastSampleBytes
-                    val previousAt = if (incoming) incomingLastSampleAt else outgoingLastSampleAt
-                    var rate = if (incoming) incomingRateBytesPerSecond else outgoingRateBytesPerSecond
-                    val sampleDue = previousAt == 0L || transferred < previousBytes || now - previousAt >= 500L
-                    if (previousAt == 0L || transferred < previousBytes) {
-                        rate = 0L
-                    } else if (sampleDue) {
-                        rate = ((transferred - previousBytes) * 1000L / (now - previousAt).coerceAtLeast(1L)).coerceAtLeast(0L)
+                if (incoming && total > 0L && transferred >= total) {
+                    runOnUiThread {
+                        incomingTransferName = name
+                        incomingProgress = 1f
                     }
+                }
+            }
+            override fun onFileTransferUpdate(
+                id: String,
+                payloadId: Long,
+                name: String,
+                transferred: Long,
+                total: Long,
+                incoming: Boolean,
+                snapshot: TransferSpeedSnapshot
+            ) {
+                runOnUiThread {
+                    // One main-thread dispatch now carries both progress and measured
+                    // throughput; the old path queued two UI tasks for every SDK update.
+                    val rate = snapshot.recentBytesPerSecond.toLong().coerceAtLeast(0L)
+                    val peak = snapshot.peakWindowBytesPerSecond.toLong().coerceAtLeast(0L)
                     if (incoming) {
-                        if (sampleDue) {
-                            incomingLastSampleBytes = transferred
-                            incomingLastSampleAt = now
-                        }
                         incomingRateBytesPerSecond = rate
                         incomingTransferName = name
-                        incomingProgress = fraction
                     } else {
-                        if (sampleDue) {
-                            outgoingLastSampleBytes = transferred
-                            outgoingLastSampleAt = now
-                        }
                         outgoingRateBytesPerSecond = rate
                         activeOutgoingFileName = name
                         activeOutgoingFileBytes = total
                         outgoingTransferId = "nearby:$payloadId"
-                        outgoingProgress = fraction
                     }
-                    val rateText = if (rate >= 1_000_000L) " • ${String.format(java.util.Locale.US, "%.1f", rate / 1_000_000.0)} MB/s"
-                        else if (rate >= 1_000L) " • ${String.format(java.util.Locale.US, "%.0f", rate / 1_000.0)} KB/s" else ""
-                    val remaining = if (total > transferred && rate > 0L) (total - transferred) / rate else -1L
-                    val etaText = if (remaining >= 0L) " • ~${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')} left" else ""
-                    val action = if (incoming) "Receiving" else "Sending"
-                    chatNotice = if (total > 0L) "$action $name • ${(fraction * 100).toInt()}%$rateText$etaText" else "$action $name…"
-                }
-            }
-            override fun onFileSpeed(id: String, payloadId: Long, name: String, snapshot: TransferSpeedSnapshot, incoming: Boolean) {
-                runOnUiThread {
-                    // Use the transport's monotonic rolling-window measurement rather
-                    // than estimating speed from UI callback timing.
-                    val rate = snapshot.recentBytesPerSecond.toLong().coerceAtLeast(0L)
-                    val peak = snapshot.peakWindowBytesPerSecond.toLong().coerceAtLeast(0L)
-                    if (incoming) incomingRateBytesPerSecond = rate else outgoingRateBytesPerSecond = rate
-                    val total = snapshot.totalBytes
-                    val transferred = snapshot.transferredBytes
-                    val fraction = snapshot.progressFraction ?: 0f
+                    val fraction = snapshot.progressFraction
+                        ?: if (total > 0L) (transferred.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
+                        else 0f
+                    if (incoming) incomingProgress = fraction else outgoingProgress = fraction
+
                     val currentRateText = when {
                         rate >= 1_000_000L -> String.format(java.util.Locale.US, "%.1f MB/s", rate / 1_000_000.0)
                         rate >= 1_000L -> String.format(java.util.Locale.US, "%.0f KB/s", rate / 1_000.0)
