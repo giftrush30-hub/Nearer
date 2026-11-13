@@ -3,6 +3,9 @@ package com.nearer.app
 import java.io.File
 import java.io.FileInputStream
 import java.io.RandomAccessFile
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 
 /**
@@ -134,6 +137,62 @@ internal class TransferResumeStore(
             compareBy<Candidate> { it.checkpoint.transferId }
                 .thenBy { it.checkpoint.relativePath }
         )
+    }
+
+    /**
+     * Publishes a fully received partial only after its durable EOF checkpoint and
+     * whole-file digest have been verified. The final move is atomic; if the
+     * filesystem cannot provide an atomic move, the partial is left untouched.
+     *
+     * The destination must be chosen by the trusted receive flow, not from an
+     * untrusted manifest path. Existing destination files are never overwritten.
+     */
+    @Synchronized
+    fun finalizeVerifiedComplete(
+        transferId: String,
+        item: TransferBundleItem,
+        sourceModifiedAtMillis: Long?,
+        destination: File,
+        expectedSha256: String
+    ): File {
+        require(Regex("^[a-fA-F0-9]{64}$").matches(expectedSha256)) {
+            "A valid whole-file SHA-256 is required"
+        }
+        val candidate = findValid(transferId, item, sourceModifiedAtMillis)
+            ?: throw IllegalStateException("No verified partial is available to finalize")
+        require(candidate.checkpoint.committedOffsetBytes == item.sizeBytes) {
+            "The partial file has not reached its declared end"
+        }
+        require(candidate.partialFile.length() == item.sizeBytes) {
+            "The completed partial has an unexpected size"
+        }
+        val actualSha256 = sha256Prefix(candidate.partialFile, item.sizeBytes)
+        require(MessageDigest.isEqual(
+            actualSha256.toByteArray(Charsets.US_ASCII),
+            expectedSha256.lowercase().toByteArray(Charsets.US_ASCII)
+        )) { "Completed file digest does not match the sender's digest" }
+
+        val target = destination.absoluteFile
+        require(target != candidate.partialFile.absoluteFile) {
+            "Final destination must differ from the partial file"
+        }
+        val parent = target.parentFile
+            ?: throw IllegalArgumentException("Final destination must have a parent folder")
+        if (!parent.exists() && !parent.mkdirs()) {
+            throw IllegalStateException("Could not create the final destination folder")
+        }
+        require(parent.isDirectory) { "Final destination parent is not a folder" }
+        require(!target.exists()) { "Final destination already exists" }
+
+        try {
+            Files.move(candidate.partialFile.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        } catch (error: AtomicMoveNotSupportedException) {
+            throw IllegalStateException("Atomic finalization is not supported on this storage", error)
+        }
+        // If this journal cleanup fails, the next discovery sees the missing
+        // partial and removes the stale record; the already-published file stays safe.
+        journal.remove(transferId, item.id)
+        return target
     }
 
     @Synchronized
