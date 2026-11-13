@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -44,6 +45,7 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 private data class LocalPhoneContact(val id: String, val name: String, val number: String)
 
@@ -58,6 +60,8 @@ internal fun PeopleScreen(
     val scope = rememberCoroutineScope()
     val contacts = remember { mutableStateListOf<LocalPhoneContact>() }
     val savedIds = remember { mutableStateListOf<String>() }
+    val linkedContactIds = remember { mutableStateMapOf<String, String>() }
+    var selectedContactForLink by remember { mutableStateOf<LocalPhoneContact?>(null) }
     var idDraft by remember { mutableStateOf("") }
     var search by remember { mutableStateOf("") }
     var loadingContacts by remember { mutableStateOf(false) }
@@ -108,6 +112,10 @@ internal fun PeopleScreen(
     LaunchedEffect(Unit) {
         val prefs = context.getSharedPreferences("nearer_people", Context.MODE_PRIVATE)
         savedIds.addAll(prefs.getStringSet("saved_nearer_ids", emptySet()).orEmpty().sorted())
+        runCatching {
+            val stored = JSONObject(prefs.getString("linked_contact_ids", "{}").orEmpty())
+            stored.keys().forEach { key -> stored.optString(key).takeIf { it.isNotBlank() }?.let { linkedContactIds[key] = it } }
+        }
         if (hasContactsPermission) loadContacts()
     }
 
@@ -119,10 +127,20 @@ internal fun PeopleScreen(
         }
         if (normalized.isNotBlank()) {
             if (normalized !in savedIds) savedIds.add(normalized)
-            context.getSharedPreferences("nearer_people", Context.MODE_PRIVATE)
-                .edit().putStringSet("saved_nearer_ids", savedIds.toSet()).apply()
+            val prefs = context.getSharedPreferences("nearer_people", Context.MODE_PRIVATE)
+            val editor = prefs.edit().putStringSet("saved_nearer_ids", savedIds.toSet())
+            val linkingContact = selectedContactForLink
+            if (linkingContact != null) {
+                linkedContactIds[linkingContact.id] = normalized
+                val mapping = JSONObject().apply { linkedContactIds.forEach { (contactId, nearerId) -> put(contactId, nearerId) } }
+                editor.putString("linked_contact_ids", mapping.toString())
+                notice = "Linked ${linkingContact.name} to NeaRer ID NR-$normalized."
+                selectedContactForLink = null
+            } else {
+                notice = "NeaRer ID saved. NeaRer will recognise it when that identity is discovered nearby."
+            }
+            editor.apply()
             idDraft = ""
-            notice = "NeaRer ID saved. NeaRer will recognise it when that identity is discovered nearby."
         }
     }
 
@@ -154,7 +172,7 @@ internal fun PeopleScreen(
 
         Surface(color = Panel, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text("ADD BY NEARER ID", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text(if (selectedContactForLink == null) "ADD BY NEARER ID" else "LINK ID TO ${selectedContactForLink?.name?.uppercase()}", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 OutlinedTextField(
                     value = idDraft,
                     onValueChange = { idDraft = it.uppercase().filter { ch -> ch.isLetterOrDigit() || ch == '-' }.take(15) },
@@ -229,7 +247,32 @@ internal fun PeopleScreen(
                                 Text(contact.name, color = White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(contact.number, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
-                            Text("ID needed", color = Muted, fontSize = 9.sp)
+                            val linkedId = linkedContactIds[contact.id]
+                            val linkedRecipient = linkedId?.let { id ->
+                                meshRecipients.firstOrNull { it.peerId.equals(id, true) || NeaRerIdentity.normalize(it.peerId) == id }
+                            }
+                            if (linkedId != null) {
+                                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text("ID · ${linkedId.takeLast(4)}", color = Muted, fontSize = 9.sp)
+                                    Text(if (linkedRecipient != null) "Message" else "Change", color = BlueAccent, fontSize = 10.sp,
+                                        modifier = Modifier.clickable {
+                                            if (linkedRecipient != null) {
+                                                onSelectMeshRecipient(linkedRecipient.peerId)
+                                                onOpenChat()
+                                            } else {
+                                                selectedContactForLink = contact
+                                                idDraft = linkedId
+                                            }
+                                        }.padding(4.dp))
+                                }
+                            } else {
+                                Text("Link ID", color = BlueAccent, fontSize = 10.sp,
+                                    modifier = Modifier.clickable {
+                                        selectedContactForLink = contact
+                                        idDraft = ""
+                                        notice = "Enter the NeaRer ID shared by ${contact.name}."
+                                    }.padding(4.dp))
+                            }
                         }
                     }
                 }
