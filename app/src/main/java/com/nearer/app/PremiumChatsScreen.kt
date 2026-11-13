@@ -63,6 +63,7 @@ internal fun PremiumChatsScreen(
     onDraftChange: (String) -> Unit,
     onSendMessage: (String, ChatMessage?) -> Unit,
     onDeleteMessage: (String) -> Boolean,
+    onEditMessage: (String, String) -> Boolean,
     onReactToMessage: (String, String) -> Unit,
     onFindNearby: () -> Unit,
     onBackToInbox: () -> Unit,
@@ -88,6 +89,7 @@ internal fun PremiumChatsScreen(
 
     var recipientMenuExpanded by remember { mutableStateOf(false) }
     var replyingTo by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
+    var editingMessage by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
     var expandedMessageActions by remember { mutableStateOf<String?>(null) }
     var reactingToMessageId by remember { mutableStateOf<String?>(null) }
     var pendingDeleteMessage by remember { mutableStateOf<ChatMessage?>(null) }
@@ -100,6 +102,10 @@ internal fun PremiumChatsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     if (onDeleteMessage(target.id) && replyingTo?.id == target.id) replyingTo = null
+                    if (editingMessage?.id == target.id) {
+                        editingMessage = null
+                        onDraftChange("")
+                    }
                     pendingDeleteMessage = null
                 }) { Text("Delete for me", color = Color(0xFFE6A0A0)) }
             },
@@ -343,7 +349,10 @@ internal fun PremiumChatsScreen(
                                             }
                                             Text(message.body, color = White, fontSize = 14.sp, lineHeight = 20.sp)
                                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                                Text(if (message.outgoing) ChatDeliveryLabelPolicy.label(message.delivery) else "Received", color = if (message.outgoing) Color(0xFF9BD8FF) else Muted, fontSize = 9.sp)
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                    Text(if (message.outgoing) ChatDeliveryLabelPolicy.label(message.delivery) else "Received", color = if (message.outgoing) Color(0xFF9BD8FF) else Muted, fontSize = 9.sp)
+                                                    if (message.editVersion > 0) Text("Edited", color = Gold, fontSize = 9.sp)
+                                                }
                                                 Box {
                                                     Text("More", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold,
                                                         modifier = Modifier.clickable { expandedMessageActions = message.id }.padding(start = 12.dp))
@@ -358,6 +367,17 @@ internal fun PremiumChatsScreen(
                                                                 expandedMessageActions = null
                                                             }
                                                         )
+                                                        if (message.outgoing) {
+                                                            DropdownMenuItem(
+                                                                text = { Text("Edit") },
+                                                                onClick = {
+                                                                    editingMessage = message
+                                                                    replyingTo = null
+                                                                    onDraftChange(message.body)
+                                                                    expandedMessageActions = null
+                                                                }
+                                                            )
+                                                        }
                                                         DropdownMenuItem(
                                                             text = { Text("Reply") },
                                                             onClick = { replyingTo = message; expandedMessageActions = null }
@@ -432,6 +452,18 @@ internal fun PremiumChatsScreen(
                     }
 
                     if (chatAvailable) {
+                        editingMessage?.let { target ->
+                            Surface(color = Color(0xFF142238), shape = RoundedCornerShape(12.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text("Editing your message", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        Text(target.body, color = Muted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Text("Cancel", color = BlueAccent, fontSize = 11.sp,
+                                        modifier = Modifier.clickable { editingMessage = null; onDraftChange("") }.padding(6.dp))
+                                }
+                            }
+                        }
                         replyingTo?.let { target ->
                             Surface(color = Color(0xFF142238), shape = RoundedCornerShape(12.dp)) {
                                 Row(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -457,12 +489,25 @@ internal fun PremiumChatsScreen(
                                 singleLine = true
                             )
                             Button(
-                                onClick = { if (draft.isNotBlank()) { onSendMessage(draft, replyingTo); replyingTo = null } },
-                                enabled = draft.isNotBlank(),
+                                onClick = {
+                                    if (draft.isNotBlank()) {
+                                        val target = editingMessage
+                                        if (target != null) {
+                                            if (onEditMessage(target.id, draft)) {
+                                                editingMessage = null
+                                                onDraftChange("")
+                                            }
+                                        } else {
+                                            onSendMessage(draft, replyingTo)
+                                            replyingTo = null
+                                        }
+                                    }
+                                },
+                                enabled = draft.isNotBlank() && (editingMessage == null || draft.trim() != editingMessage?.body),
                                 modifier = Modifier.height(54.dp),
                                 shape = RoundedCornerShape(17.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
-                            ) { Text("Send", fontWeight = FontWeight.Bold) }
+                            ) { Text(if (editingMessage != null) "Save" else "Send", fontWeight = FontWeight.Bold) }
                         }
                     } else {
                         Surface(color = Color(0xFF142238), shape = RoundedCornerShape(14.dp)) {
