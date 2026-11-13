@@ -15,6 +15,7 @@
 - First-time peers still go through the in-person pairing-code check and explicit approval.
 - Duplicate automatic requests are suppressed per temporary endpoint. The suppression is cleared when the endpoint is lost, connects, or its connection request fails, allowing a later discovery attempt.
 - Each discovery run has its own callback generation. Late found/lost callbacks from an earlier scan or a stopped scan are ignored, and discovery loss is not misreported as a direct disconnect.
+- The transport measures request/offer-to-authenticated-connection time with a monotonic clock and reports the duration after both identity proofs and recipient-key binding succeed. Failed/disconnected attempts are discarded.
 - A key change or failed identity proof remains a hard failure; reconnect convenience must not weaken authentication.
 
 ## Multi-peer boundary
