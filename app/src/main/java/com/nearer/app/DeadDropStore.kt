@@ -64,6 +64,7 @@ internal class DeadDropStore(context: Context) {
         incomingProofBytes: ByteArray,
         trustedAcceptingSigningKey: (String) -> ByteArray?,
         localPeerId: String,
+        localSigningPublicKey: ByteArray,
         now: Long,
         sign: (ByteArray) -> ByteArray
     ): Boolean {
@@ -122,6 +123,14 @@ internal class DeadDropStore(context: Context) {
                 )
                 return write(entries)
             }
+            // Verify the newly appended local signature too; do not rely on the
+            // signing callback merely returning a syntactically sized byte array.
+            if (!accepted.verifyPrefix(
+                    packet.packetId, packet.immutablePacketDigest(), packet.originId,
+                    localPeerId,
+                    { peerId -> if (peerId == localPeerId) localSigningPublicKey else trustedAcceptingSigningKey(peerId) },
+                    now
+                )) return false
             val encodedProof = accepted.encode()
             val encodedPacket = packet.encode()
             if (encodedPacket.size > MAX_PACKET_BYTES || entries.size >= MAX_ITEMS) return false
