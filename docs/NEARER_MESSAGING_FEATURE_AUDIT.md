@@ -38,7 +38,8 @@ Implemented in the current messaging branches (subject to integration and device
 - Clear outgoing-message labels: waiting for reconnection, sending, delivered to the recipient's phone, interrupted/not confirmed, or not sent. Delivery confirmation is not a read receipt.
 
 Not yet complete or not yet verified as a full end-to-end user feature:
-- Reply/quote, reactions, edit, delete-for-everyone and message forwarding.
+- Reactions, edit, delete-for-everyone and message forwarding.
+- Quoted replies are now implemented in this branch: reply action, composer quote preview/cancel, encrypted direct and recipient-encrypted message metadata, local persistence and restart restoration. Legacy messages remain readable; the legacy line-based fallback does not send replies.
 - Voice notes, in-chat audio/video calling and live voice rooms.
 - Group chats with membership, delivery, history and admin controls.
 - Polls, scheduled messages, disappearing messages and stories/status.
