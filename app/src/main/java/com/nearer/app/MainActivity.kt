@@ -1651,11 +1651,13 @@ class MainActivity : ComponentActivity() {
             .toString()
         val eventId = UUID.randomUUID().toString()
         val meshRecipient = meshRecipients[peerId]
-        val sent = if (meshRecipient != null) {
+        var sent = if (meshRecipient != null) {
             nearbyTransport?.sendMeshMessage(peerId, packet, eventId) == true
-        } else if (peerId == hybridConnectedStableId && !hybridConnectedEndpoint.isNullOrBlank()) {
-            nearbyTransport?.send(packet, eventId, hybridConnectedEndpoint) == true
         } else false
+        if (!sent && peerId == hybridConnectedStableId && !hybridConnectedEndpoint.isNullOrBlank() &&
+            (meshRecipient == null || meshRecipient.isDirect)) {
+            sent = nearbyTransport?.send(packet, eventId, hybridConnectedEndpoint) == true
+        }
         if (!sent) {
             chatMessages[index] = previous
             persistMessages()
