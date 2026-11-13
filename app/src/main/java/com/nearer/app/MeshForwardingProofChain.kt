@@ -87,7 +87,7 @@ internal data class MeshForwardingProof(
             NeaRerIdentity.normalize(acceptingPeerId) == acceptingPeerId &&
             NeaRerIdentity.normalize(previousHopPeerId) == previousHopPeerId &&
             originPeerId != acceptingPeerId && acceptingPeerId != previousHopPeerId &&
-            hopIndex in 1..MAX_HOPS && acceptedAtMs > 0L && previousProofHash.size == HASH_BYTES
+            hopIndex in 1..MAX_ACCEPTANCE_RECORDS && acceptedAtMs > 0L && previousProofHash.size == HASH_BYTES
 
     companion object {
         private const val MAGIC = 0x4E524632 // NRF2
@@ -98,7 +98,7 @@ internal data class MeshForwardingProof(
         private const val MIN_SIGNATURE_BYTES = 8
         private const val MAX_SIGNATURE_BYTES = 128
         private const val MAX_CLOCK_SKEW_MS = 300_000L
-        const val MAX_HOPS = 5
+        const val MAX_ACCEPTANCE_RECORDS = 5
         private val PACKET_ID_PATTERN = Regex("[A-Za-z0-9._:-]{1,80}")
         val GENESIS_HASH: ByteArray get() = ByteArray(HASH_BYTES)
 
@@ -168,7 +168,7 @@ internal data class MeshForwardingProofChain(val proofs: List<MeshForwardingProo
         trustedSigningKey: (String) -> ByteArray?,
         nowMs: Long
     ): Boolean = try {
-        require(proofs.size in 1..MeshForwardingProof.MAX_HOPS)
+        require(proofs.size in 1..MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
         require(packetDigest.size == 32)
         require(NeaRerIdentity.normalize(originPeerId) == originPeerId)
         require(NeaRerIdentity.normalize(destinationPeerId) == destinationPeerId)
@@ -195,7 +195,7 @@ internal data class MeshForwardingProofChain(val proofs: List<MeshForwardingProo
     } catch (_: Exception) { false }
 
     fun encode(): ByteArray {
-        require(proofs.size in 1..MeshForwardingProof.MAX_HOPS)
+        require(proofs.size in 1..MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
         val out = ByteArrayOutputStream()
         DataOutputStream(out).use { data ->
             data.writeInt(MAGIC)
@@ -218,7 +218,7 @@ internal data class MeshForwardingProofChain(val proofs: List<MeshForwardingProo
             val input = DataInputStream(ByteArrayInputStream(bytes))
             require(input.readInt() == MAGIC)
             val count = input.readUnsignedByte()
-            require(count in 1..MeshForwardingProof.MAX_HOPS)
+            require(count in 1..MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
             val proofs = List(count) {
                 val size = input.readUnsignedShort()
                 require(size in 1..1024)
