@@ -1386,6 +1386,25 @@ internal object IncomingFilePayloadPolicy {
         due.forEach { pending ->
             try {
                 val queuedPacket = MeshRelayPacketV1.decode(pending.bytes)
+                if (queuedPacket.originId == localStableId) {
+                    require(queuedPacket.hopsTaken == 0 && pending.proofChain.isEmpty()) {
+                        "An origin outbox packet unexpectedly contains relay history."
+                    }
+                } else {
+                    val storedChain = MeshForwardingProofChain.decode(pending.proofChain)
+                    require(storedChain.proofs.size == queuedPacket.hopsTaken + 1) {
+                        "Stored forwarding-proof count does not match the packet hop counter."
+                    }
+                    require(storedChain.verifyPrefix(
+                        queuedPacket.packetId, queuedPacket.immutablePacketDigest(),
+                        queuedPacket.originId, localStableId,
+                        { peerId ->
+                            if (peerId == localStableId) SecurePeerIdentity.publicKeyEncoded()
+                            else TrustedPeerKeyStore.pinnedSigningKey(appContext, peerId)
+                        },
+                        System.currentTimeMillis()
+                    )) { "Stored forwarding-proof chain failed verification before forwarding." }
+                }
                 val route = meshRouteTable.find(queuedPacket.destinationId, System.currentTimeMillis()) ?: return@forEach
                 if (route.nextHopPeerId == pending.previousHopPeerId) return@forEach
                 val packet = deadDropStore.prepareForForwarding(
