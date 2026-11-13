@@ -557,7 +557,9 @@ internal object IncomingFilePayloadPolicy {
             broadcastMeshRouteWithdrawals(withdrawnDestinations)
             notifyMeshRoutesChanged()
             pauseOutgoingFilesForEndpoint(id)
+            pauseHyperStreamsForEndpoint(id)
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
+            streamCapablePeers.remove(details.first)
             if (wasAuthenticated && empty) listener.onDisconnected(id, details.first, details.second)
             else if (wasAuthenticated) {
                 listener.onLost(id, details.first)
@@ -1760,6 +1762,28 @@ internal object IncomingFilePayloadPolicy {
                 handleMeshPacket(endpointId, decoded.packetBytes, decoded.proofChainBytes)
                 return
             }
+            if (authenticatedEndpoints.contains(endpointId)) {
+                if (TransferResumeStreamMetadataCodec.isEnvelope(raw)) {
+                    handleHyperStreamMetadata(endpointId, raw)
+                    return
+                }
+                if (raw.size >= 4) {
+                    when (ByteBuffer.wrap(raw).int) {
+                        0x4E525253 -> { handleHyperStreamProposal(endpointId, raw); return }
+                        0x4E52524E -> { handleHyperStreamNoResume(endpointId, raw); return }
+                        0x4E525244 -> {
+                            val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                            val decoded = runCatching { TransferResumeMessageCodec.decodeDecision(raw) }.getOrNull() ?: return
+                            val result = streamController.recordDecision(endpointId, peerId, raw)
+                            if (result == NearbyStreamExchangeController.InputResult.STORED ||
+                                result == NearbyStreamExchangeController.InputResult.DUPLICATE) {
+                                tryProcessHyperStream(decoded.payloadId)
+                            }
+                            return
+                        }
+                    }
+                }
+            }
             val envelope = JSONObject(raw.toString(Charsets.UTF_8))
             when (envelope.optString("kind")) {
                 "peer_hello_v3" -> { handlePeerHello(endpointId, envelope); return }
@@ -2440,6 +2464,8 @@ internal object IncomingFilePayloadPolicy {
     fun sendFile(endpointId: String, uri: Uri, displayName: String): Long? {
         val knownPeer = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (streamCapablePeers.contains(knownPeer)) return sendHyperTransferStream(endpointId, uri, displayName)
+        val knownPeer = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (streamCapablePeers.contains(knownPeer)) return sendHyperTransferStream(endpointId, uri, displayName)
         if (!authenticatedEndpoints.contains(endpointId) || synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
             listener.onFileStatus("The nearby connection is not securely verified or is no longer active.")
             return null
@@ -2619,6 +2645,15 @@ internal object IncomingFilePayloadPolicy {
     }
 
     fun cancelFile(payloadId: Long) {
+        cancelledStreamPayloads.add(payloadId)
+        outgoingHyperStreams.remove(payloadId)?.let { state ->
+            state.timeout?.let(deliveryHandler::removeCallbacks)
+            state.prepared.close()
+            state.sourceFile.delete()
+        }
+        pendingIncomingHyperPayloads.remove(payloadId)?.let { runCatching { it.close() } }
+        incomingHyperMetadata.remove(payloadId)
+        incomingHyperEndpoints.remove(payloadId)
         try { client.cancelPayload(payloadId) } catch (_: Exception) { }
         outgoingFiles.remove(payloadId)?.let {
             try { it.payload.close() } catch (_: Exception) { }
@@ -2651,6 +2686,11 @@ internal object IncomingFilePayloadPolicy {
             it.temporarySourceFile?.delete()
         }
         outgoingFiles.clear()
+        outgoingHyperStreams.values.forEach { it.prepared.close(); it.sourceFile.delete() }
+        outgoingHyperStreams.clear()
+        pendingIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
+        pendingIncomingHyperPayloads.clear()
+        streamController.clear()
         fileIo.shutdownNow()
         transferPreparation.shutdownNow()
     }
