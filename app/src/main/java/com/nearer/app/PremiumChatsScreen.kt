@@ -465,29 +465,13 @@ private fun PremiumChatsInboxScreen(
     var selectedFilter by remember { mutableStateOf("All") }
     var pinnedIds by remember { mutableStateOf(preferences.getStringSet("pinned_conversations", emptySet()).orEmpty()) }
 
-    val recipientIds = meshRecipients.map { it.peerId }
-    val conversationIds = (latestMessages.keys + recipientIds).distinct()
-        .filter { id ->
-            val recipient = meshRecipients.firstOrNull { it.peerId == id }
-            when (selectedFilter) {
-                "Nearby" -> recipient?.isDirect == true
-                "Mesh" -> recipient != null && !recipient.isDirect
-                "Offline" -> recipient == null
-                else -> true
-            }
-        }
-        .filter { id ->
-            if (searchQuery.isBlank()) true else {
-                val latest = latestMessages[id]
-                val name = meshRecipients.firstOrNull { it.peerId == id }?.displayName
-                    ?: latest?.conversationName.orEmpty()
-                name.contains(searchQuery, ignoreCase = true) ||
-                    id.contains(searchQuery, ignoreCase = true) ||
-                    latest?.body.orEmpty().contains(searchQuery, ignoreCase = true)
-            }
-        }
-        .sortedWith(compareByDescending<String> { it in pinnedIds }
-            .thenByDescending { latestMessages[it]?.timestamp ?: 0L })
+    val conversationIds = ChatInboxPolicy.conversationIds(
+        messages = messages,
+        recipients = meshRecipients,
+        query = searchQuery,
+        filter = selectedFilter,
+        pinnedIds = pinnedIds
+    )
 
     fun togglePinned(id: String) {
         pinnedIds = if (id in pinnedIds) pinnedIds - id else pinnedIds + id
