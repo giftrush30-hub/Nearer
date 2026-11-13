@@ -13,6 +13,7 @@ internal object CommunityRosterPolicy {
         if (sender != senderPeerId) return null
         if (existingOwnerPeerId.isBlank()) return sender
         val existing = NeaRerIdentity.normalize(existingOwnerPeerId) ?: return null
+        if (existing != existingOwnerPeerId) return null
         return sender.takeIf { existing == sender }
     }
 
