@@ -209,6 +209,7 @@ internal object IncomingFilePayloadPolicy {
     private val outgoingHyperStreams = ConcurrentHashMap<Long, OutgoingHyperStream>()
     private val incomingHyperMetadata = ConcurrentHashMap<Long, TransferResumeStreamMetadataCodec.Metadata>()
     private val pendingIncomingHyperPayloads = ConcurrentHashMap<Long, Payload>()
+    private val activeIncomingHyperPayloads = ConcurrentHashMap<Long, Payload>()
     private val incomingHyperEndpoints = ConcurrentHashMap<Long, String>()
     private val streamCapablePeers = ConcurrentHashMap.newKeySet<String>()
     private val cancelledStreamPayloads = ConcurrentHashMap.newKeySet<Long>()
@@ -1678,7 +1679,10 @@ internal object IncomingFilePayloadPolicy {
 
     private fun startHyperStreamPayload(state: OutgoingHyperStream, proposal: TransferResumeNegotiation.Proposal?) {
         val payloadId = state.prepared.payloadId
-        if (!state.awaitingDecision || outgoingHyperStreams[payloadId] !== state) return
+        synchronized(state) {
+            if (!state.awaitingDecision || outgoingHyperStreams[payloadId] !== state) return
+            state.awaitingDecision = false
+        }
         state.timeout?.let(deliveryHandler::removeCallbacks)
         var decision = resumeCoordinator.validateOfferAtSender(
             proposal, state.transferId, state.item, state.sourceFile, null,
@@ -1694,24 +1698,40 @@ internal object IncomingFilePayloadPolicy {
                 0L, TransferResumeNegotiation.Reason.SOURCE_CHANGED
             )
         }
+        val preparedSource = source
+        val sendStream = {
+            try {
+                if (preparedSource != null) state.prepared.provideSource(preparedSource)
+                else state.prepared.provideSource(state.sourceFile.inputStream())
+                client.sendPayload(state.endpointId, state.prepared.payload)
+                    .addOnFailureListener {
+                        listener.onFileStatus("The resumable stream could not start. Reconnect to retry safely.")
+                    }
+            } catch (error: Exception) {
+                state.prepared.reject(error)
+                synchronized(state) { state.awaitingDecision = true }
+                listener.onFileStatus("The file could not be opened for sending.")
+            }
+        }
         if (proposal != null) {
             val decisionBytes = TransferResumeMessageCodec.encodeDecision(payloadId, decision)
-            client.sendPayload(state.endpointId, Payload.fromBytes(decisionBytes))
-                .addOnFailureListener {
-                    state.prepared.reject(IllegalStateException("Resume decision could not be sent"))
-                    listener.onFileStatus("Could not confirm the transfer offset. Please retry.")
-                }
-        }
-        try {
-            if (source != null) state.prepared.provideSource(source)
-            else state.prepared.provideSource(state.sourceFile.inputStream())
-            state.awaitingDecision = false
-            client.sendPayload(state.endpointId, state.prepared.payload)
-                .addOnFailureListener { listener.onFileStatus("The resumable stream could not start. Please retry.") }
-        } catch (error: Exception) {
-            state.prepared.reject(error)
-            outgoingHyperStreams.remove(payloadId, state)
-            listener.onFileStatus("The file could not be opened for sending.")
+            try {
+                client.sendPayload(state.endpointId, Payload.fromBytes(decisionBytes))
+                    .addOnSuccessListener { sendStream() }
+                    .addOnFailureListener {
+                        preparedSource?.input?.close()
+                        state.prepared.reject(IllegalStateException("Resume decision could not be sent"))
+                        synchronized(state) { state.awaitingDecision = true }
+                        listener.onFileStatus("Could not confirm the transfer offset. Please retry.")
+                    }
+            } catch (_: Exception) {
+                preparedSource?.input?.close()
+                state.prepared.reject(IllegalStateException("Resume decision could not be sent"))
+                synchronized(state) { state.awaitingDecision = true }
+                listener.onFileStatus("Could not confirm the transfer offset. Please retry.")
+            }
+        } else {
+            sendStream()
         }
     }
 
@@ -1721,9 +1741,10 @@ internal object IncomingFilePayloadPolicy {
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         val ready = streamController.takeReady(endpointId, peerId, payloadId) ?: return
         if (!pendingIncomingHyperPayloads.remove(payloadId, payload)) return
+        activeIncomingHyperPayloads[payloadId] = payload
         val metadata = ready.metadata
         val folder = File(appContext.filesDir, "received").apply { mkdirs() }
-        val destination = File(folder, System.currentTimeMillis().toString() + "-" +
+        val destination = File(folder, System.currentTimeMillis().toString() + "-" + UUID.randomUUID().toString().take(8) + "-" +
             TransferFileNamePolicy.safeName(metadata.item.displayName))
         streamPayloadBridge.receive(
             payload, metadata, ready.authenticatedPeerId, ready.proposal, ready.decision, destination,
@@ -1731,6 +1752,7 @@ internal object IncomingFilePayloadPolicy {
         ) { result ->
             incomingHyperMetadata.remove(payloadId)
             incomingHyperEndpoints.remove(payloadId)
+            activeIncomingHyperPayloads.remove(payloadId)
             cancelledStreamPayloads.remove(payloadId)
             transferSpeedMeters.remove(payloadId)
             result.onSuccess { completed ->
@@ -2440,6 +2462,7 @@ internal object IncomingFilePayloadPolicy {
         val incomingIds = incomingHyperEndpoints.entries.filter { it.value == endpointId }.map { it.key }
         incomingIds.forEach { id ->
             pendingIncomingHyperPayloads.remove(id)?.let { runCatching { it.close() } }
+            activeIncomingHyperPayloads.remove(id)?.let { runCatching { it.close() } }
             incomingHyperEndpoints.remove(id)
             incomingHyperMetadata.remove(id)
         }
@@ -2653,6 +2676,7 @@ internal object IncomingFilePayloadPolicy {
             state.sourceFile.delete()
         }
         pendingIncomingHyperPayloads.remove(payloadId)?.let { runCatching { it.close() } }
+        activeIncomingHyperPayloads.remove(payloadId)?.let { runCatching { it.close() } }
         incomingHyperMetadata.remove(payloadId)
         incomingHyperEndpoints.remove(payloadId)
         try { client.cancelPayload(payloadId) } catch (_: Exception) { }
@@ -2691,6 +2715,8 @@ internal object IncomingFilePayloadPolicy {
         outgoingHyperStreams.clear()
         pendingIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
         pendingIncomingHyperPayloads.clear()
+        activeIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
+        activeIncomingHyperPayloads.clear()
         streamController.clear()
         fileIo.shutdownNow()
         transferPreparation.shutdownNow()
