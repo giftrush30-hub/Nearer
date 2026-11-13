@@ -35,7 +35,8 @@ internal class TransferResumeStreamWriter(
         item: TransferBundleItem,
         sourceModifiedAtMillis: Long?,
         input: InputStream,
-        isCancelled: () -> Boolean = { false }
+        isCancelled: () -> Boolean = { false },
+        sourcePeerId: String? = null
     ): Result {
         require(item.kind == TransferBundleItem.Kind.FILE) { "Only files can be resumed" }
         val candidate = store.findValid(transferId, item, sourceModifiedAtMillis)
@@ -99,7 +100,7 @@ internal class TransferResumeStreamWriter(
 
                 if (received == nextCheckpoint || received == item.sizeBytes) {
                     output.fd.sync()
-                    store.checkpoint(transferId, item, sourceModifiedAtMillis, received)
+                    store.checkpoint(transferId, item, sourceModifiedAtMillis, received, sourcePeerId)
                     nextCheckpoint = nextCheckpointAfter(received, item.sizeBytes)
                 }
             }
