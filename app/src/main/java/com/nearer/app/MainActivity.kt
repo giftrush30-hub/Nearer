@@ -3767,9 +3767,12 @@ private fun NeaRerHome(
             if (selectedTab == "People") {
                 PeopleScreen(
                     meshRecipients = meshRecipients,
+                    hybridPeers = hybridPeers,
+                    scanning = scanning,
                     onSelectMeshRecipient = onSelectMeshRecipient,
                     onOpenChat = { selectedTab = "Chats" },
-                    onFindNearby = { selectedTab = "Nearby"; onFindNearby() }
+                    onFindNearby = onFindNearby,
+                    onConnectNearby = onHybridConnect
                 )
             }
 
