@@ -15,7 +15,7 @@ The separate hop ACK is useful for reliable retry, but it is not a transferable 
 
 ## Required v2 envelope
 
-**Critical binding requirement:** the current Batch Two proof primitive signs the packet ID and origin, but not yet a digest of the immutable origin-signed packet. Before any transport integration, extend each proof record to include a 32-byte SHA-256 digest of the canonical immutable packet bytes, include it in the signed bytes and proof hash, and require the chain verifier to compare it with the packet being forwarded. Do not treat a matching packet ID as a substitute for this content binding.
+**Critical binding requirement:** Batch Two now signs a 32-byte SHA-256 digest of the canonical immutable origin-signed packet bytes, including the origin signature. The transport caller must calculate `MeshRelayPacketV1.immutablePacketDigest()` and pass it into chain verification. A packet-ID match with a different digest must fail closed.
 
 A future envelope must carry:
 
