@@ -22,7 +22,8 @@ internal class TransferResumeExchangeTracker(
     data class ReadyExchange(
         val key: Key,
         val proposal: TransferResumeNegotiation.Proposal,
-        val decision: TransferResumeNegotiation.Decision
+        val decision: TransferResumeNegotiation.Decision,
+        val metadata: TransferResumeStreamMetadataCodec.Metadata? = null
     )
 
     enum class Update {
@@ -37,6 +38,7 @@ internal class TransferResumeExchangeTracker(
         var updatedAtMillis: Long,
         var proposal: TransferResumeNegotiation.Proposal? = null,
         var decision: TransferResumeNegotiation.Decision? = null,
+        var metadata: TransferResumeStreamMetadataCodec.Metadata? = null,
         var dataPayloadSeen: Boolean = false,
         var consumed: Boolean = false
     )
@@ -50,6 +52,25 @@ internal class TransferResumeExchangeTracker(
         require(maxPendingExchanges in 1..MAX_ALLOWED_PENDING) {
             "Resume exchange capacity is outside the safe range"
         }
+    }
+
+    @Synchronized
+    fun recordMetadata(
+        endpointId: String,
+        metadata: TransferResumeStreamMetadataCodec.Metadata
+    ): Update {
+        val key = key(endpointId, metadata.payloadId) ?: return Update.INVALID_KEY
+        if (runCatching { TransferResumeStreamMetadataCodec.validate(metadata) }.isFailure) {
+            return invalidate(key)
+        }
+        pruneExpired()
+        if (terminalEntries.containsKey(key)) return Update.DUPLICATE
+        val entry = entryFor(key) ?: return Update.CAPACITY_REACHED
+        val existing = entry.metadata
+        if (existing != null) return if (existing == metadata) Update.DUPLICATE else invalidate(key)
+        entry.metadata = metadata
+        entry.updatedAtMillis = nowMillis()
+        return Update.STORED
     }
 
     @Synchronized
@@ -96,17 +117,34 @@ internal class TransferResumeExchangeTracker(
      * offset twice. Incomplete entries remain pending until completed or cleared.
      */
     @Synchronized
-    fun takeReady(endpointId: String, payloadId: Long): ReadyExchange? {
+    fun takeReady(endpointId: String, payloadId: Long): ReadyExchange? =
+        takeReadyInternal(endpointId, payloadId, requireMetadata = false)
+
+    /**
+     * Stream-only variant: requires the payload's validated manifest metadata
+     * as well as the proposal, decision and actual Nearby STREAM callback.
+     */
+    @Synchronized
+    fun takeReadyForStream(endpointId: String, payloadId: Long): ReadyExchange? =
+        takeReadyInternal(endpointId, payloadId, requireMetadata = true)
+
+    private fun takeReadyInternal(
+        endpointId: String,
+        payloadId: Long,
+        requireMetadata: Boolean
+    ): ReadyExchange? {
         pruneExpired()
         val key = key(endpointId, payloadId) ?: return null
         val entry = entries[key] ?: return null
         if (entry.consumed || !entry.dataPayloadSeen) return null
         val proposal = entry.proposal ?: return null
         val decision = entry.decision ?: return null
+        val metadata = entry.metadata
+        if (requireMetadata && metadata == null) return null
         entry.consumed = true
         entries.remove(key)
         rememberTerminal(key)
-        return ReadyExchange(key, proposal, decision)
+        return ReadyExchange(key, proposal, decision, metadata)
     }
 
     @Synchronized
