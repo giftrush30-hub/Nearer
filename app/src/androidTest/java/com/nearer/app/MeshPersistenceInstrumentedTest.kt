@@ -376,4 +376,134 @@ class MeshPersistenceInstrumentedTest {
         assertEquals(0, MeshReceiptOutbox(context).size())
         assertFalse(afterRestart.acknowledge(receipt.packetId, intendedNextHop))
     }
+
+    @Test
+    fun proofBackedAcceptanceCommitsPacketAndChainTogetherAndSurvivesReopen() {
+        val now = System.currentTimeMillis()
+        val origin = NeaRerIdentity.generate()
+        val relay = NeaRerIdentity.generate()
+        val destination = NeaRerIdentity.generate()
+        val recipient = recipientKeyPair()
+        val relaySigner = recipientKeyPair()
+        val destinationSigner = recipientKeyPair()
+        val packet = MeshRelayPacketV1.create(
+            originId = origin,
+            destinationId = destination,
+            packetId = "proof-atomic-acceptance-001",
+            createdAtMs = now,
+            expiresAtMs = now + 60_000L,
+            hopLimit = 4,
+            recipientPublicKey = recipient.public.encoded,
+            plaintext = "durable proof-bound packet".toByteArray()
+        )
+        val incoming = MeshForwardingProofChain(emptyList()).appendAcceptance(
+            packet.packetId, packet.immutablePacketDigest(), origin, relay, now + 1L
+        ) { bytes ->
+            java.security.Signature.getInstance("SHA256withECDSA").run {
+                initSign(relaySigner.private)
+                update(bytes)
+                sign()
+            }
+        }
+        val store = DeadDropStore(context)
+        assertTrue(store.enqueueTransitWithProof(
+            packet = packet,
+            previousHopPeerId = relay,
+            incomingProofBytes = incoming.encode(),
+            trustedAcceptingSigningKey = { peer -> if (peer == relay) relaySigner.public.encoded else null },
+            localPeerId = destination,
+            localSigningPublicKey = destinationSigner.public.encoded,
+            now = now + 2L
+        ) { bytes ->
+            java.security.Signature.getInstance("SHA256withECDSA").run {
+                initSign(destinationSigner.private)
+                update(bytes)
+                sign()
+            }
+        })
+
+        val rawAtRest = context.getSharedPreferences("nearer_dead_drop_v1", 0)
+            .getString("queue_v1", "").orEmpty()
+        assertTrue(rawAtRest.isNotBlank())
+        assertFalse(rawAtRest.contains(packet.packetId))
+        assertFalse(rawAtRest.contains(relay))
+        assertFalse(rawAtRest.contains(destination))
+
+        val reopened = DeadDropStore(context)
+        val pending = reopened.claimDue(now + 3L, 1).single()
+        val persistedChain = MeshForwardingProofChain.decode(pending.proofChain)
+        val trusted = mapOf(
+            relay to relaySigner.public.encoded,
+            destination to destinationSigner.public.encoded
+        )
+        assertTrue(persistedChain.verify(
+            packet.packetId, packet.immutablePacketDigest(), origin, destination,
+            { trusted[it] }, now + 4L
+        ))
+        assertEquals(2, persistedChain.proofs.size)
+
+        // A duplicate of the same packet and acceptance is safe to ACK, but does not append twice.
+        assertTrue(reopened.enqueueTransitWithProof(
+            packet = packet,
+            previousHopPeerId = relay,
+            incomingProofBytes = incoming.encode(),
+            trustedAcceptingSigningKey = { peer -> if (peer == relay) relaySigner.public.encoded else null },
+            localPeerId = destination,
+            localSigningPublicKey = destinationSigner.public.encoded,
+            now = now + 5L
+        ) { bytes ->
+            java.security.Signature.getInstance("SHA256withECDSA").run {
+                initSign(destinationSigner.private)
+                update(bytes)
+                sign()
+            }
+        })
+        val afterDuplicate = DeadDropStore(context).claimDue(now + 6L, 1).single()
+        assertEquals(2, MeshForwardingProofChain.decode(afterDuplicate.proofChain).proofs.size)
+    }
+
+    @Test
+    fun proofBackedAcceptanceRejectsMissingTrustAndMalformedSidecars() {
+        val now = System.currentTimeMillis()
+        val origin = NeaRerIdentity.generate()
+        val relay = NeaRerIdentity.generate()
+        val local = NeaRerIdentity.generate()
+        val recipient = recipientKeyPair()
+        val localSigner = recipientKeyPair()
+        val relaySigner = recipientKeyPair()
+        val packet = MeshRelayPacketV1.create(
+            origin, NeaRerIdentity.generate(), "proof-reject-untrusted-001",
+            now, now + 60_000L, 4, recipient.public.encoded, "body".toByteArray()
+        )
+        val incoming = MeshForwardingProofChain(emptyList()).appendAcceptance(
+            packet.packetId, packet.immutablePacketDigest(), origin, relay, now + 1L
+        ) { bytes ->
+            java.security.Signature.getInstance("SHA256withECDSA").run {
+                initSign(relaySigner.private)
+                update(bytes)
+                sign()
+            }
+        }
+        val store = DeadDropStore(context)
+        assertFalse(store.enqueueTransitWithProof(
+            packet, relay, incoming.encode(), { null }, local, localSigner.public.encoded, now + 2L
+        ) { bytes ->
+            java.security.Signature.getInstance("SHA256withECDSA").run {
+                initSign(localSigner.private)
+                update(bytes)
+                sign()
+            }
+        })
+        assertFalse(store.enqueueTransitWithProof(
+            packet, relay, byteArrayOf(1, 2, 3), { relaySigner.public.encoded },
+            local, localSigner.public.encoded, now + 2L
+        ) { bytes ->
+            java.security.Signature.getInstance("SHA256withECDSA").run {
+                initSign(localSigner.private)
+                update(bytes)
+                sign()
+            }
+        })
+        assertEquals(0, store.size())
+    }
 }
