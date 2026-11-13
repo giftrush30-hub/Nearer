@@ -190,3 +190,20 @@ A feature is not “done” because a screen or button exists. It must pass:
 - Real-phone testing on at least two Android devices before release claims.
 
 Keep the UI simple. The differentiators should make NeaRer easier to understand, not add a second settings manual.
+
+
+## Implementation update — quoted replies
+
+The messaging branch now includes the first end-to-end quoted-reply implementation over the authenticated Nearby Connections message path:
+
+- Each message can be selected with a simple **Reply** action.
+- The composer shows who is being replied to and a short quote; users can cancel before sending.
+- The outgoing message stores the referenced message ID, bounded quote text and original author's display name.
+- Quote metadata is carried inside the existing encrypted direct-message envelope and the recipient-encrypted message body.
+- Incoming quote metadata is validated before it is accepted.
+- Quote fields are saved with local chat history and restored after app restart.
+- Older messages without quote fields continue to load normally. Older app versions can still read the message body, although they will not render the quote.
+
+The reply preview is a snapshot of the original text (limited to 180 characters); it does not fetch or reveal the original message from another device. The reply reference remains scoped to the same conversation when created. Replies over the legacy line-based fallback are intentionally not sent because that older wire format cannot carry quote metadata safely.
+
+This is code-level implementation; the latest Android workflow and real two-phone compatibility testing are still required before calling the feature release-ready.
