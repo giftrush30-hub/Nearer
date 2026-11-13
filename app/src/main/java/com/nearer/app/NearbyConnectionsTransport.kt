@@ -247,7 +247,7 @@ internal object IncomingFilePayloadPolicy {
                 array.put(JSONObject().put("id", id).put("peer", p.stablePeerId).put("payload", encryptedPayload))
             }
             val completed = org.json.JSONArray()
-            completedOutgoingMessageIds.forEach(completed::put)
+            completedOutgoingMessageIds.forEach { completed.put(it) }
             val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
                 .putString("nearby_outbox", array.toString())
                 .putString("nearby_completed_outgoing_ids", completed.toString())
