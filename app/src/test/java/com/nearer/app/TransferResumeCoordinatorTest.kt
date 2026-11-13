@@ -56,6 +56,7 @@ class TransferResumeCoordinatorTest {
             assertEquals(chunk.toLong(), decision.acceptedOffsetBytes)
 
             source.writeBytes(ByteArray(bytes.size) { 7 })
+            source.setLastModified(123L) // Keep manifest metadata constant to isolate prefix-digest rejection.
             val changed = coordinator.validateOfferAtSender(
                 offers.single().proposal, "transfer-1", item, source, source.lastModified(),
                 "BCDEFG234567", true, true
