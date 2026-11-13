@@ -1951,6 +1951,49 @@ internal object IncomingFilePayloadPolicy {
         return true
     }
 
+    /**
+     * Send an identity-sensitive control packet only to the listed authenticated
+     * stable peers. Unlike send(), this never broadcasts a private roster to every
+     * nearby connection.
+     */
+    fun sendToPeerIds(body: String, targetPeerIds: Set<String>): Boolean {
+        if (body.isBlank() || body.length > 4000 || targetPeerIds.isEmpty()) return false
+        val targets = synchronized(activeEndpoints) {
+            activeEndpoints.filter { endpoint ->
+                authenticatedEndpoints.contains(endpoint) &&
+                    synchronized(names) { stableIds[endpoint] in targetPeerIds } &&
+                    messageSessions[endpoint] != null
+            }
+        }
+        if (targets.isEmpty()) return false
+        val messageId = UUID.randomUUID().toString()
+        val envelope = JSONObject()
+            .put("kind", "message")
+            .put("version", 1)
+            .put("id", messageId)
+            .put("body", body)
+            .put("ttl", 0)
+            .put("hops", 0)
+            .put("origin", localName)
+            .put("createdAt", System.currentTimeMillis())
+            .toString()
+            .toByteArray(Charsets.UTF_8)
+        var sent = false
+        targets.forEach { endpoint ->
+            val peerId = synchronized(names) { stableIds[endpoint].orEmpty() }
+            val session = messageSessions[endpoint] ?: return@forEach
+            try {
+                val packet = NearbyMessageCrypto.encrypt(session, localStableId, peerId, messageId, envelope)
+                client.sendPayload(endpoint, Payload.fromBytes(packet))
+                    .addOnFailureListener { listener.onStatus("A private community update could not be sent to one member.") }
+                sent = true
+            } catch (_: Exception) {
+                listener.onStatus("A private community update could not be encrypted for one member.")
+            }
+        }
+        return sent
+    }
+
     fun sendFile(endpointId: String, uri: Uri, displayName: String): Long? {
         if (!authenticatedEndpoints.contains(endpointId) || synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
             listener.onFileStatus("The nearby connection is not securely verified or is no longer active.")
