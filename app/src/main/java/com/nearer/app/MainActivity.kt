@@ -470,9 +470,22 @@ class MainActivity : ComponentActivity() {
                 }
             }
             override fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
+                onMessageWithReply(id, senderName, messageId, body, null, null, null, acknowledge)
+            }
+            override fun onMessageWithReply(
+                id: String, senderName: String, messageId: String, body: String,
+                replyToMessageId: String?, replyToPreview: String?, replyToSender: String?,
+                acknowledge: () -> Unit
+            ) {
                 runOnUiThread {
                     var safelyStored = false
-                    if (body.startsWith("NR_COMMUNITY:")) {
+                    if (body.startsWith("NR_REACTION:")) {
+                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), actorPeerId)
+                    } else if (body.startsWith("NR_EDIT:")) {
+                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        safelyStored = applyIncomingChatEdit(body.removePrefix("NR_EDIT:"), actorPeerId)
+                    } else if (body.startsWith("NR_COMMUNITY:")) {
                         val senderPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
                         val communityBody = body.removePrefix("NR_COMMUNITY:")
                         val packet = try { JSONObject(communityBody) } catch (_: Exception) { JSONObject() }
@@ -493,12 +506,8 @@ class MainActivity : ComponentActivity() {
                                 }.orEmpty()
                                 val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
                                 group != null && CommunityRosterPolicy.mayAcknowledgeRosterUpdate(
-                                    packetOwnerId,
-                                    senderPeerId,
-                                    incomingPeerIds,
-                                    localPeerId,
-                                    group.ownerPeerId,
-                                    group.memberPeerIds
+                                    packetOwnerId, senderPeerId, incomingPeerIds, localPeerId,
+                                    group.ownerPeerId, group.memberPeerIds
                                 )
                             }
                             "group_message" -> {
@@ -506,53 +515,74 @@ class MainActivity : ComponentActivity() {
                                 group != null && CommunityRosterPolicy.mayAcceptGroupMessage(senderPeerId, group.memberPeerIds) &&
                                     id.isNotBlank() && communityMessages.any { it.id == id && it.groupCode == code }
                             }
-                            "broadcast" -> true
-                            "ludo_invite", "ludo_accept", "ludo_reject", "ludo_action", "ludo_chat",
-                            "ludo_end", "ludo_rematch", "ludo_state", "ludo_sync" -> true
+                            "broadcast", "ludo_invite", "ludo_accept", "ludo_reject", "ludo_action",
+                            "ludo_chat", "ludo_end", "ludo_rematch", "ludo_state", "ludo_sync" -> true
                             else -> false
                         }
-                        // Reject/withhold transport ACKs for unknown or unauthorized community packets.
                         safelyStored = accepted && persistCommunityData()
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
-                        chatMessages.add(ChatMessage(
-                            messageId, body, outgoing = false, delivery = "Received",
-                            conversationId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty(),
-                            conversationName = senderName
-                        ))
-                        safelyStored = persistMessages()
-                        if (safelyStored) {
-                            trimChatMessages()
-                            chatNotice = "New offline message received from $senderName."
-                        }
-                        else {
-                            chatMessages.removeAll { it.id == messageId }
-                            chatNotice = "Message received, but could not be saved. Delivery was not confirmed."
+                        val quoteValid = ChatReplyPolicy.isValidIncomingQuote(replyToMessageId, replyToPreview, replyToSender)
+                        if ((replyToMessageId != null || replyToPreview != null || replyToSender != null) && !quoteValid) {
+                            chatNotice = "A message with invalid reply details was rejected."
+                        } else {
+                            chatMessages.add(ChatMessage(
+                                messageId, body, outgoing = false, delivery = "Received",
+                                conversationId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty(),
+                                conversationName = senderName,
+                                replyToMessageId = replyToMessageId,
+                                replyToPreview = replyToPreview,
+                                replyToSender = replyToSender
+                            ))
+                            safelyStored = persistMessages()
+                            if (safelyStored) {
+                                trimChatMessages()
+                                chatNotice = "New offline message received from $senderName."
+                            } else {
+                                chatMessages.removeAll { it.id == messageId }
+                                chatNotice = "Message received, but could not be saved. Delivery was not confirmed."
+                            }
                         }
                     }
-                    // Never tell the sender "Delivered" unless this phone saved the message.
                     if (safelyStored) acknowledge()
                 }
             }
             override fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
+                onMeshMessageWithReply(originPeerId, senderName, messageId, body, null, null, null, acknowledge)
+            }
+            override fun onMeshMessageWithReply(
+                originPeerId: String, senderName: String, messageId: String, body: String,
+                replyToMessageId: String?, replyToPreview: String?, replyToSender: String?,
+                acknowledge: () -> Unit
+            ) {
                 runOnUiThread {
                     var safelyStored = false
-                    if (chatMessages.any { it.id == messageId }) {
+                    if (body.startsWith("NR_REACTION:")) {
+                        safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), originPeerId)
+                    } else if (body.startsWith("NR_EDIT:")) {
+                        safelyStored = applyIncomingChatEdit(body.removePrefix("NR_EDIT:"), originPeerId)
+                    } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
-                        chatMessages.add(ChatMessage(
-                            messageId, body, outgoing = false, delivery = "Received",
-                            conversationId = originPeerId,
-                            conversationName = senderName
-                        ))
-                        safelyStored = persistMessages()
-                        if (safelyStored) {
-                            trimChatMessages()
-                            chatNotice = "New offline mesh message received from $senderName."
+                        val quoteValid = ChatReplyPolicy.isValidIncomingQuote(replyToMessageId, replyToPreview, replyToSender)
+                        if ((replyToMessageId != null || replyToPreview != null || replyToSender != null) && !quoteValid) {
+                            chatNotice = "A message with invalid reply details was rejected."
                         } else {
-                            chatMessages.removeAll { it.id == messageId }
-                            chatNotice = "Mesh message received, but could not be saved. Delivery was not confirmed."
+                            chatMessages.add(ChatMessage(
+                                messageId, body, outgoing = false, delivery = "Received",
+                                conversationId = originPeerId, conversationName = senderName,
+                                replyToMessageId = replyToMessageId, replyToPreview = replyToPreview,
+                                replyToSender = replyToSender
+                            ))
+                            safelyStored = persistMessages()
+                            if (safelyStored) {
+                                trimChatMessages()
+                                chatNotice = "New offline message received from $senderName."
+                            } else {
+                                chatMessages.removeAll { it.id == messageId }
+                                chatNotice = "Message received, but could not be saved. Delivery was not confirmed."
+                            }
                         }
                     }
                     if (safelyStored) acknowledge()
@@ -779,6 +809,9 @@ class MainActivity : ComponentActivity() {
                     receivedFiles = receivedFiles,
                     transferHistory = nearbyTransferHistory.toList(),
                     onSendMessage = ::sendChatMessage,
+                    onDeleteMessage = ::deleteChatMessage,
+                    onEditMessage = ::editChatMessage,
+                    onReactToMessage = ::sendChatReaction,
                     groups = communityGroups.toList(),
                     groupMessages = communityMessages.toList(),
                     selectedGroupCode = selectedCommunityCode,
@@ -1508,7 +1541,22 @@ class MainActivity : ComponentActivity() {
                         delivery = item.optString("delivery", "Sent"),
                         timestamp = item.optLong("timestamp", System.currentTimeMillis()),
                         conversationId = item.optString("conversationId", ""),
-                        conversationName = item.optString("conversationName", "")
+                        conversationName = item.optString("conversationName", ""),
+                        replyToMessageId = item.optString("replyToMessageId").takeIf { it.isNotBlank() },
+                        replyToPreview = item.optString("replyToPreview").takeIf { it.isNotBlank() },
+                        replyToSender = item.optString("replyToSender").takeIf { it.isNotBlank() },
+                        editVersion = item.optInt("editVersion", 0).coerceIn(0, ChatEditPolicy.MAX_REVISION),
+                        editedAt = item.optLong("editedAt", 0L).coerceAtLeast(0L),
+                        reactions = item.optJSONObject("reactions")?.let { reactionObject ->
+                            buildMap {
+                                val keys = reactionObject.keys()
+                                while (keys.hasNext()) {
+                                    val key = keys.next()
+                                    val emoji = reactionObject.optString(key)
+                                    if (ChatReactionPolicy.isValidActor(key) && ChatReactionPolicy.isValidEmoji(emoji)) put(key, emoji)
+                                }
+                            }
+                        }.orEmpty()
                     )
                     chatMessages.add(message)
                     if (!message.outgoing) receivedMessageIds.add(message.id)
@@ -1560,6 +1608,182 @@ class MainActivity : ComponentActivity() {
 
     private fun trimChatMessages() { ChatHistoryPolicy.trim(chatMessages) }
 
+    private fun applyIncomingChatEdit(payload: String, actorPeerId: String): Boolean {
+        val packet = try { JSONObject(payload) } catch (_: Exception) { return false }
+        val targetId = packet.optString("messageId")
+        val revision = ChatEditPolicy.Revision(
+            version = packet.optInt("revision", 0),
+            body = packet.optString("body"),
+            editedAt = packet.optLong("editedAt", 0L)
+        )
+        if (packet.optInt("version", 0) != 1 ||
+            !ChatReactionPolicy.isValidActor(actorPeerId) ||
+            targetId.isBlank() || targetId.length > 80) return false
+        val index = chatMessages.indexOfFirst {
+            it.id == targetId &&
+                ChatEditPolicy.mayApplyToMessage(it.conversationId, actorPeerId, it.outgoing)
+        }
+        if (index < 0) return false
+        val previous = chatMessages[index]
+        return when (ChatEditPolicy.apply(previous.body, previous.editVersion, previous.editedAt, revision)) {
+            ChatEditPolicy.ApplyResult.STALE,
+            ChatEditPolicy.ApplyResult.ALREADY_APPLIED -> true
+            ChatEditPolicy.ApplyResult.REJECTED -> false
+            ChatEditPolicy.ApplyResult.APPLIED -> {
+                chatMessages[index] = previous.copy(
+                    body = revision.body,
+                    editVersion = revision.version,
+                    editedAt = revision.editedAt
+                )
+                if (persistMessages()) {
+                    chatNotice = "A message from ${previous.conversationName} was edited."
+                    true
+                } else {
+                    chatMessages[index] = previous
+                    chatNotice = "An edit arrived but could not be saved. It was not confirmed."
+                    false
+                }
+            }
+        }
+    }
+
+    private fun editChatMessage(messageId: String, newBody: String): Boolean {
+        val index = chatMessages.indexOfFirst { it.id == messageId }
+        if (index < 0) return false
+        val previous = chatMessages[index]
+        if (!previous.outgoing) {
+            chatNotice = "You can only edit messages you sent."
+            return false
+        }
+        val revision = ChatEditPolicy.create(
+            previous.body, previous.editVersion, newBody, System.currentTimeMillis()
+        )
+        if (revision == null) {
+            chatNotice = "Make a change to the message. Edits must be under 3,500 characters."
+            return false
+        }
+        val peerId = previous.conversationId
+        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+        if (!ChatReactionPolicy.isValidActor(localPeerId) || !ChatReactionPolicy.isValidActor(peerId)) {
+            chatNotice = "Editing needs a verified NeaRer connection."
+            return false
+        }
+        chatMessages[index] = previous.copy(
+            body = revision.body, editVersion = revision.version, editedAt = revision.editedAt
+        )
+        if (!persistMessages()) {
+            chatMessages[index] = previous
+            chatNotice = "Couldn't save your edit. The original message was kept."
+            return false
+        }
+        val packet = "NR_EDIT:" + JSONObject()
+            .put("version", 1)
+            .put("messageId", messageId)
+            .put("revision", revision.version)
+            .put("body", revision.body)
+            .put("editedAt", revision.editedAt)
+            .toString()
+        if (packet.toByteArray(Charsets.UTF_8).size > 4000) {
+            chatMessages[index] = previous
+            persistMessages()
+            chatNotice = "That edit is too large to send. Shorten it and try again."
+            return false
+        }
+        val eventId = UUID.randomUUID().toString()
+        val meshRecipient = meshRecipients[peerId]
+        var sent = if (meshRecipient != null) {
+            nearbyTransport?.sendMeshMessage(peerId, packet, eventId) == true
+        } else false
+        if (!sent && peerId == hybridConnectedStableId && !hybridConnectedEndpoint.isNullOrBlank() &&
+            (meshRecipient == null || meshRecipient.isDirect)) {
+            sent = nearbyTransport?.send(packet, eventId, hybridConnectedEndpoint) == true
+        }
+        if (!sent) {
+            chatMessages[index] = previous
+            persistMessages()
+            chatNotice = "Edit not sent. Reconnect to this person; the original message was restored."
+            return false
+        }
+        chatNotice = "Edit saved and queued for secure nearby delivery."
+        return true
+    }
+
+    private fun applyIncomingChatReaction(payload: String, actorPeerId: String): Boolean {
+        val packet = try { JSONObject(payload) } catch (_: Exception) { return false }
+        val targetId = packet.optString("messageId")
+        val emoji = if (packet.isNull("emoji")) null else packet.optString("emoji")
+        if (packet.optInt("version", 0) != 1 ||
+            !ChatReactionPolicy.isValidActor(actorPeerId) ||
+            targetId.isBlank() || targetId.length > 80 ||
+            (emoji != null && !ChatReactionPolicy.isValidEmoji(emoji))) return false
+        val index = chatMessages.indexOfFirst {
+            it.id == targetId && it.conversationId == actorPeerId
+        }
+        if (index < 0) return false
+        val previous = chatMessages[index]
+        val updated = ChatReactionPolicy.set(previous.reactions, actorPeerId, emoji)
+        chatMessages[index] = previous.copy(reactions = updated)
+        if (persistMessages()) return true
+        chatMessages[index] = previous
+        chatNotice = "A reaction arrived but could not be saved. It was not confirmed."
+        return false
+    }
+
+    private fun sendChatReaction(messageId: String, emoji: String) {
+        val index = chatMessages.indexOfFirst { it.id == messageId }
+        if (index < 0 || !ChatReactionPolicy.isValidEmoji(emoji)) return
+        val target = chatMessages[index]
+        val peerId = target.conversationId
+        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+        if (!ChatReactionPolicy.isValidActor(localPeerId) || !ChatReactionPolicy.isValidActor(peerId)) {
+            chatNotice = "Reactions need a verified NeaRer connection."
+            return
+        }
+        val previous = target
+        val updatedReactions = ChatReactionPolicy.toggle(target.reactions, localPeerId, emoji)
+        val nextEmoji = updatedReactions[localPeerId]
+        chatMessages[index] = target.copy(reactions = updatedReactions)
+        if (!persistMessages()) {
+            chatMessages[index] = previous
+            chatNotice = "Couldn't save your reaction. It was not sent."
+            return
+        }
+        val packet = "NR_REACTION:" + JSONObject()
+            .put("version", 1)
+            .put("messageId", messageId)
+            .put("emoji", nextEmoji ?: JSONObject.NULL)
+            .toString()
+        val eventId = UUID.randomUUID().toString()
+        val meshRecipient = meshRecipients[peerId]
+        var sent = if (meshRecipient != null) {
+            nearbyTransport?.sendMeshMessage(peerId, packet, eventId) == true
+        } else false
+        if (!sent && peerId == hybridConnectedStableId && !hybridConnectedEndpoint.isNullOrBlank() &&
+            (meshRecipient == null || meshRecipient.isDirect)) {
+            sent = nearbyTransport?.send(packet, eventId, hybridConnectedEndpoint) == true
+        }
+        if (!sent) {
+            chatMessages[index] = previous
+            persistMessages()
+            chatNotice = "Reaction not sent. Reconnect to this person and try again."
+        } else {
+            chatNotice = "Reaction saved and queued for secure nearby delivery."
+        }
+    }
+
+    private fun deleteChatMessage(messageId: String): Boolean {
+        val index = chatMessages.indexOfFirst { it.id == messageId }
+        if (index < 0) return false
+        val removed = chatMessages.removeAt(index)
+        if (persistMessages()) {
+            chatNotice = "Message deleted from this phone. It remains on the other person's phone."
+            return true
+        }
+        chatMessages.add(index.coerceAtMost(chatMessages.size), removed)
+        chatNotice = "Couldn't save that change. The message was kept."
+        return false
+    }
+
     private fun persistMessages(): Boolean {
         return try {
             val array = JSONArray()
@@ -1571,7 +1795,13 @@ class MainActivity : ComponentActivity() {
                     .put("delivery", message.delivery)
                     .put("timestamp", message.timestamp)
                     .put("conversationId", message.conversationId)
-                    .put("conversationName", message.conversationName))
+                    .put("conversationName", message.conversationName)
+                    .put("replyToMessageId", message.replyToMessageId)
+                    .put("replyToPreview", message.replyToPreview)
+                    .put("replyToSender", message.replyToSender)
+                    .put("editVersion", message.editVersion)
+                    .put("editedAt", message.editedAt)
+                    .put("reactions", JSONObject(message.reactions)))
             }
             // commit() is intentional here: a delivery receipt must follow the disk write,
             // not just an in-memory SharedPreferences update queued by apply().
@@ -1601,17 +1831,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun sendChatMessage(rawText: String) {
+    private fun sendChatMessage(rawText: String, replyTarget: ChatMessage? = null) {
         val body = rawText.trim()
         if (body.isEmpty()) return
         val id = UUID.randomUUID().toString()
         val targetPeerId = selectedMeshRecipientId ?: hybridConnectedStableId
+        val conversationIdForReply = targetPeerId ?: connectedDeviceName?.let { "direct:$it" }.orEmpty()
+        val replyQuote = if (replyTarget != null) ChatReplyPolicy.createQuote(
+            replyTarget, conversationIdForReply, if (replyTarget.outgoing) displayName else replyTarget.conversationName
+        ) else null
+        if (replyTarget != null && replyQuote == null) {
+            chatNotice = "That message cannot be quoted in this conversation."
+            return
+        }
         val meshRecipient = targetPeerId?.let { meshRecipients[it] }
         if (meshRecipient != null) {
             chatMessages.add(ChatMessage(
                 id, body, outgoing = true, delivery = "Sending…",
                 conversationId = meshRecipient.peerId,
-                conversationName = meshRecipient.displayName
+                conversationName = meshRecipient.displayName,
+                replyToMessageId = replyQuote?.messageId, replyToPreview = replyQuote?.preview,
+                replyToSender = replyQuote?.sender
             ))
             if (!persistMessages()) {
                 chatMessages.removeAll { it.id == id }
@@ -1619,12 +1859,12 @@ class MainActivity : ComponentActivity() {
                 return
             }
             trimChatMessages()
-            var sent = nearbyTransport?.sendMeshMessage(meshRecipient.peerId, body, id) == true
+            var sent = nearbyTransport?.sendMeshMessage(meshRecipient.peerId, body, id, replyQuote) == true
             // Preserve the proven direct-chat path if the new recipient-encrypted route
             // cannot be used for a directly connected peer.
             if (!sent && meshRecipient.isDirect &&
                 meshRecipient.peerId == hybridConnectedStableId && hybridConnectedEndpoint != null) {
-                sent = nearbyTransport?.send(body, id, hybridConnectedEndpoint!!) == true
+                sent = nearbyTransport?.send(body, id, hybridConnectedEndpoint!!, replyQuote) == true
             }
             if (!sent) {
                 val index = chatMessages.indexOfFirst { it.id == id }
@@ -1657,7 +1897,9 @@ class MainActivity : ComponentActivity() {
             chatMessages.add(ChatMessage(
                 id, body, outgoing = true, delivery = "Sending…",
                 conversationId = nearbyTransport?.stableIdentityForEndpoint(targetEndpoint).orEmpty(),
-                conversationName = nearbyTransport?.displayNameForEndpoint(targetEndpoint).orEmpty()
+                conversationName = nearbyTransport?.displayNameForEndpoint(targetEndpoint).orEmpty(),
+                replyToMessageId = replyQuote?.messageId, replyToPreview = replyQuote?.preview,
+                replyToSender = replyQuote?.sender
             ))
             if (!persistMessages()) {
                 chatMessages.removeAll { it.id == id }
@@ -1665,7 +1907,7 @@ class MainActivity : ComponentActivity() {
                 return
             }
             trimChatMessages()
-            if (nearbyTransport?.send(body, id, targetEndpoint) != true) {
+            if (nearbyTransport?.send(body, id, targetEndpoint, replyQuote) != true) {
                 val index = chatMessages.indexOfFirst { it.id == id }
                 if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
                 persistMessages()
@@ -1673,6 +1915,10 @@ class MainActivity : ComponentActivity() {
                 return
             }
             chatNotice = "Sent over the offline link • waiting for the recipient's NeaRer app to acknowledge it."
+            return
+        }
+        if (replyQuote != null) {
+            chatNotice = "Replies need the updated secure nearby connection. Reconnect before sending this reply."
             return
         }
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
@@ -4428,7 +4674,13 @@ internal data class ChatMessage(
     val delivery: String,
     val timestamp: Long = System.currentTimeMillis(),
     val conversationId: String = "",
-    val conversationName: String = ""
+    val conversationName: String = "",
+    val replyToMessageId: String? = null,
+    val replyToPreview: String? = null,
+    val replyToSender: String? = null,
+    val reactions: Map<String, String> = emptyMap(),
+    val editVersion: Int = 0,
+    val editedAt: Long = 0L
 )
 
 private fun isNeaRerAppBundle(file: File): Boolean {
