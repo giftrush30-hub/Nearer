@@ -1329,6 +1329,7 @@ internal object IncomingFilePayloadPolicy {
                     TrustedPeerKeyStore.pinnedSigningKey(appContext, peerId)
                 },
                 localPeerId = localStableId,
+                localSigningPublicKey = SecurePeerIdentity.publicKeyEncoded(),
                 now = now
             ) { signedBytes -> SecurePeerIdentity.signDetached(signedBytes) }
             if (!committed) {
