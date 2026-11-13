@@ -86,7 +86,12 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-load -no-snapshot-save -wipe-data -camera-back none
           disable-animations: true
           emulator-boot-timeout: 600000
-          script: gradle --no-daemon --stacktrace connectedDebugAndroidTest
+          script: |
+            # Isolate the launch smoke test so an instrumentation crash in the
+            # persistence suite cannot hide whether the actual Activity starts.
+            gradle --no-daemon --stacktrace -Pandroid.testInstrumentationRunnerArguments.class=com.nearer.app.MainActivityLaunchTest connectedDebugAndroidTest
+            # Run the Android-backed encrypted-store tests in a separate process.
+            gradle --no-daemon --stacktrace -Pandroid.testInstrumentationRunnerArguments.class=com.nearer.app.MeshPersistenceInstrumentedTest connectedDebugAndroidTest
       - name: Preserve Android instrumentation reports
         if: always()
         uses: actions/upload-artifact@v4
