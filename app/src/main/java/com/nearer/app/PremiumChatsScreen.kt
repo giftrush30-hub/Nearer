@@ -538,8 +538,29 @@ private fun PremiumChatsInboxScreen(
                             Text("✦", color = Gold, fontSize = 27.sp)
                         }
                     }
-                    Text("Your conversations start here", color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Text("Find someone nearby or add a trusted NeaRer ID. Your conversations will stay here when you disconnect.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    Text(
+                        if (searchQuery.isNotBlank() || selectedFilter != "All") "No matching conversations" else "Your conversations start here",
+                        color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        if (searchQuery.isNotBlank() || selectedFilter != "All")
+                            "Try another name or message, or clear the current search and filter."
+                        else
+                            "Find someone nearby or add a trusted NeaRer ID. Your conversations will stay here when you disconnect.",
+                        color = Muted, fontSize = 12.sp, lineHeight = 18.sp
+                    )
+                    if (searchQuery.isNotBlank() || selectedFilter != "All") {
+                        Text(
+                            "Clear search and filters",
+                            color = BlueAccent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable {
+                                searchQuery = ""
+                                selectedFilter = "All"
+                            }.padding(6.dp)
+                        )
+                    }
                 }
             }
         } else {
