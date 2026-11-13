@@ -684,11 +684,14 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     incomingTransferName = null
                     incomingProgress = 0f
-                    receivedFiles.add(0, ReceivedFile(name, file, isAppBundle))
+                    val catalogSaved = rememberReceivedFile(name, file, isAppBundle)
                     recordNearbyTransfer("Received", name, file.length(), "Complete")
-                    chatNotice = if (isAppBundle) {
-                        "Received an app bundle: $name. Review it and tap Install when ready."
-                    } else "Received and saved: $name. Tap it below to open."
+                    chatNotice = when {
+                        !catalogSaved -> "Received $name, but NeaRer could not save its library details. Keep the app's received files folder intact."
+                        isAppBundle -> "Received an app bundle: $name. Review it and tap Install when ready."
+                        else -> "Received and saved: $name. Tap it below to open."
+                    }
+                    ReceivedFileNotification.show(this@MainActivity, name, file.length())
                 }
             }
             override fun onFileStatus(message: String) {
@@ -1566,12 +1569,70 @@ class MainActivity : ComponentActivity() {
             }
         }
         trimChatMessages()
+        restoreReceivedFiles()
+    }
+
+    private fun restoreReceivedFiles() {
+        receivedFiles.clear()
         val folder = File(filesDir, "received")
-        if (folder.exists()) {
-            folder.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }?.forEach {
-                receivedFiles.add(ReceivedFile(it.name.substringAfter('-', it.name), it))
-            }
+        if (!folder.exists()) return
+        val canonicalFolder = runCatching { folder.canonicalFile }.getOrNull() ?: return
+        val preferences = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val savedEntries = ReceivedFileCatalogPolicy.decode(preferences.getString("received_file_catalog_v1", null))
+            .associateBy { it.relativePath }
+        val files = folder.listFiles()
+            ?.filter { file -> file.isFile && !file.name.startsWith(".") }
+            ?.sortedByDescending { it.lastModified() }
+            ?.take(ReceivedFileCatalogPolicy.MAX_ENTRIES)
+            .orEmpty()
+        val repairedEntries = ArrayList<ReceivedFileCatalogEntry>()
+        files.forEach { file ->
+            val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return@forEach
+            if (canonical.parentFile != canonicalFolder || !canonical.isFile) return@forEach
+            val saved = savedEntries[canonical.name]?.takeIf { it.sizeBytes == canonical.length() }
+            val displayName = saved?.displayName ?: ReceivedFileCatalogPolicy.legacyDisplayName(canonical.name)
+            val isBundle = saved?.isAppBundle ?: isNeaRerAppBundle(canonical)
+            val entry = ReceivedFileCatalogPolicy.create(
+                displayName, canonical.name, canonical.length(), canonical.lastModified(), isBundle
+            ) ?: return@forEach
+            repairedEntries.add(entry)
+            receivedFiles.add(ReceivedFile(entry.displayName, canonical, entry.isAppBundle))
         }
+        // Rebuild from files that really exist; stale catalog entries never create phantom items.
+        preferences.edit()
+            .putString("received_file_catalog_v1", ReceivedFileCatalogPolicy.encode(repairedEntries))
+            .apply()
+    }
+
+    /**
+     * Adds a completed file only when it is a regular file inside NeaRer's private
+     * received directory. Persisting the display name separately means UUID and
+     * timestamp prefixes never leak into the user's file list after a restart.
+     */
+    private fun rememberReceivedFile(displayName: String, file: File, isAppBundle: Boolean): Boolean {
+        val folder = File(filesDir, "received")
+        if (!folder.exists() && !folder.mkdirs()) return false
+        val canonicalFolder = runCatching { folder.canonicalFile }.getOrNull() ?: return false
+        val canonicalFile = runCatching { file.canonicalFile }.getOrNull() ?: return false
+        if (!canonicalFile.isFile || canonicalFile.parentFile != canonicalFolder) return false
+        val entry = ReceivedFileCatalogPolicy.create(
+            displayName, canonicalFile.name, canonicalFile.length(), canonicalFile.lastModified(), isAppBundle
+        ) ?: return false
+        val preferences = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val previous = ReceivedFileCatalogPolicy.decode(preferences.getString("received_file_catalog_v1", null))
+        val updated = (listOf(entry) + previous.filterNot { it.relativePath == entry.relativePath })
+            .take(ReceivedFileCatalogPolicy.MAX_ENTRIES)
+        val saved = preferences.edit()
+            .putString("received_file_catalog_v1", ReceivedFileCatalogPolicy.encode(updated))
+            .commit()
+        receivedFiles.removeAll { existing ->
+            runCatching { existing.file.canonicalFile == canonicalFile }.getOrDefault(false)
+        }
+        receivedFiles.add(0, ReceivedFile(entry.displayName, canonicalFile, entry.isAppBundle))
+        while (receivedFiles.size > ReceivedFileCatalogPolicy.MAX_ENTRIES) {
+            receivedFiles.removeAt(receivedFiles.lastIndex)
+        }
+        return saved
     }
 
     private fun recordNearbyTransfer(direction: String, fileName: String, bytes: Long, status: String) {
@@ -2873,6 +2934,11 @@ class MainActivity : ComponentActivity() {
                     mime.startsWith("audio/") -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI to (Environment.DIRECTORY_MUSIC + "/NeaRer")
                     else -> MediaStore.Downloads.EXTERNAL_CONTENT_URI to (Environment.DIRECTORY_DOWNLOADS + "/NeaRer")
                 }
+                val requiredBytes = item.file.length()
+                val availableBytes = Environment.getExternalStorageDirectory().usableSpace
+                if (!ReceivedFileStoragePolicy.hasEnoughSpace(requiredBytes, availableBytes)) {
+                    throw IllegalStateException("Not enough free storage. Free up space and try again.")
+                }
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
                     put(MediaStore.MediaColumns.MIME_TYPE, mime)
@@ -2881,17 +2947,16 @@ class MainActivity : ComponentActivity() {
                 }
                 destination = contentResolver.insert(collection, values)
                     ?: throw IllegalStateException("Android could not create a saved-file entry")
-                contentResolver.openOutputStream(destination!!, "w")?.use { output ->
+                val copied = contentResolver.openOutputStream(destination!!, "w")?.use { output ->
                     item.file.inputStream().use { input ->
-                        val buffer = ByteArray(256 * 1024)
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            output.write(buffer, 0, count)
-                        }
+                        val result = TransferStreamCopy.copyAndSha256(input, output)
                         output.flush()
+                        result.bytesCopied
                     }
                 } ?: throw IllegalStateException("Android could not open the saved file")
+                if (copied != requiredBytes || item.file.length() != requiredBytes) {
+                    throw IllegalStateException("The saved copy was incomplete. Your received original is still safe.")
+                }
                 val ready = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
                 if (contentResolver.update(destination!!, ready, null, null) <= 0) {
                     throw IllegalStateException("Android could not finish saving the file")
@@ -3401,16 +3466,31 @@ class MainActivity : ComponentActivity() {
                                 val id = parts[1]
                                 val name = try { String(Base64.getDecoder().decode(parts[2]), Charsets.UTF_8) } catch (_: Exception) { "shared-file" }
                                 val safeName = name.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100).ifBlank { "shared-file" }
-                                val expected = parts[3].toLongOrNull() ?: 0L
-                                if (expected < 0L) {
+                                val expected = parts[3].toLongOrNull()
+                                val folder = File(filesDir, "received")
+                                val folderReady = folder.exists() || folder.mkdirs()
+                                if (expected == null || expected < 0L || !folderReady ||
+                                    !ReceivedFileStoragePolicy.hasEnoughSpace(expected, folder.usableSpace)) {
                                     synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|ERROR") }
-                                } else {
-                                    val folder = File(filesDir, "received").apply { mkdirs() }
-                                    val target = File(folder, "${System.currentTimeMillis()}-$safeName")
-                                    incomingTransfers[id] = IncomingTransfer(safeName, expected, target, FileOutputStream(target))
                                     runOnUiThread {
-                                        incomingTransferName = safeName
-                                        incomingProgress = 0f
+                                        chatNotice = when {
+                                            expected == null || expected < 0L -> "The sender supplied invalid file details for $safeName."
+                                            !folderReady -> "NeaRer could not prepare storage for $safeName."
+                                            else -> "Not enough free storage to receive $safeName. Free up space and try again."
+                                        }
+                                    }
+                                } else {
+                                    val target = File(folder, "${System.currentTimeMillis()}-${UUID.randomUUID().toString().take(8)}-$safeName")
+                                    try {
+                                        incomingTransfers[id] = IncomingTransfer(safeName, expected, target, FileOutputStream(target))
+                                        runOnUiThread {
+                                            incomingTransferName = safeName
+                                            incomingProgress = 0f
+                                        }
+                                    } catch (error: Exception) {
+                                        target.delete()
+                                        synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|ERROR") }
+                                        runOnUiThread { chatNotice = "Could not create space for $safeName: ${error.localizedMessage ?: "storage error"}" }
                                     }
                                 }
                             }
@@ -3422,6 +3502,10 @@ class MainActivity : ComponentActivity() {
                                 if (transfer != null) {
                                     try {
                                         val bytes = Base64.getDecoder().decode(parts[3])
+                                        val available = transfer.file.parentFile?.usableSpace ?: 0L
+                                        if (!ReceivedFileStoragePolicy.hasEnoughSpace(bytes.size.toLong(), available)) {
+                                            throw IllegalStateException("Not enough free storage to continue receiving this file.")
+                                        }
                                         transfer.receivedBytes += bytes.size
                                         if (transfer.expectedBytes > 0L && transfer.receivedBytes > transfer.expectedBytes) {
                                             incomingTransfers.remove(parts[1])?.close()
@@ -3446,8 +3530,16 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         }
-                                    } catch (_: Exception) {
-                                        incomingTransfers.remove(parts[1])?.close()
+                                    } catch (error: Exception) {
+                                        val failed = incomingTransfers.remove(parts[1])
+                                        failed?.close()
+                                        failed?.file?.delete()
+                                        synchronized(writerLock) { peerWriter?.println("FILE_DONE|${parts[1]}|ERROR") }
+                                        runOnUiThread {
+                                            incomingTransferName = null
+                                            incomingProgress = 0f
+                                            chatNotice = "Could not save ${transfer.name}: ${error.localizedMessage ?: "storage error"}. The incomplete file was discarded."
+                                        }
                                     }
                                 }
                             }
@@ -3465,9 +3557,16 @@ class MainActivity : ComponentActivity() {
                                         runOnUiThread {
                                             incomingTransferName = null
                                             incomingProgress = 0f
-                                            receivedFiles.add(0, ReceivedFile(transfer.name, transfer.file))
+                                            val catalogSaved = rememberReceivedFile(
+                                                transfer.name, transfer.file, isNeaRerAppBundle(transfer.file)
+                                            )
                                             recordNearbyTransfer("Received", transfer.name, transfer.receivedBytes, "Complete")
-                                            chatNotice = "Received and verified: ${transfer.name}. Tap it below to open."
+                                            chatNotice = if (catalogSaved) {
+                                                "Received and verified: ${transfer.name}. Tap it below to open."
+                                            } else {
+                                                "Received ${transfer.name}, but its library details could not be saved."
+                                            }
+                                            ReceivedFileNotification.show(this@MainActivity, transfer.name, transfer.receivedBytes)
                                         }
                                         synchronized(writerLock) { peerWriter?.println("FILE_DONE|$id|OK") }
                                     } else {
@@ -4690,7 +4789,8 @@ internal data class ChatMessage(
 )
 
 private fun isNeaRerAppBundle(file: File): Boolean {
-    if (!file.isFile || !file.extension.equals("zip", ignoreCase = true)) return false
+    if (!file.isFile || !(file.extension.equals("zip", ignoreCase = true) ||
+            file.extension.equals("nearerapp", ignoreCase = true))) return false
     return runCatching {
         ZipFile(file).use { archive ->
             archive.getEntry("INSTALLATION.txt") != null && archive.getEntry("base.apk") != null
