@@ -1896,6 +1896,10 @@ internal object IncomingFilePayloadPolicy {
     @Synchronized
     private fun queueDurableFanout(body: String, peerIds: Set<String>): Boolean {
         if (peerIds.isEmpty()) return false
+        if (peerIds.size > 100) {
+            listener.onStatus("A community roster exceeds the supported 100-member delivery batch.")
+            return false
+        }
         val queuedIds = mutableListOf<String>()
         var skippedUnverifiedPeer = false
         peerIds.distinct().forEach { peerId ->
