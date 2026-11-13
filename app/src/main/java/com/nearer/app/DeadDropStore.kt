@@ -73,6 +73,8 @@ internal class DeadDropStore(context: Context) {
             NeaRerIdentity.normalize(localPeerId) != localPeerId ||
             localPeerId == packet.originId) return false
         return try {
+            // Expired entries must not consume the bounded transit quota.
+            purgeExpired(now)
             val incoming = if (incomingProofBytes.isEmpty()) {
                 MeshForwardingProofChain(emptyList())
             } else {
