@@ -5,6 +5,17 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ChatEditPolicyTest {
+    private val peerA = NeaRerIdentity.generate()
+    private val peerB = NeaRerIdentity.generate()
+
+    @Test
+    fun onlyOriginalAuthorCanEditItsIncomingConversationMessage() {
+        assertEquals(true, ChatEditPolicy.mayApplyToMessage(peerA, peerA, false))
+        assertEquals(false, ChatEditPolicy.mayApplyToMessage(peerB, peerA, false))
+        assertEquals(false, ChatEditPolicy.mayApplyToMessage(peerA, peerA, true))
+        assertEquals(false, ChatEditPolicy.mayApplyToMessage(peerA, "not-a-peer", false))
+    }
+
     @Test
     fun createsNextRevisionOnlyForChangedNonBlankText() {
         val revision = ChatEditPolicy.create("Hello", 0, " Hello again ", 100L)
