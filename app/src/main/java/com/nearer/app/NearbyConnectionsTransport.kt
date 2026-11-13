@@ -365,10 +365,18 @@ internal object IncomingFilePayloadPolicy {
         deliveryHandler.postDelayed(retry, delayMs)
     }
 
-    private fun clearPendingOutgoingMessage(messageId: String) {
-        pendingOutgoingMessages.remove(messageId)?.retryTask?.let(deliveryHandler::removeCallbacks)
+    @Synchronized
+    private fun clearPendingOutgoingMessage(messageId: String): Boolean {
+        val removed = pendingOutgoingMessages.remove(messageId) ?: return false
+        removed.retryTask?.let(deliveryHandler::removeCallbacks)
         outgoingMessageTargets.remove(messageId)
-        persistPendingOutbox()
+        // Do not report final delivery unless the queue removal is durable. If the
+        // write fails, retain a queued copy for a later reconnect; receiver-side
+        // duplicate suppression makes that retry safe.
+        if (persistPendingOutbox()) return true
+        removed.endpointId = ""
+        pendingOutgoingMessages[messageId] = removed
+        return false
     }
 
     private fun hasSeenMessageId(messageId: String): Boolean =
@@ -1612,8 +1620,8 @@ internal object IncomingFilePayloadPolicy {
         if (kind == "ack") {
             val acknowledgedId = envelope.optString("id")
             if (acknowledgedId.isNotBlank() && outgoingMessageTargets[acknowledgedId] == endpointId) {
-                clearPendingOutgoingMessage(acknowledgedId)
-                listener.onMessageStatus(acknowledgedId, "Delivered")
+                val retired = clearPendingOutgoingMessage(acknowledgedId)
+                listener.onMessageStatus(acknowledgedId, if (retired) "Delivered" else "Queued")
             }
             return
         }
