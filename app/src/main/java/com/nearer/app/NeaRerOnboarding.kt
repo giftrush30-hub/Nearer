@@ -119,13 +119,14 @@ private val NeaRerOnboardingQuestions = listOf(
 @Composable
 internal fun NeaRerOnboarding(
     publicId: String,
-    onComplete: (String, String, Uri?, Map<String, String>) -> Unit
+    onComplete: (String, String, Uri?, Map<String, String>, String?) -> Unit
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     var page by remember { mutableStateOf(0) }
     BackHandler(enabled = page > 0) { page -= 1 }
     var displayName by remember { mutableStateOf("") }
+    var optionalPhoneNumber by remember { mutableStateOf("") }
     var avatarId by remember { mutableStateOf("orbit") }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
     val answers = remember { mutableStateMapOf<String, String>() }
@@ -215,7 +216,17 @@ internal fun NeaRerOnboarding(
                         shape = RoundedCornerShape(16.dp)
                     )
                     Spacer(Modifier.height(12.dp))
-                    Text("You can change this whenever you like. No phone number or email needed.", color = Color(0xFF8195AF), fontSize = 12.sp, textAlign = TextAlign.Center)
+                    OutlinedTextField(
+                        value = optionalPhoneNumber,
+                        onValueChange = { value -> optionalPhoneNumber = value.filter { it.isDigit() || it == '+' || it == ' ' || it == '-' || it == '(' || it == ')' }.take(24) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Phone number (optional)") },
+                        placeholder = { Text("e.g. +234 800 000 0000") },
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text("Your phone number is optional and stays private on this device. Your NeaRer ID remains your main identity.", color = Color(0xFF8195AF), fontSize = 12.sp, textAlign = TextAlign.Center)
                 }
                 2 -> {
                     NeaRerOnboardingQuestions.forEach { question ->
@@ -317,7 +328,7 @@ internal fun NeaRerOnboarding(
                 Button(
                     onClick = {
                         if (page < 4) page += 1
-                        else onComplete(cleanName, avatarId, photoUri, answers.toMap())
+                        else onComplete(cleanName, avatarId, photoUri, answers.toMap(), optionalPhoneNumber.trim().ifBlank { null })
                     },
                     enabled = canContinue,
                     modifier = Modifier.weight(if (page > 0) 1f else 1f).height(52.dp),
