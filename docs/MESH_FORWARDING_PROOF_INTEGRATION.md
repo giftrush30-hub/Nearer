@@ -59,8 +59,8 @@ For each accepted packet:
 ## Release gates
 
 - Versioned wire-format codec and golden vectors for v1 and the scalable version.
-- Atomic encrypted Dead Drop persistence of packet plus proof sidecar.
-- Idempotent append across retries, app restarts and duplicate arrivals.
+- CI and instrumentation coverage for atomic encrypted Dead Drop persistence of packet plus proof sidecar.
+- Idempotent append across retries, app restarts and duplicate arrivals, including interrupted process writes.
 - Trust-store lookup and key-rotation behavior.
 - Strict chunk framing/reassembly and total proof-sidecar budget tests.
 - Tamper, missing-key, replay, duplicate-hop, rollback and process-death tests.
