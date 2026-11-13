@@ -3,6 +3,7 @@ package com.nearer.app
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.google.android.gms.nearby.Nearby
@@ -466,6 +467,7 @@ internal object IncomingFilePayloadPolicy {
     }
     @Volatile private var started = false
     @Volatile private var startGeneration = 0
+    private val connectionTimingMeter = NearbyConnectionTimingMeter()
     @Volatile private var localName = "NeaRer User"
 
     /**
@@ -491,6 +493,7 @@ internal object IncomingFilePayloadPolicy {
     }
     private val lifecycle = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(id: String, info: ConnectionInfo) {
+            connectionTimingMeter.begin(id, SystemClock.elapsedRealtime())
             val (name, stableId) = decodeName(info.endpointName)
             synchronized(names) { names[id] = name; stableIds[id] = stableId }
             listener.onRequest(id, name, info.authenticationToken)
@@ -501,9 +504,13 @@ internal object IncomingFilePayloadPolicy {
                 val details = synchronized(names) { (names[id] ?: "Nearby NeaRer user") to stableIds[id].orEmpty() }
                 beginPeerHandshake(id)
                 listener.onStatus("Nearby link established. Verifying this phone’s NeaRer identity…")
-            } else listener.onStatus("Nearby connection was not approved. Try again.")
+            } else {
+                connectionTimingMeter.cancel(id)
+                listener.onStatus("Nearby connection was not approved. Try again.")
+            }
         }
         override fun onDisconnected(id: String) {
+            connectionTimingMeter.cancel(id)
             val wasAuthenticated = authenticatedEndpoints.remove(id)
             peerHandshakes.remove(id)
             messageSessions.remove(id)
@@ -859,7 +866,11 @@ internal object IncomingFilePayloadPolicy {
                 } else {
                     "Encrypted link established with ${details.first} using its previously pinned device identity and fresh signed recipient binding."
                 }
-                listener.onStatus(trustNotice)
+                val authenticationDuration = connectionTimingMeter.finish(endpointId, SystemClock.elapsedRealtime())
+                val timingNotice = authenticationDuration?.let {
+                    " Secure nearby connection and identity verification took ${it} ms."
+                }.orEmpty()
+                listener.onStatus(trustNotice + timingNotice)
                 // Advertise authenticated direct neighbors and learned routes only after
                 // the recipient identity binding has been verified.
                 val endpoints = synchronized(activeEndpoints) { activeEndpoints.filter { authenticatedEndpoints.contains(it) } }
@@ -1544,6 +1555,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun failPeerHandshake(endpointId: String, reason: String) {
+        connectionTimingMeter.cancel(endpointId)
         peerHandshakes.remove(endpointId)
         messageSessions.remove(endpointId)
         authenticatedEndpoints.remove(endpointId)
@@ -1845,12 +1857,15 @@ internal object IncomingFilePayloadPolicy {
     }
 
     fun request(id: String, onFailure: (() -> Unit)? = null) {
-        client.requestConnection(encodedName(), id, lifecycle).addOnFailureListener {
-            // Let discovery clear its per-endpoint suppression so a later scan
-            // can retry after a transient radio or SDK failure.
-            onFailure?.invoke()
-            listener.onStatus("Connection request failed: ${it.localizedMessage ?: "try again"}")
-        }
+        connectionTimingMeter.begin(id, SystemClock.elapsedRealtime())
+        client.requestConnection(encodedName(), id, lifecycle)
+            .addOnFailureListener {
+                connectionTimingMeter.cancel(id)
+                // Let discovery clear its per-endpoint suppression so a later scan
+                // can retry after a transient radio or SDK failure.
+                onFailure?.invoke()
+                listener.onStatus("Connection request failed: ${it.localizedMessage ?: "try again"}")
+            }
     }
     fun accept(id: String) { client.acceptConnection(id, payloads).addOnFailureListener { listener.onStatus("Could not accept nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun reject(id: String) { client.rejectConnection(id).addOnFailureListener { listener.onStatus("Could not reject nearby connection: ${it.localizedMessage ?: "try again"}") } }
