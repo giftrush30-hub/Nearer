@@ -11,6 +11,7 @@ import java.nio.charset.CodingErrorAction
 internal object TransferResumeMessageCodec {
     private const val MAGIC = 0x4E525253 // NRRS
     private const val DECISION_MAGIC = 0x4E525244 // NRRD
+    private const val NO_RESUME_MAGIC = 0x4E52524E // NRRN
     private const val VERSION = 1
     private const val MAX_MESSAGE_BYTES = 4_096
     private const val MAX_ID_BYTES = 128
@@ -79,6 +80,37 @@ internal object TransferResumeMessageCodec {
             throw error
         } catch (error: Exception) {
             throw IllegalArgumentException("Malformed resume proposal", error)
+        }
+    }
+
+    /** Receiver's explicit signal that it has no resumable checkpoint for this payload. */
+    data class NoResumeEnvelope(val payloadId: Long)
+
+    fun encodeNoResume(payloadId: Long): ByteArray {
+        require(payloadId >= 0L) { "Invalid Nearby payload ID" }
+        return ByteArrayOutputStream().also { output ->
+            DataOutputStream(output).use { data ->
+                data.writeInt(NO_RESUME_MAGIC)
+                data.writeByte(VERSION)
+                data.writeLong(payloadId)
+            }
+        }.toByteArray()
+    }
+
+    fun decodeNoResume(bytes: ByteArray): NoResumeEnvelope {
+        require(bytes.size == NO_RESUME_MESSAGE_BYTES) { "Invalid no-resume message length" }
+        return try {
+            DataInputStream(ByteArrayInputStream(bytes)).use { data ->
+                require(data.readInt() == NO_RESUME_MAGIC) { "Invalid no-resume message signature" }
+                require(data.readUnsignedByte() == VERSION) { "Unsupported no-resume message version" }
+                val payloadId = data.readLong()
+                require(payloadId >= 0L && data.available() == 0) { "Invalid no-resume payload ID" }
+                NoResumeEnvelope(payloadId)
+            }
+        } catch (error: IllegalArgumentException) {
+            throw error
+        } catch (error: Exception) {
+            throw IllegalArgumentException("Malformed no-resume message", error)
         }
     }
 
@@ -171,4 +203,5 @@ internal object TransferResumeMessageCodec {
 
     private const val MIN_MESSAGE_BYTES = 4 + 1 + 8 + 2 * 4 + 8 + 1 + 8 + 2 + 64
     private const val MIN_DECISION_MESSAGE_BYTES = 4 + 1 + 8 + 8 + 1 + 1
+    private const val NO_RESUME_MESSAGE_BYTES = 4 + 1 + 8
 }
