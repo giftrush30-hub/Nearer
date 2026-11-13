@@ -80,6 +80,34 @@ class TransferResumeCoordinatorTest {
         }
     }
 
+    @Test fun opensVerifiedResumeWhenProviderHasNoModificationTimestamp() {
+        val root = Files.createTempDirectory("nearer-resume-no-mtime").toFile()
+        try {
+            val store = store(root)
+            val coordinator = TransferResumeCoordinator(store, TransferResumeStreamWriter(store))
+            val bytes = ByteArray(chunk * 2 + 19) { (it % 211).toByte() }
+            val item = item(bytes.size.toLong())
+            val partial = store.partialFileFor("transfer-no-mtime", item.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(bytes.copyOfRange(0, chunk))
+            }
+            store.checkpoint("transfer-no-mtime", item, null, chunk.toLong(), peerId)
+            val offer = coordinator.offersForAuthenticatedSender(peerId, true, true).single()
+            val source = File(root, "source-no-mtime.bin").apply { writeBytes(bytes) }
+            val opened = coordinator.openValidatedSourceAtOffset(
+                offer.proposal, "transfer-no-mtime", item, source, null,
+                "BCDEFG234567", true, true
+            ) ?: throw AssertionError("A size- and prefix-verified source should open without mtime metadata")
+            opened.use { stream ->
+                assertEquals(chunk.toLong(), stream.acceptedOffsetBytes)
+                assertArrayEquals(bytes.copyOfRange(chunk, bytes.size), stream.input.readBytes())
+            }
+            assertTrue(partial.isFile)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun receivesRemainingStreamVerifiesWholeDigestAndPublishesWithoutOverwriting() {
         val root = Files.createTempDirectory("nearer-resume-coordinator-complete").toFile()
         try {
