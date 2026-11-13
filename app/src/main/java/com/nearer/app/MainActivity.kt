@@ -956,11 +956,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun hasDiscoveryPermission(): Boolean {
-        val permission = if (Build.VERSION.SDK_INT >= 33) {
-            Manifest.permission.NEARBY_WIFI_DEVICES
-        } else {
-            Manifest.permission.ACCESS_FINE_LOCATION
-        }
+        val permission = NearbyPermissionPolicy.discoveryPermission(Build.VERSION.SDK_INT)
         return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
     }
 
@@ -1100,17 +1096,8 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) { }
     }
 
-    private fun nearbyPermissionList(): Array<String> {
-        val permissions = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= 31) {
-            permissions += Manifest.permission.BLUETOOTH_SCAN
-            permissions += Manifest.permission.BLUETOOTH_ADVERTISE
-            permissions += Manifest.permission.BLUETOOTH_CONNECT
-        }
-        if (Build.VERSION.SDK_INT >= 33) permissions += Manifest.permission.NEARBY_WIFI_DEVICES
-        else permissions += Manifest.permission.ACCESS_FINE_LOCATION
-        return permissions.distinct().toTypedArray()
-    }
+    private fun nearbyPermissionList(): Array<String> =
+        NearbyPermissionPolicy.runtimePermissions(Build.VERSION.SDK_INT).toTypedArray()
 
     private fun hasNearbyPermissions(): Boolean =
         nearbyPermissionList().all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
@@ -3473,7 +3460,7 @@ private fun NeaRerHome(
         else if (!granted) openSendNotice = "Android's nearby Wi-Fi permission is required to start OpenSend."
     }
     val pickOpenSendFiles: () -> Unit = {
-        val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.NEARBY_WIFI_DEVICES else Manifest.permission.ACCESS_FINE_LOCATION
+        val permission = NearbyPermissionPolicy.discoveryPermission(Build.VERSION.SDK_INT)
         if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
             openSendPicker.launch(arrayOf("*/*"))
         } else {
@@ -3606,7 +3593,7 @@ private fun NeaRerHome(
     }
     val fastSharePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) {
-            val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.NEARBY_WIFI_DEVICES else Manifest.permission.ACCESS_FINE_LOCATION
+            val permission = NearbyPermissionPolicy.discoveryPermission(Build.VERSION.SDK_INT)
             if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) fastShare.start(uris)
             else {
                 pendingFastShareUris = uris
