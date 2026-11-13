@@ -28,7 +28,10 @@ class TransferResumeStreamMetadataCodecTest {
     }
 
     @Test fun supportsProvidersWithoutModificationTimestamp() {
-        val original = metadata().copy(sourceModifiedAtMillis = null)
+        val original = metadata().copy(
+            sourceModifiedAtMillis = null,
+            wholeFileSha256 = metadata().wholeFileSha256.lowercase()
+        )
         assertEquals(original, TransferResumeStreamMetadataCodec.decode(
             TransferResumeStreamMetadataCodec.encode(original)
         ))
