@@ -6,9 +6,9 @@ import org.junit.Test
 
 class CommunityMemberIdentityPolicyTest {
     @Test fun acceptsOnlyTheStableIdentityStoredInTheRoster() {
-        assertTrue(CommunityMemberIdentityPolicy.isAuthorizedMember(listOf("PEER1234"), "PEER1234"))
-        assertFalse(CommunityMemberIdentityPolicy.isAuthorizedMember(listOf("PEER1234"), "OTHER567"))
-        assertFalse(CommunityMemberIdentityPolicy.isAuthorizedMember(listOf("Alice"), "PEER1234"))
+        assertTrue(CommunityMemberIdentityPolicy.isAuthorizedMember(listOf("ABCD23456789"), "ABCD23456789"))
+        assertFalse(CommunityMemberIdentityPolicy.isAuthorizedMember(listOf("ABCD23456789"), "EFGH23456789"))
+        assertFalse(CommunityMemberIdentityPolicy.isAuthorizedMember(listOf("Alice"), "ABCD23456789"))
     }
 
     @Test fun rejectsBlankAndOversizedPeerIds() {
@@ -17,14 +17,14 @@ class CommunityMemberIdentityPolicyTest {
     }
 
     @Test fun firstRosterSyncCanBindOnlyItsAnnouncedOwnerIdentity() {
-        assertTrue(CommunityMemberIdentityPolicy.canAcceptRoster("", "OWNER123", "OWNER123"))
-        assertFalse(CommunityMemberIdentityPolicy.canAcceptRoster("", "OTHER123", "OWNER123"))
+        assertTrue(CommunityMemberIdentityPolicy.canAcceptRoster("", "ABCD23456789", "ABCD23456789"))
+        assertFalse(CommunityMemberIdentityPolicy.canAcceptRoster("", "EFGH23456789", "ABCD23456789"))
         assertFalse(CommunityMemberIdentityPolicy.canAcceptRoster("", "", ""))
     }
 
     @Test fun laterRosterSyncMustComeFromThePinnedOwner() {
-        assertTrue(CommunityMemberIdentityPolicy.canAcceptRoster("OWNER123", "OWNER123", "OWNER123"))
-        assertFalse(CommunityMemberIdentityPolicy.canAcceptRoster("OWNER123", "OTHER123", "OWNER123"))
-        assertFalse(CommunityMemberIdentityPolicy.canAcceptRoster("OWNER123", "OWNER123", "OTHER123"))
+        assertTrue(CommunityMemberIdentityPolicy.canAcceptRoster("ABCD23456789", "ABCD23456789", "ABCD23456789"))
+        assertFalse(CommunityMemberIdentityPolicy.canAcceptRoster("ABCD23456789", "EFGH23456789", "ABCD23456789"))
+        assertFalse(CommunityMemberIdentityPolicy.canAcceptRoster("ABCD23456789", "ABCD23456789", "EFGH23456789"))
     }
 }
