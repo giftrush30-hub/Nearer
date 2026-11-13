@@ -167,6 +167,9 @@ class MainActivity : ComponentActivity() {
     private val chatMessages = mutableStateListOf<ChatMessage>()
     private val communityGroups = mutableStateListOf<CommunityGroup>()
     private val communityMessages = mutableStateListOf<CommunityChatMessage>()
+    // Maps durable transport copies back to their group bubble and stable recipient.
+    // This survives process restart so late ACKs update the correct group message.
+    private val communityDeliveryRefs = ConcurrentHashMap<String, CommunityDeliveryRef>()
     private var selectedCommunityCode by mutableStateOf<String?>(null)
     private var communityNotice by mutableStateOf("Create or join a nearby group.")
     private var incomingGameInvite by mutableStateOf<GameInvite?>(null)
@@ -530,6 +533,22 @@ class MainActivity : ComponentActivity() {
                             "Delivered" -> "Your message was received by the other NeaRer phone."
                             "Queued" -> "Not delivered yet. NeaRer saved it and will retry when this person reconnects."
                             else -> "Message delivery failed. Reconnect and try again."
+                        }
+                    }
+
+                    val ref = communityDeliveryRefs[messageId]
+                    if (ref != null) {
+                        val communityIndex = communityMessages.indexOfFirst { it.id == ref.communityMessageId }
+                        if (communityIndex >= 0) {
+                            val message = communityMessages[communityIndex]
+                            communityMessages[communityIndex] = message.copy(
+                                deliveryByPeerId = message.deliveryByPeerId + (ref.peerId to status)
+                            )
+                            if (status == "Delivered") communityDeliveryRefs.remove(messageId)
+                            persistCommunityData()
+                        } else if (status == "Delivered") {
+                            communityDeliveryRefs.remove(messageId)
+                            persistCommunityData()
                         }
                     }
                 }
@@ -1670,8 +1689,33 @@ class MainActivity : ComponentActivity() {
                     .put("memberPeerIds", JSONArray(it.memberPeerIds))
             ) }
             val messages = JSONArray()
-            communityMessages.takeLast(300).forEach { messages.put(JSONObject().put("id", it.id).put("code", it.groupCode).put("sender", it.sender).put("body", it.body).put("time", it.time)) }
-            prefs.edit().putString("community_groups", groups.toString()).putString("community_messages", messages.toString()).commit()
+            communityMessages.takeLast(300).forEach { message ->
+                val delivery = JSONObject()
+                message.deliveryByPeerId.forEach { (peerId, status) -> delivery.put(peerId, status) }
+                messages.put(
+                    JSONObject()
+                        .put("id", message.id)
+                        .put("code", message.groupCode)
+                        .put("sender", message.sender)
+                        .put("body", message.body)
+                        .put("time", message.time)
+                        .put("deliveryByPeerId", delivery)
+                )
+            }
+            val deliveryRefs = JSONArray()
+            communityDeliveryRefs.forEach { (transportId, ref) ->
+                deliveryRefs.put(
+                    JSONObject()
+                        .put("transportId", transportId)
+                        .put("communityMessageId", ref.communityMessageId)
+                        .put("peerId", ref.peerId)
+                )
+            }
+            prefs.edit()
+                .putString("community_groups", groups.toString())
+                .putString("community_messages", messages.toString())
+                .putString("community_delivery_refs", deliveryRefs.toString())
+                .commit()
         } catch (_: Exception) { false }
     }
     private fun restoreCommunityData() {
@@ -1695,9 +1739,27 @@ class MainActivity : ComponentActivity() {
             val messages = JSONArray(prefs.getString("community_messages", "[]"))
             for (i in 0 until messages.length()) {
                 val item = messages.getJSONObject(i)
-                communityMessages.add(CommunityChatMessage(item.getString("id"), item.getString("code"), item.optString("sender"), item.getString("body"), item.optLong("time")))
+                val deliveryJson = item.optJSONObject("deliveryByPeerId") ?: JSONObject()
+                val delivery = deliveryJson.keys().asSequence().associateWith { deliveryJson.optString(it) }
+                communityMessages.add(
+                    CommunityChatMessage(
+                        item.getString("id"), item.getString("code"), item.optString("sender"),
+                        item.getString("body"), item.optLong("time"), delivery
+                    )
+                )
             }
-        } catch (_: Exception) { communityGroups.clear(); communityMessages.clear() }
+            communityDeliveryRefs.clear()
+            val refs = JSONArray(prefs.getString("community_delivery_refs", "[]"))
+            for (i in 0 until refs.length()) {
+                val item = refs.optJSONObject(i) ?: continue
+                val transportId = item.optString("transportId")
+                val messageId = item.optString("communityMessageId")
+                val peerId = item.optString("peerId")
+                if (transportId.isNotBlank() && messageId.isNotBlank() && peerId.isNotBlank()) {
+                    communityDeliveryRefs[transportId] = CommunityDeliveryRef(messageId, peerId)
+                }
+            }
+        } catch (_: Exception) { communityGroups.clear(); communityMessages.clear(); communityDeliveryRefs.clear() }
     }
     private fun sendCommunityPacket(packet: JSONObject): Boolean {
         val body = "NR_COMMUNITY:$packet"
@@ -1845,9 +1907,21 @@ class MainActivity : ComponentActivity() {
             return
         }
         val targetPeerIds = group.memberPeerIds.filter { it != localPeerId }.toSet()
-        val queued = transport.sendDurableToPeerIds("NR_COMMUNITY:$packet", targetPeerIds)
+        val receipts = transport.sendDurableToPeerIdsWithReceipts("NR_COMMUNITY:$packet", targetPeerIds)
+        val deliveryByPeerId = targetPeerIds.associateWith { peerId ->
+            if (receipts.values.contains(peerId)) "Queued" else "Not verified"
+        }
+        val localIndex = communityMessages.indexOfFirst { it.id == id }
+        if (localIndex >= 0) {
+            communityMessages[localIndex] = communityMessages[localIndex].copy(deliveryByPeerId = deliveryByPeerId)
+        }
+        receipts.forEach { (transportId, peerId) ->
+            communityDeliveryRefs[transportId] = CommunityDeliveryRef(id, peerId)
+        }
+        persistCommunityData()
+        val queued = receipts.isNotEmpty()
         communityNotice = if (queued) {
-            "Group message saved locally and queued to verified group identities. Offline verified members will receive it when they reconnect."
+            "Group message saved. " + receipts.size + " verified recipient copy/copies queued; delivery receipts update separately."
         } else {
             "Message saved locally, but no verified group member could be queued. Connect to members once and sync the identity roster."
         }
@@ -4253,7 +4327,15 @@ private data class CommunityGroup(
     val ownerPeerId: String = "",
     val memberPeerIds: List<String> = emptyList()
 )
-private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
+private data class CommunityChatMessage(
+    val id: String,
+    val groupCode: String,
+    val sender: String,
+    val body: String,
+    val time: Long,
+    val deliveryByPeerId: Map<String, String> = emptyMap()
+)
+private data class CommunityDeliveryRef(val communityMessageId: String, val peerId: String)
 data class GameInvite(val matchId: String, val sender: String)
 
 private data class NearbyPerson(val name: String, val lastSeenAt: Long)
