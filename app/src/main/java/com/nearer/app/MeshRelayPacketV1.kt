@@ -44,6 +44,20 @@ internal data class MeshRelayPacketV1(
         return output.toByteArray()
     }
 
+    /** Digest of the immutable origin-signed packet; mutable hop counters are excluded. */
+    fun immutablePacketDigest(): ByteArray {
+        val output = ByteArrayOutputStream()
+        DataOutputStream(output).use { data ->
+            data.write("NeaRer-immutable-packet-digest-v1".toByteArray(Charsets.US_ASCII))
+            val immutable = signedBytes()
+            data.writeInt(immutable.size)
+            data.write(immutable)
+            data.writeInt(originSignature.size)
+            data.write(originSignature)
+        }
+        return MessageDigest.getInstance("SHA-256").digest(output.toByteArray())
+    }
+
     fun validate(nowMs: Long): Boolean = try {
         require(NeaRerIdentity.normalize(originId) == originId)
         require(NeaRerIdentity.normalize(destinationId) == destinationId)
