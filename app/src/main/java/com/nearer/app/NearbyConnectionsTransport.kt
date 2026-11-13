@@ -1886,15 +1886,6 @@ internal object IncomingFilePayloadPolicy {
         return queueDurableFanout(body, targets)
     }
 
-    /** Persist and fan out a copy to every currently connected authenticated nearby peer. */
-    fun sendDurableToAll(body: String): Boolean {
-        if (body.isBlank() || body.length > 4000) return false
-        val targets = synchronized(activeEndpoints) {
-            activeEndpoints.filter { authenticatedEndpoints.contains(it) }
-        }
-        return queueDurableFanout(body, targets)
-    }
-
     /**
      * Add every recipient copy to the encrypted outbox and commit once before
      * attempting any network send. Existing reconnect handling retries each
