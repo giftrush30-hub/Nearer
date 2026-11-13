@@ -1917,14 +1917,16 @@ internal object IncomingFilePayloadPolicy {
                 skippedUnverifiedPeer = true
                 return@forEach
             }
-            val endpoint = endpointForStablePeer(peerId).orEmpty()
-            if (endpoint.isNotBlank() &&
-                (!authenticatedEndpoints.contains(endpoint) ||
-                    !synchronized(activeEndpoints) { activeEndpoints.contains(endpoint) } ||
-                    messageSessions[endpoint] == null)) {
-                skippedUnverifiedPeer = true
-                return@forEach
-            }
+            val candidateEndpoint = endpointForStablePeer(peerId).orEmpty()
+            // A discovered endpoint may still be completing its identity handshake.
+            // Treat that peer as temporarily offline, not unverified: persist the copy
+            // without an endpoint so authentication completion can retry it safely.
+            val endpoint = CommunityDeliveryPolicy.usableEndpoint(
+                candidateEndpoint,
+                authenticated = candidateEndpoint.isNotBlank() && authenticatedEndpoints.contains(candidateEndpoint),
+                active = candidateEndpoint.isNotBlank() && synchronized(activeEndpoints) { activeEndpoints.contains(candidateEndpoint) },
+                sessionReady = candidateEndpoint.isNotBlank() && messageSessions[candidateEndpoint] != null
+            )
 
             val messageId = UUID.randomUUID().toString()
             val envelope = JSONObject()
