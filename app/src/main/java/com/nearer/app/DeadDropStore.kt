@@ -78,6 +78,9 @@ internal class DeadDropStore(context: Context) {
             } else {
                 MeshForwardingProofChain.decode(incomingProofBytes)
             }
+            // The proof-prefix length must agree with the packet's persisted
+            // forwarding counter: one acceptance is added at each receiving node.
+            if (incoming.proofs.size != packet.hopsTaken) return false
             if (!incoming.verifyPrefix(
                     packet.packetId, packet.immutablePacketDigest(), packet.originId,
                     previousHopPeerId, trustedAcceptingSigningKey, now
