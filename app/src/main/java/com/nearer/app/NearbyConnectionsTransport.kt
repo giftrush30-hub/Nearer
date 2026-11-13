@@ -3,6 +3,7 @@ package com.nearer.app
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.google.android.gms.nearby.Nearby
@@ -464,16 +465,27 @@ internal object IncomingFilePayloadPolicy {
             false
         }
     }
-    private var started = false
+    @Volatile private var started = false
+    @Volatile private var startGeneration = 0
+    private val connectionTimingMeter = NearbyConnectionTimingMeter()
     @Volatile private var localName = "NeaRer User"
 
-    private val discovery = object : EndpointDiscoveryCallback() {
+    /**
+     * Discovery callbacks can arrive after stopDiscovery() or after a new scan
+     * starts. Each callback is bound to one generation so stale events cannot
+     * re-add departed peers to the current nearby list.
+     */
+    private fun discoveryCallback(generation: Int) = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(id: String, info: DiscoveredEndpointInfo) {
+            if (!NearbyDiscoveryGenerationPolicy.isCurrent(started, generation, startGeneration)) return
             val (name, stableId) = decodeName(info.endpointName)
             synchronized(names) { names[id] = name; stableIds[id] = stableId }
             listener.onFound(id, name, stableId)
         }
         override fun onEndpointLost(id: String) {
+            if (!NearbyDiscoveryGenerationPolicy.isCurrent(started, generation, startGeneration)) return
+            // Losing a discovery advertisement is not the same as disconnecting
+            // an already established direct connection.
             if (synchronized(activeEndpoints) { activeEndpoints.contains(id) }) return
             val stableId = synchronized(names) { stableIds.remove(id).orEmpty().also { names.remove(id) } }
             listener.onLost(id, stableId)
@@ -481,6 +493,7 @@ internal object IncomingFilePayloadPolicy {
     }
     private val lifecycle = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(id: String, info: ConnectionInfo) {
+            connectionTimingMeter.begin(id, SystemClock.elapsedRealtime())
             val (name, stableId) = decodeName(info.endpointName)
             synchronized(names) { names[id] = name; stableIds[id] = stableId }
             listener.onRequest(id, name, info.authenticationToken)
@@ -491,9 +504,13 @@ internal object IncomingFilePayloadPolicy {
                 val details = synchronized(names) { (names[id] ?: "Nearby NeaRer user") to stableIds[id].orEmpty() }
                 beginPeerHandshake(id)
                 listener.onStatus("Nearby link established. Verifying this phone’s NeaRer identity…")
-            } else listener.onStatus("Nearby connection was not approved. Try again.")
+            } else {
+                connectionTimingMeter.cancel(id)
+                listener.onStatus("Nearby connection was not approved. Try again.")
+            }
         }
         override fun onDisconnected(id: String) {
+            connectionTimingMeter.cancel(id)
             val wasAuthenticated = authenticatedEndpoints.remove(id)
             peerHandshakes.remove(id)
             messageSessions.remove(id)
@@ -854,7 +871,11 @@ internal object IncomingFilePayloadPolicy {
                 } else {
                     "Encrypted link established with ${details.first} using its previously pinned device identity and fresh signed recipient binding."
                 }
-                listener.onStatus(trustNotice)
+                val authenticationDuration = connectionTimingMeter.finish(endpointId, SystemClock.elapsedRealtime())
+                val timingNotice = authenticationDuration?.let {
+                    " Secure nearby connection and identity verification took ${it} ms."
+                }.orEmpty()
+                listener.onStatus(trustNotice + timingNotice)
                 // Advertise authenticated direct neighbors and learned routes only after
                 // the recipient identity binding has been verified.
                 val endpoints = synchronized(activeEndpoints) { activeEndpoints.filter { authenticatedEndpoints.contains(it) } }
@@ -1539,6 +1560,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun failPeerHandshake(endpointId: String, reason: String) {
+        connectionTimingMeter.cancel(endpointId)
         peerHandshakes.remove(endpointId)
         messageSessions.remove(endpointId)
         authenticatedEndpoints.remove(endpointId)
@@ -1792,14 +1814,21 @@ internal object IncomingFilePayloadPolicy {
 
     private fun safeFileName(raw: String): String = TransferFileNamePolicy.safeName(raw)
 
-    private fun startAdvertising() {
+    private fun startAdvertising(generation: Int) {
         val options = AdvertisingOptions.Builder().setStrategy(connectionStrategy).build()
         client.startAdvertising(encodedName(), serviceId, lifecycle, options).addOnFailureListener {
-            // Do not leave the transport marked as started when advertising failed.
-            // Stop the other half of discovery too, so the next user retry starts cleanly.
-            stopSearching()
-            listener.onStatus("Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again.")
+            failStart(
+                generation,
+                "Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again."
+            )
         }
+    }
+
+    private fun failStart(generation: Int, message: String) {
+        // A late failure from an old start must not stop a newer discovery session.
+        if (!started || generation != startGeneration) return
+        stopSearching()
+        listener.onStatus(message)
     }
 
     fun localIdentityId(): String = localStableId
@@ -1814,26 +1843,37 @@ internal object IncomingFilePayloadPolicy {
         val clean = name.trim().replace("|", " ").take(23).ifBlank { "NeaRer User" }
         if (clean == localName) return
         localName = clean
-        if (started) { client.stopAdvertising(); startAdvertising() }
+        if (started) { client.stopAdvertising(); startAdvertising(startGeneration) }
     }
 
     fun start() {
         if (started) return
         started = true
+        val generation = ++startGeneration
         val discovering = DiscoveryOptions.Builder().setStrategy(connectionStrategy).build()
-        startAdvertising()
-        client.startDiscovery(serviceId, discovery, discovering).addOnFailureListener {
-            // Advertising may already have succeeded; roll both operations back together.
-            // This resets started so a later tap can retry instead of silently doing nothing.
-            stopSearching()
-            listener.onStatus("Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again.")
+        startAdvertising(generation)
+        client.startDiscovery(serviceId, discoveryCallback(generation), discovering).addOnFailureListener {
+            failStart(
+                generation,
+                "Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again."
+            )
         }
         listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
     }
 
-    fun request(id: String) {
-        client.requestConnection(encodedName(), id, lifecycle).addOnFailureListener {
-            listener.onStatus("Connection request failed: ${it.localizedMessage ?: "try again"}")
+    fun request(id: String, onFailure: (() -> Unit)? = null) {
+        connectionTimingMeter.begin(id, SystemClock.elapsedRealtime())
+        try {
+            client.requestConnection(encodedName(), id, lifecycle)
+                .addOnFailureListener {
+                    connectionTimingMeter.cancel(id)
+                    onFailure?.invoke()
+                    listener.onStatus("Connection request failed: ${it.localizedMessage ?: "try again"}")
+                }
+        } catch (error: Exception) {
+            connectionTimingMeter.cancel(id)
+            onFailure?.invoke()
+            listener.onStatus("Connection request failed: ${error.localizedMessage ?: "try again"}")
         }
     }
     fun accept(id: String) { client.acceptConnection(id, payloads).addOnFailureListener { listener.onStatus("Could not accept nearby connection: ${it.localizedMessage ?: "try again"}") } }
@@ -2257,11 +2297,13 @@ internal object IncomingFilePayloadPolicy {
 
     fun stopSearching() {
         started = false
+        startGeneration += 1
         try { client.stopAdvertising() } catch (_: Exception) { }
         try { client.stopDiscovery() } catch (_: Exception) { }
     }
 
     fun disconnect() {
+        connectionTimingMeter.clearAll()
         try { client.stopAllEndpoints() } catch (_: Exception) { }
         synchronized(activeEndpoints) { activeEndpoints.clear() }
         authenticatedEndpoints.clear()
