@@ -448,7 +448,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     var safelyStored = false
                     if (body.startsWith("NR_COMMUNITY:")) {
-                        handleCommunityPacket(senderName, body.removePrefix("NR_COMMUNITY:"))
+                        handleCommunityPacket(senderName, nearbyTransport?.stableIdentityForEndpoint(id).orEmpty(), body.removePrefix("NR_COMMUNITY:"))
                         // Acknowledge only after the updated community state reaches disk.
                         safelyStored = persistCommunityData()
                     } else if (chatMessages.any { it.id == messageId }) {
@@ -1637,7 +1637,7 @@ class MainActivity : ComponentActivity() {
         return try {
             val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
             val groups = JSONArray()
-            communityGroups.forEach { groups.put(JSONObject().put("code", it.code).put("name", it.name).put("members", JSONArray(it.members))) }
+            communityGroups.forEach { groups.put(JSONObject().put("code", it.code).put("name", it.name).put("members", JSONArray(it.members)).put("memberIds", JSONArray(it.memberIds)).put("ownerId", it.ownerId)) }
             val messages = JSONArray()
             communityMessages.takeLast(300).forEach { messages.put(JSONObject().put("id", it.id).put("code", it.groupCode).put("sender", it.sender).put("body", it.body).put("time", it.time)) }
             prefs.edit().putString("community_groups", groups.toString()).putString("community_messages", messages.toString()).commit()
@@ -1650,7 +1650,8 @@ class MainActivity : ComponentActivity() {
             for (i in 0 until groups.length()) {
                 val item = groups.getJSONObject(i)
                 val members = item.optJSONArray("members") ?: JSONArray()
-                communityGroups.add(CommunityGroup(item.getString("code"), item.optString("name"), (0 until members.length()).map { members.optString(it) }))
+                val memberIds = item.optJSONArray("memberIds") ?: JSONArray()
+                communityGroups.add(CommunityGroup(item.getString("code"), item.optString("name"), (0 until members.length()).map { members.optString(it) }, (0 until memberIds.length()).map { memberIds.optString(it) }.filter { it.isNotBlank() }.distinct(), item.optString("ownerId")))
             }
             val messages = JSONArray(prefs.getString("community_messages", "[]"))
             for (i in 0 until messages.length()) {
@@ -1691,7 +1692,8 @@ class MainActivity : ComponentActivity() {
         if (name.isBlank() || communityGroups.size >= 20) return
         var code = (100000..999999).random().toString()
         while (communityGroups.any { it.code == code }) code = (100000..999999).random().toString()
-        communityGroups.add(0, CommunityGroup(code, name, listOf(displayName)))
+        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+        communityGroups.add(0, CommunityGroup(code, name, listOf(displayName), listOf(localPeerId).filter { it.isNotBlank() }, localPeerId))
         selectedCommunityCode = code
         persistCommunityData()
         communityNotice = "Created $name. Share group code $code with nearby people."
@@ -1700,7 +1702,10 @@ class MainActivity : ComponentActivity() {
     private fun joinCommunityGroup(raw: String) {
         val code = raw.filter { it.isDigit() }.take(6)
         if (code.length != 6) return
-        if (communityGroups.none { it.code == code }) communityGroups.add(0, CommunityGroup(code, "Nearby group $code", listOf(displayName)))
+        if (communityGroups.none { it.code == code }) {
+            val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+            communityGroups.add(0, CommunityGroup(code, "Nearby group $code", listOf(displayName), listOf(localPeerId).filter { it.isNotBlank() }))
+        }
         selectedCommunityCode = code
         persistCommunityData()
         sendCommunityPacket(JSONObject().put("type", "group_join").put("code", code).put("sender", displayName))
@@ -1708,7 +1713,7 @@ class MainActivity : ComponentActivity() {
     }
     private fun sendGroupMembers(code: String) {
         val group = communityGroups.firstOrNull { it.code == code } ?: return
-        val packet = JSONObject().put("type", "group_members").put("code", code).put("members", JSONArray(group.members))
+        val packet = JSONObject().put("type", "group_members").put("code", code).put("members", JSONArray(group.members)).put("memberIds", JSONArray(group.memberIds)).put("ownerId", group.ownerId)
         sendCommunityToNames("NR_COMMUNITY:$packet", group.members.toSet())
     }
 
@@ -1730,8 +1735,9 @@ class MainActivity : ComponentActivity() {
         }
 
         val wireBody = "NR_COMMUNITY:$packet"
+        val recipientIds = group.memberIds.filter { it.isNotBlank() && it != nearbyTransport?.localIdentityId() }.toSet()
         val queued = if (hybridConnected) {
-            nearbyTransport?.sendDurableToNames(wireBody, group.members.toSet()) == true
+            nearbyTransport?.sendDurableToPeerIds(wireBody, recipientIds) == true
         } else {
             // The legacy single-peer Wi-Fi Direct fallback has no stable peer-key
             // outbox binding yet, so it retains its existing immediate-send path.
@@ -1754,7 +1760,7 @@ class MainActivity : ComponentActivity() {
             communityNotice = "No connected nearby phone is available for this broadcast."
         }
     }
-    private fun handleCommunityPacket(sender: String, raw: String) {
+    private fun handleCommunityPacket(sender: String, senderPeerId: String, raw: String) {
         try {
             val packet = JSONObject(raw)
             val type = packet.optString("type")
@@ -1765,23 +1771,40 @@ class MainActivity : ComponentActivity() {
                     if (i >= 0) {
                         val old = communityGroups[i]
                         val member = sender
-                        if (member !in old.members) communityGroups[i] = old.copy(members = old.members + member)
-                        persistCommunityData()
+                        if (senderPeerId.isNotBlank()) {
+                            val nextMembers = if (member in old.members) old.members else old.members + member
+                            val nextIds = if (senderPeerId in old.memberIds) old.memberIds else old.memberIds + senderPeerId
+                            val ownerId = if (type == "group_created") senderPeerId else old.ownerId
+                            communityGroups[i] = old.copy(members = nextMembers, memberIds = nextIds, ownerId = ownerId)
+                            persistCommunityData()
+                        }
                         sendGroupMembers(code)
                     }
                 }
                 "group_members" -> {
                     val i = communityGroups.indexOfFirst { it.code == code }
                     if (i >= 0) {
-                        val array = packet.optJSONArray("members") ?: JSONArray()
-                        val members = (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }.distinct()
-                        communityGroups[i] = communityGroups[i].copy(members = members)
-                        persistCommunityData()
+                        val old = communityGroups[i]
+                        val announcedOwnerId = packet.optString("ownerId")
+                        val senderIsKnownOwner = old.ownerId.isNotBlank() && old.ownerId == senderPeerId
+                        val firstOwnerSync = old.ownerId.isBlank() && senderPeerId.isNotBlank() && announcedOwnerId == senderPeerId
+                        if (senderPeerId.isNotBlank() && (senderIsKnownOwner || firstOwnerSync)) {
+                            val array = packet.optJSONArray("members") ?: JSONArray()
+                            val members = (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }.distinct().take(100)
+                            val ids = packet.optJSONArray("memberIds") ?: JSONArray()
+                            val memberIds = (0 until ids.length()).map { ids.optString(it) }
+                                .filter { it.isNotBlank() && it.length <= 64 && NeaRerIdentity.normalize(it) == it }
+                                .distinct().take(100)
+                            if (senderPeerId in memberIds) {
+                                communityGroups[i] = old.copy(members = members, memberIds = memberIds, ownerId = announcedOwnerId)
+                                persistCommunityData()
+                            }
+                        }
                     }
                 }
                 "group_message" -> {
                     val group = communityGroups.firstOrNull { it.code == code }
-                    if (group != null && sender in group.members) {
+                    if (group != null && senderPeerId.isNotBlank() && senderPeerId in group.memberIds) {
                         val id = packet.optString("id")
                         if (communityMessages.none { it.id == id }) {
                             communityMessages.add(CommunityChatMessage(id, code, sender, packet.optString("body").take(1500), System.currentTimeMillis()))
@@ -3001,7 +3024,7 @@ class MainActivity : ComponentActivity() {
                                 val body = String(Base64.getDecoder().decode(encoded), Charsets.UTF_8)
                                 if (body.startsWith("NR_COMMUNITY:") && body.length <= 24 * 1024) {
                                     runOnUiThread {
-                                        handleCommunityPacket(connectedDeviceName ?: "Nearby member", body.removePrefix("NR_COMMUNITY:"))
+                                        handleCommunityPacket(connectedDeviceName ?: "Nearby member", "", body.removePrefix("NR_COMMUNITY:"))
                                         persistCommunityData()
                                     }
                                 }
@@ -4088,7 +4111,13 @@ private fun CommunityHub(
     }
     LudoGamePanel(game, invite, nearbyConnected, onInviteGame, onAccept, onReject, onMove, gameChat, onGameChat, onGameRematch, onEndGame, localAvatarId = localAvatarId)
 }
-private data class CommunityGroup(val code: String, val name: String, val members: List<String>)
+private data class CommunityGroup(
+    val code: String,
+    val name: String,
+    val members: List<String>,
+    val memberIds: List<String> = emptyList(),
+    val ownerId: String = ""
+)
 private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
 data class GameInvite(val matchId: String, val sender: String)
 
