@@ -62,16 +62,17 @@ internal class TransferResumeStreamWriter(
         val candidate = store.findValid(transferId, item, sourceModifiedAtMillis, sourcePeerId)
         val partial = candidate?.partialFile ?: store.partialFileFor(transferId, item.id)
         val offset = candidate?.checkpoint?.committedOffsetBytes ?: 0L
-
-        if (candidate == null) {
-            if (partial.exists() && !partial.delete()) {
-                throw IllegalStateException("Could not reset an incomplete partial file")
-            }
-            partial.parentFile?.let { parent ->
-                if (!parent.exists() && !parent.mkdirs()) {
-                    throw IllegalStateException("Could not create the partial-transfer folder")
-                }
-            }
+        val parent = partial.parentFile
+            ?: throw IllegalStateException("The partial-transfer folder is unavailable")
+        if (!parent.exists() && !parent.mkdirs()) {
+            throw IllegalStateException("Could not create the partial-transfer folder")
+        }
+        if (candidate == null && partial.exists() && !partial.delete()) {
+            throw IllegalStateException("Could not reset an incomplete partial file")
+        }
+        val remainingBytes = (item.sizeBytes - offset).coerceAtLeast(0L)
+        if (!ReceivedFileStoragePolicy.hasEnoughSpace(remainingBytes, parent.usableSpace)) {
+            throw IllegalStateException("Not enough free storage to receive this file. Free up space and try again.")
         }
 
         val digest = MessageDigest.getInstance("SHA-256")
