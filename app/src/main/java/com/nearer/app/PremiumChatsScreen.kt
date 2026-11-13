@@ -551,10 +551,19 @@ private fun PremiumChatsInboxScreen(
         messages = messages,
         recipients = meshRecipients,
         query = searchQuery,
-        filter = if (selectedFilter == "Archived") "All" else selectedFilter,
+        filter = if (selectedFilter == "Archived" || selectedFilter == "Unread") "All" else selectedFilter,
         pinnedIds = pinnedIds
     ).filter { id ->
-        (id in archivedIds) == (selectedFilter == "Archived")
+        val isArchived = id in archivedIds
+        val unread = ChatInboxStatePolicy.unreadCount(
+            messages.filter { it.conversationId == id },
+            preferences.getLong("read_through_$id", 0L)
+        )
+        when (selectedFilter) {
+            "Archived" -> isArchived
+            "Unread" -> !isArchived && unread > 0
+            else -> !isArchived
+        }
     }
 
     fun togglePinned(id: String) {
@@ -608,7 +617,7 @@ private fun PremiumChatsInboxScreen(
         )
 
         Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            listOf("All", "Nearby", "Via others", "Offline", "Archived").forEach { filter ->
+            listOf("All", "Unread", "Nearby", "Via others", "Offline", "Archived").forEach { filter ->
                 val selected = selectedFilter == filter
                 Surface(
                     modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { selectedFilter = filter },
@@ -639,12 +648,14 @@ private fun PremiumChatsInboxScreen(
                         }
                     }
                     Text(
-                        if (selectedFilter == "Archived") "No archived chats" else if (searchQuery.isNotBlank() || selectedFilter != "All") "No matching conversations" else "Your conversations start here",
+                        if (selectedFilter == "Archived") "No archived chats" else if (selectedFilter == "Unread") "You're all caught up" else if (searchQuery.isNotBlank() || selectedFilter != "All") "No matching conversations" else "Your conversations start here",
                         color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold
                     )
                     Text(
                         if (selectedFilter == "Archived")
                             "Chats you archive will be kept here, separate from your main inbox."
+                        else if (selectedFilter == "Unread")
+                            "New messages will appear here until you open their conversation."
                         else if (searchQuery.isNotBlank() || selectedFilter != "All")
                             "Try another name or message, or clear the current search and filter."
                         else
