@@ -61,13 +61,20 @@ internal class NearbyStreamPayloadBridge(
         item: TransferBundleItem,
         sourceModifiedAtMillis: Long?,
         authenticatedSourcePeerId: String,
-        acceptedOffsetBytes: Long,
+        proposal: TransferResumeNegotiation.Proposal?,
+        decision: TransferResumeNegotiation.Decision,
         destination: java.io.File,
         expectedWholeFileSha256: String,
         onComplete: (Result<TransferResumeCoordinator.ReceiveResult>) -> Unit
     ): Boolean {
-        if (payload.type != Payload.Type.STREAM || payload.id != expectedPayloadId ||
-            expectedPayloadId < 0L || NeaRerIdentity.normalize(authenticatedSourcePeerId) == null) {
+        if (!HyperTransferStreamAdmissionPolicy.mayConsume(
+                authenticatedSourcePeerId = authenticatedSourcePeerId,
+                expectedPayloadId = expectedPayloadId,
+                actualPayloadId = payload.id,
+                isStreamPayload = payload.type == Payload.Type.STREAM,
+                proposal = proposal,
+                decision = decision
+            )) {
             runCatching { payload.close() }
             onComplete(Result.failure(IllegalArgumentException("The incoming stream does not match the verified transfer.")))
             return false
@@ -90,7 +97,7 @@ internal class NearbyStreamPayloadBridge(
                         item = item,
                         sourceModifiedAtMillis = sourceModifiedAtMillis,
                         authenticatedSourcePeerId = authenticatedSourcePeerId,
-                        acceptedOffsetBytes = acceptedOffsetBytes,
+                        acceptedOffsetBytes = decision.acceptedOffsetBytes,
                         input = stream,
                         destination = destination,
                         expectedWholeFileSha256 = expectedWholeFileSha256
