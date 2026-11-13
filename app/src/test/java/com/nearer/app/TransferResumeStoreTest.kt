@@ -108,4 +108,85 @@ class TransferResumeStoreTest {
             root.deleteRecursively()
         }
     }
+
+    @Test fun discoversVerifiedPartialsAfterStoreRecreation() {
+        val root = Files.createTempDirectory("nearer-resume-discovery-restart").toFile()
+        try {
+            val firstStore = store(root)
+            val firstItem = item()
+            val firstBytes = ByteArray(chunk) { (it % 241).toByte() }
+            val firstPartial = firstStore.partialFileFor("transfer-a", firstItem.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(firstBytes)
+            }
+            firstStore.checkpoint("transfer-a", firstItem, 100L, chunk.toLong())
+
+            val secondItem = firstItem.copy(
+                id = "item-2",
+                relativePath = "Pictures/photo.jpg",
+                displayName = "photo.jpg"
+            )
+            val secondBytes = ByteArray(chunk) { (it % 239).toByte() }
+            val secondPartial = firstStore.partialFileFor("transfer-b", secondItem.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(secondBytes)
+            }
+            firstStore.checkpoint("transfer-b", secondItem, 200L, chunk.toLong())
+
+            // Simulate process death: use a new store and journal instance.
+            val restartedStore = store(root)
+            val discovered = restartedStore.discoverVerifiedCandidates()
+            assertEquals(2, discovered.size)
+            assertEquals(listOf("transfer-a", "transfer-b"), discovered.map { it.checkpoint.transferId })
+            assertEquals(chunk.toLong(), firstPartial.length())
+            assertEquals(chunk.toLong(), secondPartial.length())
+            assertArrayEquals(firstBytes, discovered[0].partialFile.readBytes())
+            assertArrayEquals(secondBytes, discovered[1].partialFile.readBytes())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun restartDiscoveryDiscardsMissingOrCorruptPartials() {
+        val root = Files.createTempDirectory("nearer-resume-discovery-invalid").toFile()
+        try {
+            val firstStore = store(root)
+            val validItem = item()
+            val validBytes = ByteArray(chunk) { (it % 227).toByte() }
+            val validPartial = firstStore.partialFileFor("transfer-valid", validItem.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(validBytes)
+            }
+            firstStore.checkpoint("transfer-valid", validItem, 100L, chunk.toLong())
+
+            val corruptItem = validItem.copy(id = "corrupt-item", relativePath = "Videos/corrupt.mp4", displayName = "corrupt.mp4")
+            val corruptPartial = firstStore.partialFileFor("transfer-corrupt", corruptItem.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(ByteArray(chunk) { 7 })
+            }
+            firstStore.checkpoint("transfer-corrupt", corruptItem, 200L, chunk.toLong())
+            corruptPartial.writeBytes(ByteArray(chunk) { 8 })
+
+            val missingItem = validItem.copy(id = "missing-item", relativePath = "Videos/missing.mp4", displayName = "missing.mp4")
+            val missingPartial = firstStore.partialFileFor("transfer-missing", missingItem.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(ByteArray(chunk) { 9 })
+            }
+            firstStore.checkpoint("transfer-missing", missingItem, 300L, chunk.toLong())
+            assertTrue(missingPartial.delete())
+
+            val restartedStore = store(root)
+            val discovered = restartedStore.discoverVerifiedCandidates()
+            assertEquals(1, discovered.size)
+            assertEquals("transfer-valid", discovered.single().checkpoint.transferId)
+            assertTrue(validPartial.exists())
+            assertFalse("corrupt partial must be removed", corruptPartial.exists())
+            assertFalse("missing partial checkpoint must be removed", TransferResumeJournal(File(root, "journal"))
+                .load("transfer-missing", "missing-item") != null)
+            assertNull(TransferResumeJournal(File(root, "journal")).load("transfer-corrupt", "corrupt-item"))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
 }
