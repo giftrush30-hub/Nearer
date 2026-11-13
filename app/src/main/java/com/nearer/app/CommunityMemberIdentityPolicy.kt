@@ -8,6 +8,11 @@ internal object CommunityMemberIdentityPolicy {
     fun isAuthorizedMember(memberIds: Collection<String>, senderPeerId: String): Boolean =
         isValidPeerId(senderPeerId) && senderPeerId in memberIds
 
+    /** Only the locally pinned owner may admit a newly authenticated member. */
+    fun canAcceptJoin(ownerId: String, localPeerId: String, joiningPeerId: String): Boolean =
+        isValidPeerId(ownerId) && isValidPeerId(localPeerId) && ownerId == localPeerId &&
+            isValidPeerId(joiningPeerId) && joiningPeerId != ownerId
+
     /**
      * Existing groups accept roster changes only from their pinned owner. A newly
      * joined device may bind its first owner only when the sender and announced
