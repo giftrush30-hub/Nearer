@@ -80,14 +80,14 @@ Current interpretation:
 
 ### Known gaps — do not mark Phase 2 complete yet
 
-1. Group/broadcast fan-out encrypts a copy for each currently connected peer but bypasses the persistent per-recipient outbox and ACK tracking. A disconnected peer can miss the group message. Implement per-recipient queue identities, persist-before-send, per-peer retry, and authenticated per-peer ACK retirement.
+1. **Partially addressed:** nearby group-chat fan-out now creates a distinct transport message ID per currently connected authenticated recipient, commits each copy to the encrypted-at-rest outbox before sending, retries it after that same stable peer reconnects, and retires only the matching recipient copy after its authenticated ACK. The sender's local group message is also persisted before fan-out. Remaining gap: community rosters store display names rather than stable peer IDs, so members who are offline at send time cannot yet be queued safely; broadcasts and Ludo/control fan-out remain ephemeral.
 2. Retry recovery is triggered by transport initialization plus a later authenticated peer reconnect. It is not guaranteed background delivery while the process is stopped or Android Doze suspends the app. A lifecycle-safe scheduled recovery design is still required.
 3. First-contact trust is TOFU. Signed key possession and the in-person security-code comparison reduce risk but do not independently identify a real-world person or prevent a compromised first-contact channel.
 4. The direct messaging path has source-level implementation and unit-test foundations, but there is no current two-physical-phone end-to-end validation. Do not claim field reliability or production readiness.
 
 ### Phase 2 completion checklist
 
-- [ ] Add durable per-recipient group/community message queues and ACK tracking.
+- [ ] Extend the new per-recipient durable group-chat queue to offline members by storing verified stable peer IDs in community rosters; add durable broadcast history/outbox and keep Ludo/control packets ephemeral unless their replay semantics are explicitly designed.
 - [ ] Add process-death/reboot/Doze-aware retry recovery with bounded battery use and clear Android foreground/background behavior.
 - [ ] Add focused tests for outbox corruption, duplicate sends, reconnect races, ACK from the wrong peer, queue persistence failure, and multiple recipients with independent delivery state.
 - [ ] Validate direct and group chat in both directions on physical Android phones, including app restart and radio interruption.
@@ -115,3 +115,18 @@ The coordinated source work has advanced beyond the earlier PR #119 checkpoint:
 - Mesh relay remains hard-disabled. No 100+ participant scale or A → B → C → D physical mesh test is claimed.
 - HyperTransfer's durable process-death checkpoint/resume lifecycle remains unconnected to the actual Nearby FILE payload lifecycle; full resumability and unlimited-size performance are not certified.
 - Next engineering gate: physical two-phone validation of SmartConnect, encrypted direct chat, file transfer and Ludo, then fix any device-specific issues. Mesh relay remains a separate later gate.
+
+
+## Community group-message delivery update — 13 November 2026
+
+A selective source implementation now adds durable fan-out for nearby group-chat messages over authenticated Nearby Connections:
+
+- The sender first commits its local group message to the community store. If that commit fails, it does not send.
+- Each currently connected, authenticated group recipient receives a distinct transport message ID and a separate encrypted-outbox record bound to that peer's stable identity.
+- The complete recipient set is committed to the encrypted-at-rest outbox before the first send attempt.
+- Existing bounded retry logic retries each recipient copy independently after link failure or when that same stable peer reconnects.
+- The receiver's existing community callback persists the received group message before acknowledging the transport message. The sender retires only the recipient copy whose authenticated ACK came from the expected endpoint.
+- If a peer was already offline when the group message was created, it is not queued yet: current community rosters contain display names rather than verified stable peer IDs. The UI reports that the message is saved locally but no eligible connected member received it.
+- The single-peer Wi-Fi Direct fallback remains immediate-send only; it does not claim durable retry. Broadcast and Ludo/control packets also remain ephemeral in this batch.
+
+This is source integration awaiting exact-head CI and two-phone validation. It does not certify group delivery on physical devices or process-death/Doze recovery.
