@@ -17,6 +17,37 @@ internal class TransferResumeCoordinator(
     private val store: TransferResumeStore,
     private val writer: TransferResumeStreamWriter
 ) {
+
+    // Serialize only identical transfer/item receives. A bounded lock map is
+    // maintained by reference counts so duplicate Nearby callbacks cannot write
+    // the same partial concurrently, while unrelated files can still progress.
+    private data class ReceiveLockEntry(val lock: java.util.concurrent.locks.ReentrantLock, var users: Int)
+    private val receiveLockMonitor = Any()
+    private val receiveLocks = HashMap<String, ReceiveLockEntry>()
+
+    private fun acquireReceiveLock(key: String): ReceiveLockEntry = synchronized(receiveLockMonitor) {
+        val entry = receiveLocks.getOrPut(key) {
+            ReceiveLockEntry(java.util.concurrent.locks.ReentrantLock(), 0)
+        }
+        entry.users++
+        if (!entry.lock.tryLock()) {
+            entry.users--
+            if (entry.users == 0 && receiveLocks[key] === entry) receiveLocks.remove(key)
+            throw IllegalStateException("This file is already being received.")
+        }
+        entry
+    }
+
+    private fun releaseReceiveLock(key: String, entry: ReceiveLockEntry) {
+        entry.lock.unlock()
+        synchronized(receiveLockMonitor) {
+            entry.users--
+            if (entry.users == 0 && !entry.lock.isLocked && receiveLocks[key] === entry) {
+                receiveLocks.remove(key)
+            }
+        }
+    }
+
     data class ReceiverOffer(
         val checkpoint: TransferResumeCheckpoint,
         val proposal: TransferResumeNegotiation.Proposal
@@ -201,6 +232,36 @@ internal class TransferResumeCoordinator(
      * Interrupted streams leave a synced checkpoint for a later reconnect.
      */
     fun receiveStreamAndFinalize(
+        transferId: String,
+        item: TransferBundleItem,
+        sourceModifiedAtMillis: Long?,
+        authenticatedSourcePeerId: String,
+        acceptedOffsetBytes: Long,
+        input: InputStream,
+        destination: File,
+        expectedWholeFileSha256: String,
+        isCancelled: () -> Boolean = { false }
+    ): ReceiveResult {
+        val key = "${transferId.length}:$transferId${item.id}"
+        val lock = acquireReceiveLock(key)
+        try {
+            return receiveStreamAndFinalizeLocked(
+                transferId = transferId,
+                item = item,
+                sourceModifiedAtMillis = sourceModifiedAtMillis,
+                authenticatedSourcePeerId = authenticatedSourcePeerId,
+                acceptedOffsetBytes = acceptedOffsetBytes,
+                input = input,
+                destination = destination,
+                expectedWholeFileSha256 = expectedWholeFileSha256,
+                isCancelled = isCancelled
+            )
+        } finally {
+            releaseReceiveLock(key, lock)
+        }
+    }
+
+    private fun receiveStreamAndFinalizeLocked(
         transferId: String,
         item: TransferBundleItem,
         sourceModifiedAtMillis: Long?,

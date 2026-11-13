@@ -205,3 +205,17 @@ The current transport still does not pass its authenticated peer ID into the dur
 - Incoming STREAM bytes are drained on the file I/O executor, checkpointed by the durable writer, checked against the whole-file digest, and published through the no-overwrite finalizer. Interrupted transfers retain only verified checkpoints; reconnect creates a fresh Nearby payload ID and repeats the authenticated handshake.
 - The legacy Nearby FILE path remains available for peers that do not advertise stream support and as a timeout fallback. Existing same-process FILE resume remains intact.
 - This is source integration awaiting exact-head CI. No emulator or physical-device testing is claimed. The first real-phone gate must verify both directions, app process death/restart, same-file re-selection, interrupted transfer, zero-byte files, old-peer FILE fallback, and Android storage behavior (including hard-link publication).
+
+
+## HyperTransfer reliability hardening — 13 November 2026
+
+The follow-up branch `feature/hypertransfer-concurrency-journal-hardening` hardens the merged Nearby STREAM recovery path without changing the messaging-owned screens or received-file catalogue work:
+
+- A single transfer/item can now have only one active durable receive writer. Duplicate concurrent Nearby STREAM callbacks for the same transfer are rejected before they can race over the same partial file; unrelated transfers remain independently concurrent.
+- Receive locks are reference-counted and removed after use, so the guard does not accumulate an unbounded per-transfer lock map.
+- Corrupt, oversized, mismatched and crash-leftover temporary checkpoint journal entries are removed during lookup/discovery instead of being rediscovered indefinitely.
+- Journal discovery remains bounded to 10,000 valid entries, with each candidate decoded only after its on-disk size is checked.
+- Regression tests cover duplicate concurrent receives, journal corruption, oversized records, misnamed records and crash-leftover temporary files.
+- Existing transport selection already prefers authenticated, capability-advertised Nearby STREAM for supported peers and falls back to standard FILE when negotiation, staging or repeated stream attempts fail. This work preserves that compatibility route; it does not change the shared Nearby discovery strategy, which must remain compatible on both phones.
+
+Validation is pending on this branch until its exact-head JVM tests and debug APK assembly finish. No emulator or physical-phone testing is performed here. The user will handle physical-device checks. This is a reliability hardening increment, not a claim of measured speed improvement or release certification.

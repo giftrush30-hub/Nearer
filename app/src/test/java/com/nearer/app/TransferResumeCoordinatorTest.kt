@@ -250,4 +250,65 @@ class TransferResumeCoordinatorTest {
             root.deleteRecursively()
         }
     }
+
+    @Test fun rejectsConcurrentReceiveForTheSameTransferItemWithoutTouchingTheActiveWrite() {
+        val root = Files.createTempDirectory("nearer-resume-concurrent-receive").toFile()
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val store = store(root)
+            val coordinator = TransferResumeCoordinator(store, TransferResumeStreamWriter(store))
+            val bytes = ByteArray(2048) { (it % 199).toByte() }
+            val item = item(bytes.size.toLong())
+            val destination = File(root, "received/concurrent.bin")
+            val blockingInput = object : java.io.InputStream() {
+                private var offset = 0
+                private var blocked = false
+                override fun read(): Int {
+                    val buffer = ByteArray(1)
+                    val count = read(buffer, 0, 1)
+                    return if (count < 0) -1 else buffer[0].toInt() and 0xff
+                }
+                override fun read(buffer: ByteArray, off: Int, len: Int): Int {
+                    if (!blocked) {
+                        blocked = true
+                        entered.countDown()
+                        if (!release.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                            throw java.io.IOException("Timed out waiting for test release")
+                        }
+                    }
+                    if (offset >= bytes.size) return -1
+                    val count = minOf(len, bytes.size - offset)
+                    System.arraycopy(bytes, offset, buffer, off, count)
+                    offset += count
+                    return count
+                }
+            }
+
+            val first = executor.submit<TransferResumeCoordinator.ReceiveResult> {
+                coordinator.receiveStreamAndFinalize(
+                    "transfer-concurrent", item, 123L, peerId, 0L,
+                    blockingInput, destination, sha256(bytes)
+                )
+            }
+            assertTrue("first receive should enter its stream read", entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            try {
+                coordinator.receiveStreamAndFinalize(
+                    "transfer-concurrent", item, 123L, peerId, 0L,
+                    ByteArrayInputStream(bytes), destination, sha256(bytes)
+                )
+                fail("a duplicate concurrent receive must be rejected")
+            } catch (_: IllegalStateException) { }
+            release.countDown()
+            val completed = first.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            assertArrayEquals(bytes, completed.completedFile.readBytes())
+            assertEquals(bytes.size.toLong(), completed.totalBytes)
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+            root.deleteRecursively()
+        }
+    }
+
 }
