@@ -14,6 +14,7 @@ class CommunityRosterPolicyTest {
     @Test fun laterRosterUpdatesMustComeFromSameCoordinator() {
         assertEquals("ABCD23456789", CommunityRosterPolicy.resolveOwner("ABCD23456789", "ABCD23456789"))
         assertNull(CommunityRosterPolicy.resolveOwner("ABCD23456789", "NPQR23456789"))
+        assertNull(CommunityRosterPolicy.resolveOwner("abcd23456789", "ABCD23456789"))
     }
 
     @Test fun rosterMustIncludeCoordinatorAndLocalIdentity() {
