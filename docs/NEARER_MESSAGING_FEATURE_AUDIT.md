@@ -99,3 +99,13 @@ Not yet complete or not yet verified as a full end-to-end user feature:
 - Keep the Android 8+ compatibility target in mind.
 - Keep file-transfer implementation owned by the file-sharing workstream; messaging may call the shared transfer interface but must not fork or replace its engine.
 - Every feature must have protocol/persistence tests before UI claims it is complete.
+
+
+## Message actions now implemented
+
+The chat bubble's **More** menu now provides:
+- **Reply** — selects a same-conversation quoted reply and shows a cancelable preview above the composer.
+- **Copy message** — copies the visible message text to the Android clipboard.
+- **Delete for me** — removes the message from this phone's retained chat history and writes the change to local storage. If saving fails, the message is restored in its original position.
+
+“Delete for me” is deliberately local-only. It does not claim to retract a message from the other person's phone or from a helper device. Previously sent replies that quote a deleted message keep their bounded quote snapshot, so the conversation remains understandable. The menu uses ordinary, familiar labels rather than technical transport actions.
