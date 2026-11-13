@@ -157,6 +157,7 @@ The follow-up adds a transport-message-ID to community-message/recipient mapping
 - The transport returns the exact message IDs committed for each stable recipient and defers the first send until the caller has persisted the corresponding receipt mapping.
 - A pinned member whose Nearby endpoint is discovered but whose handshake is not finished is still queued with no live endpoint; authentication completion retries that same member's copy.
 - Community receipt references and per-peer delivery states are persisted locally and restored after app restart.
+- A bounded 2,000-ID authenticated ACK history is committed atomically with outbox retirement, allowing direct and community message states to reconcile after a crash between transport ACK and UI receipt persistence.
 - Authenticated ACK callbacks update only the mapped stable peer's status; one recipient's ACK does not mark the entire group delivered.
 - The UI shows delivered, queued and not-verified recipient counts under each outgoing group message.
 - If saving a receipt fails, the updated state remains in memory and the app retries the write on Activity pause/resume. If storage continues failing and the process is killed before a successful retry, that latest receipt may not survive the restart.
