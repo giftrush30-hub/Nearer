@@ -76,8 +76,7 @@ internal class TransferResumeCoordinator(
         if (proposal == null) {
             return TransferResumeNegotiation.Decision(0L, TransferResumeNegotiation.Reason.NO_VALID_CHECKPOINT)
         }
-        if (!sourceFile.isFile || sourceFile.length() != item.sizeBytes ||
-            sourceModifiedAtMillis != sourceFile.lastModified()) {
+        if (!sourceMetadataMatches(sourceFile, item, sourceModifiedAtMillis)) {
             return TransferResumeNegotiation.Decision(0L, TransferResumeNegotiation.Reason.SOURCE_CHANGED)
         }
         val offset = proposal.committedOffsetBytes
@@ -122,14 +121,12 @@ internal class TransferResumeCoordinator(
     ): ValidatedSourceStream? {
         if (NeaRerIdentity.normalize(authenticatedReceiverPeerId) == null) return null
         if (!senderSupportsOffsets || !receiverSupportsOffsets || proposal == null) return null
-        if (!sourceFile.isFile || sourceFile.length() != item.sizeBytes ||
-            sourceModifiedAtMillis != sourceFile.lastModified()) return null
+        if (!sourceMetadataMatches(sourceFile, item, sourceModifiedAtMillis)) return null
 
         val source = try { java.io.FileInputStream(sourceFile) } catch (_: Exception) { return null }
         var ownershipTransferred = false
         try {
-            if (sourceFile.length() != item.sizeBytes ||
-                sourceModifiedAtMillis != sourceFile.lastModified()) return null
+            if (!sourceMetadataMatches(sourceFile, item, sourceModifiedAtMillis)) return null
             val offset = proposal.committedOffsetBytes
             if (offset !in 1L until item.sizeBytes ||
                 offset % TransferResumeCheckpoint.CHECKPOINT_GRANULARITY_BYTES != 0L) return null
@@ -143,8 +140,7 @@ internal class TransferResumeCoordinator(
                 digest.update(buffer, 0, read)
                 remaining -= read.toLong()
             }
-            if (sourceFile.length() != item.sizeBytes ||
-                sourceModifiedAtMillis != sourceFile.lastModified()) return null
+            if (!sourceMetadataMatches(sourceFile, item, sourceModifiedAtMillis)) return null
 
             val decision = TransferResumeNegotiation.decide(
                 proposal = proposal,
@@ -264,6 +260,14 @@ internal class TransferResumeCoordinator(
         )
         return ReceiveResult(completed, written.resumedFromBytes, written.bytesReceived, written.sha256)
     }
+
+    private fun sourceMetadataMatches(
+        sourceFile: File,
+        item: TransferBundleItem,
+        sourceModifiedAtMillis: Long?
+    ): Boolean = sourceFile.isFile &&
+        sourceFile.length() == item.sizeBytes &&
+        (sourceModifiedAtMillis == null || sourceModifiedAtMillis == sourceFile.lastModified())
 
     private fun sha256Prefix(file: File, length: Long): String {
         require(length >= 0L && length <= file.length()) { "Prefix length is outside the source file" }
