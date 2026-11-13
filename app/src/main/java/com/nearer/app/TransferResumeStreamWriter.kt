@@ -94,6 +94,13 @@ internal class TransferResumeStreamWriter(
         RandomAccessFile(partial, "rw").use { output ->
             output.setLength(offset)
             output.seek(offset)
+            // Empty files never enter the read loop, but still need a durable
+            // EOF checkpoint so the normal whole-file verification/finalization
+            // path can publish them safely.
+            if (item.sizeBytes == 0L && candidate == null) {
+                output.fd.sync()
+                store.checkpoint(transferId, item, sourceModifiedAtMillis, 0L, sourcePeerId)
+            }
             val buffer = ByteArray(bufferBytes)
             while (received < item.sizeBytes) {
                 checkCancelled(isCancelled)
