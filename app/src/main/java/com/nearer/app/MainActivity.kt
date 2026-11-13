@@ -1681,7 +1681,7 @@ class MainActivity : ComponentActivity() {
     }
     private fun sendCommunityPacket(packet: JSONObject): Boolean {
         val body = "NR_COMMUNITY:$packet"
-        if (hybridConnected) return nearbyTransport?.send(body) == true
+        if (nearbyTransport?.send(body) == true) return true
         if (chatReady && connectedDeviceName != null) {
             val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
             return sendWireLine("COMMUNITY|$encoded")
@@ -1691,7 +1691,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun sendCommunityToNames(body: String, targetNames: Set<String>): Boolean {
-        if (hybridConnected) return nearbyTransport?.sendToNames(body, targetNames) == true
+        if (nearbyTransport?.sendToNames(body, targetNames) == true) return true
         val peerName = connectedDeviceName
         if (chatReady && peerName != null && peerName in targetNames) {
             val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
@@ -1776,13 +1776,14 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
-        if (!hybridConnected || group.ownerPeerId.isBlank() || localPeerId !in group.memberPeerIds) {
-            communityNotice = "Secure group messaging needs a verified Nearby Connections link and a synced identity roster. The message is saved on this phone."
+        val transport = nearbyTransport
+        val localPeerId = transport?.localIdentityId().orEmpty()
+        if (transport == null || group.ownerPeerId.isBlank() || localPeerId !in group.memberPeerIds) {
+            communityNotice = "Secure group messaging needs a synced identity roster. The message is saved on this phone."
             return
         }
         val targetPeerIds = group.memberPeerIds.filter { it != localPeerId }.toSet()
-        val queued = nearbyTransport?.sendDurableToPeerIds("NR_COMMUNITY:$packet", targetPeerIds) == true
+        val queued = transport.sendDurableToPeerIds("NR_COMMUNITY:$packet", targetPeerIds)
         communityNotice = if (queued) {
             "Group message saved locally and queued to verified group identities. Offline verified members will receive it when they reconnect."
         } else {
