@@ -2,6 +2,7 @@ package com.nearer.app
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -543,18 +544,38 @@ private fun PremiumChatsInboxScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("All") }
     var pinnedIds by remember { mutableStateOf(preferences.getStringSet("pinned_conversations", emptySet()).orEmpty()) }
+    var archivedIds by remember { mutableStateOf(preferences.getStringSet("archived_conversations", emptySet()).orEmpty()) }
+    var expandedConversationActions by remember { mutableStateOf<String?>(null) }
 
     val conversationIds = ChatInboxPolicy.conversationIds(
         messages = messages,
         recipients = meshRecipients,
         query = searchQuery,
-        filter = selectedFilter,
+        filter = if (selectedFilter == "Archived") "All" else selectedFilter,
         pinnedIds = pinnedIds
-    )
+    ).filter { id ->
+        (id in archivedIds) == (selectedFilter == "Archived")
+    }
 
     fun togglePinned(id: String) {
         pinnedIds = if (id in pinnedIds) pinnedIds - id else pinnedIds + id
         preferences.edit().putStringSet("pinned_conversations", pinnedIds).apply()
+    }
+
+    fun setArchived(id: String, archived: Boolean) {
+        archivedIds = if (archived) archivedIds + id else archivedIds - id
+        preferences.edit().putStringSet("archived_conversations", archivedIds).apply()
+        expandedConversationActions = null
+    }
+
+    fun markConversationRead(id: String) {
+        val newestTimestamp = messages.filter { it.conversationId == id }.maxOfOrNull { it.timestamp } ?: System.currentTimeMillis()
+        preferences.edit().putLong("read_through_$id", newestTimestamp).apply()
+    }
+
+    fun markConversationUnread(id: String) {
+        preferences.edit().putLong("read_through_$id", 0L).apply()
+        expandedConversationActions = null
     }
 
     Column(
@@ -586,8 +607,8 @@ private fun PremiumChatsInboxScreen(
             shape = RoundedCornerShape(15.dp)
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            listOf("All", "Nearby", "Via others", "Offline").forEach { filter ->
+        Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            listOf("All", "Nearby", "Via others", "Offline", "Archived").forEach { filter ->
                 val selected = selectedFilter == filter
                 Surface(
                     modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { selectedFilter = filter },
@@ -618,11 +639,13 @@ private fun PremiumChatsInboxScreen(
                         }
                     }
                     Text(
-                        if (searchQuery.isNotBlank() || selectedFilter != "All") "No matching conversations" else "Your conversations start here",
+                        if (selectedFilter == "Archived") "No archived chats" else if (searchQuery.isNotBlank() || selectedFilter != "All") "No matching conversations" else "Your conversations start here",
                         color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold
                     )
                     Text(
-                        if (searchQuery.isNotBlank() || selectedFilter != "All")
+                        if (selectedFilter == "Archived")
+                            "Chats you archive will be kept here, separate from your main inbox."
+                        else if (searchQuery.isNotBlank() || selectedFilter != "All")
                             "Try another name or message, or clear the current search and filter."
                         else
                             "Find someone nearby or add a trusted NeaRer ID. Your conversations will stay here when you disconnect.",
@@ -652,7 +675,10 @@ private fun PremiumChatsInboxScreen(
                 Surface(
                     color = Panel,
                     shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.fillMaxWidth().clickable { onSelectConversation(id) }
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        markConversationRead(id)
+                        onSelectConversation(id)
+                    }
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(13.dp),
@@ -687,12 +713,46 @@ private fun PremiumChatsInboxScreen(
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold
                             )
-                            Text(
-                                if (id in pinnedIds) "★" else "☆",
-                                color = if (id in pinnedIds) Gold else Muted,
-                                fontSize = 17.sp,
-                                modifier = Modifier.clip(CircleShape).clickable { togglePinned(id) }.padding(5.dp)
+                            val unreadCount = ChatInboxStatePolicy.unreadCount(
+                                messages.filter { it.conversationId == id },
+                                preferences.getLong("read_through_$id", 0L)
                             )
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (unreadCount > 0) {
+                                    Surface(color = Gold, shape = CircleShape, modifier = Modifier.size(21.dp)) {
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                            Text(if (unreadCount > 99) "99+" else unreadCount.toString(), color = Midnight, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                                        }
+                                    }
+                                }
+                                Text(
+                                    if (id in pinnedIds) "★" else "☆",
+                                    color = if (id in pinnedIds) Gold else Muted,
+                                    fontSize = 17.sp,
+                                    modifier = Modifier.clip(CircleShape).clickable { togglePinned(id) }.padding(5.dp)
+                                )
+                                Box {
+                                    Text("⋮", color = BlueAccent, fontSize = 20.sp,
+                                        modifier = Modifier.clickable { expandedConversationActions = id }.padding(horizontal = 5.dp))
+                                    DropdownMenu(
+                                        expanded = expandedConversationActions == id,
+                                        onDismissRequest = { expandedConversationActions = null }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(if (id in archivedIds) "Unarchive chat" else "Archive chat") },
+                                            onClick = { setArchived(id, id !in archivedIds) }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Mark as unread") },
+                                            onClick = { markConversationUnread(id) }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(if (id in pinnedIds) "Unpin chat" else "Pin chat") },
+                                            onClick = { togglePinned(id); expandedConversationActions = null }
+                                        )
+                                    }
+                                }
+                            }
                             Text("›", color = BlueAccent, fontSize = 21.sp)
                         }
                     }
