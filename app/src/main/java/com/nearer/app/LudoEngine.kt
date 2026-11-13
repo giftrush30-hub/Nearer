@@ -73,7 +73,8 @@ object LudoEngine {
                 if (humanPlayers == 1) listOf("Nova", "Atlas", "Mira")[index - 1] else "Player ${index + 1}"
         }.toMap()
         val computers = if (humanPlayers == 1) colors.drop(1).toSet() else emptySet()
-        return newGame(names, computers, colors)
+        val tableColors = if (humanPlayers == 1) colors else colors.take(humanPlayers)
+        return newGame(names, computers, tableColors)
     }
     fun rollDice(state: LudoGameState, value: Int = Random.nextInt(1, 7)): LudoGameState {
         require(!state.isFinished) { "The game has already ended." }
