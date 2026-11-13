@@ -109,7 +109,7 @@ The coordinated source work has advanced beyond the earlier PR #119 checkpoint:
 
 ### Current release and test boundaries
 
-- Source integration is ahead of physical-device certification. Exact-head CI passed on PR #119, #120 and #121, including JVM unit tests and debug APK assembly. The CI artifacts are debug APKs, not Play Store release certification.
+- Source integration is ahead of physical-device certification. Exact-head CI passed on PR #119, #120, #121 and #125, including JVM unit tests and debug APK assembly. PR #125 is merged to main as commit `25d643437e6e7a233f818e3febe3255e569c302f`. The CI artifacts are debug APKs, not Play Store release certification.
 - No Android emulator launch checks were run, per the user's instruction. No physical-device test is claimed for this integration.
 - Android minimum remains API 26 (Android 8.0); Android 10 is within the declared OS range but has not yet been certified on the user's Infinix handset.
 - Mesh relay remains hard-disabled. No 100+ participant scale or A → B → C → D physical mesh test is claimed.
@@ -142,9 +142,22 @@ The durable community fan-out follow-up replaces display-name recipient selectio
 - The legacy Wi-Fi Direct fallback has no equivalent stable peer identity binding; it is not used for group membership control or group chat.
 - Old name-only group records remain visible but cannot send secure group messages. The owner must recreate the group using the identity-aware protocol and members must rejoin; the old display-name list cannot safely reveal who the original owner was.
 
-Security limits remain explicit: the first trusted roster coordinator is TOFU rather than a cryptographically signed group invitation, and the six-digit group code is not an authentication secret. Users must compare the existing first-contact pairing code in person. A phone can only queue copies for member identities whose signing and recipient-encryption keys it has pinned; other members are skipped with a visible warning. This is a source-level security improvement awaiting exact-head CI and device validation, not a claim of production-secure group membership.
+Security limits remain explicit: the first trusted roster coordinator is TOFU rather than a cryptographically signed group invitation, and the six-digit group code is not an authentication secret. Users must compare the existing first-contact pairing code in person. A phone can only queue copies for member identities whose signing and recipient-encryption keys it has pinned; other members are skipped with a visible warning. PR #125 is merged and exact-head CI passed, but this is not a claim of production-secure group membership or physical-device validation.
 
 
-## Combined Community reliability/security stack — PR #125
+## Combined Community reliability/security stack — PR #125 (merged)
 
-PR #125 combines the previously validated durable per-recipient group fan-out from PR #124 with the identity-bound roster changes described above. PR #124 and the overlapping transport-only PR #123 were closed as superseded to avoid duplicate implementations. The combined PR targets `main`; its exact-head CI is required before merge. Do not treat the source as merged or device-validated until that gate passes.
+PR #125 combined the durable per-recipient group fan-out from PR #124 with identity-bound community rosters. PR #124 and overlapping transport-only PR #123 were closed as superseded. The combined changes are integrated into main at commit `25d643437e6e7a233f818e3febe3255e569c302f`. Exact-head JVM tests and debug APK assembly passed. No physical-device test or background-delivery guarantee is claimed.
+
+
+## Community delivery receipt follow-up — branch `feature/community-delivery-receipts`
+
+The follow-up adds a transport-message-ID to community-message/recipient mapping so each group message can show separate per-member states:
+
+- The transport returns the exact message IDs committed for each stable recipient.
+- Community receipt references and per-peer delivery states are persisted locally and restored after app restart.
+- Authenticated ACK callbacks update only the mapped stable peer's status; one recipient's ACK does not mark the entire group delivered.
+- A receipt is removed from the pending mapping only after its updated state is committed; on persistence failure the prior state and mapping are retained.
+- The UI shows delivered, queued and not-verified recipient counts under each outgoing group message.
+
+This follow-up is not yet merged or validated on physical phones. It does not add background delivery while the app process is stopped or Android Doze suspends execution.
