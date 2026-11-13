@@ -1706,8 +1706,8 @@ internal object IncomingFilePayloadPolicy {
     private fun handleHyperStreamMetadata(endpointId: String, raw: ByteArray) {
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         val result = streamController.recordMetadata(endpointId, peerId, raw)
-        if (result != NearbyStreamExchangeController.InputResult.STORED &&
-            result != NearbyStreamExchangeController.InputResult.DUPLICATE) {
+        if (result == NearbyStreamExchangeController.InputResult.DUPLICATE) return
+        if (result != NearbyStreamExchangeController.InputResult.STORED) {
             listener.onFileStatus("A nearby stream transfer had invalid details and was rejected.")
             return
         }
