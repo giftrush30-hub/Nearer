@@ -3345,7 +3345,7 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth().height(54.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
-                        ) { Text(if (scanning) "Finding people…" else "Find people nearby", fontWeight = FontWeight.Bold) }
+                        ) { Text(if (scanning) "Refreshing nearby…" else "Refresh nearby people", fontWeight = FontWeight.Bold) }
                         Button(
                             onClick = { selectedTab = "Share" },
                             modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -3705,7 +3705,7 @@ private fun NeaRerHome(
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("•••", color = BlueAccent, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
                             }
                         }
-                        Text("Nearby names will appear here as phones are discovered.", color = Muted, fontSize = 11.sp)
+                        Text("Nearby names appear automatically. Keep NeaRer open with Bluetooth or Wi-Fi on.", color = Muted, fontSize = 11.sp)
                     }
                     AnimatedVisibility(visible = recentlySeenPeers.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
                         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -3731,16 +3731,20 @@ private fun NeaRerHome(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("CONNECT WITH A NEARBY PERSON", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     hybridPeers.forEach { (id, name) ->
-                        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Panel) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().clickable { onHybridConnect(id) },
+                            shape = RoundedCornerShape(16.dp),
+                            color = Panel
+                        ) {
                             Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(38.dp)) {
                                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(name.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold) }
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
                                     Text(name, color = White, fontWeight = FontWeight.SemiBold)
-                                    Text("Active now • Nearby Connections", color = BlueAccent, fontSize = 10.sp)
+                                    Text("Active now • Tap to open chat", color = BlueAccent, fontSize = 10.sp)
                                 }
-                                Button(onClick = { onHybridConnect(id) }, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)) { Text("Connect") }
+                                Text("Chat", color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
                         }
                     }
