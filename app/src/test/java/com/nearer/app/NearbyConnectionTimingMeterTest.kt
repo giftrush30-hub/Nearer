@@ -28,6 +28,15 @@ class NearbyConnectionTimingMeterTest {
         assertNull(meter.finish("unknown", 200L))
     }
 
+    @Test fun clearAllRemovesEveryPendingEndpoint() {
+        val meter = NearbyConnectionTimingMeter()
+        meter.begin("endpoint-1", 100L)
+        meter.begin("endpoint-2", 200L)
+        meter.clearAll()
+        assertNull(meter.finish("endpoint-1", 300L))
+        assertNull(meter.finish("endpoint-2", 300L))
+    }
+
     @Test fun rejectsInvalidOrBackwardsTimestamps() {
         val meter = NearbyConnectionTimingMeter()
         assertFalse(meter.begin("", 1L))
