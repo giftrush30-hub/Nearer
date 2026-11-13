@@ -1,6 +1,6 @@
 # Mesh forwarding-proof transport integration plan
 
-Status: design and protocol primitive only. This document is not evidence that live forwarding currently carries proof chains.
+Status: proof-sidecar framing and atomic encrypted Dead Drop acceptance have been implemented on the Batch Two branch. Relay remains hard-disabled pending CI, security review, recovery validation and physical multi-device testing.
 
 ## Current transport behavior observed in this branch
 
