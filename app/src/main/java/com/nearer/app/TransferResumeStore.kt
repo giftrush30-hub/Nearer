@@ -96,6 +96,39 @@ internal class TransferResumeStore(
         return Candidate(checkpoint, partial)
     }
 
+    /**
+     * Re-discovers receiver-owned partials after process death.
+     *
+     * The original manifest may no longer be in memory when the app restarts,
+     * so the bounded journal is the source of candidate identities. Every
+     * candidate is re-verified against its on-disk prefix before it is returned;
+     * damaged or missing partials are discarded. This does not authorize a
+     * resume by itself: the sender must still confirm the same transfer/item,
+     * source size and modification time, and the negotiated prefix digest before
+     * any transport is allowed to continue at the returned offset.
+     */
+    @Synchronized
+    fun discoverVerifiedCandidates(): List<Candidate> {
+        return journal.loadAll().mapNotNull { checkpoint ->
+            val item = TransferBundleItem(
+                id = checkpoint.itemId,
+                relativePath = checkpoint.relativePath,
+                displayName = checkpoint.relativePath.substringAfterLast('/'),
+                sizeBytes = checkpoint.expectedSizeBytes,
+                mimeType = null,
+                kind = TransferBundleItem.Kind.FILE
+            )
+            findValid(
+                transferId = checkpoint.transferId,
+                item = item,
+                sourceModifiedAtMillis = checkpoint.sourceModifiedAtMillis
+            )
+        }.sortedWith(
+            compareBy<Candidate> { it.checkpoint.transferId }
+                .thenBy { it.checkpoint.relativePath }
+        )
+    }
+
     @Synchronized
     fun discard(transferId: String, itemId: String): Boolean {
         val partialDeleted = !partialFileFor(transferId, itemId).exists() ||
