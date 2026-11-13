@@ -88,7 +88,7 @@ internal object TransferResumeStreamMetadataCodec {
         }
     }
 
-    private fun validate(metadata: Metadata) {
+    fun validate(metadata: Metadata) {
         require(metadata.payloadId >= 0L) { "Invalid Nearby payload ID" }
         require(metadata.transferId.isNotBlank() && metadata.transferId.length <= MAX_ID_BYTES) {
             "Invalid transfer ID"
