@@ -24,7 +24,7 @@ Do not silently reinterpret `mesh_packet_v1` as a newer version. A future envelo
 - A bounded ordered proof sidecar, with no public keys accepted from the sidecar itself.
 - An explicit packet TTL / maximum forwarding count negotiated by both peers.
 - Strict total storage quotas, proof-sidecar length limits, chunk counts and reassembly timeouts.
-- A total frame size below Nearby Connections' 32 KiB BYTES limit, including JSON/base64 overhead.
+- A total binary frame size below Nearby Connections' 32 KiB BYTES limit, including packet and proof lengths; the current v1 frame reserves 5 KiB for the maximum proof chain.
 
 ### Scale target and non-goals
 
