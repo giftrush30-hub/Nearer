@@ -2,6 +2,7 @@ package com.nearer.app
 
 import java.io.File
 import java.nio.file.Files
+import java.security.MessageDigest
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -217,6 +218,108 @@ class TransferResumeStoreTest {
             assertTrue(completePartial.exists())
             assertNotNull(TransferResumeJournal(File(root, "journal")).load("transfer-zero", tinyItem.id))
             assertNotNull(TransferResumeJournal(File(root, "journal")).load("transfer-complete", completeItem.id))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+
+    @Test fun finalizesOnlyCompleteDigestVerifiedFilesWithAtomicMove() {
+        val root = Files.createTempDirectory("nearer-resume-finalize").toFile()
+        try {
+            val store = store(root)
+            val selected = item(chunk.toLong())
+            val bytes = ByteArray(chunk) { (it % 233).toByte() }
+            val partial = store.partialFileFor("transfer-final", selected.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(bytes)
+            }
+            store.checkpoint("transfer-final", selected, 321L, selected.sizeBytes)
+            val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+                .joinToString("") { "%02x".format(it) }
+            val destination = File(root, "received/clip.mp4")
+
+            val finalized = store.finalizeVerifiedComplete(
+                "transfer-final", selected, 321L, destination, digest
+            )
+
+            assertEquals(destination.absolutePath, finalized.absolutePath)
+            assertArrayEquals(bytes, destination.readBytes())
+            assertFalse("partial must be moved, not copied", partial.exists())
+            assertNull(TransferResumeJournal(File(root, "journal")).load("transfer-final", selected.id))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun refusesIncompleteOrDigestMismatchedFinalizationWithoutPublishing() {
+        val root = Files.createTempDirectory("nearer-resume-finalize-reject").toFile()
+        try {
+            val store = store(root)
+            val selected = item(chunk.toLong() * 2L)
+            val partial = store.partialFileFor("transfer-final", selected.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(ByteArray(chunk) { 11 })
+            }
+            store.checkpoint("transfer-final", selected, null, chunk.toLong())
+            val destination = File(root, "received/clip.mp4")
+            val arbitraryDigest = "0".repeat(64)
+
+            try {
+                store.finalizeVerifiedComplete("transfer-final", selected, null, destination, arbitraryDigest)
+                fail("Incomplete partial must not be published")
+            } catch (_: IllegalArgumentException) {
+                // A non-EOF checkpoint cannot be finalized.
+            }
+            assertFalse(destination.exists())
+            assertTrue(partial.exists())
+
+            val completeItem = item(chunk.toLong())
+            val completePartial = store.partialFileFor("transfer-complete", completeItem.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(ByteArray(chunk) { 12 })
+            }
+            store.checkpoint("transfer-complete", completeItem, null, completeItem.sizeBytes)
+            try {
+                store.finalizeVerifiedComplete(
+                    "transfer-complete", completeItem, null,
+                    File(root, "received/wrong.mp4"), arbitraryDigest
+                )
+                fail("Wrong whole-file digest must be rejected")
+            } catch (_: IllegalArgumentException) { }
+            assertTrue(completePartial.exists())
+            assertFalse(File(root, "received/wrong.mp4").exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun neverOverwritesAnExistingFinalDestination() {
+        val root = Files.createTempDirectory("nearer-resume-finalize-existing").toFile()
+        try {
+            val store = store(root)
+            val selected = item(1024L)
+            val bytes = ByteArray(1024) { (it % 199).toByte() }
+            val partial = store.partialFileFor("transfer-existing", selected.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(bytes)
+            }
+            store.checkpoint("transfer-existing", selected, null, selected.sizeBytes)
+            val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+                .joinToString("") { "%02x".format(it) }
+            val destination = File(root, "received/clip.mp4").apply {
+                parentFile?.mkdirs()
+                writeText("keep existing file")
+            }
+
+            try {
+                store.finalizeVerifiedComplete(
+                    "transfer-existing", selected, null, destination, digest
+                )
+                fail("Existing destination must not be overwritten")
+            } catch (_: IllegalArgumentException) { }
+            assertEquals("keep existing file", destination.readText())
+            assertTrue(partial.exists())
         } finally {
             root.deleteRecursively()
         }
