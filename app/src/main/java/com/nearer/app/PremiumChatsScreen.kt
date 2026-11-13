@@ -2,7 +2,9 @@ package com.nearer.app
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +17,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -29,6 +33,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -52,7 +61,10 @@ internal fun PremiumChatsScreen(
     chatNotice: String,
     draft: String,
     onDraftChange: (String) -> Unit,
-    onSendMessage: (String) -> Unit,
+    onSendMessage: (String, ChatMessage?) -> Unit,
+    onDeleteMessage: (String) -> Boolean,
+    onEditMessage: (String, String) -> Boolean,
+    onReactToMessage: (String, String) -> Unit,
     onFindNearby: () -> Unit,
     onBackToInbox: () -> Unit,
     onChooseFiles: () -> Unit,
@@ -76,6 +88,33 @@ internal fun PremiumChatsScreen(
     }
 
     var recipientMenuExpanded by remember { mutableStateOf(false) }
+    var replyingTo by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
+    var editingMessage by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
+    var expandedMessageActions by remember { mutableStateOf<String?>(null) }
+    var reactingToMessageId by remember { mutableStateOf<String?>(null) }
+    var pendingDeleteMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    val context = LocalContext.current
+    pendingDeleteMessage?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteMessage = null },
+            title = { Text("Delete this message?") },
+            text = { Text("This removes the message from this phone only. It will still remain on the other person's phone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (onDeleteMessage(target.id) && replyingTo?.id == target.id) replyingTo = null
+                    if (editingMessage?.id == target.id) {
+                        editingMessage = null
+                        onDraftChange("")
+                    }
+                    pendingDeleteMessage = null
+                }) { Text("Delete for me", color = Color(0xFFE6A0A0)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteMessage = null }) { Text("Cancel") }
+            }
+        )
+    }
+
     val selectedRecipient = meshRecipients.firstOrNull { it.peerId == selectedMeshRecipientId }
     val selectedRecipientUnavailable = selectedMeshRecipientId != null && selectedRecipient == null
     val chatAvailable = selectedRecipient != null || (selectedMeshRecipientId == null && chatReady)
@@ -145,7 +184,7 @@ internal fun PremiumChatsScreen(
                         Text(
                             when {
                                 selectedRecipientUnavailable -> "Selected recipient is currently unreachable"
-                                selectedRecipient?.isDirect == false -> "Mesh route · ${selectedRecipient.hopCount} relay(s) away"
+                                selectedRecipient?.isDirect == false -> "Reaching them through ${selectedRecipient.hopCount} nearby helper(s)"
                                 chatAvailable -> "Direct nearby · Private chat ready"
                                 else -> "Not connected yet"
                             },
@@ -186,7 +225,7 @@ internal fun PremiumChatsScreen(
                     Surface(shape = RoundedCornerShape(30.dp), color = if (chatAvailable) Color(0xFF174B43) else Color(0xFF3C3540)) {
                         Text(
                             if (selectedRecipientUnavailable) "ROUTE LOST"
-                            else if (selectedRecipient?.isDirect == false) "MESH ROUTE"
+                            else if (selectedRecipient?.isDirect == false) "VIA OTHERS"
                             else if (chatAvailable) "SECURE LINK" else "OFFLINE",
                             color = if (chatAvailable) Color(0xFF9DE8C9) else Gold,
                             fontSize = 9.sp,
@@ -218,7 +257,7 @@ internal fun PremiumChatsScreen(
                                             selectedRecipientUnavailable -> "Route unavailable · waiting for a path"
                                             selectedRecipient == null -> "Select someone you have securely paired with"
                                             selectedRecipient.isDirect -> "Direct nearby connection"
-                                            else -> "Through ${selectedRecipient.hopCount} trusted relay(s)"
+                                            else -> "Through ${selectedRecipient.hopCount} trusted nearby helper(s)"
                                         },
                                         color = Muted,
                                         fontSize = 10.sp
@@ -228,7 +267,7 @@ internal fun PremiumChatsScreen(
                             }
                         }
                         Text(
-                            "Multi-hop is available only for people whose device keys you have verified through a previous direct pairing.",
+                            "Messages can travel through nearby helpers only for people you have already securely paired with.",
                             color = Muted,
                             fontSize = 9.sp,
                             lineHeight = 13.sp
@@ -243,7 +282,7 @@ internal fun PremiumChatsScreen(
                                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                             Text(recipient.displayName, color = White, fontWeight = FontWeight.Bold)
                                             Text(
-                                                if (recipient.isDirect) "Direct nearby" else "Mesh · ${recipient.hopCount} relay(s)",
+                                                if (recipient.isDirect) "Direct nearby" else "Via ${recipient.hopCount} nearby helper(s)",
                                                 color = Muted,
                                                 fontSize = 10.sp
                                             )
@@ -272,7 +311,7 @@ internal fun PremiumChatsScreen(
                                 Text(
                                     when {
                                         selectedRecipientUnavailable -> "This person is offline. Your previous messages remain available here; reconnect when they are nearby to continue."
-                                        selectedRecipient?.isDirect == false -> "Send a private message through the nearby mesh. Relays carry encrypted packets; only the selected recipient can read them."
+                                        selectedRecipient?.isDirect == false -> "Send a private message through trusted nearby helpers. They cannot read the message; only the person you chose can."
                                         else -> "Say hello. Your messages travel over the secure nearby phone connection."
                                     },
                                     color = Muted, fontSize = 12.sp, lineHeight = 18.sp
@@ -300,8 +339,107 @@ internal fun PremiumChatsScreen(
                                         modifier = Modifier.fillMaxWidth(0.88f)
                                     ) {
                                         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                            if (!message.replyToPreview.isNullOrBlank()) {
+                                                Surface(color = Color(0xFF10243A), shape = RoundedCornerShape(9.dp)) {
+                                                    Column(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                        Text(message.replyToSender ?: "Reply", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                        Text(message.replyToPreview.orEmpty(), color = Muted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                                    }
+                                                }
+                                            }
                                             Text(message.body, color = White, fontSize = 14.sp, lineHeight = 20.sp)
-                                            Text(if (message.outgoing) message.delivery else "Received", color = if (message.outgoing) Color(0xFF9BD8FF) else Muted, fontSize = 9.sp)
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                    Text(if (message.outgoing) ChatDeliveryLabelPolicy.label(message.delivery) else "Received", color = if (message.outgoing) Color(0xFF9BD8FF) else Muted, fontSize = 9.sp)
+                                                    if (message.editVersion > 0) Text("Edited", color = Gold, fontSize = 9.sp)
+                                                }
+                                                Box {
+                                                    Text("More", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.clickable { expandedMessageActions = message.id }.padding(start = 12.dp))
+                                                    DropdownMenu(
+                                                        expanded = expandedMessageActions == message.id,
+                                                        onDismissRequest = { expandedMessageActions = null }
+                                                    ) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("React") },
+                                                            onClick = {
+                                                                reactingToMessageId = if (reactingToMessageId == message.id) null else message.id
+                                                                expandedMessageActions = null
+                                                            }
+                                                        )
+                                                        if (message.outgoing) {
+                                                            DropdownMenuItem(
+                                                                text = { Text("Edit") },
+                                                                onClick = {
+                                                                    editingMessage = message
+                                                                    replyingTo = null
+                                                                    onDraftChange(message.body)
+                                                                    expandedMessageActions = null
+                                                                }
+                                                            )
+                                                        }
+                                                        DropdownMenuItem(
+                                                            text = { Text("Reply") },
+                                                            onClick = { replyingTo = message; expandedMessageActions = null }
+                                                        )
+                                                        DropdownMenuItem(
+                                                            text = { Text("Copy message") },
+                                                            onClick = {
+                                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                                clipboard.setPrimaryClip(ClipData.newPlainText("NeaRer message", message.body))
+                                                                Toast.makeText(context, "Message copied", Toast.LENGTH_SHORT).show()
+                                                                expandedMessageActions = null
+                                                            }
+                                                        )
+                                                        DropdownMenuItem(
+                                                            text = { Text("Delete for me") },
+                                                            onClick = {
+                                                                expandedMessageActions = null
+                                                                pendingDeleteMessage = message
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (message.reactions.isNotEmpty()) {
+                                        val counts = message.reactions.values.groupingBy { it }.eachCount()
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(0.88f),
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            counts.forEach { (emoji, count) ->
+                                                Surface(
+                                                    color = Color(0xFF263B59),
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    modifier = Modifier.clickable {
+                                                        onReactToMessage(message.id, emoji)
+                                                    }
+                                                ) {
+                                                    Text("$emoji $count", color = White, fontSize = 11.sp,
+                                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (reactingToMessageId == message.id) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(0.88f),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            listOf("👍", "❤️", "😂", "😮", "😢", "🙏").forEach { emoji ->
+                                                Surface(
+                                                    color = Color(0xFF263B59),
+                                                    shape = CircleShape,
+                                                    modifier = Modifier.clickable {
+                                                        onReactToMessage(message.id, emoji)
+                                                        reactingToMessageId = null
+                                                    }
+                                                ) {
+                                                    Text(emoji, fontSize = 18.sp, modifier = Modifier.padding(7.dp))
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -314,6 +452,29 @@ internal fun PremiumChatsScreen(
                     }
 
                     if (chatAvailable) {
+                        editingMessage?.let { target ->
+                            Surface(color = Color(0xFF142238), shape = RoundedCornerShape(12.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text("Editing your message", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        Text(target.body, color = Muted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Text("Cancel", color = BlueAccent, fontSize = 11.sp,
+                                        modifier = Modifier.clickable { editingMessage = null; onDraftChange("") }.padding(6.dp))
+                                }
+                            }
+                        }
+                        replyingTo?.let { target ->
+                            Surface(color = Color(0xFF142238), shape = RoundedCornerShape(12.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text("Replying to " + if (target.outgoing) "your message" else target.conversationName, color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        Text(target.body, color = Muted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Text("Cancel", color = BlueAccent, fontSize = 11.sp, modifier = Modifier.clickable { replyingTo = null }.padding(6.dp))
+                                }
+                            }
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -328,12 +489,25 @@ internal fun PremiumChatsScreen(
                                 singleLine = true
                             )
                             Button(
-                                onClick = { if (draft.isNotBlank()) onSendMessage(draft) },
-                                enabled = draft.isNotBlank(),
+                                onClick = {
+                                    if (draft.isNotBlank()) {
+                                        val target = editingMessage
+                                        if (target != null) {
+                                            if (onEditMessage(target.id, draft)) {
+                                                editingMessage = null
+                                                onDraftChange("")
+                                            }
+                                        } else {
+                                            onSendMessage(draft, replyingTo)
+                                            replyingTo = null
+                                        }
+                                    }
+                                },
+                                enabled = draft.isNotBlank() && (editingMessage == null || draft.trim() != editingMessage?.body),
                                 modifier = Modifier.height(54.dp),
                                 shape = RoundedCornerShape(17.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
-                            ) { Text("Send", fontWeight = FontWeight.Bold) }
+                            ) { Text(if (editingMessage != null) "Save" else "Send", fontWeight = FontWeight.Bold) }
                         }
                     } else {
                         Surface(color = Color(0xFF142238), shape = RoundedCornerShape(14.dp)) {
@@ -358,7 +532,7 @@ internal fun PremiumChatsScreen(
                             Text("File sharing needs a direct nearby connection.", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
                         }
                         Text(
-                            if (selectedRecipient?.isDirect == false) "Mesh chat" else if (usingNearbyConnections) "Nearby link" else "Wi-Fi Direct link",
+                            if (selectedRecipient?.isDirect == false) "Via nearby helpers" else if (usingNearbyConnections) "Nearby link" else "Wi-Fi Direct link",
                             color = Muted,
                             fontSize = 10.sp,
                             modifier = Modifier.align(Alignment.CenterVertically)
@@ -428,7 +602,7 @@ internal fun PremiumChatsScreen(
                         Text(
                             when {
                                 selectedRecipientUnavailable -> "Your selected person is not reachable right now. NeaRer will not send this message to a different phone."
-                                meshRecipients.isNotEmpty() -> "Choose one of your trusted contacts above to send through an available mesh route."
+                                meshRecipients.isNotEmpty() -> "Choose one of your trusted contacts above to send through nearby helpers."
                                 else -> "Connect with someone nearby to start a private conversation. NeaRer uses local phone connections; mobile data isn't needed."
                             },
                             color = Muted, fontSize = 12.sp, lineHeight = 19.sp
@@ -458,9 +632,52 @@ private fun PremiumChatsInboxScreen(
         .filter { it.conversationId.isNotBlank() }
         .groupBy { it.conversationId }
         .mapValues { (_, conversation) -> conversation.maxByOrNull { it.timestamp }!! }
-    val recipientIds = meshRecipients.map { it.peerId }
-    val conversationIds = (latestMessages.keys + recipientIds).distinct().sortedByDescending { id ->
-        latestMessages[id]?.timestamp ?: 0L
+    val context = LocalContext.current
+    val preferences = remember { context.getSharedPreferences("nearer_chat_inbox", android.content.Context.MODE_PRIVATE) }
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedFilter by remember { mutableStateOf("All") }
+    var pinnedIds by remember { mutableStateOf(preferences.getStringSet("pinned_conversations", emptySet()).orEmpty()) }
+    var archivedIds by remember { mutableStateOf(preferences.getStringSet("archived_conversations", emptySet()).orEmpty()) }
+    var expandedConversationActions by remember { mutableStateOf<String?>(null) }
+
+    val conversationIds = ChatInboxPolicy.conversationIds(
+        messages = messages,
+        recipients = meshRecipients,
+        query = searchQuery,
+        filter = if (selectedFilter == "Archived" || selectedFilter == "Unread") "All" else selectedFilter,
+        pinnedIds = pinnedIds
+    ).filter { id ->
+        val isArchived = id in archivedIds
+        val unread = ChatInboxStatePolicy.unreadCount(
+            messages.filter { it.conversationId == id },
+            preferences.getLong("read_through_$id", 0L)
+        )
+        when (selectedFilter) {
+            "Archived" -> isArchived
+            "Unread" -> !isArchived && unread > 0
+            else -> !isArchived
+        }
+    }
+
+    fun togglePinned(id: String) {
+        pinnedIds = if (id in pinnedIds) pinnedIds - id else pinnedIds + id
+        preferences.edit().putStringSet("pinned_conversations", pinnedIds).apply()
+    }
+
+    fun setArchived(id: String, archived: Boolean) {
+        archivedIds = if (archived) archivedIds + id else archivedIds - id
+        preferences.edit().putStringSet("archived_conversations", archivedIds).apply()
+        expandedConversationActions = null
+    }
+
+    fun markConversationRead(id: String) {
+        val newestTimestamp = messages.filter { it.conversationId == id }.maxOfOrNull { it.timestamp } ?: System.currentTimeMillis()
+        preferences.edit().putLong("read_through_$id", newestTimestamp).apply()
+    }
+
+    fun markConversationUnread(id: String) {
+        preferences.edit().putLong("read_through_$id", 0L).apply()
+        expandedConversationActions = null
     }
 
     Column(
@@ -482,6 +699,35 @@ private fun PremiumChatsInboxScreen(
             Text("＋  Find people / Start a chat", fontWeight = FontWeight.Bold)
         }
 
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it.take(80) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Search chats and messages") },
+            placeholder = { Text("Name, NeaRer ID or message") },
+            shape = RoundedCornerShape(15.dp)
+        )
+
+        Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            listOf("All", "Unread", "Nearby", "Via others", "Offline", "Archived").forEach { filter ->
+                val selected = selectedFilter == filter
+                Surface(
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { selectedFilter = filter },
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (selected) BlueAccent else Color(0xFF20334D)
+                ) {
+                    Text(
+                        filter,
+                        color = if (selected) Midnight else Muted,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp)
+                    )
+                }
+            }
+        }
+
         if (conversationIds.isEmpty()) {
             Surface(color = Panel, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(
@@ -494,8 +740,33 @@ private fun PremiumChatsInboxScreen(
                             Text("✦", color = Gold, fontSize = 27.sp)
                         }
                     }
-                    Text("Your conversations start here", color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Text("Find someone nearby or add a trusted NeaRer ID. Your conversations will stay here when you disconnect.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    Text(
+                        if (selectedFilter == "Archived") "No archived chats" else if (selectedFilter == "Unread") "You're all caught up" else if (searchQuery.isNotBlank() || selectedFilter != "All") "No matching conversations" else "Your conversations start here",
+                        color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        if (selectedFilter == "Archived")
+                            "Chats you archive will be kept here, separate from your main inbox."
+                        else if (selectedFilter == "Unread")
+                            "New messages will appear here until you open their conversation."
+                        else if (searchQuery.isNotBlank() || selectedFilter != "All")
+                            "Try another name or message, or clear the current search and filter."
+                        else
+                            "Find someone nearby or add a trusted NeaRer ID. Your conversations will stay here when you disconnect.",
+                        color = Muted, fontSize = 12.sp, lineHeight = 18.sp
+                    )
+                    if (searchQuery.isNotBlank() || selectedFilter != "All") {
+                        Text(
+                            "Clear search and filters",
+                            color = BlueAccent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable {
+                                searchQuery = ""
+                                selectedFilter = "All"
+                            }.padding(6.dp)
+                        )
+                    }
                 }
             }
         } else {
@@ -508,7 +779,10 @@ private fun PremiumChatsInboxScreen(
                 Surface(
                     color = Panel,
                     shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.fillMaxWidth().clickable { onSelectConversation(id) }
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        markConversationRead(id)
+                        onSelectConversation(id)
+                    }
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(13.dp),
@@ -523,7 +797,7 @@ private fun PremiumChatsInboxScreen(
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text(displayName, color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
-                                latest?.body?.take(62) ?: if (recipient?.isDirect == true) "Nearby and ready to chat" else if (recipient != null) "Available through NeaRer mesh" else "Previous conversation · reconnect when nearby",
+                                latest?.body?.take(62) ?: if (recipient?.isDirect == true) "Nearby and ready to chat" else if (recipient != null) "Reachable through nearby helpers" else "Previous conversation · reconnect when nearby",
                                 color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -536,19 +810,59 @@ private fun PremiumChatsInboxScreen(
                             Text(
                                 when {
                                     recipient?.isDirect == true -> "ONLINE"
-                                    recipient != null -> "MESH"
+                                    recipient != null -> "VIA OTHERS"
                                     else -> "OFFLINE"
                                 },
                                 color = if (recipient != null) Color(0xFF8FE0B9) else Muted,
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold
                             )
+                            val unreadCount = ChatInboxStatePolicy.unreadCount(
+                                messages.filter { it.conversationId == id },
+                                preferences.getLong("read_through_$id", 0L)
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (unreadCount > 0) {
+                                    Surface(color = Gold, shape = CircleShape, modifier = Modifier.size(21.dp)) {
+                                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                            Text(if (unreadCount > 99) "99+" else unreadCount.toString(), color = Midnight, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                                        }
+                                    }
+                                }
+                                Text(
+                                    if (id in pinnedIds) "★" else "☆",
+                                    color = if (id in pinnedIds) Gold else Muted,
+                                    fontSize = 17.sp,
+                                    modifier = Modifier.clip(CircleShape).clickable { togglePinned(id) }.padding(5.dp)
+                                )
+                                Box {
+                                    Text("⋮", color = BlueAccent, fontSize = 20.sp,
+                                        modifier = Modifier.clickable { expandedConversationActions = id }.padding(horizontal = 5.dp))
+                                    DropdownMenu(
+                                        expanded = expandedConversationActions == id,
+                                        onDismissRequest = { expandedConversationActions = null }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(if (id in archivedIds) "Unarchive chat" else "Archive chat") },
+                                            onClick = { setArchived(id, id !in archivedIds) }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Mark as unread") },
+                                            onClick = { markConversationUnread(id) }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(if (id in pinnedIds) "Unpin chat" else "Pin chat") },
+                                            onClick = { togglePinned(id); expandedConversationActions = null }
+                                        )
+                                    }
+                                }
+                            }
                             Text("›", color = BlueAccent, fontSize = 21.sp)
                         }
                     }
                 }
             }
         }
-        Text("NeaRer reconnects only to trusted identities when they are discoverable and the required phone permissions and radios are available.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+        Text("NeaRer reconnects to people you trust when they are nearby and your phone is ready.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
     }
 }
