@@ -178,7 +178,7 @@ This is intentionally a storage/recovery foundation, not a claim that Nearby FIL
 The same recovery foundation now includes a guarded completion operation, `TransferResumeStore.finalizeVerifiedComplete()`:
 
 - It accepts only a locally re-verified EOF checkpoint and checks the sender-provided whole-file SHA-256 before publishing.
-- It moves the completed partial with an atomic filesystem move; if atomic move is unsupported, it fails closed and keeps the partial rather than exposing a half-copied destination.
+- It publishes the completed partial using atomic same-filesystem hard-link creation, which fails if the destination already exists (including a competing writer winning a race). If hard links are unsupported, it fails closed and keeps the partial rather than exposing a half-copied destination.
 - It refuses an existing destination, does not derive the destination from the untrusted manifest path, and removes the journal record after successful publication.
 - Unit tests cover successful publication, incomplete data, digest mismatch, and destination collision.
 
