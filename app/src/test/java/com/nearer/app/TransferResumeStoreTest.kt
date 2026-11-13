@@ -351,6 +351,18 @@ class TransferResumeStoreTest {
                 fail("A different authenticated sender must not reuse the checkpoint")
             } catch (_: SecurityException) { }
             assertTrue("mismatched peer must not destroy the valid partial", partial.exists())
+            try {
+                // A different peer must not be able to trigger cleanup by reusing
+                // the same IDs with altered manifest metadata.
+                restarted.findValid(
+                    "transfer-peer",
+                    selected.copy(sizeBytes = selected.sizeBytes + chunk),
+                    100L,
+                    "BCDEFG234567"
+                )
+                fail("Wrong peer with changed metadata must be rejected before cleanup")
+            } catch (_: SecurityException) { }
+            assertTrue("wrong-peer metadata must not destroy the owner's partial", partial.exists())
             assertNotNull(restarted.findValid("transfer-peer", selected, 100L, "ABCDEF234567"))
         } finally {
             root.deleteRecursively()
