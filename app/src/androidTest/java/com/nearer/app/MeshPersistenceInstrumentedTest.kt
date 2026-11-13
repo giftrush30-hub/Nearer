@@ -458,7 +458,8 @@ class MeshPersistenceInstrumentedTest {
                 sign()
             }
         })
-        val afterDuplicate = DeadDropStore(context).claimDue(now + 6L, 1).single()
+        // The previous claim's durable lease must expire before the retry is claimable again.
+        val afterDuplicate = DeadDropStore(context).claimDue(now + 30_004L, 1).single()
         assertEquals(2, MeshForwardingProofChain.decode(afterDuplicate.proofChain).proofs.size)
     }
 
