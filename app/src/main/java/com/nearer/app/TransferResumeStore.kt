@@ -3,9 +3,7 @@ package com.nearer.app
 import java.io.File
 import java.io.FileInputStream
 import java.io.RandomAccessFile
-import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 
 /**
@@ -156,8 +154,9 @@ internal class TransferResumeStore(
 
     /**
      * Publishes a fully received partial only after its durable EOF checkpoint and
-     * whole-file digest have been verified. The final move is atomic; if the
-     * filesystem cannot provide an atomic move, the partial is left untouched.
+     * whole-file digest have been verified. An atomic hard-link creation publishes
+     * the completed bytes without replacing an existing destination. If the
+     * filesystem cannot create a same-filesystem hard link, publication fails closed.
      *
      * The destination must be chosen by the trusted receive flow, not from an
      * untrusted manifest path. Existing destination files are never overwritten.
@@ -200,13 +199,19 @@ internal class TransferResumeStore(
         require(parent.isDirectory) { "Final destination parent is not a folder" }
         require(!target.exists()) { "Final destination already exists" }
 
-        try {
-            Files.move(candidate.partialFile.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
-        } catch (error: AtomicMoveNotSupportedException) {
-            throw IllegalStateException("Atomic finalization is not supported on this storage", error)
+        // Unlike ATOMIC_MOVE, createLink has no replace-existing mode ambiguity:
+        // creation fails if another file already owns the destination, including
+        // when a competing writer wins the race after the existence check above.
+        Files.createLink(target.toPath(), candidate.partialFile.toPath())
+        // Both names now refer to the same fully verified inode. If unlinking the
+        // private partial fails, keep the published file and clear its journal entry;
+        // this can leave a harmless duplicate name, never a partially copied file.
+        if (!candidate.partialFile.delete()) {
+            journal.remove(transferId, item.id)
+            return target
         }
-        // If this journal cleanup fails, the next discovery sees the missing
-        // partial and removes the stale record; the already-published file stays safe.
+        // If journal cleanup fails, the next discovery sees the missing partial
+        // and removes the stale record; the already-published file remains safe.
         journal.remove(transferId, item.id)
         return target
     }
