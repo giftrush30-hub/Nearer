@@ -1924,7 +1924,7 @@ class MainActivity : ComponentActivity() {
                             val firstCoordinator = old.ownerPeerId.isBlank()
                             communityGroups[i] = old.copy(
                                 members = members,
-                                ownerPeerId = owner,
+                                ownerPeerId = owner.orEmpty(),
                                 memberPeerIds = validatedIds
                             )
                             if (persistCommunityData() && firstCoordinator) {
