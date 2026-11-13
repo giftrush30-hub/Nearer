@@ -135,9 +135,9 @@ class MainActivity : ComponentActivity() {
     private val meshRecipients = mutableStateMapOf<String, MeshRecipient>()
     private var selectedMeshRecipientId by mutableStateOf<String?>(null)
     private val recentlySeenPeers = mutableStateMapOf<String, NearbyPerson>()
-    // Endpoint IDs are short-lived; suppress duplicate reconnect requests only
-    // for the current discovery session, while stable trust is kept in the key store.
-    private val autoReconnectRequests = mutableSetOf<String>()
+    // Endpoint IDs are temporary; the tracker prevents duplicate reconnects
+    // without ever treating a transient endpoint as a person's identity.
+    private val trustedPeerReconnectTracker = TrustedPeerReconnectTracker()
     private var displayName by mutableStateOf("NeaRer User")
     private var onboardingComplete by mutableStateOf(false)
     private var profileAvatarId by mutableStateOf("orbit")
@@ -364,14 +364,14 @@ class MainActivity : ComponentActivity() {
                     // earlier in-person pairing are reconnected automatically.
                     // First-time peers still require the existing comparison/approval.
                     val alreadyTrusted = TrustedPeerKeyStore.hasPinnedPeer(this@MainActivity, stableId)
-                    if (alreadyTrusted && !hybridConnected && autoReconnectRequests.add(id)) {
+                    if (trustedPeerReconnectTracker.shouldRequest(id, stableId, alreadyTrusted, hybridConnected)) {
                         statusMessage = "Reconnecting securely to $name…"
                         nearbyTransport?.request(id)
                     }
                 }
             } }
             override fun onLost(id: String, stableId: String) { runOnUiThread {
-                autoReconnectRequests.remove(id)
+                trustedPeerReconnectTracker.clear(id)
                 val name = hybridPeers.remove(id)
                 if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
                 if (hybridConnectedEndpoint == id) {
@@ -403,7 +403,7 @@ class MainActivity : ComponentActivity() {
             }
             override fun onConnected(id: String, name: String, stableId: String) {
                 runOnUiThread {
-                    autoReconnectRequests.remove(id)
+                    trustedPeerReconnectTracker.clear(id)
                     hybridSearching = false
                     hybridConnected = true
                     hybridConnectedEndpoint = id
