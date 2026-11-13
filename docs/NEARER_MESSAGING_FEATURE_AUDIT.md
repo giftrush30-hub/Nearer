@@ -32,9 +32,10 @@ Implemented in the current messaging branches (subject to integration and device
 - Automatic reconnection for previously trusted identities.
 - In-chat file picker using the existing transfer engine.
 - Optional phone number stored locally and not treated as the primary identity.
-- Inbox search by contact/display name, NeaRer ID and latest message preview.
-- Inbox filters for All, direct Nearby, Mesh and Offline.
+- Inbox search by contact/display name, NeaRer ID and any message in the locally retained conversation history (up to the app's current 500-message timeline limit).
+- Inbox filters for All, Nearby, Via others and Offline, using plain language in the screen.
 - Locally persisted pinned conversations.
+- Clear outgoing-message labels: waiting for reconnection, sending, delivered to the recipient's phone, interrupted/not confirmed, or not sent. Delivery confirmation is not a read receipt.
 
 Not yet complete or not yet verified as a full end-to-end user feature:
 - Reply/quote, reactions, edit, delete-for-everyone and message forwarding.
@@ -42,7 +43,7 @@ Not yet complete or not yet verified as a full end-to-end user feature:
 - Group chats with membership, delivery, history and admin controls.
 - Polls, scheduled messages, disappearing messages and stories/status.
 - Chat lock, per-chat notification controls, mute/archive and unread counters.
-- Search across the full message history and media, not just the latest inbox preview.
+- Search across media, and search older messages beyond the locally retained timeline limit.
 - Export/restore of encrypted local chat history and media.
 - Full multi-hop message transit; relay remains deliberately disabled until proof, trust and recovery requirements pass.
 - Real-device interoperability, reconnect, duplicate suppression and app-process-death recovery validation.
@@ -50,7 +51,7 @@ Not yet complete or not yet verified as a full end-to-end user feature:
 ## Roadmap and acceptance gates
 
 ### M1 — Reliable one-to-one messaging
-- Durable outgoing queue and clear Queued / Sending / Sent-to-device / Delivered / Read semantics. Do not label a transport ACK as a read receipt.
+- Durable outgoing queue and clear waiting / sending / delivered-to-phone / interrupted / not-sent states. Read receipts are a separate future feature; never label a transport ACK as a read receipt.
 - Idempotent message IDs, duplicate suppression, retry/backoff and safe recovery after disconnect or app restart.
 - Conversation history integrity and correct recipient binding.
 - Test on two or more Android phones, including Android 8+ compatibility, radio loss, app background/force-stop, and reconnection.
