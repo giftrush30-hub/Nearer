@@ -10,7 +10,7 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - Kotlin + Jetpack Compose Android app.
 - Nearby Connections discovery, connection requests and approval.
 - Direct one-to-one chat with encrypted message packets and encrypted delivery acknowledgements after the authenticated key exchange.
-- Group and nearby broadcast messages are encrypted separately for each connected peer.
+- Group and nearby broadcast messages are encrypted separately for each connected peer. Group fan-out currently uses best-effort sends; the durable per-recipient retry/acknowledgement queue is implemented for direct one-to-one chat, not yet for group fan-out.
 - Local recent-message history and an encrypted-at-rest pending-message queue.
 - Nearby Connections file transfer, progress, cancellation and integrity checks.
 - Share Hub / OpenSend foundations for local file and app sharing.
@@ -81,3 +81,16 @@ Phase 1 SmartConnect is integrated into `main`. The coordinated Phase 2 branch c
 - Phase 1 SmartConnect, coordinated mesh proof-chain foundations and Ludo pass-and-play foundations are now source-integrated in `main`. This does not mean multi-hop relay, internet multiplayer, nearby multiplayer, or physical-device behavior is field-verified.
 - Relay remains hard-disabled. Next engineering focus is a focused Phase 2 audit and completion of the live secure-message delivery path, then transfer lifecycle integration; do not claim full Phase 2 completion based only on the foundations already present.
 - Android minimum remains API 26 (Android 8.0). Hosted emulator checks remain deferred; physical-device compatibility is unverified.
+
+
+## Phase 2 messaging audit — 13 November 2026
+
+The live direct one-to-one path has these integrated foundations: signed fresh ECDH handshake, directional AES-GCM session keys, encrypted message packets and acknowledgements, persist-before-send encrypted outbox, duplicate suppression committed before ACK, bounded retry attempts, and retry on a later authenticated reconnect. The acknowledgement means the recipient committed the message locally; it is not a read receipt. First-contact trust remains trust-on-first-use and depends on users comparing the in-person security code.
+
+### Group fan-out reliability gap
+
+The current group/broadcast methods encrypt a separate packet for each connected peer, but do not put each recipient's copy into the durable outbox or map its acknowledgement to a pending delivery. They are best-effort while peers are connected. This is a known Phase 2 gap, not a completed reliable group-messaging feature. The next implementation must track delivery independently per recipient, persist each recipient's queue entry before send, retry after reconnect, and clear only that recipient's copy after its authenticated ACK.
+
+### Process lifecycle boundary
+
+The direct outbox is restored when the transport is recreated and retries when the matching trusted peer authenticates again. This is reconnect-driven recovery, not a guarantee of background delivery while the app is stopped or the phone is in Doze. Android background execution and a durable scheduled retry mechanism remain separate work.
