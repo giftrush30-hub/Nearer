@@ -448,7 +448,11 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     var safelyStored = false
                     if (body.startsWith("NR_COMMUNITY:")) {
-                        handleCommunityPacket(senderName, body.removePrefix("NR_COMMUNITY:"))
+                        handleCommunityPacket(
+                            senderName,
+                            nearbyTransport?.stableIdentityForEndpoint(id).orEmpty(),
+                            body.removePrefix("NR_COMMUNITY:")
+                        )
                         // Acknowledge only after the updated community state reaches disk.
                         safelyStored = persistCommunityData()
                     } else if (chatMessages.any { it.id == messageId }) {
@@ -1637,7 +1641,14 @@ class MainActivity : ComponentActivity() {
         return try {
             val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
             val groups = JSONArray()
-            communityGroups.forEach { groups.put(JSONObject().put("code", it.code).put("name", it.name).put("members", JSONArray(it.members))) }
+            communityGroups.forEach { groups.put(
+                JSONObject()
+                    .put("code", it.code)
+                    .put("name", it.name)
+                    .put("members", JSONArray(it.members))
+                    .put("ownerPeerId", it.ownerPeerId)
+                    .put("memberPeerIds", JSONArray(it.memberPeerIds))
+            ) }
             val messages = JSONArray()
             communityMessages.takeLast(300).forEach { messages.put(JSONObject().put("id", it.id).put("code", it.groupCode).put("sender", it.sender).put("body", it.body).put("time", it.time)) }
             prefs.edit().putString("community_groups", groups.toString()).putString("community_messages", messages.toString()).commit()
@@ -1650,7 +1661,16 @@ class MainActivity : ComponentActivity() {
             for (i in 0 until groups.length()) {
                 val item = groups.getJSONObject(i)
                 val members = item.optJSONArray("members") ?: JSONArray()
-                communityGroups.add(CommunityGroup(item.getString("code"), item.optString("name"), (0 until members.length()).map { members.optString(it) }))
+                val memberPeerIds = item.optJSONArray("memberPeerIds") ?: JSONArray()
+                communityGroups.add(
+                    CommunityGroup(
+                        item.getString("code"),
+                        item.optString("name"),
+                        (0 until members.length()).map { members.optString(it) },
+                        item.optString("ownerPeerId"),
+                        (0 until memberPeerIds.length()).map { memberPeerIds.optString(it) }
+                    )
+                )
             }
             val messages = JSONArray(prefs.getString("community_messages", "[]"))
             for (i in 0 until messages.length()) {
@@ -1691,7 +1711,12 @@ class MainActivity : ComponentActivity() {
         if (name.isBlank() || communityGroups.size >= 20) return
         var code = (100000..999999).random().toString()
         while (communityGroups.any { it.code == code }) code = (100000..999999).random().toString()
-        communityGroups.add(0, CommunityGroup(code, name, listOf(displayName)))
+        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+        if (NeaRerIdentity.normalize(localPeerId) != localPeerId) {
+            communityNotice = "This phone's secure NeaRer identity is not ready. The group was not created."
+            return
+        }
+        communityGroups.add(0, CommunityGroup(code, name, listOf(displayName), localPeerId, listOf(localPeerId)))
         selectedCommunityCode = code
         persistCommunityData()
         communityNotice = "Created $name. Share group code $code with nearby people."
@@ -1700,7 +1725,21 @@ class MainActivity : ComponentActivity() {
     private fun joinCommunityGroup(raw: String) {
         val code = raw.filter { it.isDigit() }.take(6)
         if (code.length != 6) return
-        if (communityGroups.none { it.code == code }) communityGroups.add(0, CommunityGroup(code, "Nearby group $code", listOf(displayName)))
+        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+        if (NeaRerIdentity.normalize(localPeerId) != localPeerId) {
+            communityNotice = "This phone's secure NeaRer identity is not ready. The group was not joined."
+            return
+        }
+        val existing = communityGroups.indexOfFirst { it.code == code }
+        if (existing < 0) {
+            communityGroups.add(0, CommunityGroup(code, "Nearby group $code", listOf(displayName), "", listOf(localPeerId)))
+        } else {
+            val old = communityGroups[existing]
+            communityGroups[existing] = old.copy(
+                members = (old.members + displayName).distinct(),
+                memberPeerIds = (old.memberPeerIds + localPeerId).distinct()
+            )
+        }
         selectedCommunityCode = code
         persistCommunityData()
         sendCommunityPacket(JSONObject().put("type", "group_join").put("code", code).put("sender", displayName))
@@ -1708,8 +1747,16 @@ class MainActivity : ComponentActivity() {
     }
     private fun sendGroupMembers(code: String) {
         val group = communityGroups.firstOrNull { it.code == code } ?: return
-        val packet = JSONObject().put("type", "group_members").put("code", code).put("members", JSONArray(group.members))
-        sendCommunityToNames("NR_COMMUNITY:$packet", group.members.toSet())
+        val packet = JSONObject()
+            .put("type", "group_members")
+            .put("code", code)
+            .put("ownerPeerId", group.ownerPeerId)
+            .put("members", JSONArray(group.members))
+            .put("memberPeerIds", JSONArray(group.memberPeerIds))
+        // The roster is a control update, not a group chat payload. It is encrypted
+        // separately for connected peers; receivers accept it only from the recorded
+        // owner identity (or pin the first trusted roster sender for legacy groups).
+        sendCommunityPacket(packet)
     }
 
     private fun sendCommunityGroupMessage(raw: String) {
@@ -1729,20 +1776,17 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val wireBody = "NR_COMMUNITY:$packet"
-        val queued = if (hybridConnected) {
-            nearbyTransport?.sendDurableToNames(wireBody, group.members.toSet()) == true
-        } else {
-            // The legacy single-peer Wi-Fi Direct fallback has no stable peer-key
-            // outbox binding yet, so it retains its existing immediate-send path.
-            sendCommunityToNames(wireBody, group.members.toSet())
+        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+        if (!hybridConnected || group.ownerPeerId.isBlank() || localPeerId !in group.memberPeerIds) {
+            communityNotice = "Secure group messaging needs a verified Nearby Connections link and a synced identity roster. The message is saved on this phone."
+            return
         }
-        communityNotice = if (queued && hybridConnected) {
-            "Group message saved locally and queued securely per connected member. Unacknowledged copies retry when those same phones reconnect."
-        } else if (queued) {
-            "Group message saved locally and sent over the single-peer Wi-Fi Direct fallback. Automatic queued retry is not available on this fallback yet."
+        val targetPeerIds = group.memberPeerIds.filter { it != localPeerId }.toSet()
+        val queued = nearbyTransport?.sendDurableToPeerIds("NR_COMMUNITY:$packet", targetPeerIds) == true
+        communityNotice = if (queued) {
+            "Group message saved locally and queued to verified group identities. Offline verified members will receive it when they reconnect."
         } else {
-            "Group message saved on this phone, but no eligible group member is connected to receive it yet."
+            "Message saved locally, but no verified group member could be queued. Connect to members once and sync the identity roster."
         }
     }
 
@@ -1754,39 +1798,83 @@ class MainActivity : ComponentActivity() {
             communityNotice = "No connected nearby phone is available for this broadcast."
         }
     }
-    private fun handleCommunityPacket(sender: String, raw: String) {
+    private fun handleCommunityPacket(sender: String, senderPeerId: String, raw: String) {
         try {
             val packet = JSONObject(raw)
             val type = packet.optString("type")
             val code = packet.optString("code")
             when (type) {
-                "group_created", "group_join" -> {
+                "group_created" -> {
                     val i = communityGroups.indexOfFirst { it.code == code }
-                    if (i >= 0) {
+                    val senderId = NeaRerIdentity.normalize(senderPeerId)
+                    if (i >= 0 && senderId != null && TrustedPeerKeyStore.hasPinnedPeer(this, senderId)) {
                         val old = communityGroups[i]
-                        val member = sender
-                        if (member !in old.members) communityGroups[i] = old.copy(members = old.members + member)
-                        persistCommunityData()
-                        sendGroupMembers(code)
+                        val claimedOwner = packet.optString("ownerPeerId").ifBlank { senderId }
+                        val owner = CommunityRosterPolicy.resolveOwner(old.ownerPeerId, senderId)
+                        if (claimedOwner == senderId && owner != null) {
+                            val localId = nearbyTransport?.localIdentityId().orEmpty()
+                            communityGroups[i] = old.copy(
+                                members = (old.members + sender).distinct(),
+                                ownerPeerId = owner,
+                                memberPeerIds = (old.memberPeerIds + senderId + localId).filter { it.isNotBlank() }.distinct()
+                            )
+                            persistCommunityData()
+                        }
+                    }
+                }
+                "group_join" -> {
+                    val i = communityGroups.indexOfFirst { it.code == code }
+                    val senderId = NeaRerIdentity.normalize(senderPeerId)
+                    val localId = nearbyTransport?.localIdentityId().orEmpty()
+                    if (i >= 0 && senderId != null && TrustedPeerKeyStore.hasPinnedPeer(this, senderId)) {
+                        val old = communityGroups[i]
+                        if (old.ownerPeerId == localId) {
+                            communityGroups[i] = old.copy(
+                                members = (old.members + sender).distinct(),
+                                memberPeerIds = (old.memberPeerIds + senderId).distinct()
+                            )
+                            if (persistCommunityData()) sendGroupMembers(code)
+                        }
                     }
                 }
                 "group_members" -> {
                     val i = communityGroups.indexOfFirst { it.code == code }
-                    if (i >= 0) {
-                        val array = packet.optJSONArray("members") ?: JSONArray()
-                        val members = (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }.distinct()
-                        communityGroups[i] = communityGroups[i].copy(members = members)
-                        persistCommunityData()
+                    val senderId = NeaRerIdentity.normalize(senderPeerId)
+                    if (i >= 0 && senderId != null && TrustedPeerKeyStore.hasPinnedPeer(this, senderId)) {
+                        val old = communityGroups[i]
+                        val claimedOwner = packet.optString("ownerPeerId").ifBlank { senderId }
+                        val owner = CommunityRosterPolicy.resolveOwner(old.ownerPeerId, senderId)
+                        val idsArray = packet.optJSONArray("memberPeerIds") ?: JSONArray()
+                        val incomingIds = (0 until idsArray.length()).map { idsArray.optString(it) }
+                        val localId = nearbyTransport?.localIdentityId().orEmpty()
+                        val validatedIds = if (claimedOwner == senderId && owner != null) {
+                            CommunityRosterPolicy.validateRoster(owner, senderId, incomingIds, localId)
+                        } else null
+                        if (validatedIds != null) {
+                            val namesArray = packet.optJSONArray("members") ?: JSONArray()
+                            val members = (0 until namesArray.length()).map { namesArray.optString(it) }
+                                .filter { it.isNotBlank() }.distinct()
+                            communityGroups[i] = old.copy(
+                                members = members,
+                                ownerPeerId = owner,
+                                memberPeerIds = validatedIds
+                            )
+                            persistCommunityData()
+                        }
                     }
                 }
                 "group_message" -> {
                     val group = communityGroups.firstOrNull { it.code == code }
-                    if (group != null && sender in group.members) {
+                    val senderId = NeaRerIdentity.normalize(senderPeerId)
+                    if (group != null && senderId != null &&
+                        CommunityRosterPolicy.mayAcceptGroupMessage(senderId, group.memberPeerIds)) {
                         val id = packet.optString("id")
-                        if (communityMessages.none { it.id == id }) {
+                        if (id.isNotBlank() && communityMessages.none { it.id == id }) {
                             communityMessages.add(CommunityChatMessage(id, code, sender, packet.optString("body").take(1500), System.currentTimeMillis()))
                             persistCommunityData()
                         }
+                    } else if (group != null) {
+                        communityNotice = "A group message from an identity outside this group's verified roster was rejected."
                     }
                 }
                 "broadcast" -> communityNotice = "Broadcast from " + sender + ": " + packet.optString("body").take(500)
@@ -3001,7 +3089,7 @@ class MainActivity : ComponentActivity() {
                                 val body = String(Base64.getDecoder().decode(encoded), Charsets.UTF_8)
                                 if (body.startsWith("NR_COMMUNITY:") && body.length <= 24 * 1024) {
                                     runOnUiThread {
-                                        handleCommunityPacket(connectedDeviceName ?: "Nearby member", body.removePrefix("NR_COMMUNITY:"))
+                                        handleCommunityPacket(connectedDeviceName ?: "Nearby member", "", body.removePrefix("NR_COMMUNITY:"))
                                         persistCommunityData()
                                     }
                                 }
@@ -4088,7 +4176,13 @@ private fun CommunityHub(
     }
     LudoGamePanel(game, invite, nearbyConnected, onInviteGame, onAccept, onReject, onMove, gameChat, onGameChat, onGameRematch, onEndGame, localAvatarId = localAvatarId)
 }
-private data class CommunityGroup(val code: String, val name: String, val members: List<String>)
+private data class CommunityGroup(
+    val code: String,
+    val name: String,
+    val members: List<String>,
+    val ownerPeerId: String = "",
+    val memberPeerIds: List<String> = emptyList()
+)
 private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
 data class GameInvite(val matchId: String, val sender: String)
 
