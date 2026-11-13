@@ -613,6 +613,8 @@ internal fun FileCentreScreen(
                 val media = withContext(Dispatchers.IO) { AndroidFileCatalog.scanMedia(context) }
                 items.removeAll { it.category != FileCentreCategory.APPS }
                 items.addAll(media)
+                val catalogSnapshot = items.toList()
+                withContext(Dispatchers.IO) { FileCentreIndexCache.write(context, catalogSnapshot) }
                 loading = false
                 notice = "Your accessible pictures, videos and music are ready."
             }
@@ -717,7 +719,16 @@ internal fun FileCentreScreen(
     }
 
     LaunchedEffect(Unit) {
-        loading = true
+        val cachedCatalog = withContext(Dispatchers.IO) { FileCentreIndexCache.read(context) }
+        val permittedCached = cachedCatalog.filter { item ->
+            item.category == FileCentreCategory.APPS || AndroidFileCatalog.hasMediaAccess(context, item.category)
+        }
+        if (permittedCached.isNotEmpty()) {
+            items.removeAll { it.category in listOf(FileCentreCategory.APPS, FileCentreCategory.PICTURES, FileCentreCategory.VIDEOS, FileCentreCategory.MUSIC) }
+            items.addAll(permittedCached)
+            notice = "Showing your recent library while NeaRer refreshes the phone index."
+        }
+        loading = permittedCached.isEmpty()
         val apps = withContext(Dispatchers.IO) { AndroidFileCatalog.installedApps(context) }
         items.removeAll { it.category == FileCentreCategory.APPS }
         items.addAll(apps)
@@ -729,6 +740,8 @@ internal fun FileCentreScreen(
         } else {
             notice = "Allow media access to show pictures, videos and music. Your installed apps are already listed."
         }
+        val catalogSnapshot = items.toList()
+        withContext(Dispatchers.IO) { FileCentreIndexCache.write(context, catalogSnapshot) }
         loading = false
     }
 
