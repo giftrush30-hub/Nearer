@@ -146,7 +146,7 @@ internal fun PremiumChatsScreen(
                         Text(
                             when {
                                 selectedRecipientUnavailable -> "Selected recipient is currently unreachable"
-                                selectedRecipient?.isDirect == false -> "Mesh route · ${selectedRecipient.hopCount} relay(s) away"
+                                selectedRecipient?.isDirect == false -> "Connected through ${selectedRecipient.hopCount} nearby helper(s)"
                                 chatAvailable -> "Direct nearby · Private chat ready"
                                 else -> "Not connected yet"
                             },
@@ -187,7 +187,7 @@ internal fun PremiumChatsScreen(
                     Surface(shape = RoundedCornerShape(30.dp), color = if (chatAvailable) Color(0xFF174B43) else Color(0xFF3C3540)) {
                         Text(
                             if (selectedRecipientUnavailable) "ROUTE LOST"
-                            else if (selectedRecipient?.isDirect == false) "MESH ROUTE"
+                            else if (selectedRecipient?.isDirect == false) "VIA OTHERS"
                             else if (chatAvailable) "SECURE LINK" else "OFFLINE",
                             color = if (chatAvailable) Color(0xFF9DE8C9) else Gold,
                             fontSize = 9.sp,
@@ -508,7 +508,7 @@ private fun PremiumChatsInboxScreen(
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            listOf("All", "Nearby", "Mesh", "Offline").forEach { filter ->
+            listOf("All", "Nearby", "Via others", "Offline").forEach { filter ->
                 val selected = selectedFilter == filter
                 Surface(
                     modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { selectedFilter = filter },
@@ -588,7 +588,7 @@ private fun PremiumChatsInboxScreen(
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text(displayName, color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
-                                latest?.body?.take(62) ?: if (recipient?.isDirect == true) "Nearby and ready to chat" else if (recipient != null) "Available through NeaRer mesh" else "Previous conversation · reconnect when nearby",
+                                latest?.body?.take(62) ?: if (recipient?.isDirect == true) "Nearby and ready to chat" else if (recipient != null) "Reachable through nearby helpers" else "Previous conversation · reconnect when nearby",
                                 color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -620,6 +620,6 @@ private fun PremiumChatsInboxScreen(
                 }
             }
         }
-        Text("NeaRer reconnects only to trusted identities when they are discoverable and the required phone permissions and radios are available.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+        Text("NeaRer reconnects to people you trust when they are nearby and your phone is ready.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
     }
 }
