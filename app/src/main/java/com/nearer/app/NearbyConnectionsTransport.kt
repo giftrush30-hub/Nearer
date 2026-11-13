@@ -464,16 +464,26 @@ internal object IncomingFilePayloadPolicy {
             false
         }
     }
-    private var started = false
+    @Volatile private var started = false
+    @Volatile private var startGeneration = 0
     @Volatile private var localName = "NeaRer User"
 
-    private val discovery = object : EndpointDiscoveryCallback() {
+    /**
+     * Discovery callbacks can arrive after stopDiscovery() or after a new scan
+     * starts. Each callback is bound to one generation so stale events cannot
+     * re-add departed peers to the current nearby list.
+     */
+    private fun discoveryCallback(generation: Int) = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(id: String, info: DiscoveredEndpointInfo) {
+            if (!NearbyDiscoveryGenerationPolicy.isCurrent(started, generation, startGeneration)) return
             val (name, stableId) = decodeName(info.endpointName)
             synchronized(names) { names[id] = name; stableIds[id] = stableId }
             listener.onFound(id, name, stableId)
         }
         override fun onEndpointLost(id: String) {
+            if (!NearbyDiscoveryGenerationPolicy.isCurrent(started, generation, startGeneration)) return
+            // Losing a discovery advertisement is not the same as disconnecting
+            // an already established direct connection.
             if (synchronized(activeEndpoints) { activeEndpoints.contains(id) }) return
             val stableId = synchronized(names) { stableIds.remove(id).orEmpty().also { names.remove(id) } }
             listener.onLost(id, stableId)
@@ -1787,14 +1797,21 @@ internal object IncomingFilePayloadPolicy {
 
     private fun safeFileName(raw: String): String = TransferFileNamePolicy.safeName(raw)
 
-    private fun startAdvertising() {
+    private fun startAdvertising(generation: Int) {
         val options = AdvertisingOptions.Builder().setStrategy(connectionStrategy).build()
         client.startAdvertising(encodedName(), serviceId, lifecycle, options).addOnFailureListener {
-            // Do not leave the transport marked as started when advertising failed.
-            // Stop the other half of discovery too, so the next user retry starts cleanly.
-            stopSearching()
-            listener.onStatus("Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again.")
+            failStart(
+                generation,
+                "Nearby advertising could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again."
+            )
         }
+    }
+
+    private fun failStart(generation: Int, message: String) {
+        // A late failure from an old start must not stop a newer discovery session.
+        if (!started || generation != startGeneration) return
+        stopSearching()
+        listener.onStatus(message)
     }
 
     fun localIdentityId(): String = localStableId
@@ -1809,19 +1826,20 @@ internal object IncomingFilePayloadPolicy {
         val clean = name.trim().replace("|", " ").take(23).ifBlank { "NeaRer User" }
         if (clean == localName) return
         localName = clean
-        if (started) { client.stopAdvertising(); startAdvertising() }
+        if (started) { client.stopAdvertising(); startAdvertising(startGeneration) }
     }
 
     fun start() {
         if (started) return
         started = true
+        val generation = ++startGeneration
         val discovering = DiscoveryOptions.Builder().setStrategy(connectionStrategy).build()
-        startAdvertising()
-        client.startDiscovery(serviceId, discovery, discovering).addOnFailureListener {
-            // Advertising may already have succeeded; roll both operations back together.
-            // This resets started so a later tap can retry instead of silently doing nothing.
-            stopSearching()
-            listener.onStatus("Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again.")
+        startAdvertising(generation)
+        client.startDiscovery(serviceId, discoveryCallback(generation), discovering).addOnFailureListener {
+            failStart(
+                generation,
+                "Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again."
+            )
         }
         listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
     }
@@ -2255,6 +2273,7 @@ internal object IncomingFilePayloadPolicy {
 
     fun stopSearching() {
         started = false
+        startGeneration += 1
         try { client.stopAdvertising() } catch (_: Exception) { }
         try { client.stopDiscovery() } catch (_: Exception) { }
     }
