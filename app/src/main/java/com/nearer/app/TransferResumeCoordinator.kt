@@ -120,7 +120,7 @@ internal class TransferResumeCoordinator(
         senderSupportsOffsets: Boolean,
         receiverSupportsOffsets: Boolean
     ): ValidatedSourceStream? {
-        val receiverId = NeaRerIdentity.normalize(authenticatedReceiverPeerId) ?: return null
+        if (NeaRerIdentity.normalize(authenticatedReceiverPeerId) == null) return null
         if (!senderSupportsOffsets || !receiverSupportsOffsets || proposal == null) return null
         if (!sourceFile.isFile || sourceFile.length() != item.sizeBytes ||
             sourceModifiedAtMillis != sourceFile.lastModified()) return null
