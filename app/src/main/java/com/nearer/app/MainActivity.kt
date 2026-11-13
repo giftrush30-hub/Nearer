@@ -323,10 +323,12 @@ class MainActivity : ComponentActivity() {
             channel = null
             statusMessage = "Wi-Fi Direct could not initialise on this phone. Bluetooth nearby features can still be used."
         }
-        ultraSpeedMode = runCatching {
-            getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-                .getBoolean("ultra_speed_mode", false)
-        }.getOrDefault(false)
+        // SmartConnect uses the flexible multi-peer strategy by default.
+        // Do not require both people to find and enable a matching speed mode.
+        ultraSpeedMode = false
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("ultra_speed_mode", false)
+            .apply()
         ultraSpeedRestartRequired = false
         nearbyTransport = try {
             NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
@@ -3538,19 +3540,14 @@ private fun NeaRerHome(
                         }
                     }
                     Surface(shape = RoundedCornerShape(16.dp), color = Midnight, modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("ULTRA SPEED MODE", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    Text(if (ultraSpeedMode) "Enabled • one-to-one connection" else "Standard • flexible multi-device", color = White, fontSize = 13.sp)
-                                }
-                                Button(onClick = { onUltraSpeedModeChange(!ultraSpeedMode) }, enabled = !scanning && !chatReady && !usingNearbyConnections && !ultraSpeedRestartRequired,
-                                    shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = if (ultraSpeedMode) Gold else BlueAccent, contentColor = Midnight)) {
-                                    Text(if (ultraSpeedMode) "Turn off" else "Enable")
-                                }
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("SMARTCONNECT", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Automatic", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             }
                             Text(
-                                if (ultraSpeedMode) "Both phones must enable this mode and restart NeaRer before searching. It uses Google's one-to-one highest-throughput connection strategy. It may improve speed, but 280 MB/s is not guaranteed." else "Standard mode keeps flexible multi-device connections. For a single large-file transfer, both phones can enable Ultra Speed Mode, which uses Google's highest-throughput one-to-one strategy.",
+                                "NeaRer chooses the available nearby connection automatically. No hotspot password, matching speed setting or manual Wi-Fi mode is needed.",
                                 color = Muted, fontSize = 11.sp, lineHeight = 16.sp
                             )
                         }
