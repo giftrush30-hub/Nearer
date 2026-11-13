@@ -119,17 +119,16 @@ The coordinated source work has advanced beyond the earlier PR #119 checkpoint:
 
 ## Community group-message delivery update — 13 November 2026
 
-A selective source implementation now adds durable fan-out for nearby group-chat messages over authenticated Nearby Connections:
+The original connected-peer-only fan-out was superseded by the identity-bound implementation in PR #125 below. The current implementation is intended to:
 
-- The sender first commits its local group message to the community store. If that commit fails, it does not send.
-- Each currently connected, authenticated group recipient receives a distinct transport message ID and a separate encrypted-outbox record bound to that peer's stable identity.
-- The complete recipient set is committed to the encrypted-at-rest outbox before the first send attempt.
-- Existing bounded retry logic retries each recipient copy independently after link failure or when that same stable peer reconnects.
-- The receiver's existing community callback persists the received group message before acknowledging the transport message. The sender retires only the recipient copy whose authenticated ACK came from the expected endpoint.
-- If a peer was already offline when the group message was created, it is not queued yet: current community rosters contain display names rather than verified stable peer IDs. The UI reports that the message is saved locally but no eligible connected member received it.
-- The single-peer Wi-Fi Direct fallback remains immediate-send only; it does not claim durable retry. Broadcast and Ludo/control packets also remain ephemeral in this batch.
+- Commit the sender's local group message before fan-out.
+- Persist separate encrypted-at-rest delivery copies for each eligible stable peer ID before the first send.
+- Retry each recipient copy independently after that same pinned identity reconnects, including members offline at send time.
+- Retire a recipient copy only after its authenticated ACK is received from the expected endpoint and the outbox removal is durably committed.
+- Reject group messages from identities outside the saved roster and reject roster updates not sent by the pinned coordinator.
+- Keep the Wi-Fi Direct fallback out of identity-sensitive group membership and group-chat operations; broadcasts and Ludo/control packets remain ephemeral.
 
-This is source integration awaiting exact-head CI and two-phone validation. It does not certify group delivery on physical devices or process-death/Doze recovery.
+These are source-level changes, not proof of physical-device delivery, process-death/Doze recovery, or production-secure group membership. See the combined PR #125 section below for trust and migration boundaries.
 
 
 ## Community identity-bound roster follow-up — PR branch `security/community-identity-roster`
