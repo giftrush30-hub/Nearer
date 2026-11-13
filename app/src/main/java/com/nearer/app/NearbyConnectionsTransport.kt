@@ -1572,6 +1572,127 @@ internal object IncomingFilePayloadPolicy {
         try { client.disconnectFromEndpoint(endpointId) } catch (_: Exception) { }
     }
 
+    private fun handleHyperStreamMetadata(endpointId: String, raw: ByteArray) {
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        val result = streamController.recordMetadata(endpointId, peerId, raw)
+        if (result != NearbyStreamExchangeController.InputResult.STORED &&
+            result != NearbyStreamExchangeController.InputResult.DUPLICATE) {
+            listener.onFileStatus("A nearby stream transfer had invalid details and was rejected.")
+            return
+        }
+        val metadata = TransferResumeStreamMetadataCodec.decode(raw)
+        incomingHyperMetadata[metadata.payloadId] = metadata
+        val offer = resumeCoordinator.offersForAuthenticatedSender(peerId, true, true).firstOrNull {
+            it.checkpoint.transferId == metadata.transferId &&
+                it.checkpoint.itemId == metadata.item.id &&
+                it.checkpoint.relativePath == metadata.item.relativePath &&
+                it.checkpoint.expectedSizeBytes == metadata.item.sizeBytes &&
+                it.checkpoint.sourceModifiedAtMillis == metadata.sourceModifiedAtMillis
+        }
+        val control = if (offer != null) {
+            val bytes = TransferResumeMessageCodec.encode(metadata.payloadId, offer.proposal)
+            val recorded = streamController.recordProposal(endpointId, peerId, bytes)
+            if (recorded != NearbyStreamExchangeController.InputResult.STORED &&
+                recorded != NearbyStreamExchangeController.InputResult.DUPLICATE) return
+            bytes
+        } else {
+            val bytes = TransferResumeMessageCodec.encodeNoResume(metadata.payloadId)
+            val recorded = streamController.recordNoResume(endpointId, peerId, bytes)
+            if (recorded != NearbyStreamExchangeController.InputResult.STORED &&
+                recorded != NearbyStreamExchangeController.InputResult.DUPLICATE) return
+            bytes
+        }
+        client.sendPayload(endpointId, Payload.fromBytes(control))
+            .addOnFailureListener { listener.onFileStatus("Could not negotiate the saved transfer offset. Please retry.") }
+        tryProcessHyperStream(metadata.payloadId)
+    }
+
+    private fun handleHyperStreamProposal(endpointId: String, raw: ByteArray) {
+        val proposal = runCatching { TransferResumeMessageCodec.decode(raw) }.getOrNull() ?: return
+        val state = outgoingHyperStreams[proposal.payloadId] ?: return
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (state.endpointId != endpointId || state.stablePeerId != peerId || !authenticatedEndpoints.contains(endpointId)) return
+        startHyperStreamPayload(state, proposal.proposal)
+    }
+
+    private fun handleHyperStreamNoResume(endpointId: String, raw: ByteArray) {
+        val noResume = runCatching { TransferResumeMessageCodec.decodeNoResume(raw) }.getOrNull() ?: return
+        val state = outgoingHyperStreams[noResume.payloadId] ?: return
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (state.endpointId != endpointId || state.stablePeerId != peerId || !authenticatedEndpoints.contains(endpointId)) return
+        startHyperStreamPayload(state, null)
+    }
+
+    private fun startHyperStreamPayload(state: OutgoingHyperStream, proposal: TransferResumeNegotiation.Proposal?) {
+        val payloadId = state.prepared.payloadId
+        if (!state.awaitingDecision || outgoingHyperStreams[payloadId] !== state) return
+        state.timeout?.let(deliveryHandler::removeCallbacks)
+        var decision = resumeCoordinator.validateOfferAtSender(
+            proposal, state.transferId, state.item, state.sourceFile, null,
+            state.stablePeerId, true, true
+        )
+        var source: TransferResumeCoordinator.ValidatedSourceStream? = null
+        if (decision.reason == TransferResumeNegotiation.Reason.RESUME_ACCEPTED) {
+            source = resumeCoordinator.openValidatedSourceAtOffset(
+                proposal, state.transferId, state.item, state.sourceFile, null,
+                state.stablePeerId, true, true
+            )
+            if (source == null) decision = TransferResumeNegotiation.Decision(
+                0L, TransferResumeNegotiation.Reason.SOURCE_CHANGED
+            )
+        }
+        if (proposal != null) {
+            val decisionBytes = TransferResumeMessageCodec.encodeDecision(payloadId, decision)
+            client.sendPayload(state.endpointId, Payload.fromBytes(decisionBytes))
+                .addOnFailureListener {
+                    state.prepared.reject(IllegalStateException("Resume decision could not be sent"))
+                    listener.onFileStatus("Could not confirm the transfer offset. Please retry.")
+                }
+        }
+        try {
+            if (source != null) state.prepared.provideSource(source)
+            else state.prepared.provideSource(state.sourceFile.inputStream())
+            state.awaitingDecision = false
+            client.sendPayload(state.endpointId, state.prepared.payload)
+                .addOnFailureListener { listener.onFileStatus("The resumable stream could not start. Please retry.") }
+        } catch (error: Exception) {
+            state.prepared.reject(error)
+            outgoingHyperStreams.remove(payloadId, state)
+            listener.onFileStatus("The file could not be opened for sending.")
+        }
+    }
+
+    private fun tryProcessHyperStream(payloadId: Long) {
+        val payload = pendingIncomingHyperPayloads[payloadId] ?: return
+        val endpointId = incomingHyperEndpoints[payloadId] ?: return
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        val ready = streamController.takeReady(endpointId, peerId, payloadId) ?: return
+        if (!pendingIncomingHyperPayloads.remove(payloadId, payload)) return
+        val metadata = ready.metadata
+        val folder = File(appContext.filesDir, "received").apply { mkdirs() }
+        val destination = File(folder, System.currentTimeMillis().toString() + "-" +
+            TransferFileNamePolicy.safeName(metadata.item.displayName))
+        streamPayloadBridge.receive(
+            payload, metadata, ready.authenticatedPeerId, ready.proposal, ready.decision, destination,
+            isCancelled = { cancelledStreamPayloads.contains(payloadId) }
+        ) { result ->
+            incomingHyperMetadata.remove(payloadId)
+            incomingHyperEndpoints.remove(payloadId)
+            cancelledStreamPayloads.remove(payloadId)
+            transferSpeedMeters.remove(payloadId)
+            result.onSuccess { completed ->
+                val meter = TransferSpeedMeter()
+                listener.onFileTransferUpdate(endpointId, payloadId, metadata.item.displayName,
+                    completed.totalBytes, completed.totalBytes, true,
+                    meter.record(completed.totalBytes, completed.totalBytes))
+                listener.onFileReceived(endpointId, metadata.item.displayName, completed.completedFile)
+                listener.onFileStatus("Verified transfer complete: " + metadata.item.displayName)
+            }.onFailure {
+                listener.onFileStatus("The received file was not published because verification failed.")
+            }
+        }
+    }
+
     private fun handleBytes(endpointId: String, bytes: ByteArray?) {
         try {
             val raw = bytes ?: return
