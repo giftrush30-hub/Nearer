@@ -3,6 +3,7 @@ package com.nearer.app
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,6 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -54,6 +58,7 @@ internal fun PremiumChatsScreen(
     draft: String,
     onDraftChange: (String) -> Unit,
     onSendMessage: (String, ChatMessage?) -> Unit,
+    onDeleteMessage: (String) -> Boolean,
     onFindNearby: () -> Unit,
     onBackToInbox: () -> Unit,
     onChooseFiles: () -> Unit,
@@ -78,6 +83,8 @@ internal fun PremiumChatsScreen(
 
     var recipientMenuExpanded by remember { mutableStateOf(false) }
     var replyingTo by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
+    var expandedMessageActions by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
     val selectedRecipient = meshRecipients.firstOrNull { it.peerId == selectedMeshRecipientId }
     val selectedRecipientUnavailable = selectedMeshRecipientId != null && selectedRecipient == null
     val chatAvailable = selectedRecipient != null || (selectedMeshRecipientId == null && chatReady)
@@ -313,8 +320,34 @@ internal fun PremiumChatsScreen(
                                             Text(message.body, color = White, fontSize = 14.sp, lineHeight = 20.sp)
                                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                                 Text(if (message.outgoing) ChatDeliveryLabelPolicy.label(message.delivery) else "Received", color = if (message.outgoing) Color(0xFF9BD8FF) else Muted, fontSize = 9.sp)
-                                                Text("Reply", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                                                    modifier = Modifier.clickable { replyingTo = message }.padding(start = 12.dp))
+                                                Box {
+                                                    Text("More", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.clickable { expandedMessageActions = message.id }.padding(start = 12.dp))
+                                                    DropdownMenu(
+                                                        expanded = expandedMessageActions == message.id,
+                                                        onDismissRequest = { expandedMessageActions = null }
+                                                    ) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("Reply") },
+                                                            onClick = { replyingTo = message; expandedMessageActions = null }
+                                                        )
+                                                        DropdownMenuItem(
+                                                            text = { Text("Copy message") },
+                                                            onClick = {
+                                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                                clipboard.setPrimaryClip(ClipData.newPlainText("NeaRer message", message.body))
+                                                                expandedMessageActions = null
+                                                            }
+                                                        )
+                                                        DropdownMenuItem(
+                                                            text = { Text("Delete for me") },
+                                                            onClick = {
+                                                                expandedMessageActions = null
+                                                                if (onDeleteMessage(message.id) && replyingTo?.id == message.id) replyingTo = null
+                                                            }
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }
