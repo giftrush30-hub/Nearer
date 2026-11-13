@@ -183,3 +183,14 @@ The same recovery foundation now includes a guarded completion operation, `Trans
 - Unit tests cover successful publication, incomplete data, digest mismatch, and destination collision.
 
 This is still a storage primitive. The receive UI/transport must choose a safe destination and call it only after authenticated resume negotiation and complete stream validation. No Nearby payload integration or physical-device validation is claimed.
+
+### Stable sender binding for restart recovery
+
+The checkpoint format is now version 2 and stores the authenticated sender's stable NeaRer ID. Version-1 journal entries remain readable as legacy, unbound checkpoints, but are deliberately excluded from post-restart discovery because the previous Nearby endpoint ID is transient and cannot prove who owns the transfer.
+
+- New stream checkpoints can persist the authenticated sender ID.
+- Discovery returns only candidates bound to a valid stable sender ID.
+- Resume validation requires an exact sender-ID match. A different authenticated peer gets a security rejection, and its attempt does not delete or overwrite the original peer's partial.
+- Codec tests cover version-1 migration and version-2 round trips; store tests cover unbound legacy exclusion, correct-peer acceptance, and wrong-peer rejection without data loss.
+
+The current transport still does not pass its authenticated peer ID into the durable stream writer or route FILE payload bytes through that writer. This change establishes the identity boundary needed for that integration; it does not yet make Nearby process-death resume operational.
