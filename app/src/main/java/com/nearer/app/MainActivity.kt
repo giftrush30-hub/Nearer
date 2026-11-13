@@ -3288,7 +3288,7 @@ private fun NeaRerHome(
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     val context = LocalContext.current
-    var draft by remember { mutableStateOf("") }
+    val draftState = remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
     var selectedConversationKey by remember { mutableStateOf<String?>(null) }
     val chatAttachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -3862,9 +3862,9 @@ private fun NeaRerHome(
                     usingNearbyConnections = usingNearbyConnections,
                     messages = messages,
                     chatNotice = chatNotice,
-                    draft = draft,
-                    onDraftChange = { draft = it.take(2000) },
-                    onSendMessage = { onSendMessage(it); draft = "" },
+                    draft = draftState.value,
+                    onDraftChange = { draftState.value = it.take(2000) },
+                    onSendMessage = { onSendMessage(it); draftState.value = "" },
                     onFindNearby = { selectedTab = "Nearby"; onFindNearby() },
                     onBackToInbox = { onSelectMeshRecipient(null) },
                     onChooseFiles = { chatAttachmentPicker.launch(arrayOf("*/*")) },
