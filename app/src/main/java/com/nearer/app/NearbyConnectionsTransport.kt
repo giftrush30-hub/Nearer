@@ -1858,14 +1858,20 @@ internal object IncomingFilePayloadPolicy {
 
     fun request(id: String, onFailure: (() -> Unit)? = null) {
         connectionTimingMeter.begin(id, SystemClock.elapsedRealtime())
-        client.requestConnection(encodedName(), id, lifecycle)
-            .addOnFailureListener {
-                connectionTimingMeter.cancel(id)
-                // Let discovery clear its per-endpoint suppression so a later scan
-                // can retry after a transient radio or SDK failure.
-                onFailure?.invoke()
-                listener.onStatus("Connection request failed: ${it.localizedMessage ?: "try again"}")
-            }
+        try {
+            client.requestConnection(encodedName(), id, lifecycle)
+                .addOnFailureListener {
+                    connectionTimingMeter.cancel(id)
+                    // Let discovery clear its per-endpoint suppression so a later scan
+                    // can retry after a transient radio or SDK failure.
+                    onFailure?.invoke()
+                    listener.onStatus("Connection request failed: ${it.localizedMessage ?: "try again"}")
+                }
+        } catch (error: Exception) {
+            connectionTimingMeter.cancel(id)
+            onFailure?.invoke()
+            listener.onStatus("Connection request failed: ${error.localizedMessage ?: "try again"}")
+        }
     }
     fun accept(id: String) { client.acceptConnection(id, payloads).addOnFailureListener { listener.onStatus("Could not accept nearby connection: ${it.localizedMessage ?: "try again"}") } }
     fun reject(id: String) { client.rejectConnection(id).addOnFailureListener { listener.onStatus("Could not reject nearby connection: ${it.localizedMessage ?: "try again"}") } }
