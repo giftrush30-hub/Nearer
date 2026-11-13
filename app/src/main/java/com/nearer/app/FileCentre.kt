@@ -611,8 +611,14 @@ internal fun FileCentreScreen(
             loading = true
             scope.launch {
                 val media = withContext(Dispatchers.IO) { AndroidFileCatalog.scanMedia(context) }
-                items.removeAll { it.category != FileCentreCategory.APPS }
+                items.removeAll {
+                    it.category == FileCentreCategory.PICTURES ||
+                        it.category == FileCentreCategory.VIDEOS ||
+                        it.category == FileCentreCategory.MUSIC
+                }
                 items.addAll(media)
+                val snapshot = items.toList()
+                withContext(Dispatchers.IO) { FileCentreIndexCache.write(context, snapshot) }
                 loading = false
                 notice = "Your accessible pictures, videos and music are ready."
             }
