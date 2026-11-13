@@ -94,3 +94,24 @@ Current interpretation:
 - [ ] Update user-facing delivery states so queued, sent, locally delivered, and read (if ever added) are not conflated.
 
 Phase 2 is therefore **partially implemented, not complete**. This audit is a source review; it does not substitute for device tests or a security review.
+
+
+## Follow-up integration — 13 November 2026
+
+The coordinated source work has advanced beyond the earlier PR #119 checkpoint:
+
+- PR #120 is merged into `main`: bounded transfer-throughput samples remain capped at 512, recent/peak rates use deque endpoints instead of scanning the retained samples, and idle snapshots prune stale samples so recent speed falls to zero when progress stops. Its exact-head JVM tests, debug APK build and artifact upload passed.
+- PR #121 is merged into `main`: the More/Profile area now opens a full local profile editor for display name, illustrated avatar and optional photo. Profile photos are decoded/downscaled before storage (maximum 512 px longest edge), and replaced/removed local photo files are cleaned up.
+- PR #121 also scales the adaptive launcher foreground and monochrome artwork into Android's central safe area and uses the foreground artwork for the Android 12+ splash icon. Its exact-head JVM tests, debug APK build and artifact upload passed.
+- The earlier onboarding/premium-Ludo PR #112 remains an old-base reference only. Its onboarding and File Centre files match current main; its profile editor and icon improvements were selectively forward-ported, while current main retains the newer SmartConnect and Ludo changes. Do not merge PR #112 wholesale.
+- PRs #109 and #110 are stale parallel branches. Current main already contains the shared `TransferStreamCopy` implementation, one-pass SHA-256 staging/receive copy, zero-length bulk-read fallback, byte-count/integrity checks, and tests. Do not merge their old branches wholesale.
+- The remaining transfer-speed optimization from PR #108 was selectively forward-ported through PR #120; do not merge the old PR #108 branch wholesale.
+
+### Current release and test boundaries
+
+- Source integration is ahead of physical-device certification. Exact-head CI passed on PR #119, #120 and #121, including JVM unit tests and debug APK assembly. The CI artifacts are debug APKs, not Play Store release certification.
+- No Android emulator launch checks were run, per the user's instruction. No physical-device test is claimed for this integration.
+- Android minimum remains API 26 (Android 8.0); Android 10 is within the declared OS range but has not yet been certified on the user's Infinix handset.
+- Mesh relay remains hard-disabled. No 100+ participant scale or A → B → C → D physical mesh test is claimed.
+- HyperTransfer's durable process-death checkpoint/resume lifecycle remains unconnected to the actual Nearby FILE payload lifecycle; full resumability and unlimited-size performance are not certified.
+- Next engineering gate: physical two-phone validation of SmartConnect, encrypted direct chat, file transfer and Ludo, then fix any device-specific issues. Mesh relay remains a separate later gate.
