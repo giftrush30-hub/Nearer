@@ -1737,8 +1737,10 @@ class MainActivity : ComponentActivity() {
             // outbox binding yet, so it retains its existing immediate-send path.
             sendCommunityToNames(wireBody, group.members.toSet())
         }
-        communityNotice = if (queued) {
-            "Group message saved locally and queued securely for connected members. Unacknowledged copies retry when those same phones reconnect."
+        communityNotice = if (queued && hybridConnected) {
+            "Group message saved locally and queued securely per connected member. Unacknowledged copies retry when those same phones reconnect."
+        } else if (queued) {
+            "Group message saved locally and sent over the single-peer Wi-Fi Direct fallback. Automatic queued retry is not available on this fallback yet."
         } else {
             "Group message saved on this phone, but no eligible group member is connected to receive it yet."
         }
@@ -1746,20 +1748,10 @@ class MainActivity : ComponentActivity() {
 
     private fun sendCommunityBroadcast(raw: String) {
         val body = raw.trim().take(500)
-        if (body.isBlank()) return
-        val packetBody = "NR_COMMUNITY:" + JSONObject()
-            .put("type", "broadcast")
-            .put("sender", displayName)
-            .put("body", body)
-        val queued = if (hybridConnected) {
-            nearbyTransport?.sendDurableToAll(packetBody) == true
-        } else {
-            sendCommunityPacket(JSONObject().put("type", "broadcast").put("sender", displayName).put("body", body))
-        }
-        communityNotice = if (queued) {
-            "Broadcast queued securely for connected nearby phones. Unacknowledged copies retry when those same phones reconnect."
-        } else {
-            "No authenticated nearby phone is connected to receive this broadcast."
+        if (body.isNotBlank() && sendCommunityPacket(JSONObject().put("type", "broadcast").put("sender", displayName).put("body", body))) {
+            communityNotice = "Broadcast sent to currently connected nearby phones. Automatic durable retry is not yet enabled for broadcasts."
+        } else if (body.isNotBlank()) {
+            communityNotice = "No connected nearby phone is available for this broadcast."
         }
     }
     private fun handleCommunityPacket(sender: String, raw: String) {
