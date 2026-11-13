@@ -163,3 +163,14 @@ The follow-up adds a transport-message-ID to community-message/recipient mapping
 - If saving a receipt fails, the updated state remains in memory and the app retries the write on Activity pause/resume. If storage continues failing and the process is killed before a successful retry, that latest receipt may not survive the restart.
 
 PR #129 is merged into main at commit `271e2bfabcffab9209af5aae23f10cc185bd2c92`; exact-head JVM tests and debug APK assembly passed. It has not been validated on physical phones. It does not add background delivery while the app process is stopped or Android Doze suspends execution.
+
+## HyperTransfer restart-discovery foundation — 13 November 2026
+
+The follow-up branch `feature/hypertransfer-restart-discovery` adds a bounded, restart-safe discovery operation to the existing local resume store:
+
+- `TransferResumeStore.discoverVerifiedCandidates()` enumerates the journal's bounded checkpoint list after process recreation, reconstructs the item identity from each checkpoint, and re-verifies the on-disk committed prefix before returning a candidate.
+- Missing, truncated, oversized, or digest-mismatched partial files are discarded together with their journal entry instead of being surfaced as resumable work.
+- Results are deterministic (transfer ID, then relative path), so a future recovery UI/coordinator can restore a stable list.
+- Tests simulate a new store instance after process death, multiple transfer discovery, and cleanup of missing/corrupt partials.
+
+This is intentionally a storage/recovery foundation, not a claim that Nearby FILE payloads can yet resume across process death. A candidate must still be bound to the authenticated stable peer and confirmed by the sender's current source identity and prefix digest before a transport applies any offset. The actual Nearby FILE payload lifecycle is still not wired to the durable stream writer/checkpoint protocol. No emulator or physical-device test is claimed.
