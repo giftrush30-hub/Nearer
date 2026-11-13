@@ -195,11 +195,8 @@ class MainActivity : ComponentActivity() {
     private var nearbyQueueCompleted = 0
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
-    private var outgoingLastSampleBytes = 0L
-    private var outgoingLastSampleAt = 0L
+    // These rates come from the transport's monotonic rolling-window meter.
     private var outgoingRateBytesPerSecond = 0L
-    private var incomingLastSampleBytes = 0L
-    private var incomingLastSampleAt = 0L
     private var incomingRateBytesPerSecond = 0L
     private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
