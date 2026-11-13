@@ -357,11 +357,20 @@ class MainActivity : ComponentActivity() {
             } }
             override fun onRequest(id: String, name: String, token: String) {
                 runOnUiThread {
+                    val advertisedStableId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                    // Returning peers with both pinned keys reconnect without
+                    // repeating first-contact approval. The handshake still verifies
+                    // key continuity before accepting application data.
+                    if (TrustedPeerKeyStore.hasPinnedPeer(this@MainActivity, advertisedStableId)) {
+                        nearbyTransport?.accept(id)
+                        statusMessage = "Reconnecting securely to $name…"
+                        return@runOnUiThread
+                    }
                     pendingHybridEndpoint = id
                     incomingRequesterName = name
                     pairingCode = token
-                    approvalMessage = "Compare the security code on both phones before accepting"
-                    statusMessage = "$name is requesting a nearby connection."
+                    approvalMessage = "First connection: compare the security code on both phones before accepting"
+                    statusMessage = "$name is requesting a first-time nearby connection."
                 }
             }
             override fun onConnected(id: String, name: String, stableId: String) {
@@ -769,6 +778,11 @@ class MainActivity : ComponentActivity() {
         runCatching { nearbyTransport?.setDisplayName(cleanName) }
         onboardingComplete = true
         statusMessage = "Welcome to NeaRer, $cleanName."
+        // Request nearby permissions as part of first-run setup. Android retains
+        // control of each permission and the user still controls wireless radios.
+        if (!hasNearbyPermissions()) {
+            ActivityCompat.requestPermissions(this, nearbyPermissionList(), REQUEST_DISCOVERY_PERMISSION)
+        }
     }
 
     override fun onResume() {
@@ -793,6 +807,10 @@ class MainActivity : ComponentActivity() {
                 statusMessage = "NeaRer opened with limited Wi-Fi discovery: ${error.javaClass.simpleName}. Bluetooth nearby features may still be available."
             }
         }
+        // Always-Ready: automatically prepare nearby discovery after onboarding.
+        // Nearby Connections negotiates the available radios; users do not need
+        // to launch a separate Wi-Fi Direct scan or configure a hotspot.
+        startAlwaysReadyDiscovery()
     }
 
     override fun onDestroy() {
@@ -809,6 +827,36 @@ class MainActivity : ComponentActivity() {
             receiverRegistered = false
         }
         super.onPause()
+    }
+
+    /**
+     * Starts the primary Nearby Connections engine without requiring a manual
+     * Wi-Fi Direct peer scan. The SDK selects the available nearby transports.
+     */
+    private fun startAlwaysReadyDiscovery() {
+        if (!onboardingComplete || !hasNearbyPermissions()) return
+        if (hybridSearching || hybridConnected) return
+
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val bluetoothOn = try { bluetoothManager?.adapter?.isEnabled == true } catch (_: SecurityException) { false }
+        val wifiOn = isWifiEnabled()
+        if (!bluetoothOn && !wifiOn) {
+            statusMessage = "NeaRer is ready. Turn on Bluetooth or Wi-Fi to discover nearby people; mobile data is not needed."
+            return
+        }
+
+        val transport = nearbyTransport
+        if (transport == null) {
+            statusMessage = "Nearby services are unavailable on this phone right now. Reopen NeaRer and try again."
+            return
+        }
+        transport.start()
+        hybridSearching = true
+        statusMessage = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R && !isLocationEnabled()) {
+            "NeaRer is ready. On this Android version, turn Location on too if nearby discovery does not find people."
+        } else {
+            "NeaRer is ready. Nearby people will appear automatically while the app is open."
+        }
     }
 
     private fun hasDiscoveryPermission(): Boolean {
