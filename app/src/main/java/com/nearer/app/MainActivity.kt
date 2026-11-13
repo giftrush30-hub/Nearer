@@ -1624,7 +1624,8 @@ class MainActivity : ComponentActivity() {
             !ChatReactionPolicy.isValidActor(actorPeerId) ||
             targetId.isBlank() || targetId.length > 80) return false
         val index = chatMessages.indexOfFirst {
-            it.id == targetId && it.conversationId == actorPeerId && !it.outgoing
+            it.id == targetId &&
+                ChatEditPolicy.mayApplyToMessage(it.conversationId, actorPeerId, it.outgoing)
         }
         if (index < 0) return false
         val previous = chatMessages[index]
