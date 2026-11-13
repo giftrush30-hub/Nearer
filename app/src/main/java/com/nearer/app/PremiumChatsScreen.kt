@@ -77,7 +77,7 @@ internal fun PremiumChatsScreen(
     }
 
     var recipientMenuExpanded by remember { mutableStateOf(false) }
-    var replyingTo by remember { mutableStateOf<ChatMessage?>(null) }
+    var replyingTo by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
     val selectedRecipient = meshRecipients.firstOrNull { it.peerId == selectedMeshRecipientId }
     val selectedRecipientUnavailable = selectedMeshRecipientId != null && selectedRecipient == null
     val chatAvailable = selectedRecipient != null || (selectedMeshRecipientId == null && chatReady)
