@@ -175,7 +175,7 @@ internal data class MeshForwardingProofChain(val proofs: List<MeshForwardingProo
         trustedSigningKey: (String) -> ByteArray?,
         nowMs: Long
     ): Boolean = try {
-        require(proofs.size in 0 until MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
+        require(proofs.size in 0..MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
         require(packetDigest.size == 32)
         require(NeaRerIdentity.normalize(originPeerId) == originPeerId)
         require(NeaRerIdentity.normalize(expectedPreviousHopPeerId) == expectedPreviousHopPeerId)
