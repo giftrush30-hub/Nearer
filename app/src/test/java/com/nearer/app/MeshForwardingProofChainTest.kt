@@ -114,6 +114,7 @@ class MeshForwardingProofChainTest {
         assertTrue(chain.verify("packet-bound", packetDigest(), "AAAAAA", "BBBBBB", { b.public.encoded }, 10_500L))
         val differentContent = MessageDigest.getInstance("SHA-256").digest("different immutable packet".toByteArray())
         assertFalse(chain.verify("packet-bound", differentContent, "AAAAAA", "BBBBBB", { b.public.encoded }, 10_500L))
+        assertFalse(proof.copy(packetDigest = differentContent).verify(b.public.encoded, 10_500L))
     }
 
     @Test fun chainRejectsDuplicatePeersAndTooManyHops() {
