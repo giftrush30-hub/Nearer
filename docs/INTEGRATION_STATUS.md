@@ -65,3 +65,32 @@ Current interpretation:
 - File transfer: HyperTransfer durable checkpoints are not yet connected to the actual interrupted Nearby FILE payload lifecycle; do not claim process-death recovery or full resumability.
 - Relay: hard-disabled until identity/trust binding, forwarding security, retry/recovery, security review and physical multi-hop tests are complete.
 - Android minimum: API 26 (Android 8.0). No emulator or physical-device certification is claimed.
+
+
+## Phase 2 direct messaging path audit — 13 November 2026
+
+### Integrated source path
+
+- Peer authentication uses a fresh P-256 ECDH key pair and nonces per Nearby connection. The long-term P-256 signing key authenticates the handshake transcript, including both device IDs, ephemeral keys and recipient-encryption keys.
+- HKDF-SHA256 derives directional AES-256-GCM session keys. Secure chat payloads bind sender ID, recipient ID and message ID as authenticated associated data.
+- Direct one-to-one sends persist an encrypted-at-rest outbox entry before attempting transmission. The sender retries with bounded backoff and retains the message as queued after the bounded attempt window.
+- A later authenticated reconnect for the same stable peer reattaches the pending queue and retries it using the fresh session keys.
+- The receiver suppresses duplicate message IDs, commits its bounded deduplication history before sending the encrypted ACK, and does not ACK when that commit fails.
+- Sender-side ACK handling is bound to the expected endpoint for that pending direct message. The ACK means durable local receipt, not that a person read the message.
+
+### Known gaps — do not mark Phase 2 complete yet
+
+1. Group/broadcast fan-out encrypts a copy for each currently connected peer but bypasses the persistent per-recipient outbox and ACK tracking. A disconnected peer can miss the group message. Implement per-recipient queue identities, persist-before-send, per-peer retry, and authenticated per-peer ACK retirement.
+2. Retry recovery is triggered by transport initialization plus a later authenticated peer reconnect. It is not guaranteed background delivery while the process is stopped or Android Doze suspends the app. A lifecycle-safe scheduled recovery design is still required.
+3. First-contact trust is TOFU. Signed key possession and the in-person security-code comparison reduce risk but do not independently identify a real-world person or prevent a compromised first-contact channel.
+4. The direct messaging path has source-level implementation and unit-test foundations, but there is no current two-physical-phone end-to-end validation. Do not claim field reliability or production readiness.
+
+### Phase 2 completion checklist
+
+- [ ] Add durable per-recipient group/community message queues and ACK tracking.
+- [ ] Add process-death/reboot/Doze-aware retry recovery with bounded battery use and clear Android foreground/background behavior.
+- [ ] Add focused tests for outbox corruption, duplicate sends, reconnect races, ACK from the wrong peer, queue persistence failure, and multiple recipients with independent delivery state.
+- [ ] Validate direct and group chat in both directions on physical Android phones, including app restart and radio interruption.
+- [ ] Update user-facing delivery states so queued, sent, locally delivered, and read (if ever added) are not conflated.
+
+Phase 2 is therefore **partially implemented, not complete**. This audit is a source review; it does not substitute for device tests or a security review.
