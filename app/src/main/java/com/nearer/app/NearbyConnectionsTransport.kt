@@ -1648,8 +1648,10 @@ internal object IncomingFilePayloadPolicy {
                 val stillWaiting = pendingOutgoingMessages.values.any { it.messageId == acknowledgedId }
                 // One chat row represents the whole group, so report Delivered only
                 // after every recipient has ACKed and its queue retirement is durable.
-                if (!queueRetired || stillWaiting) {
+                if (!queueRetired) {
                     listener.onMessageStatus(acknowledgedId, "Queued")
+                } else if (stillWaiting) {
+                    listener.onMessageStatus(acknowledgedId, "Partially delivered")
                 } else {
                     listener.onMessageStatus(acknowledgedId, "Delivered")
                 }
