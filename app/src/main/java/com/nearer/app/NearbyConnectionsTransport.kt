@@ -100,8 +100,19 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val localRecipientIdentity by lazy { RecipientEncryptionIdentity.getOrCreate(appContext) }
 
 
-    /** Transit relay is opt-in and defaults off; direct recipient delivery still works. */
+    /**
+     * Transit relay remains hard-disabled until forwarding proofs are connected to
+     * authenticated packet acceptance and the encrypted Dead Drop transaction.
+     * Direct delivery and receipt handling for this phone's own messages remain
+     * available. This transport-level guard is intentional defense in depth: a
+     * future UI toggle or stale preference must not activate unverified transit.
+     */
     fun setMeshTransitEnabled(enabled: Boolean) {
+        if (enabled) {
+            meshTransitEnabled = false
+            listener.onStatus("Multi-hop relay is paused until signed forwarding proofs are verified and committed with each stored packet. Direct nearby delivery remains available.")
+            return
+        }
         val wasEnabled = meshTransitEnabled
         if (wasEnabled && !enabled) {
             // Withdraw every route this phone may have advertised before
