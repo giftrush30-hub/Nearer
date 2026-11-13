@@ -654,7 +654,7 @@ internal object IncomingFilePayloadPolicy {
                         outgoingStream.timeout?.let(deliveryHandler::removeCallbacks)
                         outgoingStream.prepared.close()
                         outgoingStream.sourceFile.delete()
-                        listener.onFileStatus("File sent and verified by Nearby: " + label)
+                        listener.onFileStatus("File sent to the nearby phone: " + label)
                     }
                     // The receive bridge owns final verification and publication.
                     return
@@ -1690,6 +1690,14 @@ internal object IncomingFilePayloadPolicy {
         val metadata = TransferResumeStreamMetadataCodec.decode(raw)
         incomingHyperMetadata[metadata.payloadId] = metadata
         incomingHyperEndpoints[metadata.payloadId] = endpointId
+        deliveryHandler.postDelayed({
+            if (!pendingIncomingHyperPayloads.containsKey(metadata.payloadId) &&
+                !activeIncomingHyperPayloads.containsKey(metadata.payloadId)) {
+                incomingHyperMetadata.remove(metadata.payloadId)
+                incomingHyperEndpoints.remove(metadata.payloadId)
+                transferSpeedMeters.remove(metadata.payloadId)
+            }
+        }, 125_000L)
         val initialSpeed = transferSpeedMeters.computeIfAbsent(metadata.payloadId) { TransferSpeedMeter() }
             .record(0L, metadata.item.sizeBytes)
         listener.onFileTransferUpdate(
@@ -2755,6 +2763,18 @@ internal object IncomingFilePayloadPolicy {
         synchronized(activeEndpoints) { activeEndpoints.clear() }
         authenticatedEndpoints.clear()
         streamCapablePeers.clear()
+        outgoingHyperStreams.values.forEach { state ->
+            state.timeout?.let(deliveryHandler::removeCallbacks)
+            state.endpointId = ""
+            state.awaitingDecision = true
+            state.prepared.close()
+        }
+        pendingIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
+        activeIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
+        pendingIncomingHyperPayloads.clear()
+        activeIncomingHyperPayloads.clear()
+        incomingHyperMetadata.clear()
+        incomingHyperEndpoints.clear()
         streamController.clear()
         peerHandshakes.clear()
         messageSessions.clear()
@@ -2775,6 +2795,7 @@ internal object IncomingFilePayloadPolicy {
         pendingIncomingHyperPayloads.clear()
         activeIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
         activeIncomingHyperPayloads.clear()
+        cancelledStreamPayloads.clear()
         streamController.clear()
         fileIo.shutdownNow()
         transferPreparation.shutdownNow()
