@@ -379,7 +379,7 @@ class MainActivity : ComponentActivity() {
                     pendingHybridEndpoint = id
                     incomingRequesterName = name
                     pairingCode = token
-                    approvalMessage = "First connection: compare the security code on both phones before accepting"
+                    approvalMessage = "FIRST-TIME TRUST CHECK: compare the code on both phones in person. Accept only if it matches and you expected this person."
                     statusMessage = "$name is requesting a first-time nearby connection."
                 }
             }
