@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.sp
 internal fun PremiumChatsScreen(
     meshRecipients: List<MeshRecipient>,
     selectedMeshRecipientId: String?,
-    onSelectMeshRecipient: (String) -> Unit,
+    onSelectMeshRecipient: (String?) -> Unit,
     connectedPeerStableId: String?,
     chatReady: Boolean,
     connectedDeviceName: String?,
@@ -456,6 +456,7 @@ private fun PremiumChatsInboxScreen(
         .filter { it.conversationId.isNotBlank() }
         .groupBy { it.conversationId }
         .mapValues { (_, conversation) -> conversation.maxByOrNull { it.timestamp }!! }
+    val recipientIds = meshRecipients.map { it.peerId }
     val conversationIds = (latestMessages.keys + recipientIds).distinct().sortedByDescending { id ->
         latestMessages[id]?.timestamp ?: 0L
     }
