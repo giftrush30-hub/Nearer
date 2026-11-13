@@ -55,6 +55,18 @@ class TransferResumeCoordinatorTest {
             assertEquals(TransferResumeNegotiation.Reason.RESUME_ACCEPTED, decision.reason)
             assertEquals(chunk.toLong(), decision.acceptedOffsetBytes)
 
+            val opened = coordinator.openValidatedSourceAtOffset(
+                offers.single().proposal, "transfer-1", item, source, source.lastModified(),
+                "BCDEFG234567", true, true
+            ) ?: fail("A verified source should open at the accepted offset")
+            opened.use { stream ->
+                assertEquals(chunk.toLong(), stream.acceptedOffsetBytes)
+                assertEquals((bytes.size - chunk).toLong(), stream.remainingBytes)
+                assertEquals(bytes.size.toLong(), stream.totalBytes)
+                assertArrayEquals(bytes.copyOfRange(chunk, bytes.size), stream.input.readBytes())
+                assertEquals("the source stream must stop at the declared size", -1, stream.input.read())
+            }
+
             source.writeBytes(ByteArray(bytes.size) { 7 })
             source.setLastModified(123L) // Keep manifest metadata constant to isolate prefix-digest rejection.
             val changed = coordinator.validateOfferAtSender(
