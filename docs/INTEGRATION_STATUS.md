@@ -122,11 +122,11 @@ The coordinated source work has advanced beyond the earlier PR #119 checkpoint:
 A selective source implementation now adds durable fan-out for nearby group-chat messages over authenticated Nearby Connections:
 
 - The sender first commits its local group message to the community store. If that commit fails, it does not send.
-- Each currently connected, authenticated group recipient receives a distinct transport message ID and a separate encrypted-outbox record bound to that peer's stable identity.
-- The complete recipient set is committed to the encrypted-at-rest outbox before the first send attempt.
-- Existing bounded retry logic retries each recipient copy independently after link failure or when that same stable peer reconnects.
-- The receiver's existing community callback persists the received group message before acknowledging the transport message. The sender retires only the recipient copy whose authenticated ACK came from the expected endpoint.
-- If a peer was already offline when the group message was created, it is not queued yet: current community rosters contain display names rather than verified stable peer IDs. The UI reports that the message is saved locally but no eligible connected member received it.
+- Each group roster now stores member display names alongside stable peer IDs and a stable owner ID. Incoming group messages are accepted only when the authenticated sender's stable peer ID is present in that roster; legacy name-only roster entries are not trusted for private group-message authorization.
+- Each recipient receives a distinct transport message ID and a separate encrypted-outbox record bound to that peer's stable identity, not its display name.
+- The complete recipient set—including members currently offline—is committed to the encrypted-at-rest outbox before the first send attempt. Offline copies have no endpoint assigned and retry only after that same stable peer authenticates again.
+- Roster synchronization is accepted only from the pinned stable owner ID (or establishes that owner on the first authenticated roster sync for a joining device). The receiver persists the group message before acknowledging the transport message; the sender retires only the recipient copy whose authenticated ACK came from the expected endpoint.
+- Older groups with display-name-only membership must receive a stable-ID roster sync before their group messages can be accepted or durably fanned out.
 - The single-peer Wi-Fi Direct fallback remains immediate-send only; it does not claim durable retry. Broadcast and Ludo/control packets also remain ephemeral in this batch.
 
 This is source integration awaiting exact-head CI and two-phone validation. It does not certify group delivery on physical devices or process-death/Doze recovery.
