@@ -1687,6 +1687,12 @@ internal object IncomingFilePayloadPolicy {
         val metadata = TransferResumeStreamMetadataCodec.decode(raw)
         incomingHyperMetadata[metadata.payloadId] = metadata
         incomingHyperEndpoints[metadata.payloadId] = endpointId
+        val initialSpeed = transferSpeedMeters.computeIfAbsent(metadata.payloadId) { TransferSpeedMeter() }
+            .record(0L, metadata.item.sizeBytes)
+        listener.onFileTransferUpdate(
+            endpointId, metadata.payloadId, metadata.item.displayName, 0L,
+            metadata.item.sizeBytes, true, initialSpeed
+        )
         val offer = resumeCoordinator.offersForAuthenticatedSender(peerId, true, true).firstOrNull {
             it.checkpoint.transferId == metadata.transferId &&
                 it.checkpoint.itemId == metadata.item.id &&
@@ -2383,14 +2389,17 @@ internal object IncomingFilePayloadPolicy {
                 val item = TransferBundleItem(
                     copied.sha256.take(32), name, name, copied.bytesCopied, null
                 )
-                val transferId = UUID.nameUUIDFromBytes(
-                    (localStableId + "|" + peerId + "|" + item.sizeBytes + "|" + copied.sha256 + "|" + name)
-                        .toByteArray(Charsets.UTF_8)
-                ).toString()
+                val transferIdentity = (localStableId + "|" + peerId + "|" + item.sizeBytes + "|" + copied.sha256 + "|" + name)
+                    .toByteArray(Charsets.UTF_8)
+                val transferId = MessageDigest.getInstance("SHA-256").digest(transferIdentity)
+                    .joinToString("") { "%02x".format(it) }
                 val state = OutgoingHyperStream(
                     endpointId, peerId, name, staged!!, item, transferId, copied.sha256, prepared
                 )
                 outgoingHyperStreams[payloadId] = state
+                val initialSpeed = transferSpeedMeters.computeIfAbsent(payloadId) { TransferSpeedMeter() }
+                    .record(0L, item.sizeBytes)
+                listener.onFileTransferUpdate(endpointId, payloadId, name, 0L, item.sizeBytes, false, initialSpeed)
                 val metadata = TransferResumeStreamMetadataCodec.Metadata(
                     payloadId, transferId, item, null, copied.sha256
                 )
