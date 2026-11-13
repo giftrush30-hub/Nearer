@@ -80,9 +80,9 @@ internal fun PremiumChatsScreen(
     val activeName = selectedRecipient?.displayName
         ?: selectedMeshRecipientId?.let { "NeaRer ${it.takeLast(4)}" }
         ?: connectedDeviceName
-    val visibleMessages = if (selectedRecipient != null) {
-        messages.filter { it.conversationId == selectedRecipient.peerId }
-    } else messages
+    val visibleMessages = selectedMeshRecipientId?.let { conversationId ->
+        messages.filter { it.conversationId == conversationId }
+    } ?: messages
     // File transfer still uses the single active direct endpoint. Never offer it
     // when another direct peer is selected or when the selected peer is remote.
     val directConversation = chatReady && (
