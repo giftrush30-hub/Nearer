@@ -4,14 +4,15 @@ Status: proof-sidecar framing and atomic encrypted Dead Drop acceptance have bee
 
 ## Current transport behavior observed in this branch
 
-1. The origin creates an origin-signed `mesh_packet_v1` envelope.
-2. A receiving peer validates the embedded origin signature and packet expiry.
-3. The receiver stores the opaque packet in encrypted Dead Drop storage.
-4. The receiver sends a separate signed `mesh_hop_ack_v1` to its previous hop after storage succeeds.
-5. A relay increments the mutable `hopsTaken` field once in persistent storage before sending the packet to its selected next hop.
-6. The next hop repeats the durable-store and ACK sequence.
+1. The origin creates an origin-signed immutable `MeshRelayPacketV1` and queues it with an empty proof prefix.
+2. The sender frames packet bytes and proof bytes in `MeshPacketEnvelopeV2`, without Base64 expansion.
+3. A receiving peer authenticates the Nearby endpoint, validates packet origin signature/expiry, and verifies every incoming proof against pinned signer keys.
+4. The receiver appends its own signed acceptance record, verifies the appended record using its local public key, then commits encrypted packet and proof sidecar together in one encrypted Dead Drop queue write.
+5. Only after that durable commit does it send the separate signed `mesh_hop_ack_v1` to the previous hop.
+6. A later forward attempt reads the exact persisted proof chain, increments the mutable `hopsTaken` field once in persistent storage, and sends packet plus unchanged proof sidecar to the selected next hop.
+7. Duplicate arrivals are idempotent only when immutable packet content and the stored verified chain agree; a shorter chain cannot overwrite a stronger stored chain.
 
-The separate hop ACK is useful for reliable retry, but it is not a transferable end-to-end chain of all relay acceptances. The `MeshForwardingProofChain` class currently added in Batch Two is not part of this packet format or storage lifecycle.
+The hop ACK remains a reliable per-link retry signal; the proof sidecar carries the ordered acceptance claims across hops. Neither proves physical radio transmission or honest forwarding.
 
 ## Required next protocol version
 
