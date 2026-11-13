@@ -3291,6 +3291,9 @@ private fun NeaRerHome(
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
     var selectedConversationKey by remember { mutableStateOf<String?>(null) }
+    val chatAttachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) onSendFiles(uris)
+    }
     LaunchedEffect(externalShareUris) { if (externalShareUris.isNotEmpty()) selectedTab = "Share" }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
@@ -3861,7 +3864,7 @@ private fun NeaRerHome(
                     onSendMessage = { onSendMessage(it); draft = "" },
                     onFindNearby = { selectedTab = "Nearby"; onFindNearby() },
                     onBackToInbox = { selectedMeshRecipientId = null },
-                    onChooseFiles = { selectedTab = "Share" },
+                    onChooseFiles = { chatAttachmentPicker.launch(arrayOf("*/*")) },
                     receivedFiles = receivedFiles,
                     onOpenFile = onOpenFile,
                     transferHistory = transferHistory,
