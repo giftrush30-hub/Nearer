@@ -801,7 +801,7 @@ class MainActivity : ComponentActivity() {
     @Deprecated("Deprecated in Android API 33; retained for Android 7–12 permission callback compatibility.")
     override fun onRequestPermissionsResult(
         requestCode: Int,
-        permissions: Array<out String>,
+        permissions: Array<String>,
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
