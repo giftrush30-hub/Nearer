@@ -392,17 +392,19 @@ internal object IncomingFilePayloadPolicy {
     }
 
     @Synchronized
-    private fun clearPendingOutgoingMessage(messageId: String): Boolean {
+    private fun clearPendingOutgoingMessage(messageId: String, acknowledged: Boolean = false): Boolean {
         val removed = pendingOutgoingMessages.remove(messageId) ?: return false
         val previousCompleted = completedOutgoingMessageIds.toList()
-        completedOutgoingMessageIds.clear()
-        completedOutgoingMessageIds.addAll(
-            OutgoingReceiptHistoryPolicy.append(previousCompleted, messageId)
-        )
+        if (acknowledged) {
+            completedOutgoingMessageIds.clear()
+            completedOutgoingMessageIds.addAll(
+                OutgoingReceiptHistoryPolicy.append(previousCompleted, messageId)
+            )
+        }
         removed.retryTask?.let(deliveryHandler::removeCallbacks)
         outgoingMessageTargets.remove(messageId)
-        // Commit queue retirement and the bounded completed-ACK marker together.
-        // If storage fails, retain the queued copy and do not report delivery.
+        // Commit queue retirement and, for a verified ACK only, its bounded receipt
+        // marker together. An exception/failure cleanup must never look delivered.
         if (persistPendingOutbox()) return true
         completedOutgoingMessageIds.clear()
         completedOutgoingMessageIds.addAll(previousCompleted)
@@ -1652,7 +1654,7 @@ internal object IncomingFilePayloadPolicy {
         if (kind == "ack") {
             val acknowledgedId = envelope.optString("id")
             if (acknowledgedId.isNotBlank() && outgoingMessageTargets[acknowledgedId] == endpointId) {
-                val retired = clearPendingOutgoingMessage(acknowledgedId)
+                val retired = clearPendingOutgoingMessage(acknowledgedId, acknowledged = true)
                 listener.onMessageStatus(acknowledgedId, if (retired) "Delivered" else "Queued")
             }
             return
