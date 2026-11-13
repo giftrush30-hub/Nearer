@@ -1826,8 +1826,11 @@ internal object IncomingFilePayloadPolicy {
         listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
     }
 
-    fun request(id: String) {
+    fun request(id: String, onFailure: (() -> Unit)? = null) {
         client.requestConnection(encodedName(), id, lifecycle).addOnFailureListener {
+            // Let discovery clear its per-endpoint suppression so a later scan
+            // can retry after a transient radio or SDK failure.
+            onFailure?.invoke()
             listener.onStatus("Connection request failed: ${it.localizedMessage ?: "try again"}")
         }
     }
