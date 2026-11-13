@@ -14,7 +14,6 @@ import java.util.UUID
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
-import java.nio.ByteBuffer
 
 data class MeshRecipient(
     val peerId: String,
@@ -1764,9 +1763,8 @@ internal object IncomingFilePayloadPolicy {
                         listener.onFileStatus("The resumable stream could not start. Retrying from the last verified checkpoint…")
                     }
             } catch (error: Exception) {
-                state.prepared.reject(error)
-                synchronized(state) { state.awaitingDecision = true }
-                listener.onFileStatus("The file could not be opened for sending.")
+                scheduleHyperStreamRetry(state)
+                listener.onFileStatus("The file could not be opened. Retrying safely…")
             }
         }
         if (proposal != null) {
@@ -2481,12 +2479,16 @@ internal object IncomingFilePayloadPolicy {
             val metadata = TransferResumeStreamMetadataCodec.Metadata(
                 prepared.payloadId, next.transferId, next.item, null, next.sha256
             )
-            sendHyperTransferControl(
-                endpointId,
-                TransferResumeStreamMetadataCodec.encode(metadata),
-                onFailure = { fallbackHyperStreamToFile(next) }
-            )
-            armHyperStreamTimeout(next)
+            try {
+                sendHyperTransferControl(
+                    endpointId,
+                    TransferResumeStreamMetadataCodec.encode(metadata),
+                    onFailure = { fallbackHyperStreamToFile(next) }
+                )
+                armHyperStreamTimeout(next)
+            } catch (_: Exception) {
+                fallbackHyperStreamToFile(next)
+            }
         }
     }
 
