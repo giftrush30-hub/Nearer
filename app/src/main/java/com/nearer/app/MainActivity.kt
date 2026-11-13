@@ -448,13 +448,31 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     var safelyStored = false
                     if (body.startsWith("NR_COMMUNITY:")) {
-                        handleCommunityPacket(
-                            senderName,
-                            nearbyTransport?.stableIdentityForEndpoint(id).orEmpty(),
-                            body.removePrefix("NR_COMMUNITY:")
-                        )
-                        // Acknowledge only after the updated community state reaches disk.
-                        safelyStored = persistCommunityData()
+                        val senderPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        val communityBody = body.removePrefix("NR_COMMUNITY:")
+                        val packet = try { JSONObject(communityBody) } catch (_: Exception) { JSONObject() }
+                        val type = packet.optString("type")
+                        handleCommunityPacket(senderName, senderPeerId, communityBody)
+                        val code = packet.optString("code")
+                        val group = communityGroups.firstOrNull { it.code == code }
+                        val accepted = when (type) {
+                            "group_created" -> group != null && group.ownerPeerId == senderPeerId &&
+                                NeaRerIdentity.normalize(senderPeerId) == senderPeerId
+                            "group_join" -> group != null && group.ownerPeerId == nearbyTransport?.localIdentityId() &&
+                                senderPeerId in group.memberPeerIds
+                            "group_members" -> group != null && group.ownerPeerId == senderPeerId &&
+                                nearbyTransport?.localIdentityId() in group.memberPeerIds
+                            "group_message" -> {
+                                val id = packet.optString("id")
+                                group != null && CommunityRosterPolicy.mayAcceptGroupMessage(senderPeerId, group.memberPeerIds) &&
+                                    id.isNotBlank() && communityMessages.any { it.id == id && it.groupCode == code }
+                            }
+                            "broadcast" -> true
+                            "ludo_invite", "ludo_reject", "ludo_move", "ludo_roll", "ludo_state", "ludo_leave" -> true
+                            else -> false
+                        }
+                        // Reject/withhold transport ACKs for unknown or unauthorized community packets.
+                        safelyStored = accepted && persistCommunityData()
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
