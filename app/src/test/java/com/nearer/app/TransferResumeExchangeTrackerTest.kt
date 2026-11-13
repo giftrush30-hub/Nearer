@@ -209,6 +209,96 @@ class TransferResumeExchangeTrackerTest {
         assertEquals(TransferResumeExchangeTracker.Update.STORED, tracker.recordDataPayload("peer", 7L))
     }
 
+    private val streamMetadata = TransferResumeStreamMetadataCodec.Metadata(
+        payloadId = 7L,
+        transferId = "bundle-1",
+        item = TransferBundleItem(
+            "item-1", "Docs/report.pdf", "report.pdf", chunk * 3L, "application/pdf"
+        ),
+        sourceModifiedAtMillis = 123L,
+        wholeFileSha256 = "f".repeat(64)
+    )
+
+    @Test fun streamExchangeWaitsForMetadataProposalDecisionAndPayloadInAnyOrder() {
+        val orders = listOf(
+            listOf("metadata", "proposal", "decision", "payload"),
+            listOf("metadata", "payload", "proposal", "decision"),
+            listOf("proposal", "metadata", "payload", "decision"),
+            listOf("decision", "payload", "metadata", "proposal"),
+            listOf("payload", "decision", "proposal", "metadata"),
+            listOf("payload", "metadata", "decision", "proposal")
+        )
+        orders.forEach { order ->
+            val tracker = TransferResumeExchangeTracker()
+            order.forEach { event ->
+                when (event) {
+                    "metadata" -> tracker.recordMetadata("peer", streamMetadata)
+                    "proposal" -> tracker.recordProposal("peer", proposalEnvelope())
+                    "decision" -> tracker.recordDecision("peer", decisionEnvelope())
+                    "payload" -> tracker.recordDataPayload("peer", 7L)
+                }
+                assertNull("Legacy takeReady must not consume stream state: $order", tracker.takeReady("peer", 7L))
+            }
+            val ready = tracker.takeReadyForStream("peer", 7L)
+            assertNotNull("Missing stream exchange for order $order", ready)
+            assertEquals(streamMetadata, ready!!.metadata)
+            assertEquals(proposal, ready.proposal)
+            assertEquals(decision, ready.decision)
+            assertNull(tracker.takeReadyForStream("peer", 7L))
+        }
+    }
+
+    @Test fun streamExchangeCanStartFromZeroWithoutAResumeCandidate() {
+        val tracker = TransferResumeExchangeTracker()
+        val noResume = TransferResumeNegotiation.Decision(
+            0L, TransferResumeNegotiation.Reason.NO_VALID_CHECKPOINT
+        )
+        tracker.recordMetadata("peer", streamMetadata)
+        tracker.recordDecision("peer", TransferResumeMessageCodec.DecisionEnvelope(7L, noResume))
+        tracker.recordDataPayload("peer", 7L)
+        val ready = tracker.takeReadyForStream("peer", 7L)
+        assertNotNull(ready)
+        assertNull(ready!!.proposal)
+        assertEquals(noResume, ready.decision)
+        assertEquals(streamMetadata, ready.metadata)
+    }
+
+    @Test fun streamExchangeRejectsMetadataThatDoesNotMatchResumeProposal() {
+        val tracker = TransferResumeExchangeTracker()
+        val mismatched = streamMetadata.copy(
+            item = streamMetadata.item.copy(relativePath = "Docs/other.pdf")
+        )
+        tracker.recordMetadata("peer", mismatched)
+        tracker.recordProposal("peer", proposalEnvelope())
+        tracker.recordDecision("peer", decisionEnvelope())
+        tracker.recordDataPayload("peer", 7L)
+        assertNull(tracker.takeReadyForStream("peer", 7L))
+        assertEquals(0, tracker.pendingCount())
+    }
+
+    @Test fun conflictingStreamMetadataInvalidatesTheExchange() {
+        val tracker = TransferResumeExchangeTracker()
+        assertEquals(
+            TransferResumeExchangeTracker.Update.STORED,
+            tracker.recordMetadata("peer", streamMetadata)
+        )
+        assertEquals(
+            TransferResumeExchangeTracker.Update.DUPLICATE,
+            tracker.recordMetadata("peer", streamMetadata)
+        )
+        assertEquals(
+            TransferResumeExchangeTracker.Update.CONFLICT,
+            tracker.recordMetadata("peer", streamMetadata.copy(
+                wholeFileSha256 = "0".repeat(64)
+            ))
+        )
+        assertEquals(
+            TransferResumeExchangeTracker.Update.DUPLICATE,
+            tracker.recordDataPayload("peer", 7L)
+        )
+        assertEquals(0, tracker.pendingCount())
+    }
+
     @Test fun validatesConfiguredCapacity() {
         try {
             TransferResumeExchangeTracker(0)
