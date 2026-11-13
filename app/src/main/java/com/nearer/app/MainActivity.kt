@@ -460,7 +460,8 @@ class MainActivity : ComponentActivity() {
                                 communityMessages.any { it.id == packet.optString("id") && it.groupCode == groupCode }
                             "group_members" -> group != null && CommunityMemberIdentityPolicy.canAcceptRoster(group.ownerId, senderPeerId, packet.optString("ownerId")) &&
                                 (packet.optJSONArray("memberIds")?.let { ids -> (0 until ids.length()).any { ids.optString(it) == senderPeerId } } == true)
-                            "group_created", "group_join" -> group != null && CommunityMemberIdentityPolicy.isAuthorizedMember(group.memberIds, senderPeerId)
+                            "group_created" -> group != null && CommunityMemberIdentityPolicy.isAuthorizedMember(group.memberIds, senderPeerId)
+                            "group_join" -> group != null && CommunityMemberIdentityPolicy.canAcceptJoin(group.ownerId, nearbyTransport?.localIdentityId().orEmpty(), senderPeerId)
                             else -> true
                         }
                         safelyStored = accepted && persistCommunityData()
