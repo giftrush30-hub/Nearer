@@ -6,13 +6,18 @@ package com.nearer.app
  * left in a transient sending state without an outbox record is not.
  */
 internal object ChatRestartRecoveryPolicy {
-    fun reconcile(messages: MutableList<ChatMessage>, queuedMessageIds: Set<String>): Boolean {
+    fun reconcile(
+        messages: MutableList<ChatMessage>,
+        queuedMessageIds: Set<String>,
+        deliveredMessageIds: Set<String> = emptySet()
+    ): Boolean {
         var changed = false
         for (index in messages.indices) {
             val message = messages[index]
             if (!message.outgoing || message.delivery == "Delivered") continue
 
             val recoveredDelivery = when {
+                message.id in deliveredMessageIds -> "Delivered"
                 message.id in queuedMessageIds -> "Queued"
                 message.delivery == "Sending…" || message.delivery == "Sending" -> "Interrupted"
                 else -> message.delivery

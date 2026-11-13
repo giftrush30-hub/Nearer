@@ -207,6 +207,9 @@ internal object IncomingFilePayloadPolicy {
     private val outgoingMessageTargets = ConcurrentHashMap<String, String>()
     private data class PendingOutgoingMessage(@field:Volatile var endpointId: String, val stablePeerId: String, val payload: ByteArray, var attempts: Int = 0, var retryTask: Runnable? = null)
     private val pendingOutgoingMessages = ConcurrentHashMap<String, PendingOutgoingMessage>()
+    // Bounded ACK history lets the UI reconcile receipt state if the process dies
+    // after transport retirement but before the community UI has saved its receipt.
+    private val completedOutgoingMessageIds = LinkedHashSet<String>()
     private val deliveryHandler = Handler(Looper.getMainLooper())
     private val maxMessageAttempts = MessageRetryPolicy.MAX_ATTEMPTS
     private companion object { const val RECEIPT_RETRY_MS = 15_000L }
@@ -243,7 +246,12 @@ internal object IncomingFilePayloadPolicy {
                 val encryptedPayload = LocalDataCipher.encrypt(appContext, p.payload)
                 array.put(JSONObject().put("id", id).put("peer", p.stablePeerId).put("payload", encryptedPayload))
             }
-            val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putString("nearby_outbox", array.toString()).commit()
+            val completed = org.json.JSONArray()
+            completedOutgoingMessageIds.forEach { completed.put(it) }
+            val saved = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+                .putString("nearby_outbox", array.toString())
+                .putString("nearby_completed_outgoing_ids", completed.toString())
+                .commit()
             if (!saved) listener.onStatus("NeaRer could not save its pending-message queue.")
             saved
         } catch (_: Exception) {
@@ -253,8 +261,23 @@ internal object IncomingFilePayloadPolicy {
     }
     private fun restorePendingOutbox() {
         try {
-            val raw = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-                .getString("nearby_outbox", "[]") ?: "[]"
+            val preferences = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            val completedRaw = preferences.getString("nearby_completed_outgoing_ids", "[]") ?: "[]"
+            completedOutgoingMessageIds.clear()
+            val completedArray = runCatching { org.json.JSONArray(completedRaw) }.getOrNull()
+            if (completedArray == null) {
+                listener.onStatus("Saved delivery receipt history could not be read; pending messages will still be restored.")
+            } else {
+                for (i in 0 until completedArray.length()) {
+                    val id = completedArray.optString(i)
+                    if (id.isNotBlank() && id.length <= 80) {
+                        val next = OutgoingReceiptHistoryPolicy.append(completedOutgoingMessageIds.toList(), id)
+                        completedOutgoingMessageIds.clear()
+                        completedOutgoingMessageIds.addAll(next)
+                    }
+                }
+            }
+            val raw = preferences.getString("nearby_outbox", "[]") ?: "[]"
             val array = org.json.JSONArray(raw)
             var skipped = false
             var migratedLegacyPayload = false
@@ -307,6 +330,9 @@ internal object IncomingFilePayloadPolicy {
         }
     }
     fun pendingMessageIds(): Set<String> = pendingOutgoingMessages.keys.toSet()
+
+    @Synchronized
+    fun completedMessageIds(): Set<String> = completedOutgoingMessageIds.toSet()
 
     private fun retryQueuedMessagesForPeer(peerId: String, endpointId: String) {
         if (peerId.isBlank()) return
@@ -366,14 +392,22 @@ internal object IncomingFilePayloadPolicy {
     }
 
     @Synchronized
-    private fun clearPendingOutgoingMessage(messageId: String): Boolean {
+    private fun clearPendingOutgoingMessage(messageId: String, acknowledged: Boolean = false): Boolean {
         val removed = pendingOutgoingMessages.remove(messageId) ?: return false
+        val previousCompleted = completedOutgoingMessageIds.toList()
+        if (acknowledged) {
+            completedOutgoingMessageIds.clear()
+            completedOutgoingMessageIds.addAll(
+                OutgoingReceiptHistoryPolicy.append(previousCompleted, messageId)
+            )
+        }
         removed.retryTask?.let(deliveryHandler::removeCallbacks)
         outgoingMessageTargets.remove(messageId)
-        // Do not report final delivery unless the queue removal is durable. If the
-        // write fails, retain a queued copy for a later reconnect; receiver-side
-        // duplicate suppression makes that retry safe.
+        // Commit queue retirement and, for a verified ACK only, its bounded receipt
+        // marker together. An exception/failure cleanup must never look delivered.
         if (persistPendingOutbox()) return true
+        completedOutgoingMessageIds.clear()
+        completedOutgoingMessageIds.addAll(previousCompleted)
         removed.endpointId = ""
         pendingOutgoingMessages[messageId] = removed
         return false
@@ -1620,7 +1654,7 @@ internal object IncomingFilePayloadPolicy {
         if (kind == "ack") {
             val acknowledgedId = envelope.optString("id")
             if (acknowledgedId.isNotBlank() && outgoingMessageTargets[acknowledgedId] == endpointId) {
-                val retired = clearPendingOutgoingMessage(acknowledgedId)
+                val retired = clearPendingOutgoingMessage(acknowledgedId, acknowledged = true)
                 listener.onMessageStatus(acknowledgedId, if (retired) "Delivered" else "Queued")
             }
             return
@@ -1883,8 +1917,16 @@ internal object IncomingFilePayloadPolicy {
      * Known offline peers are persisted with an empty endpoint and retried when that
      * same pinned identity reconnects. Display names are never recipient authority.
      */
-    fun sendDurableToPeerIds(body: String, targetPeerIds: Set<String>): Boolean {
-        if (body.isBlank() || body.length > 4000 || targetPeerIds.isEmpty()) return false
+    fun sendDurableToPeerIds(body: String, targetPeerIds: Set<String>): Boolean =
+        sendDurableToPeerIdsWithReceipts(body, targetPeerIds).isNotEmpty()
+
+    /**
+     * Returns transport-message-ID -> stable-recipient-ID for every copy committed
+     * to the outbox. Callers can persist this mapping to display independent delivery
+     * receipts even after the app process restarts.
+     */
+    fun sendDurableToPeerIdsWithReceipts(body: String, targetPeerIds: Set<String>): Map<String, String> {
+        if (body.isBlank() || body.length > 4000 || targetPeerIds.isEmpty()) return emptyMap()
         return queueDurableFanout(body, targetPeerIds)
     }
 
@@ -1894,13 +1936,14 @@ internal object IncomingFilePayloadPolicy {
      * waits for the same pinned peer identity to authenticate again.
      */
     @Synchronized
-    private fun queueDurableFanout(body: String, peerIds: Set<String>): Boolean {
-        if (peerIds.isEmpty()) return false
+    private fun queueDurableFanout(body: String, peerIds: Set<String>): Map<String, String> {
+        if (peerIds.isEmpty()) return emptyMap()
         if (peerIds.size > 100) {
             listener.onStatus("A community roster exceeds the supported 100-member delivery batch.")
-            return false
+            return emptyMap()
         }
         val queuedIds = mutableListOf<String>()
+        val queuedRecipients = linkedMapOf<String, String>()
         var skippedUnverifiedPeer = false
         peerIds.distinct().forEach { peerId ->
             if (peerId == localStableId || NeaRerIdentity.normalize(peerId) != peerId ||
@@ -1908,14 +1951,16 @@ internal object IncomingFilePayloadPolicy {
                 skippedUnverifiedPeer = true
                 return@forEach
             }
-            val endpoint = endpointForStablePeer(peerId).orEmpty()
-            if (endpoint.isNotBlank() &&
-                (!authenticatedEndpoints.contains(endpoint) ||
-                    !synchronized(activeEndpoints) { activeEndpoints.contains(endpoint) } ||
-                    messageSessions[endpoint] == null)) {
-                skippedUnverifiedPeer = true
-                return@forEach
-            }
+            val candidateEndpoint = endpointForStablePeer(peerId).orEmpty()
+            // A discovered endpoint may still be completing its identity handshake.
+            // Treat that peer as temporarily offline, not unverified: persist the copy
+            // without an endpoint so authentication completion can retry it safely.
+            val endpoint = CommunityDeliveryPolicy.usableEndpoint(
+                candidateEndpoint,
+                authenticated = candidateEndpoint.isNotBlank() && authenticatedEndpoints.contains(candidateEndpoint),
+                active = candidateEndpoint.isNotBlank() && synchronized(activeEndpoints) { activeEndpoints.contains(candidateEndpoint) },
+                sessionReady = candidateEndpoint.isNotBlank() && messageSessions[candidateEndpoint] != null
+            )
 
             val messageId = UUID.randomUUID().toString()
             val envelope = JSONObject()
@@ -1933,22 +1978,25 @@ internal object IncomingFilePayloadPolicy {
             pendingOutgoingMessages[messageId] = PendingOutgoingMessage(endpoint, peerId, envelope)
             if (endpoint.isNotBlank()) outgoingMessageTargets[messageId] = endpoint
             queuedIds += messageId
+            queuedRecipients[messageId] = peerId
         }
         if (skippedUnverifiedPeer) {
             listener.onStatus("Some group members are not identity-verified on this phone; their message copies were not queued.")
         }
-        if (queuedIds.isEmpty()) return false
+        if (queuedIds.isEmpty()) return emptyMap()
 
         if (!persistPendingOutbox()) {
             queuedIds.forEach { id ->
                 pendingOutgoingMessages.remove(id)
                 outgoingMessageTargets.remove(id)
             }
-            return false
+            return emptyMap()
         }
 
-        queuedIds.forEach(::attemptOutgoingMessage)
-        return true
+        // Defer first transmission until the caller has had a chance to persist
+        // the transport-ID -> community-message receipt mapping returned below.
+        queuedIds.forEach { id -> deliveryHandler.post { attemptOutgoingMessage(id) } }
+        return queuedRecipients
     }
 
     /**

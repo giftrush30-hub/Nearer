@@ -24,6 +24,12 @@ class ChatRestartRecoveryPolicyTest {
         assertEquals(listOf("Interrupted", "Interrupted"), messages.map { it.delivery })
     }
 
+    @Test fun authenticatedAckHistoryRestoresDeliveredAfterCrash() {
+        val messages = mutableListOf(message("acked", delivery = "Sending…"))
+        assertTrue(ChatRestartRecoveryPolicy.reconcile(messages, emptySet(), setOf("acked")))
+        assertEquals("Delivered", messages.single().delivery)
+    }
+
     @Test fun terminalAndIncomingStatesRemainUnchanged() {
         val messages = mutableListOf(
             message("delivered", delivery = "Delivered"),

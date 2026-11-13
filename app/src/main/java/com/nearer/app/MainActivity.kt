@@ -167,6 +167,10 @@ class MainActivity : ComponentActivity() {
     private val chatMessages = mutableStateListOf<ChatMessage>()
     private val communityGroups = mutableStateListOf<CommunityGroup>()
     private val communityMessages = mutableStateListOf<CommunityChatMessage>()
+    // Maps durable transport copies back to their group bubble and stable recipient.
+    // This survives process restart so late ACKs update the correct group message.
+    private val communityDeliveryRefs = ConcurrentHashMap<String, CommunityDeliveryRef>()
+    private var communityDataDirty = false
     private var selectedCommunityCode by mutableStateOf<String?>(null)
     private var communityNotice by mutableStateOf("Create or join a nearby group.")
     private var incomingGameInvite by mutableStateOf<GameInvite?>(null)
@@ -546,6 +550,27 @@ class MainActivity : ComponentActivity() {
                             else -> "Message delivery failed. Reconnect and try again."
                         }
                     }
+
+                    val ref = communityDeliveryRefs[messageId]
+                    if (ref != null) {
+                        val communityIndex = communityMessages.indexOfFirst { it.id == ref.communityMessageId }
+                        if (communityIndex >= 0) {
+                            val previous = communityMessages[communityIndex]
+                            val updated = CommunityDeliveryPolicy.applyStatus(previous.deliveryByPeerId, ref.peerId, status)
+                            if (updated != null) {
+                                communityMessages[communityIndex] = previous.copy(deliveryByPeerId = updated)
+                                if (status == "Delivered") communityDeliveryRefs.remove(messageId)
+                                if (!persistCommunityData()) {
+                                    // Keep the in-memory receipt; retry persistence when the
+                                    // activity pauses/resumes because transport ACK has retired.
+                                    communityNotice = "A group delivery receipt is updated on this phone but could not yet be saved to disk."
+                                }
+                            }
+                        } else if (status == "Delivered") {
+                            communityDeliveryRefs.remove(messageId)
+                            persistCommunityData()
+                        }
+                    }
                 }
             }
             override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {
@@ -675,8 +700,9 @@ class MainActivity : ComponentActivity() {
         runCatching { restoreNearbyTransferHistory() }
         runCatching { restoreNearbyFileQueue() }
         val queuedAfterRestart = runCatching { nearbyTransport?.pendingMessageIds().orEmpty() }.getOrDefault(emptySet())
+        val deliveredAfterRestart = runCatching { nearbyTransport?.completedMessageIds().orEmpty() }.getOrDefault(emptySet())
         val recoveredChatStates = runCatching {
-            ChatRestartRecoveryPolicy.reconcile(chatMessages, queuedAfterRestart)
+            ChatRestartRecoveryPolicy.reconcile(chatMessages, queuedAfterRestart, deliveredAfterRestart)
         }.getOrDefault(false)
         if (recoveredChatStates) {
             runCatching { persistMessages() }
@@ -688,6 +714,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         runCatching { restoreCommunityData() }
+        runCatching { reconcileCommunityDeliveryReceipts(deliveredAfterRestart) }
         displayName = runCatching {
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
@@ -868,6 +895,9 @@ class MainActivity : ComponentActivity() {
                 statusMessage = "NeaRer opened with limited Wi-Fi discovery: ${error.javaClass.simpleName}. Bluetooth nearby features may still be available."
             }
         }
+        // Retry any local community receipt write that failed during a previous
+        // ACK callback before the activity was paused or the process was reclaimed.
+        if (communityDataDirty) persistCommunityData()
         // Always-Ready: automatically prepare nearby discovery after onboarding.
         // Nearby Connections negotiates the available radios; users do not need
         // to launch a separate Wi-Fi Direct scan or configure a hotspot.
@@ -883,6 +913,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        if (communityDataDirty) persistCommunityData()
         if (receiverRegistered) {
             runCatching { unregisterReceiver(receiver) }
             receiverRegistered = false
@@ -1684,9 +1715,39 @@ class MainActivity : ComponentActivity() {
                     .put("memberPeerIds", JSONArray(it.memberPeerIds))
             ) }
             val messages = JSONArray()
-            communityMessages.takeLast(300).forEach { messages.put(JSONObject().put("id", it.id).put("code", it.groupCode).put("sender", it.sender).put("body", it.body).put("time", it.time)) }
-            prefs.edit().putString("community_groups", groups.toString()).putString("community_messages", messages.toString()).commit()
-        } catch (_: Exception) { false }
+            communityMessages.takeLast(300).forEach { message ->
+                val delivery = JSONObject()
+                message.deliveryByPeerId.forEach { (peerId, status) -> delivery.put(peerId, status) }
+                messages.put(
+                    JSONObject()
+                        .put("id", message.id)
+                        .put("code", message.groupCode)
+                        .put("sender", message.sender)
+                        .put("body", message.body)
+                        .put("time", message.time)
+                        .put("deliveryByPeerId", delivery)
+                )
+            }
+            val deliveryRefs = JSONArray()
+            communityDeliveryRefs.forEach { (transportId, ref) ->
+                deliveryRefs.put(
+                    JSONObject()
+                        .put("transportId", transportId)
+                        .put("communityMessageId", ref.communityMessageId)
+                        .put("peerId", ref.peerId)
+                )
+            }
+            val saved = prefs.edit()
+                .putString("community_groups", groups.toString())
+                .putString("community_messages", messages.toString())
+                .putString("community_delivery_refs", deliveryRefs.toString())
+                .commit()
+            communityDataDirty = !saved
+            saved
+        } catch (_: Exception) {
+            communityDataDirty = true
+            false
+        }
     }
     private fun restoreCommunityData() {
         val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
@@ -1709,10 +1770,47 @@ class MainActivity : ComponentActivity() {
             val messages = JSONArray(prefs.getString("community_messages", "[]"))
             for (i in 0 until messages.length()) {
                 val item = messages.getJSONObject(i)
-                communityMessages.add(CommunityChatMessage(item.getString("id"), item.getString("code"), item.optString("sender"), item.getString("body"), item.optLong("time")))
+                val deliveryJson = item.optJSONObject("deliveryByPeerId") ?: JSONObject()
+                val delivery = deliveryJson.keys().asSequence().associateWith { deliveryJson.optString(it) }
+                communityMessages.add(
+                    CommunityChatMessage(
+                        item.getString("id"), item.getString("code"), item.optString("sender"),
+                        item.getString("body"), item.optLong("time"), delivery
+                    )
+                )
             }
-        } catch (_: Exception) { communityGroups.clear(); communityMessages.clear() }
+            communityDeliveryRefs.clear()
+            val refs = JSONArray(prefs.getString("community_delivery_refs", "[]"))
+            for (i in 0 until refs.length()) {
+                val item = refs.optJSONObject(i) ?: continue
+                val transportId = item.optString("transportId")
+                val messageId = item.optString("communityMessageId")
+                val peerId = item.optString("peerId")
+                if (transportId.isNotBlank() && messageId.isNotBlank() && peerId.isNotBlank()) {
+                    communityDeliveryRefs[transportId] = CommunityDeliveryRef(messageId, peerId)
+                }
+            }
+        } catch (_: Exception) { communityGroups.clear(); communityMessages.clear(); communityDeliveryRefs.clear() }
     }
+    private fun reconcileCommunityDeliveryReceipts(deliveredTransportIds: Set<String>) {
+        if (deliveredTransportIds.isEmpty() || communityDeliveryRefs.isEmpty()) return
+        var changed = false
+        communityDeliveryRefs.entries.toList().forEach { (transportId, ref) ->
+            if (transportId !in deliveredTransportIds) return@forEach
+            val index = communityMessages.indexOfFirst { it.id == ref.communityMessageId }
+            if (index >= 0) {
+                val message = communityMessages[index]
+                val updated = CommunityDeliveryPolicy.applyStatus(message.deliveryByPeerId, ref.peerId, "Delivered")
+                if (updated != null) communityMessages[index] = message.copy(deliveryByPeerId = updated)
+            }
+            communityDeliveryRefs.remove(transportId)
+            changed = true
+        }
+        if (changed && !persistCommunityData()) {
+            communityNotice = "Some saved group delivery receipts could not yet be reconciled to disk."
+        }
+    }
+
     private fun sendCommunityPacket(packet: JSONObject): Boolean {
         val body = "NR_COMMUNITY:$packet"
         if (nearbyTransport?.send(body) == true) return true
@@ -1859,9 +1957,19 @@ class MainActivity : ComponentActivity() {
             return
         }
         val targetPeerIds = group.memberPeerIds.filter { it != localPeerId }.toSet()
-        val queued = transport.sendDurableToPeerIds("NR_COMMUNITY:$packet", targetPeerIds)
+        val receipts = transport.sendDurableToPeerIdsWithReceipts("NR_COMMUNITY:$packet", targetPeerIds)
+        val deliveryByPeerId = CommunityDeliveryPolicy.initialStatuses(targetPeerIds, receipts.values.toSet())
+        val localIndex = communityMessages.indexOfFirst { it.id == id }
+        if (localIndex >= 0) {
+            communityMessages[localIndex] = communityMessages[localIndex].copy(deliveryByPeerId = deliveryByPeerId)
+        }
+        receipts.forEach { (transportId, peerId) ->
+            communityDeliveryRefs[transportId] = CommunityDeliveryRef(id, peerId)
+        }
+        persistCommunityData()
+        val queued = receipts.isNotEmpty()
         communityNotice = if (queued) {
-            "Group message saved locally and queued to verified group identities. Offline verified members will receive it when they reconnect."
+            "Group message saved. " + receipts.size + " verified recipient copy/copies queued; delivery receipts update separately."
         } else {
             "Message saved locally, but no verified group member could be queued. Connect to members once and sync the identity roster."
         }
@@ -4242,7 +4350,18 @@ private fun CommunityHub(
                 Text("GROUP CHAT • " + selected.name, color = BlueAccent, fontWeight = FontWeight.Bold)
                 Text("Share code " + selected.code + " with connected members.", color = Muted, fontSize = 10.sp)
                 Column(Modifier.fillMaxWidth().height(130.dp).verticalScroll(rememberScrollState())) {
-                    messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { Text(it.sender + ": " + it.body, color = White, fontSize = 12.sp) }
+                    messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { message ->
+                        Text(message.sender + ": " + message.body, color = White, fontSize = 12.sp)
+                        if (message.deliveryByPeerId.isNotEmpty()) {
+                            val summary = CommunityDeliveryPolicy.summarize(message.deliveryByPeerId)
+                            val receiptText = buildList {
+                                add("${summary.delivered}/${summary.total} delivered")
+                                if (summary.queued > 0) add("${summary.queued} queued")
+                                if (summary.notVerified > 0) add("${summary.notVerified} not verified")
+                            }.joinToString(" • ")
+                            Text(receiptText, color = Muted, fontSize = 9.sp)
+                        }
+                    }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(groupText, { groupText = it.take(1500) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Group message") })
@@ -4267,7 +4386,15 @@ private data class CommunityGroup(
     val ownerPeerId: String = "",
     val memberPeerIds: List<String> = emptyList()
 )
-private data class CommunityChatMessage(val id: String, val groupCode: String, val sender: String, val body: String, val time: Long)
+private data class CommunityChatMessage(
+    val id: String,
+    val groupCode: String,
+    val sender: String,
+    val body: String,
+    val time: Long,
+    val deliveryByPeerId: Map<String, String> = emptyMap()
+)
+private data class CommunityDeliveryRef(val communityMessageId: String, val peerId: String)
 data class GameInvite(val matchId: String, val sender: String)
 
 private data class NearbyPerson(val name: String, val lastSeenAt: Long)
