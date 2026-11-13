@@ -39,7 +39,7 @@ internal class TransferResumeStreamWriter(
         sourcePeerId: String? = null
     ): Result {
         require(item.kind == TransferBundleItem.Kind.FILE) { "Only files can be resumed" }
-        val candidate = store.findValid(transferId, item, sourceModifiedAtMillis)
+        val candidate = store.findValid(transferId, item, sourceModifiedAtMillis, sourcePeerId)
         val partial = candidate?.partialFile ?: store.partialFileFor(transferId, item.id)
         val offset = candidate?.checkpoint?.committedOffsetBytes ?: 0L
 
