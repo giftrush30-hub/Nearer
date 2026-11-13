@@ -100,6 +100,14 @@ internal object TrustedPeerKeyStore {
         } catch (_: Exception) { false }
     }
 
+    /** Both identity keys must be pinned before SmartConnect may skip first-contact approval. */
+    @Synchronized
+    fun hasPinnedPeer(context: Context, publicId: String): Boolean {
+        if (NeaRerIdentity.normalize(publicId) != publicId) return false
+        return pinnedSigningKey(context, publicId) != null &&
+            pinnedRecipientEncryptionKey(context, publicId) != null
+    }
+
     private fun decodePin(pins: JSONObject, id: String): ByteArray? {
         if (!pins.has(id)) return null
         val encoded = pins.optString(id)
