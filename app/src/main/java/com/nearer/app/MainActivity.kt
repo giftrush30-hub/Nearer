@@ -1735,9 +1735,15 @@ class MainActivity : ComponentActivity() {
             communityNotice = "This phone's secure NeaRer identity is not ready. The group was not created."
             return
         }
+        val previousSelection = selectedCommunityCode
         communityGroups.add(0, CommunityGroup(code, name, listOf(displayName), localPeerId, listOf(localPeerId)))
         selectedCommunityCode = code
-        persistCommunityData()
+        if (!persistCommunityData()) {
+            communityGroups.removeAll { it.code == code }
+            selectedCommunityCode = previousSelection
+            communityNotice = "The new group could not be saved on this phone, so it was not announced."
+            return
+        }
         val announced = nearbyTransport?.send(
             "NR_COMMUNITY:" + JSONObject()
                 .put("type", "group_created")
@@ -1760,6 +1766,8 @@ class MainActivity : ComponentActivity() {
             communityNotice = "This phone's secure NeaRer identity is not ready. The group was not joined."
             return
         }
+        val previousGroups = communityGroups.toList()
+        val previousSelection = selectedCommunityCode
         val existing = communityGroups.indexOfFirst { it.code == code }
         if (existing < 0) {
             communityGroups.add(0, CommunityGroup(code, "Nearby group $code", listOf(displayName), "", listOf(localPeerId)))
@@ -1771,7 +1779,13 @@ class MainActivity : ComponentActivity() {
             )
         }
         selectedCommunityCode = code
-        persistCommunityData()
+        if (!persistCommunityData()) {
+            communityGroups.clear()
+            communityGroups.addAll(previousGroups)
+            selectedCommunityCode = previousSelection
+            communityNotice = "This group could not be saved on this phone, so no join request was sent."
+            return
+        }
         val joinSent = nearbyTransport?.send(
             "NR_COMMUNITY:" + JSONObject().put("type", "group_join").put("code", code).put("sender", displayName)
         ) == true
