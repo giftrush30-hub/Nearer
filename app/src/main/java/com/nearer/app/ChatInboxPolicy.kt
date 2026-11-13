@@ -25,7 +25,7 @@ internal object ChatInboxPolicy {
                 val recipient = recipientById[id]
                 when (filter) {
                     "Nearby" -> recipient?.isDirect == true
-                    "Mesh" -> recipient != null && !recipient.isDirect
+                    "Via others" -> recipient != null && !recipient.isDirect
                     "Offline" -> recipient == null
                     else -> true
                 }
