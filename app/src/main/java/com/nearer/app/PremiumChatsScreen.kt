@@ -302,7 +302,7 @@ internal fun PremiumChatsScreen(
                                     ) {
                                         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                             Text(message.body, color = White, fontSize = 14.sp, lineHeight = 20.sp)
-                                            Text(if (message.outgoing) message.delivery else "Received", color = if (message.outgoing) Color(0xFF9BD8FF) else Muted, fontSize = 9.sp)
+                                            Text(if (message.outgoing) ChatDeliveryLabelPolicy.label(message.delivery) else "Received", color = if (message.outgoing) Color(0xFF9BD8FF) else Muted, fontSize = 9.sp)
                                         }
                                     }
                                 }
