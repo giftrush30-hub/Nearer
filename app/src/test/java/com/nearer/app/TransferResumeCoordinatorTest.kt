@@ -112,6 +112,33 @@ class TransferResumeCoordinatorTest {
         }
     }
 
+    @Test fun rejectsTransportOffsetThatDiffersFromLocalCheckpointBeforeMutatingIt() {
+        val root = Files.createTempDirectory("nearer-resume-coordinator-offset").toFile()
+        try {
+            val store = store(root)
+            val coordinator = TransferResumeCoordinator(store, TransferResumeStreamWriter(store))
+            val bytes = ByteArray(chunk + 32) { (it % 223).toByte() }
+            val item = item(bytes.size.toLong())
+            val partial = store.partialFileFor("transfer-offset", item.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(bytes.copyOfRange(0, chunk))
+            }
+            store.checkpoint("transfer-offset", item, 321L, chunk.toLong(), peerId)
+            try {
+                coordinator.receiveStreamAndFinalize(
+                    "transfer-offset", item, 321L, peerId, 0L,
+                    ByteArrayInputStream(bytes), File(root, "received/file.bin"), sha256(bytes)
+                )
+                fail("Offset disagreement must be rejected before writing")
+            } catch (_: SecurityException) { }
+            assertTrue("existing verified partial must not be deleted or overwritten", partial.isFile)
+            assertEquals(chunk.toLong(), partial.length())
+            assertEquals(chunk.toLong(), store.findValid("transfer-offset", item, 321L, peerId)!!.checkpoint.committedOffsetBytes)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun rejectsWrongWholeFileDigestAndDiscardsUntrustedCompletedPartial() {
         val root = Files.createTempDirectory("nearer-resume-coordinator-digest").toFile()
         try {
