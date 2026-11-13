@@ -38,12 +38,12 @@ Implemented in the current messaging branches (subject to integration and device
 - Clear outgoing-message labels: waiting for reconnection, sending, delivered to the recipient's phone, interrupted/not confirmed, or not sent. Delivery confirmation is not a read receipt.
 
 Not yet complete or not yet verified as a full end-to-end user feature:
-- Reactions, edit, delete-for-everyone and message forwarding.
+- Delete-for-everyone and message forwarding; these still need signed tombstones / attribution and offline reconciliation.
 - Quoted replies are now implemented in this branch: reply action, composer quote preview/cancel, encrypted direct and recipient-encrypted message metadata, local persistence and restart restoration. Legacy messages remain readable; the legacy line-based fallback does not send replies.
 - Voice notes, in-chat audio/video calling and live voice rooms.
 - Group chats with membership, delivery, history and admin controls.
 - Polls, scheduled messages, disappearing messages and stories/status.
-- Chat lock, per-chat notification controls, mute/archive and unread counters.
+- Chat lock, per-chat notification controls and mute; archive and local unread counters are implemented in this branch.
 - Search across media, and search older messages beyond the locally retained timeline limit.
 - Export/restore of encrypted local chat history and media.
 - Full multi-hop message transit; relay remains deliberately disabled until proof, trust and recovery requirements pass.
@@ -118,4 +118,4 @@ The messaging branch now includes:
 - Incoming edits are accepted only when the authenticated sender matches the conversation and the target is an incoming message. The edit body and revision metadata are validated before persistence.
 - Edit state is stored locally and restored after restart; older messages load as revision zero.
 
-These features are implemented in the open messaging PR and are not yet release-verified. CI, compatibility with older app versions, and real-device testing remain outstanding.
+These features are implemented in the open messaging PR and are not yet release-verified. Exact PR head `b66dfc13f94447d849bc1a6df5b3042546490c9c` passed JVM unit tests, Android debug APK assembly and artifact upload in workflow `43468339420`. The PR is still open and currently has an integration conflict with `main`; no physical two-phone test or release build is claimed.
