@@ -219,3 +219,20 @@ The follow-up branch `feature/hypertransfer-concurrency-journal-hardening` harde
 - Existing transport selection already prefers authenticated, capability-advertised Nearby STREAM for supported peers and falls back to standard FILE when negotiation, staging or repeated stream attempts fail. This work preserves that compatibility route; it does not change the shared Nearby discovery strategy, which must remain compatible on both phones.
 
 Exact-head GitHub Actions run #2383 passed on commit `ed73399553a69a15e28e6b284172c2926e61de5f`: JVM unit tests, Android debug APK assembly and APK artifact upload all succeeded. The uploaded APK artifact is #14063081542; the extracted APK is 11,957,559 bytes with SHA-256 `d558bf9576d6ac637b7a22d83fdae68ab27c8b9738c3df20a7f506a5b984f871`. The changes were squash-merged into `main` at `3e805b9ff8dfd83c9fda855d2c37c3bc32998056`. No emulator or physical-phone testing was performed; the user will handle physical-device checks. This is a reliability hardening increment, not a claim of measured speed improvement or release certification.
+## Group D — Receiving and File Management — PR #152 (13 November 2026)
+
+The current received-file implementation adds a durable, bounded catalog and more defensive storage handling:
+
+- A versioned catalog stores the user's display name, on-disk relative filename, byte size, modification time and NeaRer app-bundle classification. Unicode display names are preserved.
+- Startup rebuilds the visible received-file list only from regular files that actually exist inside the app-private `files/received` directory. Catalog paths are leaf names only; missing files, stale entries and path traversal are not restored.
+- Files received before the catalog existed remain discoverable through a compatibility scan. The catalog is rebuilt from the actual files on disk.
+- Nearby Connections and the legacy Wi-Fi Direct receiver use the same catalog-registration path. New stored filenames include random suffixes to prevent same-name transfers from colliding.
+- The received-file list and catalog are bounded to the latest 200 entries; older private files are not automatically deleted.
+- Completed-file notifications are posted only when Android notification permission is already granted. The app does not unexpectedly prompt; received files remain visible in-app if notifications are disabled.
+- Downloads export checks available shared-storage space, copies through the bounded streaming/SHA-256 helper, validates the copied byte count, and publishes the MediaStore item only after the copy completes. Failed exports remove the pending shared-storage entry and retain the private original.
+- Incoming resumable streams, Nearby FILE fallback copies and legacy direct-transfer writes preflight available space. The legacy direct receiver also checks space as chunks arrive and removes incomplete files when a write fails.
+- NeaRer app bundles with the `.nearerapp` extension are recognized as installable bundles after restart.
+
+JVM tests cover catalog round trips (including Unicode names), duplicate-path replacement, traversal rejection, corrupt/oversized catalog input, the 200-entry bound and storage-space boundary conditions.
+
+This supersedes the earlier release-boundary note above that described the HyperTransfer Nearby STREAM call-site work as still awaiting integration: Group C is now merged on `main`, and Group D builds on that integrated transport. PR #152 is the Group D implementation branch. Exact-head Android JVM tests and debug APK assembly are required before merge. No physical-device validation is claimed; Android 8–16 storage-provider behavior, notification permission states and low-storage recovery still require the user's phone tests.
