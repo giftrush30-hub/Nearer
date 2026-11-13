@@ -663,7 +663,16 @@ internal object IncomingFilePayloadPolicy {
                     outgoingStream.awaitingDecision = true
                     outgoingStream.endpointId = ""
                     outgoingStream.prepared.close()
-                    listener.onFileStatus("HyperTransfer paused safely. Reconnect to the same person to continue.")
+                    val peerId = outgoingStream.stablePeerId
+                    deliveryHandler.postDelayed({
+                        if (outgoingStream.endpointId.isBlank()) {
+                            val endpoint = synchronized(activeEndpoints) {
+                                activeEndpoints.firstOrNull { synchronized(names) { stableIds[it] == peerId } }
+                            }
+                            if (endpoint != null) resumeHyperStreamsForPeer(peerId, endpoint)
+                        }
+                    }, 1500L)
+                    listener.onFileStatus("HyperTransfer paused safely. Reconnecting or retrying from the last verified checkpoint…")
                 } else {
                     listener.onFileStatus("HyperTransfer was interrupted. Its last verified checkpoint has been kept.")
                 }
@@ -1636,6 +1645,7 @@ internal object IncomingFilePayloadPolicy {
         }
         val metadata = TransferResumeStreamMetadataCodec.decode(raw)
         incomingHyperMetadata[metadata.payloadId] = metadata
+        incomingHyperEndpoints[metadata.payloadId] = endpointId
         val offer = resumeCoordinator.offersForAuthenticatedSender(peerId, true, true).firstOrNull {
             it.checkpoint.transferId == metadata.transferId &&
                 it.checkpoint.itemId == metadata.item.id &&
