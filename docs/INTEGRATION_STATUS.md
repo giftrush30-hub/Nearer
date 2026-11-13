@@ -154,7 +154,7 @@ PR #125 combined the durable per-recipient group fan-out from PR #124 with ident
 
 The follow-up adds a transport-message-ID to community-message/recipient mapping so each group message can show separate per-member states:
 
-- The transport returns the exact message IDs committed for each stable recipient.
+- The transport returns the exact message IDs committed for each stable recipient and defers the first send until the caller has persisted the corresponding receipt mapping.
 - A pinned member whose Nearby endpoint is discovered but whose handshake is not finished is still queued with no live endpoint; authentication completion retries that same member's copy.
 - Community receipt references and per-peer delivery states are persisted locally and restored after app restart.
 - Authenticated ACK callbacks update only the mapped stable peer's status; one recipient's ACK does not mark the entire group delivered.
