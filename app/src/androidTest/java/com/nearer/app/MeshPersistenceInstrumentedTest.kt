@@ -395,7 +395,7 @@ class MeshPersistenceInstrumentedTest {
             hopLimit = 4,
             recipientPublicKey = recipient.public.encoded,
             plaintext = "durable proof-bound packet".toByteArray()
-        )
+        ).copy(hopsTaken = 1)
         val incoming = MeshForwardingProofChain(emptyList()).appendAcceptance(
             packet.packetId, packet.immutablePacketDigest(), origin, relay, now + 1L
         ) { bytes ->
@@ -474,7 +474,7 @@ class MeshPersistenceInstrumentedTest {
         val packet = MeshRelayPacketV1.create(
             origin, NeaRerIdentity.generate(), "proof-reject-untrusted-001",
             now, now + 60_000L, 4, recipient.public.encoded, "body".toByteArray()
-        )
+        ).copy(hopsTaken = 1)
         val incoming = MeshForwardingProofChain(emptyList()).appendAcceptance(
             packet.packetId, packet.immutablePacketDigest(), origin, relay, now + 1L
         ) { bytes ->
