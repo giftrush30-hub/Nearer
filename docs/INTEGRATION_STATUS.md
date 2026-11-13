@@ -130,3 +130,17 @@ A selective source implementation now adds durable fan-out for nearby group-chat
 - The single-peer Wi-Fi Direct fallback remains immediate-send only; it does not claim durable retry. Broadcast and Ludo/control packets also remain ephemeral in this batch.
 
 This is source integration awaiting exact-head CI and two-phone validation. It does not certify group delivery on physical devices or process-death/Doze recovery.
+
+
+## Community identity-bound roster follow-up — PR branch `security/community-identity-roster`
+
+The durable community fan-out follow-up replaces display-name recipient selection with stable peer identity:
+
+- Community groups persist an owner/coordinator peer ID and a list of member peer IDs alongside display names. Display names are presentation only.
+- A roster update is accepted only from the same pinned peer identity recorded as coordinator. A legacy group with no coordinator uses first-pinned-peer TOFU; the UI explicitly tells the user to confirm that peer is the trusted group-code sharer.
+- Group messages are accepted only when the sender's authenticated stable peer ID is in the saved roster. A matching display name is not sufficient.
+- Durable fan-out targets stable peer IDs, requires both identity keys to be pinned on this phone, and can save offline copies with no live endpoint. Those copies retry only after the same peer identity authenticates again.
+- The legacy Wi-Fi Direct fallback has no equivalent stable peer identity binding; it is not used for group membership control or group chat.
+- Old name-only group records remain visible but cannot send secure group messages until they receive an identity roster update.
+
+Security limits remain explicit: the first trusted roster coordinator is TOFU rather than a cryptographically signed group invitation, and the six-digit group code is not an authentication secret. Users must compare the existing first-contact pairing code in person. A phone can only queue copies for member identities whose signing and recipient-encryption keys it has pinned; other members are skipped with a visible warning. This is a source-level security improvement awaiting exact-head CI and device validation, not a claim of production-secure group membership.
