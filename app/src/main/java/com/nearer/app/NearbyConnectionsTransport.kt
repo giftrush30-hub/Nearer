@@ -572,6 +572,24 @@ internal object IncomingFilePayloadPolicy {
         override fun onPayloadReceived(id: String, payload: Payload) {
             when (payload.type) {
                 Payload.Type.BYTES -> handleBytes(id, payload.asBytes())
+                Payload.Type.STREAM -> {
+                    if (!authenticatedEndpoints.contains(id)) {
+                        runCatching { payload.close() }
+                        listener.onFileStatus("An unverified nearby phone tried to send a stream. It was rejected.")
+                        return
+                    }
+                    val peerId = synchronized(names) { stableIds[id].orEmpty() }
+                    val result = streamController.recordStreamPayload(id, peerId, payload.id, true)
+                    if (result != NearbyStreamExchangeController.InputResult.STORED &&
+                        result != NearbyStreamExchangeController.InputResult.DUPLICATE) {
+                        runCatching { payload.close() }
+                        listener.onFileStatus("The incoming stream did not match an authenticated transfer.")
+                        return
+                    }
+                    pendingIncomingHyperPayloads[payload.id] = payload
+                    incomingHyperEndpoints[payload.id] = id
+                    tryProcessHyperStream(payload.id)
+                }
                 Payload.Type.FILE -> {
                     if (!authenticatedEndpoints.contains(id)) {
                         try { payload.close() } catch (_: Exception) { }
@@ -1726,9 +1744,32 @@ internal object IncomingFilePayloadPolicy {
                 }
             }
             if (!authenticatedEndpoints.contains(endpointId)) return
+            if (TransferResumeStreamMetadataCodec.isEnvelope(raw)) {
+                handleHyperStreamMetadata(endpointId, raw)
+                return
+            }
+            if (raw.size >= 4) {
+                when (ByteBuffer.wrap(raw).int) {
+                    0x4E525253 -> { handleHyperStreamProposal(endpointId, raw); return }
+                    0x4E52524E -> { handleHyperStreamNoResume(endpointId, raw); return }
+                    0x4E525244 -> {
+                        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+                        val decoded = runCatching { TransferResumeMessageCodec.decodeDecision(raw) }.getOrNull() ?: return
+                        val result = streamController.recordDecision(endpointId, peerId, raw)
+                        if (result != NearbyStreamExchangeController.InputResult.STORED &&
+                            result != NearbyStreamExchangeController.InputResult.DUPLICATE) return
+                        tryProcessHyperStream(decoded.payloadId)
+                        return
+                    }
+                }
+            }
             if (envelope.optString("kind") == "mesh_packet_v1") {
                 // Legacy packets carry no verifiable forwarding history and are rejected.
                 listener.onStatus("An older mesh packet without forwarding proofs was rejected. Update both phones.")
+                return
+            }
+            if (envelope.optString("kind") == "hypertransfer_stream_capabilities") {
+                if (envelope.optInt("version", 0) == 1) handleHyperStreamCapability(endpointId)
                 return
             }
             if (envelope.optString("kind") == "secure_packet_v1") {
