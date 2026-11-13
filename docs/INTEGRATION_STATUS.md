@@ -157,7 +157,7 @@ The follow-up adds a transport-message-ID to community-message/recipient mapping
 - The transport returns the exact message IDs committed for each stable recipient.
 - Community receipt references and per-peer delivery states are persisted locally and restored after app restart.
 - Authenticated ACK callbacks update only the mapped stable peer's status; one recipient's ACK does not mark the entire group delivered.
-- A receipt is removed from the pending mapping only after its updated state is committed; on persistence failure the prior state and mapping are retained.
 - The UI shows delivered, queued and not-verified recipient counts under each outgoing group message.
+- If saving a receipt fails, the updated state remains in memory and the app retries the write on Activity pause/resume. If storage continues failing and the process is killed before a successful retry, that latest receipt may not survive the restart.
 
 This follow-up is not yet merged or validated on physical phones. It does not add background delivery while the app process is stopped or Android Doze suspends execution.
