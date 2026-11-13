@@ -155,8 +155,10 @@ internal class TransferResumeExchangeTracker(
                 invalidate(key)
                 return null
             }
-        } else if (proposal == null) {
-            return null
+        } else {
+            // Keep stream exchanges for takeReadyForStream; the legacy API must
+            // not consume them before their manifest metadata is checked.
+            if (metadata != null || proposal == null) return null
         }
         entry.consumed = true
         entries.remove(key)
