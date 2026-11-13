@@ -14,6 +14,15 @@ internal object CommunityDeliveryPolicy {
         return current + (peerId to status)
     }
 
+    fun usableEndpoint(
+        candidateEndpoint: String,
+        authenticated: Boolean,
+        active: Boolean,
+        sessionReady: Boolean
+    ): String = candidateEndpoint.takeIf {
+        it.isNotBlank() && authenticated && active && sessionReady
+    }.orEmpty()
+
     fun summarize(statuses: Map<String, String>): Summary = Summary(
         delivered = statuses.values.count { it == "Delivered" },
         queued = statuses.values.count { it == "Queued" },
