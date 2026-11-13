@@ -1900,8 +1900,12 @@ internal object IncomingFilePayloadPolicy {
                     meter.record(completed.totalBytes, completed.totalBytes))
                 listener.onFileReceived(endpointId, metadata.item.displayName, completed.completedFile)
                 listener.onFileStatus("Verified transfer complete: " + metadata.item.displayName)
-            }.onFailure {
-                listener.onFileStatus("The received file was not published because verification failed.")
+            }.onFailure { error ->
+                val reason = error.message.orEmpty()
+                listener.onFileStatus(
+                    if (reason.contains("Not enough free storage", ignoreCase = true)) reason
+                    else "The received file was not published because verification failed."
+                )
             }
         }
     }
@@ -2099,7 +2103,7 @@ internal object IncomingFilePayloadPolicy {
             try {
                 val folder = File(appContext.filesDir, "received").apply { mkdirs() }
                 val safeName = TransferFileNamePolicy.safeName(meta.name)
-                val target = File(folder, "${System.currentTimeMillis()}-${safeName}")
+                val target = File(folder, "${System.currentTimeMillis()}-${UUID.randomUUID().toString().take(8)}-${safeName}")
                 destination = target
                 val receivedFile = payload.asFile() ?: throw IllegalStateException("Nearby file content is unavailable")
                 val sourceFile = receivedFile.asJavaFile()
@@ -2107,6 +2111,9 @@ internal object IncomingFilePayloadPolicy {
                 // NeaRer's private received folder when possible, avoiding a second full
                 // read/write pass for multi-gigabyte videos.
                 val moved = sourceFile != null && sourceFile.exists() && sourceFile.renameTo(target)
+                if (!moved && !ReceivedFileStoragePolicy.hasEnoughSpace(meta.size, folder.usableSpace)) {
+                    throw IllegalStateException("Not enough free storage to finish saving this file. Free up space and try again.")
+                }
                 var copiedSha256 = ""
                 var copiedBytes = -1L
                 var copiedSourceUri: Uri? = null
