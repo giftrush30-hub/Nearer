@@ -196,55 +196,6 @@ The checkpoint format is now version 2 and stores the authenticated sender's sta
 
 The current transport still does not pass its authenticated peer ID into the durable stream writer or route FILE payload bytes through that writer. This change establishes the identity boundary needed for that integration; it does not yet make Nearby process-death resume operational.
 
-## HyperTransfer authenticated STREAM coordinator — 13 November 2026
-
-- Added `TransferResumeCoordinator` as a transport-neutral bridge around the durable store, peer-bound resume negotiation and stream writer.
-- Receiver discovery now produces offers only for partials owned by the exact currently authenticated stable sender. The existing store re-verifies each committed prefix before an offer is created.
-- Sender-side validation checks the source file still exists with the expected size and modification time, then independently hashes the source prefix before accepting an offset.
-- Receiver completion checks that the transport-approved offset matches the local peer-bound checkpoint **before** appending bytes. A clean offset-zero restart discards only a verified partial belonging to that same authenticated sender.
-- The coordinator verifies the writer's whole-file SHA-256 before calling the existing no-overwrite finalizer. Wrong sender, offset mismatch, or whole-file digest mismatch cannot publish a file.
-- Fixed zero-byte stream handling: an empty file now receives a durable EOF checkpoint and can pass through the same digest-verified finalization path.
-- Added coordinator tests for authenticated candidate discovery, source-prefix mismatch, resumed stream completion, destination collision, whole-file digest rejection, offset disagreement without partial damage, invalid peer identity, and empty-file completion.
-- **Transport boundary remains explicit:** this coordinator is not yet called by `NearbyConnectionsTransport`. Its caller must use a Nearby STREAM payload (not the existing FILE payload), bind all negotiation to the authenticated stable peer identity, position the sender stream at the accepted offset, and close the stream cleanly. PR #139 continues to own the current transport reconnect hook. Do not advertise app-kill recovery as live until that hook and the stream lifecycle are integrated and tested on two physical phones.
-- No emulator or physical-device testing is claimed for this work.
-
-
-### HyperTransfer sender-side stream positioning — 13 November 2026
-- Added `TransferResumeCoordinator.openValidatedSourceAtOffset(...)` to the stacked stream-coordinator PR.
-- It re-hashes the receiver-approved prefix from the same open source-file descriptor that will feed the outgoing stream, rechecks source size/modification metadata, seeks to the exact accepted offset, and returns a stream bounded to the declared remaining byte count.
-- This removes a fragile transport-side requirement to independently skip bytes or risk sending the prefix twice. The transport must still authenticate the receiver, negotiate the offset, and close the stream after the declared bytes.
-- Added a JVM test asserting the returned stream begins exactly at the approved offset and exposes no bytes beyond the declared remainder.
-- This is still a transport-neutral helper, not a live Nearby STREAM integration. The PR remains stacked on #137; exact-head CI has not run for this stacked base. No emulator or physical-device testing is claimed.
-- The sender helper also supports sources whose provider cannot supply a reliable modification timestamp: it still requires the exact file size and authenticated receiver-approved prefix digest. A timestamp is compared when available, but its absence is not treated as proof that the source changed.
-
-
-### Nearby STREAM payload bridge — 13 November 2026
-- Added `NearbyStreamPayloadBridge` as the transport-facing adapter for Google Nearby STREAM payloads. It wraps an already-positioned sender InputStream, consumes an incoming STREAM on the I/O executor, delegates durable writing/digest verification/no-overwrite publication to `TransferResumeCoordinator`, and closes the Nearby payload on every terminal path.
-- Added `HyperTransferStreamAdmissionPolicy` so a stream is accepted only when its authenticated stable peer, Nearby payload ID, payload type, resume proposal and decision agree. A positive resume decision must match the exact proposed checkpoint offset. A fresh transfer may start at offset zero only for explicit no-checkpoint/source-changed/unsupported outcomes; malformed offsets and already-complete decisions are rejected.
-- Added JVM policy tests for wrong peer, wrong payload ID, wrong payload type, mismatched offset, clean restart outcomes, invalid offset and already-complete outcomes.
-- This is a reusable adapter and admission gate, not yet wired into `NearbyConnectionsTransport.kt`. The current app transport still uses Nearby FILE payloads and its existing same-process reconnect path. The transport owner must send metadata, proposal and decision BYTES envelopes correlated by payload ID, call the bridge promptly when the STREAM arrives, and keep its existing FILE path as a compatibility fallback until both peers negotiate the stream protocol.
-- The bridge must run on a dedicated I/O executor; do not call its blocking receive path on the main thread. No emulator or physical-device testing is claimed. Exact-head CI is required after the stacked PR is retargeted to `main`.
-
-
-### Nearby STREAM metadata and callback-order coordination — 13 November 2026
-- Added `TransferResumeStreamMetadataCodec`, a bounded/versioned BYTES envelope binding a Nearby payload ID to one validated file item, transfer ID, source modification time (optional), and whole-file SHA-256. Unsafe paths, invalid IDs, invalid sizes, malformed UTF-8, trailing bytes and invalid digests are rejected.
-- Extended `TransferResumeExchangeTracker` with stream metadata recording and `takeReadyForStream()`. It waits for metadata, proposal (when a partial exists), decision, and the actual payload callback regardless of callback order; it rejects conflicting metadata and metadata/proposal identity mismatches, and prevents the legacy FILE exchange reader from consuming stream entries.
-- A fresh transfer with no restart candidate can be correlated using metadata + a local zero-offset `NO_VALID_CHECKPOINT` decision + STREAM callback. Resumed transfers still require a proposal and an exact accepted offset.
-- The transport-facing bridge and admission policy now use the validated metadata object rather than separately supplied file fields. This reduces the chance that a caller pairs a valid payload with a different transfer manifest or digest.
-- Remaining work is the actual `NearbyConnectionsTransport.kt` call-site integration: recognize the stream metadata envelope in BYTES, coordinate proposal/decision exchange, feed all callback events to the tracker, and invoke the bridge only after the exact exchange is ready. Keep the current FILE path for older peers and for fallback. This transport file remains owned by PR #139; no edits were made to it.
-- The feature branch is stacked on PR #141, which is itself stacked on PR #137. No CI run is triggered for this stacked base under the current workflow filters; run exact-head JVM tests and APK build after retargeting to `main`. No emulator or physical-device test is claimed.
-
-- Added `NearbyStreamExchangeController` as the single transport-facing BYTES/STREAM state coordinator. It decodes metadata/proposal/decision envelopes, binds each pending endpoint exchange to its authenticated stable peer, rejects identity changes, accepts only STREAM payload events, and returns a ready exchange only when all required pieces are correlated. It supports fresh offset-zero transfers without a saved proposal and clears endpoint state on disconnect.
-- Added controller tests for all six callback orderings, fresh transfers, malformed control data, wrong payload type, changed peer identity and endpoint cleanup.
-
-- Added `DeferredTransferInputStream` and `NearbyStreamPayloadBridge.prepareOutgoingPayload()` to solve the payload-ID/offset ordering problem: the sender creates the STREAM payload first (so its ID can be placed in metadata), but the stream blocks until the authenticated resume decision supplies the exact validated source at the accepted offset. Rejection or cancellation releases blocked readers and closes the source. This avoids sending from byte zero and then attempting to seek an already-created InputStream.
-- Added an explicit bounded `NO_RESUME` control envelope. When the receiver has no valid partial, it can tell the sender to start at byte zero; the receiver records the corresponding zero-offset decision locally. This avoids waiting for a proposal that will never exist.
-- Added tests for deferred-source approval, cancellation, rejection, single-source ownership, zero-length reads, and no-resume envelope validation.
-
-### Nearby STREAM cancellation propagation — 13 November 2026
-- `NearbyStreamPayloadBridge.receive(...)` now accepts the transport's cancellation predicate and passes it through to `TransferResumeCoordinator.receiveStreamAndFinalize(...)` and the durable writer.
-- Cancellation is checked at the writer's normal safe points, so already-synced checkpoints remain recoverable and the transfer does not continue silently after the transport marks it cancelled. The transport should also close/cancel the Nearby payload to unblock an active stream read promptly.
-- This does not change the ownership boundary: `NearbyConnectionsTransport.kt` remains with PR #139 and has not been edited here. Exact-head CI for this follow-up is running; no phone test is claimed.
 
 ### Nearby STREAM transport call-site integration — 13 November 2026
 - The transport integration branch now connects the authenticated Nearby BYTES/STREAM callbacks to the verified HyperTransfer coordinator and bridge.
