@@ -2354,7 +2354,7 @@ internal object IncomingFilePayloadPolicy {
                 client.sendPayload(endpointId, Payload.fromBytes(TransferResumeStreamMetadataCodec.encode(metadata)))
                     .addOnSuccessListener {
                         val timeout = Runnable {
-                            if (outgoingHyperStreams.remove(payloadId, state)) {
+                            if (state.awaitingDecision && outgoingHyperStreams.remove(payloadId, state)) {
                                 // If the peer did not answer the stream handshake, retain the proven FILE fallback.
                                 state.prepared.close()
                                 val filePayload = Payload.fromFile(state.sourceFile)
@@ -2408,7 +2408,7 @@ internal object IncomingFilePayloadPolicy {
             client.sendPayload(endpointId, Payload.fromBytes(TransferResumeStreamMetadataCodec.encode(metadata)))
                 .addOnSuccessListener {
                     val timeout = Runnable {
-                        if (outgoingHyperStreams.remove(prepared.payloadId, next)) {
+                        if (next.awaitingDecision && outgoingHyperStreams.remove(prepared.payloadId, next)) {
                             next.prepared.close()
                             val filePayload = Payload.fromFile(next.sourceFile)
                             filePayload.setFileName(next.name)
