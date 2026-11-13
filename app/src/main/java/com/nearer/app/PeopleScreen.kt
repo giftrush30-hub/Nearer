@@ -52,9 +52,12 @@ private data class LocalPhoneContact(val id: String, val name: String, val numbe
 @Composable
 internal fun PeopleScreen(
     meshRecipients: List<MeshRecipient>,
+    hybridPeers: Map<String, String>,
+    scanning: Boolean,
     onSelectMeshRecipient: (String) -> Unit,
     onOpenChat: () -> Unit,
-    onFindNearby: () -> Unit
+    onFindNearby: () -> Unit,
+    onConnectNearby: (String) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -165,7 +168,31 @@ internal fun PeopleScreen(
                 Button(onClick = onFindNearby, modifier = Modifier.fillMaxWidth().height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight),
                     shape = RoundedCornerShape(14.dp)) {
-                    Text("Find people nearby", fontWeight = FontWeight.Bold)
+                    Text(if (scanning) "Searching nearby…" else "Find people nearby", fontWeight = FontWeight.Bold)
+                }
+                if (scanning) Text("NeaRer is looking for nearby devices. Keep Bluetooth and Wi-Fi available.", color = Muted, fontSize = 10.sp)
+            }
+        }
+
+        if (hybridPeers.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("DISCOVERED NEARBY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                hybridPeers.entries.sortedBy { it.value.lowercase() }.forEach { (endpointId, peerName) ->
+                    Surface(color = Panel, shape = RoundedCornerShape(15.dp), modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Surface(color = Color(0xFF2455A5), shape = CircleShape, modifier = Modifier.size(38.dp)) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                    Text(peerName.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(peerName, color = White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("Nearby · not yet connected", color = Muted, fontSize = 10.sp)
+                            }
+                            Text("Connect", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable { onConnectNearby(endpointId) }.padding(7.dp))
+                        }
+                    }
                 }
             }
         }
