@@ -10,15 +10,15 @@ internal object ChatReactionPolicy {
     fun isValidActor(actorPeerId: String): Boolean =
         NeaRerIdentity.normalize(actorPeerId) == actorPeerId
 
-    fun toggle(
+    fun set(
         current: Map<String, String>,
         actorPeerId: String,
-        emoji: String
+        emoji: String?
     ): Map<String, String> {
-        if (!isValidActor(actorPeerId) || !isValidEmoji(emoji)) return current
+        if (!isValidActor(actorPeerId) || (emoji != null && !isValidEmoji(emoji))) return current
         if (current.keys.any { !isValidActor(it) } || current.values.any { !isValidEmoji(it) }) return current
         val updated = LinkedHashMap(current)
-        if (updated[actorPeerId] == emoji) {
+        if (emoji == null) {
             updated.remove(actorPeerId)
         } else {
             if (actorPeerId !in updated && updated.size >= MAX_REACTORS) return current
@@ -26,4 +26,7 @@ internal object ChatReactionPolicy {
         }
         return updated
     }
+
+    fun toggle(current: Map<String, String>, actorPeerId: String, emoji: String): Map<String, String> =
+        set(current, actorPeerId, if (current[actorPeerId] == emoji) null else emoji)
 }
