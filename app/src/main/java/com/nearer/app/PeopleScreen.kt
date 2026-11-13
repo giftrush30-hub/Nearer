@@ -117,7 +117,7 @@ internal fun PeopleScreen(
             notice = "That ID format is not recognised. Check the ID and try again."
             return
         }
-        if (normalized == NeaRerIdentity.normalize(NeaRerIdentity.getOrCreate(normalized))) {
+        if (normalized.isNotBlank()) {
             if (normalized !in savedIds) savedIds.add(normalized)
             context.getSharedPreferences("nearer_people", Context.MODE_PRIVATE)
                 .edit().putStringSet("saved_nearer_ids", savedIds.toSet()).apply()
