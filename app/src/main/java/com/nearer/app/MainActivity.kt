@@ -683,7 +683,9 @@ class MainActivity : ComponentActivity() {
                 if (onboardingComplete) {
                 NeaRerHome(
                     status = statusMessage,
-                    scanning = scanning || hybridSearching,
+                    // Keep automatic SmartConnect discovery separate from the manual Wi-Fi Direct refresh spinner.
+                    // Otherwise the screen would look permanently busy and disable its refresh action.
+                    scanning = scanning,
                     devices = nearbyDevices,
                     connectingAddress = connectingAddress,
                     connectedDeviceName = connectedDeviceName,
