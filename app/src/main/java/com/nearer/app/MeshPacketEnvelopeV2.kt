@@ -36,7 +36,7 @@ internal object MeshPacketEnvelopeV2 {
     }
 
     fun isEnvelope(bytes: ByteArray): Boolean =
-        bytes.size >= 4 && java.nio.ByteBuffer.wrap(bytes, 0, 4).int == MAGIC
+        bytes.size >= 4 && java.nio.ByteBuffer.wrap(bytes, 0, 4).getInt() == MAGIC
 
     fun decode(bytes: ByteArray): Decoded {
         require(bytes.size in HEADER_BYTES..MeshRelayPacketV1.MAX_NEARBY_BYTES)
