@@ -19,7 +19,7 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - Local group creation and joining with a six-digit code.
 - Locally stored group membership and message history.
 - Nearby group messaging to currently connected members.
-- Ludo and other in-app community/game foundations are part of the integration branch; individual multiplayer and offline/online modes must be checked against the actual build before being described as complete.
+- Ludo includes a traditional four-colour board, visible dice, token movement, safe squares, captures, computer opponents and nearby multiplayer foundations. Same-device offline pass-and-play supports two to four human players; solo mode supports three computer opponents. Nearby multiplayer still requires physical two-phone verification. Internet multiplayer and live voice calling are not claimed as complete.
 
 ## Mesh relay milestone — Batch One
 
