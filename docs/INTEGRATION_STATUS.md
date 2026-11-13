@@ -126,7 +126,7 @@ A selective source implementation now adds durable fan-out for nearby group-chat
 - Each recipient receives a distinct transport message ID and a separate encrypted-outbox record bound to that peer's stable identity, not its display name.
 - The complete recipient set—including members currently offline—is committed to the encrypted-at-rest outbox before the first send attempt. Offline copies have no endpoint assigned and retry only after that same stable peer authenticates again.
 - Roster synchronization is accepted only from the pinned stable owner ID (or establishes that owner on the first authenticated roster sync for a joining device). The receiver persists the group message before acknowledging the transport message; the sender retires only the recipient copy whose authenticated ACK came from the expected endpoint.
-- Older groups with display-name-only membership must receive a stable-ID roster sync before their group messages can be accepted or durably fanned out.
+- Older groups with display-name-only membership must receive a stable-ID roster sync before their group messages can be accepted or durably fanned out. The first roster sync on a joining device is a trust-on-first-use owner binding; it is not independent proof of the real-world group owner.
 - The single-peer Wi-Fi Direct fallback remains immediate-send only; it does not claim durable retry. Broadcast and Ludo/control packets also remain ephemeral in this batch.
 
 This is source integration awaiting exact-head CI and two-phone validation. It does not certify group delivery on physical devices or process-death/Doze recovery.
