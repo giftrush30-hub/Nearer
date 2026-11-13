@@ -235,6 +235,7 @@ internal object IncomingFilePayloadPolicy {
             listener.onStatus("Restored $restoredRoutes verified route(s) and $restoredWithdrawals route-withdrawal protection record(s).")
         }
     }
+    @Synchronized
     private fun persistPendingOutbox(): Boolean {
         return try {
             val array = org.json.JSONArray()
@@ -364,10 +365,18 @@ internal object IncomingFilePayloadPolicy {
         deliveryHandler.postDelayed(retry, delayMs)
     }
 
-    private fun clearPendingOutgoingMessage(messageId: String) {
-        pendingOutgoingMessages.remove(messageId)?.retryTask?.let(deliveryHandler::removeCallbacks)
+    @Synchronized
+    private fun clearPendingOutgoingMessage(messageId: String): Boolean {
+        val removed = pendingOutgoingMessages.remove(messageId) ?: return false
+        removed.retryTask?.let(deliveryHandler::removeCallbacks)
         outgoingMessageTargets.remove(messageId)
-        persistPendingOutbox()
+        // Do not report final delivery unless the queue removal is durable. If the
+        // write fails, retain a queued copy for a later reconnect; receiver-side
+        // duplicate suppression makes that retry safe.
+        if (persistPendingOutbox()) return true
+        removed.endpointId = ""
+        pendingOutgoingMessages[messageId] = removed
+        return false
     }
 
     private fun hasSeenMessageId(messageId: String): Boolean =
@@ -1611,8 +1620,8 @@ internal object IncomingFilePayloadPolicy {
         if (kind == "ack") {
             val acknowledgedId = envelope.optString("id")
             if (acknowledgedId.isNotBlank() && outgoingMessageTargets[acknowledgedId] == endpointId) {
-                clearPendingOutgoingMessage(acknowledgedId)
-                listener.onMessageStatus(acknowledgedId, "Delivered")
+                val retired = clearPendingOutgoingMessage(acknowledgedId)
+                listener.onMessageStatus(acknowledgedId, if (retired) "Delivered" else "Queued")
             }
             return
         }
@@ -1867,6 +1876,122 @@ internal object IncomingFilePayloadPolicy {
             }
         }
         return true
+    }
+
+    /**
+     * Queue one independently encrypted delivery for each verified stable peer ID.
+     * Known offline peers are persisted with an empty endpoint and retried when that
+     * same pinned identity reconnects. Display names are never recipient authority.
+     */
+    fun sendDurableToPeerIds(body: String, targetPeerIds: Set<String>): Boolean {
+        if (body.isBlank() || body.length > 4000 || targetPeerIds.isEmpty()) return false
+        return queueDurableFanout(body, targetPeerIds)
+    }
+
+    /**
+     * Add every trusted recipient copy to the encrypted outbox and commit once before
+     * attempting any network send. A missing live endpoint is valid: the durable copy
+     * waits for the same pinned peer identity to authenticate again.
+     */
+    @Synchronized
+    private fun queueDurableFanout(body: String, peerIds: Set<String>): Boolean {
+        if (peerIds.isEmpty()) return false
+        if (peerIds.size > 100) {
+            listener.onStatus("A community roster exceeds the supported 100-member delivery batch.")
+            return false
+        }
+        val queuedIds = mutableListOf<String>()
+        var skippedUnverifiedPeer = false
+        peerIds.distinct().forEach { peerId ->
+            if (peerId == localStableId || NeaRerIdentity.normalize(peerId) != peerId ||
+                !TrustedPeerKeyStore.hasPinnedPeer(appContext, peerId)) {
+                skippedUnverifiedPeer = true
+                return@forEach
+            }
+            val endpoint = endpointForStablePeer(peerId).orEmpty()
+            if (endpoint.isNotBlank() &&
+                (!authenticatedEndpoints.contains(endpoint) ||
+                    !synchronized(activeEndpoints) { activeEndpoints.contains(endpoint) } ||
+                    messageSessions[endpoint] == null)) {
+                skippedUnverifiedPeer = true
+                return@forEach
+            }
+
+            val messageId = UUID.randomUUID().toString()
+            val envelope = JSONObject()
+                .put("kind", "message")
+                .put("version", 1)
+                .put("id", messageId)
+                .put("body", body)
+                .put("ttl", 0)
+                .put("hops", 0)
+                .put("origin", localName)
+                .put("createdAt", System.currentTimeMillis())
+                .toString()
+                .toByteArray(Charsets.UTF_8)
+
+            pendingOutgoingMessages[messageId] = PendingOutgoingMessage(endpoint, peerId, envelope)
+            if (endpoint.isNotBlank()) outgoingMessageTargets[messageId] = endpoint
+            queuedIds += messageId
+        }
+        if (skippedUnverifiedPeer) {
+            listener.onStatus("Some group members are not identity-verified on this phone; their message copies were not queued.")
+        }
+        if (queuedIds.isEmpty()) return false
+
+        if (!persistPendingOutbox()) {
+            queuedIds.forEach { id ->
+                pendingOutgoingMessages.remove(id)
+                outgoingMessageTargets.remove(id)
+            }
+            return false
+        }
+
+        queuedIds.forEach(::attemptOutgoingMessage)
+        return true
+    }
+
+    /**
+     * Send an identity-sensitive control packet only to the listed authenticated
+     * stable peers. Unlike send(), this never broadcasts a private roster to every
+     * nearby connection.
+     */
+    fun sendToPeerIds(body: String, targetPeerIds: Set<String>): Boolean {
+        if (body.isBlank() || body.length > 4000 || targetPeerIds.isEmpty()) return false
+        val targets = synchronized(activeEndpoints) {
+            activeEndpoints.filter { endpoint ->
+                authenticatedEndpoints.contains(endpoint) &&
+                    synchronized(names) { stableIds[endpoint]?.let { it in targetPeerIds } == true } &&
+                    messageSessions[endpoint] != null
+            }
+        }
+        if (targets.isEmpty()) return false
+        val messageId = UUID.randomUUID().toString()
+        val envelope = JSONObject()
+            .put("kind", "message")
+            .put("version", 1)
+            .put("id", messageId)
+            .put("body", body)
+            .put("ttl", 0)
+            .put("hops", 0)
+            .put("origin", localName)
+            .put("createdAt", System.currentTimeMillis())
+            .toString()
+            .toByteArray(Charsets.UTF_8)
+        var sent = false
+        targets.forEach { endpoint ->
+            val peerId = synchronized(names) { stableIds[endpoint].orEmpty() }
+            val session = messageSessions[endpoint] ?: return@forEach
+            try {
+                val packet = NearbyMessageCrypto.encrypt(session, localStableId, peerId, messageId, envelope)
+                client.sendPayload(endpoint, Payload.fromBytes(packet))
+                    .addOnFailureListener { listener.onStatus("A private community update could not be sent to one member.") }
+                sent = true
+            } catch (_: Exception) {
+                listener.onStatus("A private community update could not be encrypted for one member.")
+            }
+        }
+        return sent
     }
 
     fun sendFile(endpointId: String, uri: Uri, displayName: String): Long? {

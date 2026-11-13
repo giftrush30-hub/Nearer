@@ -80,14 +80,14 @@ Current interpretation:
 
 ### Known gaps — do not mark Phase 2 complete yet
 
-1. Group/broadcast fan-out encrypts a copy for each currently connected peer but bypasses the persistent per-recipient outbox and ACK tracking. A disconnected peer can miss the group message. Implement per-recipient queue identities, persist-before-send, per-peer retry, and authenticated per-peer ACK retirement.
+1. **Partially addressed:** nearby group-chat fan-out now creates a distinct transport message ID per currently connected authenticated recipient, commits each copy to the encrypted-at-rest outbox before sending, retries it after that same stable peer reconnects, and retires only the matching recipient copy after its authenticated ACK. The sender's local group message is also persisted before fan-out. Remaining gap: community rosters store display names rather than stable peer IDs, so members who are offline at send time cannot yet be queued safely; broadcasts and Ludo/control fan-out remain ephemeral.
 2. Retry recovery is triggered by transport initialization plus a later authenticated peer reconnect. It is not guaranteed background delivery while the process is stopped or Android Doze suspends the app. A lifecycle-safe scheduled recovery design is still required.
 3. First-contact trust is TOFU. Signed key possession and the in-person security-code comparison reduce risk but do not independently identify a real-world person or prevent a compromised first-contact channel.
 4. The direct messaging path has source-level implementation and unit-test foundations, but there is no current two-physical-phone end-to-end validation. Do not claim field reliability or production readiness.
 
 ### Phase 2 completion checklist
 
-- [ ] Add durable per-recipient group/community message queues and ACK tracking.
+- [ ] Extend the new per-recipient durable group-chat queue to offline members by storing verified stable peer IDs in community rosters; add durable broadcast history/outbox and keep Ludo/control packets ephemeral unless their replay semantics are explicitly designed.
 - [ ] Add process-death/reboot/Doze-aware retry recovery with bounded battery use and clear Android foreground/background behavior.
 - [ ] Add focused tests for outbox corruption, duplicate sends, reconnect races, ACK from the wrong peer, queue persistence failure, and multiple recipients with independent delivery state.
 - [ ] Validate direct and group chat in both directions on physical Android phones, including app restart and radio interruption.
@@ -115,3 +115,36 @@ The coordinated source work has advanced beyond the earlier PR #119 checkpoint:
 - Mesh relay remains hard-disabled. No 100+ participant scale or A → B → C → D physical mesh test is claimed.
 - HyperTransfer's durable process-death checkpoint/resume lifecycle remains unconnected to the actual Nearby FILE payload lifecycle; full resumability and unlimited-size performance are not certified.
 - Next engineering gate: physical two-phone validation of SmartConnect, encrypted direct chat, file transfer and Ludo, then fix any device-specific issues. Mesh relay remains a separate later gate.
+
+
+## Community group-message delivery update — 13 November 2026
+
+The original connected-peer-only fan-out was superseded by the identity-bound implementation in PR #125 below. The current implementation is intended to:
+
+- Commit the sender's local group message before fan-out.
+- Persist separate encrypted-at-rest delivery copies for each eligible stable peer ID before the first send.
+- Retry each recipient copy independently after that same pinned identity reconnects, including members offline at send time.
+- Retire a recipient copy only after its authenticated ACK is received from the expected endpoint and the outbox removal is durably committed.
+- Reject group messages from identities outside the saved roster and reject roster updates not sent by the pinned coordinator.
+- Keep the Wi-Fi Direct fallback out of identity-sensitive group membership and group-chat operations; broadcasts and Ludo/control packets remain ephemeral.
+
+These are source-level changes, not proof of physical-device delivery, process-death/Doze recovery, or production-secure group membership. See the combined PR #125 section below for trust and migration boundaries.
+
+
+## Community identity-bound roster follow-up — PR branch `security/community-identity-roster`
+
+The durable community fan-out follow-up replaces display-name recipient selection with stable peer identity:
+
+- Community groups persist an owner/coordinator peer ID and a list of member peer IDs alongside display names. Display names are presentation only.
+- A roster update is accepted only from the same pinned peer identity recorded as coordinator. A legacy group with no coordinator uses first-pinned-peer TOFU; the UI explicitly tells the user to confirm that peer is the trusted group-code sharer.
+- Group messages are accepted only when the sender's authenticated stable peer ID is in the saved roster. A matching display name is not sufficient.
+- Durable fan-out targets stable peer IDs, requires both identity keys to be pinned on this phone, and can save offline copies with no live endpoint. Those copies retry only after the same peer identity authenticates again.
+- The legacy Wi-Fi Direct fallback has no equivalent stable peer identity binding; it is not used for group membership control or group chat.
+- Old name-only group records remain visible but cannot send secure group messages. The owner must recreate the group using the identity-aware protocol and members must rejoin; the old display-name list cannot safely reveal who the original owner was.
+
+Security limits remain explicit: the first trusted roster coordinator is TOFU rather than a cryptographically signed group invitation, and the six-digit group code is not an authentication secret. Users must compare the existing first-contact pairing code in person. A phone can only queue copies for member identities whose signing and recipient-encryption keys it has pinned; other members are skipped with a visible warning. This is a source-level security improvement awaiting exact-head CI and device validation, not a claim of production-secure group membership.
+
+
+## Combined Community reliability/security stack — PR #125
+
+PR #125 combines the previously validated durable per-recipient group fan-out from PR #124 with the identity-bound roster changes described above. PR #124 and the overlapping transport-only PR #123 were closed as superseded to avoid duplicate implementations. The combined PR targets `main`; its exact-head CI is required before merge. Do not treat the source as merged or device-validated until that gate passes.
