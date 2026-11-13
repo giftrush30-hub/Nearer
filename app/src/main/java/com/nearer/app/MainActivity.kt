@@ -1638,7 +1638,7 @@ class MainActivity : ComponentActivity() {
         val targetPeerId = selectedMeshRecipientId ?: hybridConnectedStableId
         val conversationIdForReply = targetPeerId ?: connectedDeviceName?.let { "direct:$it" }.orEmpty()
         val replyQuote = if (replyTarget != null) ChatReplyPolicy.createQuote(
-            replyTarget, conversationIdForReply, if (replyTarget.outgoing) "You" else replyTarget.conversationName
+            replyTarget, conversationIdForReply, if (replyTarget.outgoing) displayName else replyTarget.conversationName
         ) else null
         if (replyTarget != null && replyQuote == null) {
             chatNotice = "That message cannot be quoted in this conversation."
