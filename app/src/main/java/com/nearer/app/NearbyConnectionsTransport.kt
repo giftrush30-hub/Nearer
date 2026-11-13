@@ -100,8 +100,19 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val localRecipientIdentity by lazy { RecipientEncryptionIdentity.getOrCreate(appContext) }
 
 
-    /** Transit relay is opt-in and defaults off; direct recipient delivery still works. */
+    /**
+     * Transit relay remains hard-disabled after proof-chain integration until
+     * trust/key-rotation, recovery, security review and physical multi-phone gates pass.
+     * Direct delivery and receipt handling for this phone's own messages remain
+     * available. This transport-level guard is intentional defense in depth: a
+     * future UI toggle or stale preference must not activate unverified transit.
+     */
     fun setMeshTransitEnabled(enabled: Boolean) {
+        if (enabled) {
+            meshTransitEnabled = false
+            listener.onStatus("Multi-hop relay is paused until signed forwarding proofs are verified and committed with each stored packet. Direct nearby delivery remains available.")
+            return
+        }
         val wasEnabled = meshTransitEnabled
         if (wasEnabled && !enabled) {
             // Withdraw every route this phone may have advertised before
@@ -1294,24 +1305,49 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
-    private fun handleMeshPacket(endpointId: String, bytes: ByteArray) {
+    private fun handleMeshPacket(endpointId: String, packetBytes: ByteArray, proofBytes: ByteArray) {
         if (!authenticatedEndpoints.contains(endpointId)) return
         val previousHopId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (previousHopId.isBlank()) return
         try {
-            val packet = MeshRelayPacketV1.decode(bytes)
+            val packet = MeshRelayPacketV1.decode(packetBytes)
             val now = System.currentTimeMillis()
             require(packet.verifyEmbeddedOrigin(now)) { "Mesh packet origin signature or expiry is invalid." }
+            if (proofBytes.isEmpty()) {
+                // The first acceptance must bind the packet's embedded origin key
+                // to the authenticated direct sender, not merely trust a self-signed key.
+                require(previousHopId == packet.originId) { "An initial packet without a proof chain did not come directly from its claimed origin." }
+                val pinnedOriginKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, packet.originId)
+                    ?: throw SecurityException("The origin identity is not pinned on this phone.")
+                require(packet.verify(pinnedOriginKey, now)) { "The packet origin key does not match the authenticated sender identity." }
+            } else {
+                require(previousHopId != packet.originId) { "A packet from its origin unexpectedly included a relay proof chain." }
+            }
             if (!MeshRelayParticipationPolicy.mayAcceptPacket(meshTransitEnabled, packet.destinationId, localStableId)) {
                 listener.onStatus("This phone is not participating as a relay. The packet was not accepted or acknowledged.")
+                return
+            }
+            if (packet.destinationId != localStableId && packet.hopsTaken >= packet.hopLimit) {
+                listener.onStatus("A mesh packet reached its forwarding limit before reaching its destination. It was not accepted.")
                 return
             }
             if (packet.destinationId != localStableId && !meshRouteWithdrawalStoreHealthy) {
                 listener.onStatus("This phone cannot safely relay right now because protected route history is unavailable.")
                 return
             }
-            if (!deadDropStore.enqueueTransit(packet, previousHopId, now)) {
-                listener.onStatus("A mesh packet was rejected because it could not be safely stored.")
+            val committed = deadDropStore.enqueueTransitWithProof(
+                packet = packet,
+                previousHopPeerId = previousHopId,
+                incomingProofBytes = proofBytes,
+                trustedAcceptingSigningKey = { peerId ->
+                    TrustedPeerKeyStore.pinnedSigningKey(appContext, peerId)
+                },
+                localPeerId = localStableId,
+                localSigningPublicKey = SecurePeerIdentity.publicKeyEncoded(),
+                now = now
+            ) { signedBytes -> SecurePeerIdentity.signDetached(signedBytes) }
+            if (!committed) {
+                listener.onStatus("A mesh packet or its forwarding-proof chain could not be verified and committed. It was not acknowledged.")
                 return
             }
             // The hop ACK is sent only after the encrypted packet is committed to disk.
@@ -1354,6 +1390,25 @@ internal object IncomingFilePayloadPolicy {
         due.forEach { pending ->
             try {
                 val queuedPacket = MeshRelayPacketV1.decode(pending.bytes)
+                if (queuedPacket.originId == localStableId) {
+                    require(queuedPacket.hopsTaken == 0 && pending.proofChain.isEmpty()) {
+                        "An origin outbox packet unexpectedly contains relay history."
+                    }
+                } else {
+                    val storedChain = MeshForwardingProofChain.decode(pending.proofChain)
+                    require(storedChain.proofs.size == queuedPacket.hopsTaken + 1) {
+                        "Stored forwarding-proof count does not match the packet hop counter."
+                    }
+                    require(storedChain.verifyPrefix(
+                        queuedPacket.packetId, queuedPacket.immutablePacketDigest(),
+                        queuedPacket.originId, localStableId,
+                        { peerId ->
+                            if (peerId == localStableId) SecurePeerIdentity.publicKeyEncoded()
+                            else TrustedPeerKeyStore.pinnedSigningKey(appContext, peerId)
+                        },
+                        System.currentTimeMillis()
+                    )) { "Stored forwarding-proof chain failed verification before forwarding." }
+                }
                 val route = meshRouteTable.find(queuedPacket.destinationId, System.currentTimeMillis()) ?: return@forEach
                 if (route.nextHopPeerId == pending.previousHopPeerId) return@forEach
                 val packet = deadDropStore.prepareForForwarding(
@@ -1361,7 +1416,8 @@ internal object IncomingFilePayloadPolicy {
                 ) ?: return@forEach
                 require(packet.sameImmutablePacket(queuedPacket)) { "Queued packet changed while preparing its forwarding hop." }
                 val endpointId = endpointForStablePeer(route.nextHopPeerId) ?: return@forEach
-                client.sendPayload(endpointId, Payload.fromBytes(packet.encode()))
+                val envelope = MeshPacketEnvelopeV2.encode(packet.encode(), pending.proofChain)
+                client.sendPayload(endpointId, Payload.fromBytes(envelope))
                     .addOnFailureListener { listener.onStatus("A mesh relay transfer failed. NeaRer will retry it.") }
             } catch (_: Exception) {
                 listener.onStatus("A queued mesh packet could not be forwarded and will be retried.")
@@ -1402,7 +1458,8 @@ internal object IncomingFilePayloadPolicy {
                 now + 24L * 60L * 60L * 1000L, 4, pinnedRecipientKey, content
             )
             val encodedPacket = packet.encode()
-            if (encodedPacket.size > MeshRelayPacketV1.MAX_NEARBY_BYTES) return false
+            // Reserve room for the bounded proof sidecar on every later hop.
+            MeshPacketEnvelopeV2.encode(encodedPacket, ByteArray(0))
             if (!deadDropStore.enqueueVerified(packet, SecurePeerIdentity.publicKeyEncoded(), now)) return false
             listener.onMessageStatus(messageId, "Queued")
             forwardDueMeshPackets()
@@ -1422,7 +1479,21 @@ internal object IncomingFilePayloadPolicy {
 
     private fun handleBytes(endpointId: String, bytes: ByteArray?) {
         try {
-            val envelope = JSONObject(bytes?.toString(Charsets.UTF_8).orEmpty())
+            val raw = bytes ?: return
+            if (MeshPacketEnvelopeV2.isEnvelope(raw)) {
+                if (!authenticatedEndpoints.contains(endpointId)) return
+                val decoded = MeshPacketEnvelopeV2.decode(raw)
+                val proofChain = if (decoded.proofChainBytes.isEmpty()) {
+                    MeshForwardingProofChain(emptyList())
+                } else {
+                    MeshForwardingProofChain.decode(decoded.proofChainBytes)
+                }
+                // Decode here as well as in the store to reject malformed sidecars before any ACK.
+                require(proofChain.proofs.size <= MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
+                handleMeshPacket(endpointId, decoded.packetBytes, decoded.proofChainBytes)
+                return
+            }
+            val envelope = JSONObject(raw.toString(Charsets.UTF_8))
             when (envelope.optString("kind")) {
                 "peer_hello_v3" -> { handlePeerHello(endpointId, envelope); return }
                 "peer_proof_v3" -> { handlePeerProof(endpointId, envelope); return }
@@ -1439,7 +1510,8 @@ internal object IncomingFilePayloadPolicy {
             }
             if (!authenticatedEndpoints.contains(endpointId)) return
             if (envelope.optString("kind") == "mesh_packet_v1") {
-                handleMeshPacket(endpointId, bytes ?: return)
+                // Legacy packets carry no verifiable forwarding history and are rejected.
+                listener.onStatus("An older mesh packet without forwarding proofs was rejected. Update both phones.")
                 return
             }
             if (envelope.optString("kind") == "secure_packet_v1") {

@@ -87,27 +87,6 @@ internal object TrustedPeerKeyStore {
         decodePin(JSONObject(prefs.getString("nearby_peer_encryption_key_pins", "{}") ?: "{}"), publicId)
     } catch (_: Exception) { null }
 
-    /**
-     * True only when both long-term keys for this peer have been pinned.
-     * Reconnects can be accepted automatically, while the live handshake still
-     * verifies the presented keys before application data is accepted.
-     */
-    @Synchronized
-    fun hasPinnedPeer(context: Context, publicId: String): Boolean {
-        if (NeaRerIdentity.normalize(publicId) != publicId) return false
-        return try {
-            val prefs = context.applicationContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-            val signing = JSONObject(prefs.getString("nearby_peer_key_pins", "{}") ?: "{}")
-            val encryption = JSONObject(prefs.getString("nearby_peer_encryption_key_pins", "{}") ?: "{}")
-            SmartConnectPolicy.shouldAutoAcceptReconnect(
-                hasSigningKeyPin = decodePin(signing, publicId) != null,
-                hasRecipientEncryptionKeyPin = decodePin(encryption, publicId) != null
-            )
-        } catch (_: Exception) {
-            false
-        }
-    }
-
     @Synchronized
     fun acceptBindingSequence(context: Context, publicId: String, sequence: Long): Boolean {
         if (NeaRerIdentity.normalize(publicId) != publicId || sequence < 0L) return false
@@ -119,6 +98,14 @@ internal object TrustedPeerKeyStore {
             sequences.put(publicId, sequence)
             prefs.edit().putString("nearby_peer_binding_sequences", sequences.toString()).commit()
         } catch (_: Exception) { false }
+    }
+
+    /** Both identity keys must be pinned before SmartConnect may skip first-contact approval. */
+    @Synchronized
+    fun hasPinnedPeer(context: Context, publicId: String): Boolean {
+        if (NeaRerIdentity.normalize(publicId) != publicId) return false
+        return pinnedSigningKey(context, publicId) != null &&
+            pinnedRecipientEncryptionKey(context, publicId) != null
     }
 
     private fun decodePin(pins: JSONObject, id: String): ByteArray? {

@@ -379,7 +379,7 @@ class MainActivity : ComponentActivity() {
                     pendingHybridEndpoint = id
                     incomingRequesterName = name
                     pairingCode = token
-                    approvalMessage = "First connection: compare the security code on both phones before accepting"
+                    approvalMessage = "FIRST-TIME TRUST CHECK: compare the code on both phones in person. Accept only if it matches and you expected this person."
                     statusMessage = "$name is requesting a first-time nearby connection."
                 }
             }
@@ -1200,7 +1200,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     pairingCode = code
                     incomingRequesterName = name
-                    approvalMessage = "Compare the six-digit code before accepting"
+                    approvalMessage = "FIRST-TIME TRUST CHECK: compare the code on both phones in person. Accept only if it matches and you expected this person."
                     statusMessage = "$name wants to connect on NeaRer."
                 }
                 val accepted = approvalDecision.poll(60, java.util.concurrent.TimeUnit.SECONDS) ?: false
@@ -3577,7 +3577,7 @@ private fun NeaRerHome(
                     pairingCode?.let { code ->
                         Text("PAIRING CODE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Text(code, color = BlueAccent, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
-                        Text("Check that both phones show the same code before approving.", color = Muted, fontSize = 10.sp)
+                        Text("Never approve by guesswork. Both phones must show the same code, and you must recognize the person requesting the connection.", color = Muted, fontSize = 10.sp)
                     }
                     if (connectedDeviceName != null || connectingAddress != null) {
                         Button(

@@ -5,6 +5,31 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LudoEngineTest {
+    @Test fun localSoloGameHasOneHumanAndThreeComputerOpponents() {
+        val game = LudoEngine.newLocalGame(1)
+        assertEquals(4, game.players.size)
+        assertEquals(1, game.players.count { !it.isComputer })
+        assertEquals(3, game.players.count { it.isComputer })
+        assertEquals("You", game.players.first().name)
+    }
+
+    @Test fun localPassAndPlaySupportsTwoToFourHumanPlayers() {
+        for (count in 2..4) {
+            val game = LudoEngine.newLocalGame(count)
+            assertEquals(count, game.players.size)
+            assertTrue(game.players.none { it.isComputer })
+            assertEquals((1..count).map { "Player $it" }, game.players.map { it.name })
+        }
+    }
+
+    @Test fun localSetupRejectsInvalidHumanPlayerCounts() {
+        listOf(0, 5).forEach { count ->
+            try {
+                LudoEngine.newLocalGame(count)
+                throw AssertionError("Expected invalid player count to be rejected")
+            } catch (_: IllegalArgumentException) { }
+        }
+    }
     @Test fun sixLetsTokenLeaveYardAndKeepsTurn() {
         val state = LudoEngine.rollDice(LudoEngine.newGame(), 6)
         assertEquals(listOf(0, 1, 2, 3), LudoEngine.legalMoves(state))

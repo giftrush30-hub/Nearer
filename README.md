@@ -19,13 +19,13 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - Local group creation and joining with a six-digit code.
 - Locally stored group membership and message history.
 - Nearby group messaging to currently connected members.
-- Ludo and other in-app community/game foundations are part of the integration branch; individual multiplayer and offline/online modes must be checked against the actual build before being described as complete.
+- Ludo includes a traditional four-colour board, visible dice, token movement, safe squares, captures, computer opponents and nearby multiplayer foundations. Same-device offline pass-and-play supports two to four human players; solo mode supports three computer opponents. Nearby multiplayer still requires physical two-phone verification. Internet multiplayer and live voice calling are not claimed as complete.
 
 ## Mesh relay milestone — Batch One
 
 The recipient-encrypted mesh and Dead Drop foundations have been integrated into `main` (commit `1a6006463f3e206941e2195e69d7aed818831fa1`). The implementation includes recipient-addressed encryption, signed route advertisements, encrypted store-and-forward persistence, authenticated hop acknowledgements, destination-signed delivery receipts, route withdrawals and retry handling. This is source integration, not proof of production readiness.
 
-Multi-hop relay remains **disabled**. Remote first-contact identity binding, independently verifiable per-hop forwarding proofs, intermediate receipt cleanup, process-death/reboot retry scheduling and physical A → B → C → D validation remain outstanding. No message relay should be enabled until these release gates are completed.
+Batch Two adds signed, hash-linked per-hop acceptance proofs, compact packet/proof framing and atomic encrypted Dead Drop persistence for packet plus proof chain. The transport code is integrated on the coordinated branch, but the relay remains **disabled** pending exact-head CI, security review, trust/key-rotation and recovery checks, and physical A → B → C → D validation. Do not treat a hop proof as proof of honest forwarding or a destination delivery receipt.
 
 ## Security boundaries and current limitations
 
@@ -41,7 +41,7 @@ Multi-hop relay remains **disabled**. Remote first-contact identity binding, ind
 
 ## Build and release policy
 
-The integration branch has GitHub Actions checks for JVM unit tests, debug APK assembly and Android emulator launch tests on API 31 and API 35. A passing workflow is necessary but does not replace two-physical-phone testing. Only an artifact from the exact validated commit should be considered current. Batch One source integration into `main` was explicitly approved; that approval does not certify a release APK or authorize enabling mesh relay.
+GitHub Actions validates JVM unit tests, debug APK assembly and APK artifact upload. Hosted emulator jobs are deferred as requested; this is not evidence of physical-device compatibility. A passing build does not replace two-physical-phone testing. Only an artifact from the exact validated commit should be considered current. Source integration does not certify a release APK or authorize enabling mesh relay.
 
 ## Suggested two-phone test
 
@@ -66,3 +66,8 @@ The Phase 1 SmartConnect branch adds automatic Nearby Connections startup after 
 SmartConnect does not silently enable Bluetooth or Wi-Fi and does not bypass Android permissions. Discovery currently remains dependent on Android radio availability and foreground/app-process lifecycle; continuous background discovery and two-physical-phone verification are separate release gates. The existing Android minimum is API 26 (Android 8.0).
 
 Hosted Android emulator launch jobs are currently deferred because their startup/boot reliability has been inconsistent. The CI validation path focuses on JVM unit tests, debug APK assembly and artifact upload. Emulator checks are not claimed as passed, and physical-device testing remains separate.
+
+
+## Coordinated integration checkpoint
+
+Phase 1 SmartConnect is integrated into `main`. The coordinated Phase 2 branch carries the Batch Two mesh identity/proof-chain transport work and the Batch Three Ludo pass-and-play updates while retaining the SmartConnect `MainActivity.kt` changes. The existing CI workflow is kept from `main` (JVM tests + debug APK build + artifact upload; no emulator launch job). The original Batch Two PR remains open until the coordinated branch passes exact-head CI and is reviewed; no branch is discarded and relay remains disabled.

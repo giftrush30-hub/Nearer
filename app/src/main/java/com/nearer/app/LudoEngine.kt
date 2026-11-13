@@ -61,6 +61,21 @@ object LudoEngine {
         }
     )
 
+    /**
+     * Creates a same-device local table. One human plays against three computer
+     * opponents; selecting two to four humans enables pass-and-play on one phone.
+     */
+    fun newLocalGame(humanPlayers: Int): LudoGameState {
+        require(humanPlayers in 1..4) { "A local Ludo table needs one to four human players." }
+        val colors = LudoColor.entries
+        val names = colors.mapIndexed { index, color ->
+            color to if (humanPlayers == 1 && index == 0) "You" else
+                if (humanPlayers == 1) listOf("Nova", "Atlas", "Mira")[index - 1] else "Player ${index + 1}"
+        }.toMap()
+        val computers = if (humanPlayers == 1) colors.drop(1).toSet() else emptySet()
+        val tableColors = if (humanPlayers == 1) colors else colors.take(humanPlayers)
+        return newGame(names, computers, tableColors)
+    }
     fun rollDice(state: LudoGameState, value: Int = Random.nextInt(1, 7)): LudoGameState {
         require(!state.isFinished) { "The game has already ended." }
         require(state.diceValue == null) { "Move or pass before rolling again." }
