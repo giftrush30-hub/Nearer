@@ -27,4 +27,9 @@ internal class NearbyConnectionTimingMeter {
     fun cancel(endpointId: String) {
         if (endpointId.isNotBlank()) startedAtByEndpoint.remove(endpointId)
     }
+
+    @Synchronized
+    fun clearAll() {
+        startedAtByEndpoint.clear()
+    }
 }
