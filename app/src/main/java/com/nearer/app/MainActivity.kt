@@ -448,9 +448,21 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     var safelyStored = false
                     if (body.startsWith("NR_COMMUNITY:")) {
-                        handleCommunityPacket(senderName, nearbyTransport?.stableIdentityForEndpoint(id).orEmpty(), body.removePrefix("NR_COMMUNITY:"))
-                        // Acknowledge only after the updated community state reaches disk.
-                        safelyStored = persistCommunityData()
+                        val senderPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        val communityBody = body.removePrefix("NR_COMMUNITY:")
+                        handleCommunityPacket(senderName, senderPeerId, communityBody)
+                        // Invalid or unauthorized group packets must not receive an ACK.
+                        val packet = try { JSONObject(communityBody) } catch (_: Exception) { JSONObject() }
+                        val groupCode = packet.optString("code")
+                        val group = communityGroups.firstOrNull { it.code == groupCode }
+                        val accepted = when (packet.optString("type")) {
+                            "group_message" -> group != null && CommunityMemberIdentityPolicy.isAuthorizedMember(group.memberIds, senderPeerId) &&
+                                communityMessages.any { it.id == packet.optString("id") && it.groupCode == groupCode }
+                            "group_members" -> group != null && CommunityMemberIdentityPolicy.canAcceptRoster(group.ownerId, senderPeerId, packet.optString("ownerId"))
+                            "group_created", "group_join" -> group != null && CommunityMemberIdentityPolicy.isAuthorizedMember(group.memberIds, senderPeerId)
+                            else -> true
+                        }
+                        safelyStored = accepted && persistCommunityData()
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
@@ -1744,11 +1756,11 @@ class MainActivity : ComponentActivity() {
             sendCommunityToNames(wireBody, group.members.toSet())
         }
         communityNotice = if (queued && hybridConnected) {
-            "Group message saved locally and queued securely per connected member. Unacknowledged copies retry when those same phones reconnect."
+            "Group message saved locally and queued by verified member identity, including offline members. Each copy retries only when that same phone reconnects."
         } else if (queued) {
             "Group message saved locally and sent over the single-peer Wi-Fi Direct fallback. Automatic queued retry is not available on this fallback yet."
         } else {
-            "Group message saved on this phone, but no eligible group member is connected to receive it yet."
+            "Group message saved locally, but NeaRer has no verified member identities to queue yet. Connect to the group owner to refresh the roster."
         }
     }
 
@@ -1786,14 +1798,12 @@ class MainActivity : ComponentActivity() {
                     if (i >= 0) {
                         val old = communityGroups[i]
                         val announcedOwnerId = packet.optString("ownerId")
-                        val senderIsKnownOwner = old.ownerId.isNotBlank() && old.ownerId == senderPeerId
-                        val firstOwnerSync = old.ownerId.isBlank() && senderPeerId.isNotBlank() && announcedOwnerId == senderPeerId
-                        if (senderPeerId.isNotBlank() && (senderIsKnownOwner || firstOwnerSync)) {
+                        if (CommunityMemberIdentityPolicy.canAcceptRoster(old.ownerId, senderPeerId, announcedOwnerId)) {
                             val array = packet.optJSONArray("members") ?: JSONArray()
                             val members = (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }.distinct().take(100)
                             val ids = packet.optJSONArray("memberIds") ?: JSONArray()
                             val memberIds = (0 until ids.length()).map { ids.optString(it) }
-                                .filter { it.isNotBlank() && it.length <= 64 && NeaRerIdentity.normalize(it) == it }
+                                .filter(CommunityMemberIdentityPolicy::isValidPeerId)
                                 .distinct().take(100)
                             if (senderPeerId in memberIds) {
                                 communityGroups[i] = old.copy(members = members, memberIds = memberIds, ownerId = announcedOwnerId)
@@ -1804,7 +1814,7 @@ class MainActivity : ComponentActivity() {
                 }
                 "group_message" -> {
                     val group = communityGroups.firstOrNull { it.code == code }
-                    if (group != null && senderPeerId.isNotBlank() && senderPeerId in group.memberIds) {
+                    if (group != null && CommunityMemberIdentityPolicy.isAuthorizedMember(group.memberIds, senderPeerId)) {
                         val id = packet.optString("id")
                         if (communityMessages.none { it.id == id }) {
                             communityMessages.add(CommunityChatMessage(id, code, sender, packet.optString("body").take(1500), System.currentTimeMillis()))
