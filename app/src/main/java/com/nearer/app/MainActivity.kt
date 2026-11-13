@@ -4213,7 +4213,7 @@ private fun NeaRerHome(
                     messages = messages,
                     chatNotice = chatNotice,
                     draft = draft,
-                    onDraftChange = { draft = it.take(2000) },
+                    onDraftChange = { draft = it.take(ChatEditPolicy.MAX_BODY_LENGTH) },
                     onSendMessage = { text, reply -> onSendMessage(text, reply); draft = "" },
                     onDeleteMessage = onDeleteMessage,
                     onEditMessage = onEditMessage,
