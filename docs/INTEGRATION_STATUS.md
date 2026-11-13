@@ -109,7 +109,7 @@ The coordinated source work has advanced beyond the earlier PR #119 checkpoint:
 
 ### Current release and test boundaries
 
-- Source integration is ahead of physical-device certification. Exact-head CI passed on PR #119, #120, #121 and #125, including JVM unit tests and debug APK assembly. PR #125 is merged to main as commit `25d643437e6e7a233f818e3febe3255e569c302f`. The CI artifacts are debug APKs, not Play Store release certification.
+- Source integration is ahead of physical-device certification. Exact-head CI passed on PR #119, #120, #121, #125 and #129, including JVM unit tests and debug APK assembly. PR #125 is merged as `25d643437e6e7a233f818e3febe3255e569c302f`; PR #129 is merged as `271e2bfabcffab9209af5aae23f10cc185bd2c92`. The CI artifacts are debug APKs, not Play Store release certification.
 - No Android emulator launch checks were run, per the user's instruction. No physical-device test is claimed for this integration.
 - Android minimum remains API 26 (Android 8.0); Android 10 is within the declared OS range but has not yet been certified on the user's Infinix handset.
 - Mesh relay remains hard-disabled. No 100+ participant scale or A → B → C → D physical mesh test is claimed.
@@ -162,4 +162,4 @@ The follow-up adds a transport-message-ID to community-message/recipient mapping
 - The UI shows delivered, queued and not-verified recipient counts under each outgoing group message.
 - If saving a receipt fails, the updated state remains in memory and the app retries the write on Activity pause/resume. If storage continues failing and the process is killed before a successful retry, that latest receipt may not survive the restart.
 
-This follow-up is not yet merged or validated on physical phones. It does not add background delivery while the app process is stopped or Android Doze suspends execution.
+PR #129 is merged into main at commit `271e2bfabcffab9209af5aae23f10cc185bd2c92`; exact-head JVM tests and debug APK assembly passed. It has not been validated on physical phones. It does not add background delivery while the app process is stopped or Android Doze suspends execution.
