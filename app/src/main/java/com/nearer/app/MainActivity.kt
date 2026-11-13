@@ -1872,12 +1872,15 @@ class MainActivity : ComponentActivity() {
                             val namesArray = packet.optJSONArray("members") ?: JSONArray()
                             val members = (0 until namesArray.length()).map { namesArray.optString(it) }
                                 .filter { it.isNotBlank() }.distinct()
+                            val firstCoordinator = old.ownerPeerId.isBlank()
                             communityGroups[i] = old.copy(
                                 members = members,
                                 ownerPeerId = owner,
                                 memberPeerIds = validatedIds
                             )
-                            persistCommunityData()
+                            if (persistCommunityData() && firstCoordinator) {
+                                communityNotice = "Group identity roster anchored to $sender. Confirm this is the trusted person who shared the group code before sending private group messages."
+                            }
                         }
                     }
                 }
