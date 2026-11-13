@@ -51,3 +51,17 @@ An earlier Android validation attempt exposed integration compile errors in the 
 - First-contact trust prompts were merged into the SmartConnect activity without discarding its automatic discovery and trusted-reconnect work.
 - Next gate: run JVM tests and assemble the APK on the coordinated branch head, resolve every failure, then review the live message/mesh transport path before merging. Do not merge the original PR #117 as-is while it reports conflicts.
 - Relay remains disabled. A successful compile does not prove remote key trust, multi-hop delivery, process-death recovery or 100+ device scale. Physical A → B → C → D validation remains a later release gate.
+
+
+## Post-merge status correction — 13 November 2026
+
+The earlier sections above are historical checkpoints and include pending gates that have since moved. The current source state is `main` at merge commit `16a6a51a6cf11480a80f9536a0a9ec97f9098f37`. PR #119 merged the coordinated SmartConnect, mesh proof-chain/Dead Drop, Ludo and documentation work after exact PR-head JVM unit tests, debug APK assembly and artifact upload all passed. The separate push-triggered workflow for the resulting main commit was still running at the time of this update.
+
+Current interpretation:
+- Phase 1 SmartConnect: source-integrated into main; physical device verification remains outstanding.
+- Batch Two mesh security: proof-chain and atomic encrypted Dead Drop foundations source-integrated; multi-hop relay remains disabled and not field-validated.
+- Ludo: traditional board/engine and same-device offline pass-and-play foundations source-integrated; nearby multiplayer still needs two-phone validation; internet multiplayer and live voice calling are not complete.
+- Phase 2 secure messaging: encryption, key exchange, encrypted queue, retry/deduplication and acknowledgements have foundations in the existing code, but the full live end-to-end delivery path must be audited and validated before Phase 2 is called complete.
+- File transfer: HyperTransfer durable checkpoints are not yet connected to the actual interrupted Nearby FILE payload lifecycle; do not claim process-death recovery or full resumability.
+- Relay: hard-disabled until identity/trust binding, forwarding security, retry/recovery, security review and physical multi-hop tests are complete.
+- Android minimum: API 26 (Android 8.0). No emulator or physical-device certification is claimed.
