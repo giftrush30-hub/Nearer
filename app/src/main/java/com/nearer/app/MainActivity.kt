@@ -791,6 +791,7 @@ class MainActivity : ComponentActivity() {
                     receivedFiles = receivedFiles,
                     transferHistory = nearbyTransferHistory.toList(),
                     onSendMessage = ::sendChatMessage,
+                    onDeleteMessage = ::deleteChatMessage,
                     groups = communityGroups.toList(),
                     groupMessages = communityMessages.toList(),
                     selectedGroupCode = selectedCommunityCode,
@@ -1586,6 +1587,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun trimChatMessages() { ChatHistoryPolicy.trim(chatMessages) }
+
+    private fun deleteChatMessage(messageId: String): Boolean {
+        val index = chatMessages.indexOfFirst { it.id == messageId }
+        if (index < 0) return false
+        val removed = chatMessages.removeAt(index)
+        if (persistMessages()) {
+            chatNotice = "Message deleted from this phone. It remains on the other person's phone."
+            return true
+        }
+        chatMessages.add(index.coerceAtMost(chatMessages.size), removed)
+        chatNotice = "Couldn't save that change. The message was kept."
+        return false
+    }
 
     private fun persistMessages(): Boolean {
         return try {
@@ -3386,6 +3400,7 @@ private fun NeaRerHome(
     onExternalShareConsumed: () -> Unit,
     transferHistory: List<NearbyTransferRecord>,
     onSendMessage: (String, ChatMessage?) -> Unit,
+    onDeleteMessage: (String) -> Boolean,
     groups: List<CommunityGroup>,
     groupMessages: List<CommunityChatMessage>,
     selectedGroupCode: String?,
@@ -4015,6 +4030,7 @@ private fun NeaRerHome(
                     draft = draft,
                     onDraftChange = { draft = it.take(2000) },
                     onSendMessage = { text, reply -> onSendMessage(text, reply); draft = "" },
+                    onDeleteMessage = onDeleteMessage,
                     onFindNearby = { selectedTab = "Nearby"; onFindNearby() },
                     onBackToInbox = { onSelectMeshRecipient(null) },
                     onChooseFiles = { chatAttachmentPicker.launch(arrayOf("*/*")) },
