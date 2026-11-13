@@ -43,7 +43,7 @@ class CommunityRosterPolicyTest {
 
     @Test fun rosterRejectsWrongSignerAndOversizedMembership() {
         assertNull(CommunityRosterPolicy.validateRoster("ABCD23456789", "NPQR23456789", listOf("ABCD23456789", "EFGH23456789"), "EFGH23456789"))
-        assertNull(CommunityRosterPolicy.validateRoster("ABCD23456789", "ABCD23456789", (0..100).map { "PEER${it}234" }, "ABCD23456789"))
+        assertNull(CommunityRosterPolicy.validateRoster("ABCD23456789", "ABCD23456789", List(101) { NeaRerIdentity.generate() }, "ABCD23456789"))
     }
 
     @Test fun onlyRosteredStableIdentitiesMaySendGroupMessages() {
