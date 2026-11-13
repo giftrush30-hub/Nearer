@@ -195,3 +195,15 @@ The checkpoint format is now version 2 and stores the authenticated sender's sta
 - Codec tests cover version-1 migration and version-2 round trips; store tests cover unbound legacy exclusion, correct-peer acceptance, and wrong-peer rejection without data loss.
 
 The current transport still does not pass its authenticated peer ID into the durable stream writer or route FILE payload bytes through that writer. This change establishes the identity boundary needed for that integration; it does not yet make Nearby process-death resume operational.
+
+
+## Group C — verified interrupted-transfer recovery and Nearby STREAM integration
+
+- Durable receive checkpoints are bound to the authenticated stable sender identity; legacy unbound checkpoints are not offered for automatic resume.
+- On process restart, the resume store rediscovers only partial files whose committed prefix still matches the journal digest. Missing, truncated, or corrupt partials are discarded safely.
+- The sender revalidates the selected source file and committed prefix before accepting an offset. Resume negotiation is correlated to the authenticated peer, transfer identity, file manifest, digest, and fresh Nearby payload ID.
+- The Nearby STREAM path waits for the authenticated resume decision before releasing source bytes. The receiver drains streams off the callback thread, persists verified checkpoints, verifies the complete SHA-256 digest, and publishes without overwriting an existing destination.
+- Disconnect/cancel paths close active stream resources and retain only verified receiver checkpoints. A reconnect creates a fresh payload ID and repeats the handshake. Older peers and handshake timeouts fall back to the existing Nearby FILE path.
+- JVM coverage includes restart discovery, source/peer mismatch, malformed negotiation, callback ordering, deferred-stream admission, checkpoint integrity, and cancellation-related lifecycle primitives.
+
+This is software integration pending exact-head CI and physical-device validation. Real-phone checks still need to cover both transfer directions, process death/restart, same-file reselection, interruption during transfer, zero-byte files, older-peer fallback, and Android filesystem publication behavior. No claim is made that all Android devices support hard-link publication or that this has been validated against Xender.
