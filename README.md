@@ -25,7 +25,7 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 
 The recipient-encrypted mesh and Dead Drop foundations have been integrated into `main` (commit `1a6006463f3e206941e2195e69d7aed818831fa1`). The implementation includes recipient-addressed encryption, signed route advertisements, encrypted store-and-forward persistence, authenticated hop acknowledgements, destination-signed delivery receipts, route withdrawals and retry handling. This is source integration, not proof of production readiness.
 
-Batch Two adds signed, hash-linked per-hop acceptance proofs, compact packet/proof framing and atomic encrypted Dead Drop persistence for packet plus proof chain. The transport code is integrated on the coordinated branch, but the relay remains **disabled** pending exact-head CI, security review, trust/key-rotation and recovery checks, and physical A → B → C → D validation. Do not treat a hop proof as proof of honest forwarding or a destination delivery receipt.
+Batch Two adds signed, hash-linked per-hop acceptance proofs, compact packet/proof framing and atomic encrypted Dead Drop persistence for packet plus proof chain. The transport code is now integrated into `main` (coordinated merge commit `16a6a51a6cf11480a80f9536a0a9ec97f9098f37`). Exact-head JVM tests and debug APK assembly passed on the PR head before merge; the post-merge `main` workflow is running separately. The relay remains **disabled** pending security review, trust/key-rotation and recovery checks, and physical A → B → C → D validation. Do not treat a hop proof as proof of honest forwarding or a destination delivery receipt.
 
 ## Security boundaries and current limitations
 
@@ -70,4 +70,14 @@ Hosted Android emulator launch jobs are currently deferred because their startup
 
 ## Coordinated integration checkpoint
 
-Phase 1 SmartConnect is integrated into `main`. The coordinated Phase 2 branch carries the Batch Two mesh identity/proof-chain transport work and the Batch Three Ludo pass-and-play updates while retaining the SmartConnect `MainActivity.kt` changes. The existing CI workflow is kept from `main` (JVM tests + debug APK build + artifact upload; no emulator launch job). The original Batch Two PR remains open until the coordinated branch passes exact-head CI and is reviewed; no branch is discarded and relay remains disabled.
+Phase 1 SmartConnect is integrated into `main`. The coordinated Phase 2 branch carries the Batch Two mesh identity/proof-chain transport work and the Batch Three Ludo pass-and-play updates while retaining the SmartConnect `MainActivity.kt` changes. The existing CI workflow is kept from `main` (JVM tests + debug APK build + artifact upload; no emulator launch job). The coordinated PR #119 has been merged into `main` at `16a6a51a6cf11480a80f9536a0a9ec97f9098f37` after exact-head CI passed. The original conflicting PR #117 was closed as superseded; its source branch remains available. Relay remains disabled.
+
+
+## Post-merge coordination update — 13 November 2026
+
+- Coordinated PR #119 (SmartConnect + Batch Two mesh proof-chain/Dead Drop integration + Ludo foundations) was merged into `main` as `16a6a51a6cf11480a80f9536a0a9ec97f9098f37`.
+- Exact PR-head workflow for `ceb48ad6382d55102dddd9f3b21e81edd464d599` passed JVM unit tests, debug APK assembly and artifact upload before merge.
+- A separate push workflow for the resulting `main` merge commit was started; its final result must be checked before describing the post-merge main build as validated.
+- Phase 1 SmartConnect, coordinated mesh proof-chain foundations and Ludo pass-and-play foundations are now source-integrated in `main`. This does not mean multi-hop relay, internet multiplayer, nearby multiplayer, or physical-device behavior is field-verified.
+- Relay remains hard-disabled. Next engineering focus is a focused Phase 2 audit and completion of the live secure-message delivery path, then transfer lifecycle integration; do not claim full Phase 2 completion based only on the foundations already present.
+- Android minimum remains API 26 (Android 8.0). Hosted emulator checks remain deferred; physical-device compatibility is unverified.
