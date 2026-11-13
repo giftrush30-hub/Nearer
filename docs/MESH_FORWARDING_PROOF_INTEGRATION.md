@@ -41,10 +41,10 @@ For each accepted packet:
 1. Authenticate the immediate Nearby peer using the existing secure handshake.
 2. Validate the origin signature and packet lifetime.
 3. Validate every existing proof using keys resolved from the local trusted-identity store. If a required signer key is unavailable, do not claim a fully verified chain.
-4. Persist the packet and current proof sidecar together in one encrypted durable record.
-5. Only after the durable commit, sign a new acceptance proof whose previous-hop ID is the authenticated sender and whose previous-proof hash is the hash of the last chain element (or genesis hash).
-6. Persist the appended proof before acknowledging the previous hop.
-7. Forward packet plus proof sidecar to the selected next hop. Retries must reuse the exact persisted proof; they must not append a second proof for the same local acceptance.
+4. Decode the incoming proof prefix and verify each record using keys from the local trusted-identity store.
+5. Append the local signed acceptance record, then verify the resulting prefix with the local public key and trusted remote keys.
+6. Persist the encrypted packet and appended proof sidecar together in one encrypted Dead Drop queue write.
+7. Only after that durable commit, acknowledge the previous hop. Forward packet plus the exact persisted proof sidecar to the selected next hop; retries must not append a second local acceptance.
 8. At the destination, validate the complete proof sidecar against independently trusted signer keys and the expected origin/destination before marking the chain as verified.
 
 ## Important semantics
