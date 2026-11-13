@@ -4,8 +4,7 @@ package com.nearer.app
  * Validates and bounds quoted-message metadata before it is attached to a chat
  * message. The target must belong to the same conversation as the new message.
  *
- * This policy is deliberately transport-agnostic so both direct and future
- * recipient-encrypted message paths can share the same rules.
+ * This policy is shared by direct and recipient-encrypted message paths.
  */
 internal object ChatReplyPolicy {
     const val MAX_MESSAGE_ID_LENGTH = 80
