@@ -141,7 +141,7 @@ class MeshForwardingProofChainTest {
         var previousHash = MeshForwardingProof.GENESIS_HASH
         for (index in 1..5) {
             val proof = MeshForwardingProof.create(
-                "packet-five", ids.first(), ids[index], ids[index - 1],
+                "packet-five", packetDigest(), ids.first(), ids[index], ids[index - 1],
                 index, 20_000L + index, previousHash
             ) { sign(peers[index - 1].private, it) }
             proofs += proof
