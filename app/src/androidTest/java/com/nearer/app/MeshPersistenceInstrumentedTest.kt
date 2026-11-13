@@ -3,6 +3,7 @@ package com.nearer.app
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -34,6 +35,35 @@ class MeshPersistenceInstrumentedTest {
     private fun recipientKeyPair() = KeyPairGenerator.getInstance("EC").apply {
         initialize(ECGenParameterSpec("secp256r1"))
     }.generateKeyPair()
+
+    @Test
+    fun immutablePacketDigestIgnoresMutableHopCounterButBindsSignedContent() {
+        val now = System.currentTimeMillis()
+        val recipient = recipientKeyPair()
+        val packet = MeshRelayPacketV1.create(
+            originId = NeaRerIdentity.generate(),
+            destinationId = NeaRerIdentity.generate(),
+            packetId = "mesh-digest-binding-001",
+            createdAtMs = now,
+            expiresAtMs = now + 60_000L,
+            hopLimit = 4,
+            recipientPublicKey = recipient.public.encoded,
+            plaintext = "immutable packet content".toByteArray()
+        )
+
+        val originalDigest = packet.immutablePacketDigest()
+        val forwardedDigest = packet.copy(hopsTaken = 3).immutablePacketDigest()
+        assertArrayEquals("Mutable relay count must not change immutable packet identity", originalDigest, forwardedDigest)
+
+        val changedCiphertext = packet.encryptedPayload.ciphertext.copyOf().also {
+            it[it.lastIndex] = (it.last().toInt() xor 1).toByte()
+        }
+        val changedPacketDigest = packet.copy(
+            encryptedPayload = packet.encryptedPayload.copy(ciphertext = changedCiphertext)
+        ).immutablePacketDigest()
+        assertFalse("Changed signed payload must produce a different immutable digest",
+            java.security.MessageDigest.isEqual(originalDigest, changedPacketDigest))
+    }
 
     @Test
     fun deadDropEncryptsQueueMetadataAtRest() {
