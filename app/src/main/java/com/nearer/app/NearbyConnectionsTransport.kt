@@ -843,6 +843,11 @@ internal object IncomingFilePayloadPolicy {
                 }
                 retryQueuedMessagesForPeer(details.second, endpointId)
                 listener.onConnected(endpointId, details.first, details.second)
+                // Restore any paused incoming Nearby FILE payloads only after the
+                // authenticated stable peer identity has been re-established.
+                // This resumes SDK-retained offsets within the current process; the
+                // separate durable stream journal handles process-death recovery.
+                requestPendingIncomingFilesForPeer(details.second, endpointId)
                 notifyMeshRoutesChanged()
                 val trustNotice = if (state.remoteFirstSeen) {
                     "Encrypted link established with ${details.first}. Signing and recipient keys were verified and pinned; this does not prove the person’s real-world identity."
