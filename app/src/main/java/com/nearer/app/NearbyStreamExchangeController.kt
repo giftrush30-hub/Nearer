@@ -55,6 +55,23 @@ internal class NearbyStreamExchangeController(
         return map(tracker.recordProposal(endpointId, envelope))
     }
 
+    /** Records the receiver's explicit no-checkpoint response for a fresh transfer. */
+    @Synchronized
+    fun recordNoResume(endpointId: String, authenticatedPeerId: String, bytes: ByteArray): InputResult {
+        if (!bind(endpointId, authenticatedPeerId)) return bindingFailure(endpointId, authenticatedPeerId)
+        val envelope = try {
+            TransferResumeMessageCodec.decodeNoResume(bytes)
+        } catch (_: Exception) {
+            return InputResult.MALFORMED
+        }
+        val decision = TransferResumeNegotiation.Decision(
+            0L, TransferResumeNegotiation.Reason.NO_VALID_CHECKPOINT
+        )
+        return map(tracker.recordDecision(
+            endpointId, TransferResumeMessageCodec.DecisionEnvelope(envelope.payloadId, decision)
+        ))
+    }
+
     @Synchronized
     fun recordDecision(endpointId: String, authenticatedPeerId: String, bytes: ByteArray): InputResult {
         if (!bind(endpointId, authenticatedPeerId)) return bindingFailure(endpointId, authenticatedPeerId)
