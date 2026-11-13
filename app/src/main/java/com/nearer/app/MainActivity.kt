@@ -366,7 +366,7 @@ class MainActivity : ComponentActivity() {
                     val alreadyTrusted = TrustedPeerKeyStore.hasPinnedPeer(this@MainActivity, stableId)
                     if (trustedPeerReconnectTracker.shouldRequest(id, stableId, alreadyTrusted, hybridConnected)) {
                         statusMessage = "Reconnecting securely to $name…"
-                        nearbyTransport?.request(id)
+                        nearbyTransport?.request(id) { trustedPeerReconnectTracker.clear(id) }
                     }
                 }
             } }
