@@ -462,6 +462,9 @@ class MainActivity : ComponentActivity() {
                     if (body.startsWith("NR_REACTION:")) {
                         val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
                         safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), actorPeerId)
+                    } else if (body.startsWith("NR_EDIT:")) {
+                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        safelyStored = applyIncomingChatEdit(body.removePrefix("NR_EDIT:"), actorPeerId)
                     } else if (body.startsWith("NR_COMMUNITY:")) {
                         val senderPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
                         val communityBody = body.removePrefix("NR_COMMUNITY:")
@@ -537,6 +540,8 @@ class MainActivity : ComponentActivity() {
                     var safelyStored = false
                     if (body.startsWith("NR_REACTION:")) {
                         safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), originPeerId)
+                    } else if (body.startsWith("NR_EDIT:")) {
+                        safelyStored = applyIncomingChatEdit(body.removePrefix("NR_EDIT:"), originPeerId)
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
@@ -797,6 +802,7 @@ class MainActivity : ComponentActivity() {
                     transferHistory = nearbyTransferHistory.toList(),
                     onSendMessage = ::sendChatMessage,
                     onDeleteMessage = ::deleteChatMessage,
+                    onEditMessage = ::editChatMessage,
                     onReactToMessage = ::sendChatReaction,
                     groups = communityGroups.toList(),
                     groupMessages = communityMessages.toList(),
@@ -1543,6 +1549,8 @@ class MainActivity : ComponentActivity() {
                         replyToMessageId = item.optString("replyToMessageId").takeIf { it.isNotBlank() },
                         replyToPreview = item.optString("replyToPreview").takeIf { it.isNotBlank() },
                         replyToSender = item.optString("replyToSender").takeIf { it.isNotBlank() },
+                        editVersion = item.optInt("editVersion", 0).coerceIn(0, ChatEditPolicy.MAX_REVISION),
+                        editedAt = item.optLong("editedAt", 0L).coerceAtLeast(0L),
                         reactions = item.optJSONObject("reactions")?.let { reactionObject ->
                             buildMap {
                                 val keys = reactionObject.keys()
@@ -1603,6 +1611,99 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun trimChatMessages() { ChatHistoryPolicy.trim(chatMessages) }
+
+    private fun applyIncomingChatEdit(payload: String, actorPeerId: String): Boolean {
+        val packet = try { JSONObject(payload) } catch (_: Exception) { return false }
+        val targetId = packet.optString("messageId")
+        val revision = ChatEditPolicy.Revision(
+            version = packet.optInt("revision", 0),
+            body = packet.optString("body"),
+            editedAt = packet.optLong("editedAt", 0L)
+        )
+        if (packet.optInt("version", 0) != 1 ||
+            !ChatReactionPolicy.isValidActor(actorPeerId) ||
+            targetId.isBlank() || targetId.length > 80) return false
+        val index = chatMessages.indexOfFirst {
+            it.id == targetId && it.conversationId == actorPeerId && !it.outgoing
+        }
+        if (index < 0) return false
+        val previous = chatMessages[index]
+        return when (ChatEditPolicy.apply(previous.body, previous.editVersion, previous.editedAt, revision)) {
+            ChatEditPolicy.ApplyResult.STALE,
+            ChatEditPolicy.ApplyResult.ALREADY_APPLIED -> true
+            ChatEditPolicy.ApplyResult.REJECTED -> false
+            ChatEditPolicy.ApplyResult.APPLIED -> {
+                chatMessages[index] = previous.copy(
+                    body = revision.body,
+                    editVersion = revision.version,
+                    editedAt = revision.editedAt
+                )
+                if (persistMessages()) {
+                    chatNotice = "A message from ${previous.conversationName} was edited."
+                    true
+                } else {
+                    chatMessages[index] = previous
+                    chatNotice = "An edit arrived but could not be saved. It was not confirmed."
+                    false
+                }
+            }
+        }
+    }
+
+    private fun editChatMessage(messageId: String, newBody: String): Boolean {
+        val index = chatMessages.indexOfFirst { it.id == messageId }
+        if (index < 0) return false
+        val previous = chatMessages[index]
+        if (!previous.outgoing) {
+            chatNotice = "You can only edit messages you sent."
+            return false
+        }
+        val revision = ChatEditPolicy.create(
+            previous.body, previous.editVersion, newBody, System.currentTimeMillis()
+        )
+        if (revision == null) {
+            chatNotice = "Make a change to the message. Edits must be under 3,500 characters."
+            return false
+        }
+        val peerId = previous.conversationId
+        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+        if (!ChatReactionPolicy.isValidActor(localPeerId) || !ChatReactionPolicy.isValidActor(peerId)) {
+            chatNotice = "Editing needs a verified NeaRer connection."
+            return false
+        }
+        chatMessages[index] = previous.copy(
+            body = revision.body, editVersion = revision.version, editedAt = revision.editedAt
+        )
+        if (!persistMessages()) {
+            chatMessages[index] = previous
+            chatNotice = "Couldn't save your edit. The original message was kept."
+            return false
+        }
+        val packet = "NR_EDIT:" + JSONObject()
+            .put("version", 1)
+            .put("messageId", messageId)
+            .put("revision", revision.version)
+            .put("body", revision.body)
+            .put("editedAt", revision.editedAt)
+            .toString()
+        val eventId = UUID.randomUUID().toString()
+        val meshRecipient = meshRecipients[peerId]
+        var sent = if (meshRecipient != null) {
+            nearbyTransport?.sendMeshMessage(peerId, packet, eventId) == true
+        } else false
+        if (!sent && peerId == hybridConnectedStableId && !hybridConnectedEndpoint.isNullOrBlank() &&
+            (meshRecipient == null || meshRecipient.isDirect)) {
+            sent = nearbyTransport?.send(packet, eventId, hybridConnectedEndpoint) == true
+        }
+        if (!sent) {
+            chatMessages[index] = previous
+            persistMessages()
+            chatNotice = "Edit not sent. Reconnect to this person; the original message was restored."
+            return false
+        }
+        chatNotice = "Edit saved and queued for secure nearby delivery."
+        return true
+    }
 
     private fun applyIncomingChatReaction(payload: String, actorPeerId: String): Boolean {
         val packet = try { JSONObject(payload) } catch (_: Exception) { return false }
@@ -1695,6 +1796,8 @@ class MainActivity : ComponentActivity() {
                     .put("replyToMessageId", message.replyToMessageId)
                     .put("replyToPreview", message.replyToPreview)
                     .put("replyToSender", message.replyToSender)
+                    .put("editVersion", message.editVersion)
+                    .put("editedAt", message.editedAt)
                     .put("reactions", JSONObject(message.reactions)))
             }
             // commit() is intentional here: a delivery receipt must follow the disk write,
@@ -3481,6 +3584,7 @@ private fun NeaRerHome(
     transferHistory: List<NearbyTransferRecord>,
     onSendMessage: (String, ChatMessage?) -> Unit,
     onDeleteMessage: (String) -> Boolean,
+    onEditMessage: (String, String) -> Boolean,
     onReactToMessage: (String, String) -> Unit,
     groups: List<CommunityGroup>,
     groupMessages: List<CommunityChatMessage>,
@@ -4112,6 +4216,7 @@ private fun NeaRerHome(
                     onDraftChange = { draft = it.take(2000) },
                     onSendMessage = { text, reply -> onSendMessage(text, reply); draft = "" },
                     onDeleteMessage = onDeleteMessage,
+                    onEditMessage = onEditMessage,
                     onReactToMessage = onReactToMessage,
                     onFindNearby = { selectedTab = "Nearby"; onFindNearby() },
                     onBackToInbox = { onSelectMeshRecipient(null) },
@@ -4576,7 +4681,9 @@ internal data class ChatMessage(
     val replyToMessageId: String? = null,
     val replyToPreview: String? = null,
     val replyToSender: String? = null,
-    val reactions: Map<String, String> = emptyMap()
+    val reactions: Map<String, String> = emptyMap(),
+    val editVersion: Int = 0,
+    val editedAt: Long = 0L
 )
 
 private fun isNeaRerAppBundle(file: File): Boolean {
