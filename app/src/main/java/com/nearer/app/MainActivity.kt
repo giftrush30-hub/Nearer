@@ -3325,7 +3325,7 @@ private fun NeaRerHome(
     usingNearbyConnections: Boolean,
     meshRecipients: List<MeshRecipient>,
     selectedMeshRecipientId: String?,
-    onSelectMeshRecipient: (String) -> Unit,
+    onSelectMeshRecipient: (String?) -> Unit,
     connectedPeerStableId: String?,
     messages: List<ChatMessage>,
     chatNotice: String,
@@ -3389,6 +3389,9 @@ private fun NeaRerHome(
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
     var selectedConversationKey by remember { mutableStateOf<String?>(null) }
+    val chatAttachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) onSendFiles(uris)
+    }
     LaunchedEffect(externalShareUris) { if (externalShareUris.isNotEmpty()) selectedTab = "Share" }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
@@ -3859,6 +3862,18 @@ private fun NeaRerHome(
                 }
             }
 
+            if (selectedTab == "People") {
+                PeopleScreen(
+                    meshRecipients = meshRecipients,
+                    hybridPeers = hybridPeers,
+                    scanning = scanning,
+                    onSelectMeshRecipient = onSelectMeshRecipient,
+                    onOpenChat = { selectedTab = "Chats" },
+                    onFindNearby = onFindNearby,
+                    onConnectNearby = onHybridConnect
+                )
+            }
+
             if (selectedTab == "Share") {
                 FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, externalShareUris = externalShareUris, onExternalShareConsumed = onExternalShareConsumed, modifier = Modifier.weight(1f))
             }
@@ -3949,7 +3964,8 @@ private fun NeaRerHome(
                     onDraftChange = { draft = it.take(2000) },
                     onSendMessage = { onSendMessage(it); draft = "" },
                     onFindNearby = { selectedTab = "Nearby"; onFindNearby() },
-                    onChooseFiles = { selectedTab = "Share" },
+                    onBackToInbox = { onSelectMeshRecipient(null) },
+                    onChooseFiles = { chatAttachmentPicker.launch(arrayOf("*/*")) },
                     receivedFiles = receivedFiles,
                     onOpenFile = onOpenFile,
                     transferHistory = transferHistory,
@@ -4234,7 +4250,7 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Chats" to "▤", "Share" to "⇧", "Share Hub" to "⌁", "Games" to "♟").forEach { item ->
+                    listOf("Chats" to "▤", "People" to "♙", "Share" to "⇧", "Share Hub" to "⌁", "Games" to "♟").forEach { item ->
                         val selected = selectedTab == item.first
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
