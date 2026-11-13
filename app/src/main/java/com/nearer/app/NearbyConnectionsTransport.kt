@@ -1424,7 +1424,8 @@ internal object IncomingFilePayloadPolicy {
                 now + 24L * 60L * 60L * 1000L, 4, pinnedRecipientKey, content
             )
             val encodedPacket = packet.encode()
-            if (encodedPacket.size > MeshRelayPacketV1.MAX_NEARBY_BYTES) return false
+            // Reserve room for the bounded proof sidecar on every later hop.
+            MeshPacketEnvelopeV2.encode(encodedPacket, ByteArray(0))
             if (!deadDropStore.enqueueVerified(packet, SecurePeerIdentity.publicKeyEncoded(), now)) return false
             listener.onMessageStatus(messageId, "Queued")
             forwardDueMeshPackets()
