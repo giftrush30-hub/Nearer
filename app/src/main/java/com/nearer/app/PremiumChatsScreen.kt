@@ -74,6 +74,21 @@ internal fun PremiumChatsScreen(
     incomingProgress: Float,
     onCancelTransfer: () -> Unit
 ) {
+    if (selectedMeshRecipientId == null && !chatReady) {
+        PremiumChatsInboxScreen(
+            meshRecipients = meshRecipients,
+            messages = messages,
+            onSelectConversation = onSelectMeshRecipient,
+            onFindNearby = onFindNearby
+        )
+        return
+    }
+
+    var recipientMenuExpanded by remember { mutableStateOf(false) }
+    var replyingTo by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
+    var expandedMessageActions by remember { mutableStateOf<String?>(null) }
+    var pendingDeleteMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    val context = LocalContext.current
     pendingDeleteMessage?.let { target ->
         AlertDialog(
             onDismissRequest = { pendingDeleteMessage = null },
@@ -91,21 +106,6 @@ internal fun PremiumChatsScreen(
         )
     }
 
-    if (selectedMeshRecipientId == null && !chatReady) {
-        PremiumChatsInboxScreen(
-            meshRecipients = meshRecipients,
-            messages = messages,
-            onSelectConversation = onSelectMeshRecipient,
-            onFindNearby = onFindNearby
-        )
-        return
-    }
-
-    var recipientMenuExpanded by remember { mutableStateOf(false) }
-    var replyingTo by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
-    var expandedMessageActions by remember { mutableStateOf<String?>(null) }
-    var pendingDeleteMessage by remember { mutableStateOf<ChatMessage?>(null) }
-    val context = LocalContext.current
     val selectedRecipient = meshRecipients.firstOrNull { it.peerId == selectedMeshRecipientId }
     val selectedRecipientUnavailable = selectedMeshRecipientId != null && selectedRecipient == null
     val chatAvailable = selectedRecipient != null || (selectedMeshRecipientId == null && chatReady)
