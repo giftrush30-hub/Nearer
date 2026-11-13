@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, integration/nearer-complete-app, phase-1-smartconnect]
   pull_request:
-    branches: [main, integration/nearer-complete-app]
+    branches: [main, integration/nearer-complete-app, feature/messaging-people-chat-inbox]
   workflow_dispatch:
 
 concurrency:
