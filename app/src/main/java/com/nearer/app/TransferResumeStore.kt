@@ -28,7 +28,8 @@ internal class TransferResumeStore(
         transferId: String,
         item: TransferBundleItem,
         sourceModifiedAtMillis: Long?,
-        bytesSynced: Long
+        bytesSynced: Long,
+        sourcePeerId: String? = null
     ): TransferResumeCheckpoint {
         require(transferId.isNotBlank() && transferId.length <= 128) { "Invalid transfer ID" }
         require(item.id.isNotBlank() && item.id.length <= 128) { "Invalid bundle item ID" }
@@ -37,6 +38,9 @@ internal class TransferResumeStore(
         }
         require(sourceModifiedAtMillis == null || sourceModifiedAtMillis >= 0L) {
             "Invalid source modification time"
+        }
+        require(sourcePeerId == null || NeaRerIdentity.normalize(sourcePeerId) == sourcePeerId) {
+            "Invalid authenticated source peer identity"
         }
         require(item.kind == TransferBundleItem.Kind.FILE) { "Only files can be resumed" }
         require(item.sizeBytes >= 0L && bytesSynced in 0L..item.sizeBytes) {
@@ -67,7 +71,8 @@ internal class TransferResumeStore(
             expectedSizeBytes = item.sizeBytes,
             sourceModifiedAtMillis = sourceModifiedAtMillis,
             committedOffsetBytes = committedOffset,
-            prefixSha256 = digest
+            prefixSha256 = digest,
+            sourcePeerId = sourcePeerId
         )
         val error = checkpoint.validationError()
         require(error == null) { error ?: "Invalid resume checkpoint" }
@@ -79,14 +84,16 @@ internal class TransferResumeStore(
     fun findValid(
         transferId: String,
         item: TransferBundleItem,
-        sourceModifiedAtMillis: Long?
+        sourceModifiedAtMillis: Long?,
+        expectedSourcePeerId: String? = null
     ): Candidate? {
         val checkpoint = journal.load(transferId, item.id) ?: return null
         val partial = partialFileFor(transferId, item.id)
         // A checkpoint tied to a changed source is never reusable. Remove both
         // halves so stale bytes cannot linger and later be mistaken for a valid
         // candidate if the same transfer identity is retried.
-        if (!checkpoint.matches(transferId, item, sourceModifiedAtMillis)) {
+        if (!checkpoint.matches(transferId, item, sourceModifiedAtMillis) ||
+            (expectedSourcePeerId != null && checkpoint.sourcePeerId != expectedSourcePeerId)) {
             discard(transferId, item.id)
             return null
         }
@@ -124,13 +131,17 @@ internal class TransferResumeStore(
             findValid(
                 transferId = checkpoint.transferId,
                 item = item,
-                sourceModifiedAtMillis = checkpoint.sourceModifiedAtMillis
+                sourceModifiedAtMillis = checkpoint.sourceModifiedAtMillis,
+                expectedSourcePeerId = checkpoint.sourcePeerId
             )?.takeIf { candidate ->
+                // Legacy checkpoints without a stable sender binding cannot be
+                // offered after process death: the new endpoint ID is unrelated.
                 // A zero-byte checkpoint cannot save any retransmission work,
                 // while an EOF checkpoint is complete rather than resumable.
                 // Leave valid journal entries intact for a future finalization
                 // coordinator, but do not present either as resumable work.
-                candidate.checkpoint.committedOffsetBytes > 0L &&
+                candidate.checkpoint.sourcePeerId != null &&
+                    candidate.checkpoint.committedOffsetBytes > 0L &&
                     candidate.checkpoint.committedOffsetBytes < candidate.checkpoint.expectedSizeBytes
             }
         }.sortedWith(
