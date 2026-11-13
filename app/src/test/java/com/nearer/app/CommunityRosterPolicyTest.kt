@@ -8,46 +8,46 @@ import org.junit.Test
 
 class CommunityRosterPolicyTest {
     @Test fun firstPinnedPeerCanEstablishRosterCoordinator() {
-        assertEquals("ABCD234", CommunityRosterPolicy.resolveOwner("", "ABCD234"))
+        assertEquals("ABCD23456789", CommunityRosterPolicy.resolveOwner("", "ABCD23456789"))
     }
 
     @Test fun laterRosterUpdatesMustComeFromSameCoordinator() {
-        assertEquals("ABCD234", CommunityRosterPolicy.resolveOwner("ABCD234", "ABCD234"))
-        assertNull(CommunityRosterPolicy.resolveOwner("ABCD234", "NPQR234"))
+        assertEquals("ABCD23456789", CommunityRosterPolicy.resolveOwner("ABCD23456789", "ABCD23456789"))
+        assertNull(CommunityRosterPolicy.resolveOwner("ABCD23456789", "NPQR23456789"))
     }
 
     @Test fun rosterMustIncludeCoordinatorAndLocalIdentity() {
         assertEquals(
-            listOf("ABCD234", "EFGH234", "JKLM234"),
+            listOf("ABCD23456789", "EFGH23456789", "JKLM23456789"),
             CommunityRosterPolicy.validateRoster(
-                "ABCD234", "ABCD234",
-                listOf("ABCD234", "EFGH234", "JKLM234"),
-                "EFGH234"
+                "ABCD23456789", "ABCD23456789",
+                listOf("ABCD23456789", "EFGH23456789", "JKLM23456789"),
+                "EFGH23456789"
             )
         )
         assertNull(
             CommunityRosterPolicy.validateRoster(
-                "ABCD234", "ABCD234",
-                listOf("ABCD234", "JKLM234"),
-                "EFGH234"
+                "ABCD23456789", "ABCD23456789",
+                listOf("ABCD23456789", "JKLM23456789"),
+                "EFGH23456789"
             )
         )
     }
 
     @Test fun rosterRejectsInvalidOrUnnormalizedPeerIds() {
-        assertNull(CommunityRosterPolicy.validateRoster("ABCD234", "ABCD234", listOf("ABCD234", "bad-id"), "ABCD234"))
-        assertNull(CommunityRosterPolicy.validateRoster("ABCD234", "ABCD234", listOf("ABCD234", "owner234"), "ABCD234"))
+        assertNull(CommunityRosterPolicy.validateRoster("ABCD23456789", "ABCD23456789", listOf("ABCD23456789", "bad-id"), "ABCD23456789"))
+        assertNull(CommunityRosterPolicy.validateRoster("ABCD23456789", "ABCD23456789", listOf("ABCD23456789", "owner234"), "ABCD23456789"))
         assertNull(CommunityRosterPolicy.resolveOwner("", "bad-id"))
     }
 
     @Test fun rosterRejectsWrongSignerAndOversizedMembership() {
-        assertNull(CommunityRosterPolicy.validateRoster("ABCD234", "NPQR234", listOf("ABCD234", "EFGH234"), "EFGH234"))
-        assertNull(CommunityRosterPolicy.validateRoster("ABCD234", "ABCD234", (0..100).map { "PEER${it}234" }, "ABCD234"))
+        assertNull(CommunityRosterPolicy.validateRoster("ABCD23456789", "NPQR23456789", listOf("ABCD23456789", "EFGH23456789"), "EFGH23456789"))
+        assertNull(CommunityRosterPolicy.validateRoster("ABCD23456789", "ABCD23456789", (0..100).map { "PEER${it}234" }, "ABCD23456789"))
     }
 
     @Test fun onlyRosteredStableIdentitiesMaySendGroupMessages() {
-        assertTrue(CommunityRosterPolicy.mayAcceptGroupMessage("JKLM234", listOf("ABCD234", "JKLM234")))
-        assertFalse(CommunityRosterPolicy.mayAcceptGroupMessage("STUV234", listOf("ABCD234", "JKLM234")))
-        assertFalse(CommunityRosterPolicy.mayAcceptGroupMessage("member2", listOf("ABCD234", "JKLM234")))
+        assertTrue(CommunityRosterPolicy.mayAcceptGroupMessage("JKLM23456789", listOf("ABCD23456789", "JKLM23456789")))
+        assertFalse(CommunityRosterPolicy.mayAcceptGroupMessage("STUV23456789", listOf("ABCD23456789", "JKLM23456789")))
+        assertFalse(CommunityRosterPolicy.mayAcceptGroupMessage("member2", listOf("ABCD23456789", "JKLM23456789")))
     }
 }
