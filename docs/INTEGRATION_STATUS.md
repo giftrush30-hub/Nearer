@@ -195,3 +195,15 @@ The checkpoint format is now version 2 and stores the authenticated sender's sta
 - Codec tests cover version-1 migration and version-2 round trips; store tests cover unbound legacy exclusion, correct-peer acceptance, and wrong-peer rejection without data loss.
 
 The current transport still does not pass its authenticated peer ID into the durable stream writer or route FILE payload bytes through that writer. This change establishes the identity boundary needed for that integration; it does not yet make Nearby process-death resume operational.
+
+## HyperTransfer authenticated STREAM coordinator — 13 November 2026
+
+- Added `TransferResumeCoordinator` as a transport-neutral bridge around the durable store, peer-bound resume negotiation and stream writer.
+- Receiver discovery now produces offers only for partials owned by the exact currently authenticated stable sender. The existing store re-verifies each committed prefix before an offer is created.
+- Sender-side validation checks the source file still exists with the expected size and modification time, then independently hashes the source prefix before accepting an offset.
+- Receiver completion checks that the transport-approved offset matches the local peer-bound checkpoint **before** appending bytes. A clean offset-zero restart discards only a verified partial belonging to that same authenticated sender.
+- The coordinator verifies the writer's whole-file SHA-256 before calling the existing no-overwrite finalizer. Wrong sender, offset mismatch, or whole-file digest mismatch cannot publish a file.
+- Fixed zero-byte stream handling: an empty file now receives a durable EOF checkpoint and can pass through the same digest-verified finalization path.
+- Added coordinator tests for authenticated candidate discovery, source-prefix mismatch, resumed stream completion, destination collision, whole-file digest rejection, offset disagreement without partial damage, invalid peer identity, and empty-file completion.
+- **Transport boundary remains explicit:** this coordinator is not yet called by `NearbyConnectionsTransport`. Its caller must use a Nearby STREAM payload (not the existing FILE payload), bind all negotiation to the authenticated stable peer identity, position the sender stream at the accepted offset, and close the stream cleanly. PR #139 continues to own the current transport reconnect hook. Do not advertise app-kill recovery as live until that hook and the stream lifecycle are integrated and tested on two physical phones.
+- No emulator or physical-device testing is claimed for this work.
