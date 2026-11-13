@@ -1879,36 +1879,32 @@ internal object IncomingFilePayloadPolicy {
     }
 
     /**
-     * Persist a separate encrypted-outbox entry for each currently connected,
-     * authenticated member selected by display name. Each recipient gets its own
-     * transport message ID so its ACK/retry lifecycle is independent.
+     * Queue one independently encrypted delivery for each verified stable peer ID.
+     * Known offline peers are persisted with an empty endpoint and retried when that
+     * same pinned identity reconnects. Display names are never recipient authority.
      */
-    fun sendDurableToNames(body: String, targetNames: Set<String>): Boolean {
-        if (body.isBlank() || body.length > 4000 || targetNames.isEmpty()) return false
-        val targets = synchronized(activeEndpoints) {
-            activeEndpoints.filter { endpoint ->
-                authenticatedEndpoints.contains(endpoint) &&
-                    synchronized(names) { names[endpoint]?.let { it in targetNames } == true }
-            }
-        }
-        return queueDurableFanout(body, targets)
+    fun sendDurableToPeerIds(body: String, targetPeerIds: Set<String>): Boolean {
+        if (body.isBlank() || body.length > 4000 || targetPeerIds.isEmpty()) return false
+        return queueDurableFanout(body, targetPeerIds)
     }
 
     /**
-     * Add every recipient copy to the encrypted outbox and commit once before
-     * attempting any network send. Existing reconnect handling retries each
-     * entry only when the same stable peer authenticates again.
+     * Add every trusted recipient copy to the encrypted outbox and commit once before
+     * attempting any network send. A missing live endpoint is valid: the durable copy
+     * waits for the same pinned peer identity to authenticate again.
      */
     @Synchronized
-    private fun queueDurableFanout(body: String, endpoints: List<String>): Boolean {
-        if (endpoints.isEmpty()) return false
+    private fun queueDurableFanout(body: String, peerIds: Set<String>): Boolean {
+        if (peerIds.isEmpty()) return false
         val queuedIds = mutableListOf<String>()
-        endpoints.distinct().forEach { endpoint ->
-            if (!authenticatedEndpoints.contains(endpoint) ||
-                !synchronized(activeEndpoints) { activeEndpoints.contains(endpoint) } ||
-                messageSessions[endpoint] == null) return@forEach
-            val peerId = synchronized(names) { stableIds[endpoint].orEmpty() }
-            if (peerId.isBlank()) return@forEach
+        peerIds.distinct().forEach { peerId ->
+            if (peerId == localStableId || NeaRerIdentity.normalize(peerId) != peerId ||
+                !TrustedPeerKeyStore.hasPinnedPeer(appContext, peerId)) return@forEach
+            val endpoint = endpointForStablePeer(peerId).orEmpty()
+            if (endpoint.isNotBlank() &&
+                (!authenticatedEndpoints.contains(endpoint) ||
+                    !synchronized(activeEndpoints) { activeEndpoints.contains(endpoint) } ||
+                    messageSessions[endpoint] == null)) return@forEach
 
             val messageId = UUID.randomUUID().toString()
             val envelope = JSONObject()
@@ -1924,7 +1920,7 @@ internal object IncomingFilePayloadPolicy {
                 .toByteArray(Charsets.UTF_8)
 
             pendingOutgoingMessages[messageId] = PendingOutgoingMessage(endpoint, peerId, envelope)
-            outgoingMessageTargets[messageId] = endpoint
+            if (endpoint.isNotBlank()) outgoingMessageTargets[messageId] = endpoint
             queuedIds += messageId
         }
         if (queuedIds.isEmpty()) return false
