@@ -744,6 +744,7 @@ class MainActivity : ComponentActivity() {
                     displayName = displayName,
                     profileAvatarId = profileAvatarId,
                     profilePhotoPath = profilePhotoPath,
+                    onSaveProfile = ::saveProfileEdits,
                     nearbyIdentityId = nearbyTransport?.localIdentityId().orEmpty(),
                     ultraSpeedMode = ultraSpeedMode,
                     ultraSpeedRestartRequired = ultraSpeedRestartRequired,
@@ -769,14 +770,7 @@ class MainActivity : ComponentActivity() {
     private fun completeOnboarding(rawName: String, avatarId: String, photoUri: Uri?, answers: Map<String, String>) {
         val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
         if (cleanName.isBlank()) return
-        val photoPath = photoUri?.let { uri ->
-            runCatching {
-                val directory = File(filesDir, "profile").apply { mkdirs() }
-                val destination = File(directory, "profile-photo.jpg")
-                contentResolver.openInputStream(uri)?.use { input -> destination.outputStream().use { output -> input.copyTo(output) } }
-                destination.absolutePath.takeIf { destination.exists() && destination.length() > 0L }
-            }.getOrNull()
-        }
+        val photoPath = photoUri?.let(::storeProfilePhoto)
         val answerJson = JSONObject().apply { answers.forEach { (key, value) -> put(key, value) } }
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
             .putBoolean("onboarding_complete", true)
@@ -947,6 +941,57 @@ class MainActivity : ComponentActivity() {
         nearbyTransport?.setMeshTransitEnabled(false)
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("mesh_relay_enabled", false).apply()
         statusMessage = "Community relay is paused. This phone will not store or forward other people's mesh messages."
+    }
+
+    private fun storeProfilePhoto(uri: Uri): String? = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / sample > 1024 || bounds.outHeight / sample > 1024) sample *= 2
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+        }
+        val decoded = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) } ?: return null
+        val scale = minOf(1f, 512f / maxOf(decoded.width, decoded.height).toFloat())
+        val outputBitmap = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(
+            decoded, (decoded.width * scale).toInt().coerceAtLeast(1),
+            (decoded.height * scale).toInt().coerceAtLeast(1), true
+        ) else decoded
+        val profileDirectory = File(filesDir, "profile").apply { mkdirs() }
+        val destination = File(profileDirectory, "profile-photo-${System.currentTimeMillis()}.jpg")
+        FileOutputStream(destination).use { output ->
+            outputBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 86, output)
+        }
+        if (outputBitmap !== decoded) outputBitmap.recycle()
+        decoded.recycle()
+        destination.absolutePath.takeIf { destination.exists() && destination.length() > 0L }
+    }.getOrNull()
+
+    private fun saveProfileEdits(rawName: String, avatarId: String, photoUri: Uri?, removePhoto: Boolean) {
+        val cleanName = rawName.trim().replace(Regex("[\\r\\n|]"), " ").replace(Regex("\\s+"), " ").take(24)
+        if (cleanName.isBlank()) return
+        val oldPhotoPath = profilePhotoPath
+        val newPhotoPath = when {
+            photoUri != null -> storeProfilePhoto(photoUri) ?: oldPhotoPath
+            removePhoto -> null
+            else -> oldPhotoPath
+        }
+        if ((removePhoto && photoUri == null || photoUri != null && newPhotoPath != oldPhotoPath) &&
+            oldPhotoPath != null && oldPhotoPath != newPhotoPath) {
+            runCatching { File(oldPhotoPath).delete() }
+        }
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putString("display_name", cleanName)
+            .putString("profile_avatar_id", avatarId)
+            .putString("profile_photo_path", newPhotoPath)
+            .apply()
+        displayName = cleanName
+        profileAvatarId = avatarId
+        profilePhotoPath = newPhotoPath
+        runCatching { nearbyTransport?.setDisplayName(cleanName) }
+        statusMessage = "Your NeaRer profile has been updated."
     }
 
     private fun saveDisplayName(rawName: String) {
@@ -3033,6 +3078,7 @@ private fun NeaRerHome(
     displayName: String,
     profileAvatarId: String,
     profilePhotoPath: String?,
+    onSaveProfile: (String, String, Uri?, Boolean) -> Unit,
     nearbyIdentityId: String,
     ultraSpeedMode: Boolean,
     ultraSpeedRestartRequired: Boolean,
@@ -3052,6 +3098,7 @@ private fun NeaRerHome(
     LaunchedEffect(externalShareUris) { if (externalShareUris.isNotEmpty()) selectedTab = "Share" }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
+    var showProfileEditor by remember { mutableStateOf(false) }
     val fastShare = remember(context) { FastShareController(context) }
     val appCatalog = remember(context) { AppShareCatalog(context) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
@@ -3822,6 +3869,12 @@ private fun NeaRerHome(
                             shape = RoundedCornerShape(13.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
                         ) { Text("Save profile", fontWeight = FontWeight.Bold) }
+                        Button(
+                            onClick = { showProfileEditor = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(13.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = BlueAccent)
+                        ) { Text("Edit name, avatar and photo", fontWeight = FontWeight.Bold) }
                     }
                 }
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
@@ -3912,6 +3965,19 @@ private fun NeaRerHome(
                 }
             }
         }
+    }
+
+    if (showProfileEditor) {
+        NeaRerProfileEditor(
+            currentName = displayName,
+            currentAvatarId = profileAvatarId,
+            currentPhotoPath = profilePhotoPath,
+            onSave = { name, avatar, photo, remove ->
+                onSaveProfile(name, avatar, photo, remove)
+                showProfileEditor = false
+            },
+            onDismiss = { showProfileEditor = false }
+        )
     }
 
     // Connection approval is global: users must not miss a request just because
