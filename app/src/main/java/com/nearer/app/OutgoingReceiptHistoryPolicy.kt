@@ -6,7 +6,7 @@ internal object OutgoingReceiptHistoryPolicy {
 
     fun append(existing: List<String>, messageId: String, maxIds: Int = MAX_IDS): List<String> {
         require(maxIds > 0) { "maxIds must be positive" }
-        if (messageId.isBlank()) return existing.distinct().takeLast(maxIds)
+        if (messageId.isBlank()) return existing.filter { it.isNotBlank() }.distinct().takeLast(maxIds)
         val ordered = LinkedHashSet(existing.filter { it.isNotBlank() })
         ordered.remove(messageId)
         ordered.add(messageId)
