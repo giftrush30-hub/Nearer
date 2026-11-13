@@ -468,7 +468,8 @@ class MainActivity : ComponentActivity() {
                                     id.isNotBlank() && communityMessages.any { it.id == id && it.groupCode == code }
                             }
                             "broadcast" -> true
-                            "ludo_invite", "ludo_reject", "ludo_move", "ludo_roll", "ludo_state", "ludo_leave" -> true
+                            "ludo_invite", "ludo_accept", "ludo_reject", "ludo_action", "ludo_chat",
+                            "ludo_end", "ludo_rematch", "ludo_state", "ludo_sync" -> true
                             else -> false
                         }
                         // Reject/withhold transport ACKs for unknown or unauthorized community packets.
