@@ -163,18 +163,22 @@ internal data class MeshForwardingProof(
 
 /** Ordered proof chain. Keys are resolved only from the caller's trusted identity store. */
 internal data class MeshForwardingProofChain(val proofs: List<MeshForwardingProof>) {
-    fun verify(
+    /**
+     * Verifies an incoming prefix before this phone appends its own durable-acceptance
+     * record. An empty prefix is valid only on the first hop directly from the origin.
+     */
+    fun verifyPrefix(
         packetId: String,
         packetDigest: ByteArray,
         originPeerId: String,
-        destinationPeerId: String,
+        expectedPreviousHopPeerId: String,
         trustedSigningKey: (String) -> ByteArray?,
         nowMs: Long
     ): Boolean = try {
-        require(proofs.size in 1..MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
+        require(proofs.size in 0 until MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
         require(packetDigest.size == 32)
         require(NeaRerIdentity.normalize(originPeerId) == originPeerId)
-        require(NeaRerIdentity.normalize(destinationPeerId) == destinationPeerId)
+        require(NeaRerIdentity.normalize(expectedPreviousHopPeerId) == expectedPreviousHopPeerId)
         var previousPeer = originPeerId
         var previousHash = MeshForwardingProof.GENESIS_HASH
         var previousTime = 0L
@@ -193,12 +197,49 @@ internal data class MeshForwardingProofChain(val proofs: List<MeshForwardingProo
             previousHash = proof.hash()
             previousTime = proof.acceptedAtMs
         }
-        require(previousPeer == destinationPeerId)
+        require(previousPeer == expectedPreviousHopPeerId)
+        true
+    } catch (_: Exception) { false }
+
+    /** Adds this phone's signed acceptance only after its caller can commit the result atomically. */
+    fun appendAcceptance(
+        packetId: String,
+        packetDigest: ByteArray,
+        originPeerId: String,
+        acceptingPeerId: String,
+        acceptedAtMs: Long,
+        sign: (ByteArray) -> ByteArray
+    ): MeshForwardingProofChain {
+        require(proofs.size < MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
+        val previous = proofs.lastOrNull()
+        val proof = MeshForwardingProof.create(
+            packetId = packetId,
+            packetDigest = packetDigest,
+            originPeerId = originPeerId,
+            acceptingPeerId = acceptingPeerId,
+            previousHopPeerId = previous?.acceptingPeerId ?: originPeerId,
+            hopIndex = proofs.size + 1,
+            acceptedAtMs = maxOf(acceptedAtMs, previous?.acceptedAtMs ?: 0L),
+            previousProofHash = previous?.hash() ?: MeshForwardingProof.GENESIS_HASH
+        ) { bytes -> sign(bytes) }
+        return MeshForwardingProofChain(proofs + proof)
+    }
+
+    fun verify(
+        packetId: String,
+        packetDigest: ByteArray,
+        originPeerId: String,
+        destinationPeerId: String,
+        trustedSigningKey: (String) -> ByteArray?,
+        nowMs: Long
+    ): Boolean = try {
+        require(proofs.size in 1..MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
+        require(verifyPrefix(packetId, packetDigest, originPeerId, destinationPeerId, trustedSigningKey, nowMs))
         true
     } catch (_: Exception) { false }
 
     fun encode(): ByteArray {
-        require(proofs.size in 1..MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
+        require(proofs.size in 0..MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
         val out = ByteArrayOutputStream()
         DataOutputStream(out).use { data ->
             data.writeInt(MAGIC)
@@ -221,7 +262,7 @@ internal data class MeshForwardingProofChain(val proofs: List<MeshForwardingProo
             val input = DataInputStream(ByteArrayInputStream(bytes))
             require(input.readInt() == MAGIC)
             val count = input.readUnsignedByte()
-            require(count in 1..MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
+            require(count in 0..MeshForwardingProof.MAX_ACCEPTANCE_RECORDS)
             val proofs = List(count) {
                 val size = input.readUnsignedShort()
                 require(size in 1..1024)
