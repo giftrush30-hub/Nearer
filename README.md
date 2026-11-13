@@ -41,7 +41,7 @@ Multi-hop relay remains **disabled**. Remote first-contact identity binding, ind
 
 ## Build and release policy
 
-The integration branch has GitHub Actions checks for JVM unit tests, debug APK assembly and Android emulator launch tests on API 31 and API 35. A passing workflow is necessary but does not replace two-physical-phone testing. Only an artifact from the exact validated commit should be considered current. Batch One source integration into `main` was explicitly approved; that approval does not certify a release APK or authorize enabling mesh relay.
+The integration branch has GitHub Actions checks for JVM unit tests, debug APK assembly and APK artifact upload. Hosted Android emulator launch jobs have been deferred because their startup/boot reliability has been inconsistent; this is a CI limitation, not evidence that the app itself is broken. Emulator testing is not currently a release gate. A passing JVM/build workflow does not replace two-physical-phone testing. Only an artifact from the exact validated commit should be considered current. Batch One source integration into `main` was explicitly approved; that approval does not certify a release APK or authorize enabling mesh relay.
 
 ## Suggested two-phone test
 
