@@ -179,7 +179,9 @@ internal object IncomingFilePayloadPolicy {
     private val transferSpeedMeters = ConcurrentHashMap<Long, TransferSpeedMeter>()
     /** Snapshot access for diagnostics and future speed UI. */
     fun transferSpeedSnapshot(payloadId: Long): TransferSpeedSnapshot? = transferSpeedMeters[payloadId]?.snapshot()
-    private val fileIo = Executors.newSingleThreadExecutor()
+    // Completed receive files are finalized independently, but the two-worker cap
+    // limits simultaneous full-file hashing/copy work on lower-end Android phones.
+    private val fileIo = TransferIoPolicy.createReceiveExecutor()
     // Hash large files away from the UI thread before the receiver is given the payload.
     private val transferPreparation = Executors.newFixedThreadPool(2)
     private val seenMessageIdsLock = Any()
