@@ -58,7 +58,7 @@ class TransferResumeCoordinatorTest {
             val opened = coordinator.openValidatedSourceAtOffset(
                 offers.single().proposal, "transfer-1", item, source, source.lastModified(),
                 "BCDEFG234567", true, true
-            ) ?: fail("A verified source should open at the accepted offset")
+            ) ?: throw AssertionError("A verified source should open at the accepted offset")
             opened.use { stream ->
                 assertEquals(chunk.toLong(), stream.acceptedOffsetBytes)
                 assertEquals((bytes.size - chunk).toLong(), stream.remainingBytes)
