@@ -1961,7 +1961,7 @@ internal object IncomingFilePayloadPolicy {
         val targets = synchronized(activeEndpoints) {
             activeEndpoints.filter { endpoint ->
                 authenticatedEndpoints.contains(endpoint) &&
-                    synchronized(names) { stableIds[endpoint] in targetPeerIds } &&
+                    synchronized(names) { stableIds[endpoint]?.let { it in targetPeerIds } == true } &&
                     messageSessions[endpoint] != null
             }
         }
