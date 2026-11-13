@@ -102,6 +102,101 @@ internal class TransferResumeCoordinator(
     }
 
     /**
+     * Opens the sender's source at the exact receiver-approved offset.
+     *
+     * The prefix is re-hashed from the same open file descriptor that will feed
+     * the outgoing stream. This closes the gap between validating a path and
+     * later reopening it for transmission. The returned stream is bounded to
+     * the declared remaining byte count, so a growing source cannot append
+     * unexpected bytes to this transfer.
+     */
+    fun openValidatedSourceAtOffset(
+        proposal: TransferResumeNegotiation.Proposal?,
+        transferId: String,
+        item: TransferBundleItem,
+        sourceFile: File,
+        sourceModifiedAtMillis: Long?,
+        authenticatedReceiverPeerId: String?,
+        senderSupportsOffsets: Boolean,
+        receiverSupportsOffsets: Boolean
+    ): ValidatedSourceStream? {
+        val receiverId = NeaRerIdentity.normalize(authenticatedReceiverPeerId) ?: return null
+        if (!senderSupportsOffsets || !receiverSupportsOffsets || proposal == null) return null
+        if (!sourceFile.isFile || sourceFile.length() != item.sizeBytes ||
+            sourceModifiedAtMillis != sourceFile.lastModified()) return null
+
+        val source = try { java.io.FileInputStream(sourceFile) } catch (_: Exception) { return null }
+        var ownershipTransferred = false
+        try {
+            if (sourceFile.length() != item.sizeBytes ||
+                sourceModifiedAtMillis != sourceFile.lastModified()) return null
+            val offset = proposal.committedOffsetBytes
+            if (offset !in 1L until item.sizeBytes ||
+                offset % TransferResumeCheckpoint.CHECKPOINT_GRANULARITY_BYTES != 0L) return null
+
+            val digest = MessageDigest.getInstance("SHA-256")
+            val buffer = ByteArray(64 * 1024)
+            var remaining = offset
+            while (remaining > 0L) {
+                val read = source.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                if (read <= 0) return null
+                digest.update(buffer, 0, read)
+                remaining -= read.toLong()
+            }
+            if (sourceFile.length() != item.sizeBytes ||
+                sourceModifiedAtMillis != sourceFile.lastModified()) return null
+
+            val decision = TransferResumeNegotiation.decide(
+                proposal = proposal,
+                transferId = transferId,
+                item = item,
+                sourceModifiedAtMillis = sourceModifiedAtMillis,
+                senderSupportsOffsets = true,
+                receiverSupportsOffsets = true,
+                senderPrefixSha256 = digest.digest().joinToString("") { "%02x".format(it) }
+            )
+            if (decision.reason != TransferResumeNegotiation.Reason.RESUME_ACCEPTED ||
+                decision.acceptedOffsetBytes != offset) return null
+
+            source.channel.position(offset)
+            val bounded = object : java.io.FilterInputStream(source) {
+                private var left = item.sizeBytes - offset
+                override fun read(): Int {
+                    if (left == 0L) return -1
+                    val value = super.read()
+                    if (value < 0) throw java.io.EOFException("Source ended before its declared size")
+                    left--
+                    return value
+                }
+                override fun read(bytes: ByteArray, off: Int, len: Int): Int {
+                    if (len == 0) return 0
+                    if (left == 0L) return -1
+                    val read = super.read(bytes, off, minOf(len.toLong(), left).toInt())
+                    if (read < 0) throw java.io.EOFException("Source ended before its declared size")
+                    if (read > 0) left -= read.toLong()
+                    return read
+                }
+                override fun close() = super.close()
+            }
+            ownershipTransferred = true
+            return ValidatedSourceStream(bounded, offset, item.sizeBytes - offset, item.sizeBytes)
+        } catch (_: Exception) {
+            return null
+        } finally {
+            if (!ownershipTransferred) runCatching { source.close() }
+        }
+    }
+
+    data class ValidatedSourceStream(
+        val input: InputStream,
+        val acceptedOffsetBytes: Long,
+        val remainingBytes: Long,
+        val totalBytes: Long
+    ) : java.io.Closeable {
+        override fun close() = input.close()
+    }
+
+    /**
      * Receiver-side completion for a STREAM whose first byte is exactly the
      * sender-approved offset. The writer independently verifies the local
      * checkpoint and sender identity; the finalizer verifies the whole-file
