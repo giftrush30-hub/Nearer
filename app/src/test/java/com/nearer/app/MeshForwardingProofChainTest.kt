@@ -54,7 +54,7 @@ class MeshForwardingProofChainTest {
         ) { sign(c.private, it) }
         val keys = mapOf("BBBBBB" to b.public.encoded, "CCCCCC" to c.public.encoded)
         assertFalse(MeshForwardingProofChain(listOf(first, second))
-            .verify("other-packet", "AAAAAA", "CCCCCC", { keys[it] }, 10_500L))
+            .verify("other-packet", packetDigest(), "AAAAAA", "CCCCCC", { keys[it] }, 10_500L))
         assertFalse(MeshForwardingProofChain(listOf(first, second))
             .verify("packet-1", packetDigest(), "AAAAAA", "CCCCCC", { null }, 10_500L))
         assertFalse(MeshForwardingProofChain(listOf(first, second))
