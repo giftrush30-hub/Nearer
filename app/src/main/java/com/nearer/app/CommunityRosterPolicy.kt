@@ -37,6 +37,26 @@ internal object CommunityRosterPolicy {
         return normalized
     }
 
+    /**
+     * ACK a roster packet only when this exact packet is valid and is the roster
+     * currently committed in memory. Never infer packet acceptance from an older roster.
+     */
+    fun mayAcknowledgeRosterUpdate(
+        packetOwnerPeerId: String,
+        senderPeerId: String,
+        packetMemberPeerIds: List<String>,
+        localPeerId: String,
+        persistedOwnerPeerId: String,
+        persistedMemberPeerIds: List<String>
+    ): Boolean {
+        val validated = validateRoster(
+            packetOwnerPeerId, senderPeerId, packetMemberPeerIds, localPeerId
+        ) ?: return false
+        return persistedOwnerPeerId == senderPeerId &&
+            persistedMemberPeerIds == validated &&
+            localPeerId in validated
+    }
+
     fun mayAcceptGroupMessage(senderPeerId: String, memberPeerIds: List<String>): Boolean {
         val sender = NeaRerIdentity.normalize(senderPeerId) ?: return false
         return sender == senderPeerId && sender in memberPeerIds
