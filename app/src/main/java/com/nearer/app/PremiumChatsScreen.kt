@@ -146,7 +146,7 @@ internal fun PremiumChatsScreen(
                         Text(
                             when {
                                 selectedRecipientUnavailable -> "Selected recipient is currently unreachable"
-                                selectedRecipient?.isDirect == false -> "Connected through ${selectedRecipient.hopCount} nearby helper(s)"
+                                selectedRecipient?.isDirect == false -> "Reaching them through ${selectedRecipient.hopCount} nearby helper(s)"
                                 chatAvailable -> "Direct nearby · Private chat ready"
                                 else -> "Not connected yet"
                             },
@@ -229,7 +229,7 @@ internal fun PremiumChatsScreen(
                             }
                         }
                         Text(
-                            "Multi-hop is available only for people whose device keys you have verified through a previous direct pairing.",
+                            "Messages can travel through nearby helpers only for people you have already securely paired with.",
                             color = Muted,
                             fontSize = 9.sp,
                             lineHeight = 13.sp
@@ -244,7 +244,7 @@ internal fun PremiumChatsScreen(
                                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                             Text(recipient.displayName, color = White, fontWeight = FontWeight.Bold)
                                             Text(
-                                                if (recipient.isDirect) "Direct nearby" else "Mesh · ${recipient.hopCount} relay(s)",
+                                                if (recipient.isDirect) "Direct nearby" else "Via ${recipient.hopCount} nearby helper(s)",
                                                 color = Muted,
                                                 fontSize = 10.sp
                                             )
@@ -273,7 +273,7 @@ internal fun PremiumChatsScreen(
                                 Text(
                                     when {
                                         selectedRecipientUnavailable -> "This person is offline. Your previous messages remain available here; reconnect when they are nearby to continue."
-                                        selectedRecipient?.isDirect == false -> "Send a private message through the nearby mesh. Relays carry encrypted packets; only the selected recipient can read them."
+                                        selectedRecipient?.isDirect == false -> "Send a private message through trusted nearby helpers. They cannot read the message; only the person you chose can."
                                         else -> "Say hello. Your messages travel over the secure nearby phone connection."
                                     },
                                     color = Muted, fontSize = 12.sp, lineHeight = 18.sp
@@ -359,7 +359,7 @@ internal fun PremiumChatsScreen(
                             Text("File sharing needs a direct nearby connection.", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
                         }
                         Text(
-                            if (selectedRecipient?.isDirect == false) "Mesh chat" else if (usingNearbyConnections) "Nearby link" else "Wi-Fi Direct link",
+                            if (selectedRecipient?.isDirect == false) "Via nearby helpers" else if (usingNearbyConnections) "Nearby link" else "Wi-Fi Direct link",
                             color = Muted,
                             fontSize = 10.sp,
                             modifier = Modifier.align(Alignment.CenterVertically)
