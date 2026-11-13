@@ -89,17 +89,17 @@ internal class TransferResumeStore(
     ): Candidate? {
         val checkpoint = journal.load(transferId, item.id) ?: return null
         val partial = partialFileFor(transferId, item.id)
-        // A checkpoint tied to a changed source is never reusable. Remove both
-        // halves so stale bytes cannot linger and later be mistaken for a valid
-        // candidate if the same transfer identity is retried.
+        // Check sender ownership before inspecting caller-supplied manifest fields.
+        // Otherwise a different peer could reuse the same transfer/item IDs with a
+        // changed size or path and trigger stale-checkpoint cleanup for the real owner.
+        if (checkpoint.sourcePeerId != expectedSourcePeerId) {
+            throw SecurityException("Resume checkpoint belongs to a different authenticated sender")
+        }
+        // Only the authenticated owner may invalidate a checkpoint by presenting
+        // changed source metadata. This prevents cross-peer deletion of valid data.
         if (!checkpoint.matches(transferId, item, sourceModifiedAtMillis)) {
             discard(transferId, item.id)
             return null
-        }
-        // A different authenticated sender must never reuse or destroy this
-        // sender's checkpoint. Fail closed and preserve the original partial.
-        if (checkpoint.sourcePeerId != expectedSourcePeerId) {
-            throw SecurityException("Resume checkpoint belongs to a different authenticated sender")
         }
         // Treat a missing, truncated, oversized, or digest-mismatched partial as
         // a failed resume candidate and clean it up before a fresh transfer.
