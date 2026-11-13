@@ -1883,8 +1883,16 @@ internal object IncomingFilePayloadPolicy {
      * Known offline peers are persisted with an empty endpoint and retried when that
      * same pinned identity reconnects. Display names are never recipient authority.
      */
-    fun sendDurableToPeerIds(body: String, targetPeerIds: Set<String>): Boolean {
-        if (body.isBlank() || body.length > 4000 || targetPeerIds.isEmpty()) return false
+    fun sendDurableToPeerIds(body: String, targetPeerIds: Set<String>): Boolean =
+        sendDurableToPeerIdsWithReceipts(body, targetPeerIds).isNotEmpty()
+
+    /**
+     * Returns transport-message-ID -> stable-recipient-ID for every copy committed
+     * to the outbox. Callers can persist this mapping to display independent delivery
+     * receipts even after the app process restarts.
+     */
+    fun sendDurableToPeerIdsWithReceipts(body: String, targetPeerIds: Set<String>): Map<String, String> {
+        if (body.isBlank() || body.length > 4000 || targetPeerIds.isEmpty()) return emptyMap()
         return queueDurableFanout(body, targetPeerIds)
     }
 
@@ -1894,13 +1902,14 @@ internal object IncomingFilePayloadPolicy {
      * waits for the same pinned peer identity to authenticate again.
      */
     @Synchronized
-    private fun queueDurableFanout(body: String, peerIds: Set<String>): Boolean {
-        if (peerIds.isEmpty()) return false
+    private fun queueDurableFanout(body: String, peerIds: Set<String>): Map<String, String> {
+        if (peerIds.isEmpty()) return emptyMap()
         if (peerIds.size > 100) {
             listener.onStatus("A community roster exceeds the supported 100-member delivery batch.")
-            return false
+            return emptyMap()
         }
         val queuedIds = mutableListOf<String>()
+        val queuedRecipients = linkedMapOf<String, String>()
         var skippedUnverifiedPeer = false
         peerIds.distinct().forEach { peerId ->
             if (peerId == localStableId || NeaRerIdentity.normalize(peerId) != peerId ||
@@ -1933,22 +1942,23 @@ internal object IncomingFilePayloadPolicy {
             pendingOutgoingMessages[messageId] = PendingOutgoingMessage(endpoint, peerId, envelope)
             if (endpoint.isNotBlank()) outgoingMessageTargets[messageId] = endpoint
             queuedIds += messageId
+            queuedRecipients[messageId] = peerId
         }
         if (skippedUnverifiedPeer) {
             listener.onStatus("Some group members are not identity-verified on this phone; their message copies were not queued.")
         }
-        if (queuedIds.isEmpty()) return false
+        if (queuedIds.isEmpty()) return emptyMap()
 
         if (!persistPendingOutbox()) {
             queuedIds.forEach { id ->
                 pendingOutgoingMessages.remove(id)
                 outgoingMessageTargets.remove(id)
             }
-            return false
+            return emptyMap()
         }
 
         queuedIds.forEach(::attemptOutgoingMessage)
-        return true
+        return queuedRecipients
     }
 
     /**
