@@ -1,5 +1,6 @@
 package com.nearer.app
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -38,6 +39,8 @@ class MeshForwardingProofChainTest {
         ) { sign(d.private, it) }
         val chain = MeshForwardingProofChain(listOf(first, second, third))
         val decoded = MeshForwardingProofChain.decode(chain.encode())
+        assertArrayEquals(packetDigest(), decoded.proofs.first().packetDigest)
+        assertArrayEquals(first.signedBytes(), decoded.proofs.first().signedBytes())
         val keys = mapOf("BBBBBB" to b.public.encoded, "CCCCCC" to c.public.encoded, "DDDDDD" to d.public.encoded)
         assertTrue(decoded.verify("packet-1", packetDigest(), "AAAAAA", "DDDDDD", { keys[it] }, 10_500L))
     }
