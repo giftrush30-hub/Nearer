@@ -52,6 +52,7 @@ internal fun PremiumChatsScreen(
     onDraftChange: (String) -> Unit,
     onSendMessage: (String) -> Unit,
     onFindNearby: () -> Unit,
+    onBackToInbox: () -> Unit,
     onChooseFiles: () -> Unit,
     receivedFiles: List<ReceivedFile>,
     onOpenFile: (ReceivedFile) -> Unit,
@@ -62,6 +63,16 @@ internal fun PremiumChatsScreen(
     incomingProgress: Float,
     onCancelTransfer: () -> Unit
 ) {
+    if (selectedMeshRecipientId == null && !chatReady) {
+        PremiumChatsInboxScreen(
+            meshRecipients = meshRecipients,
+            messages = messages,
+            onSelectConversation = onSelectMeshRecipient,
+            onFindNearby = onFindNearby
+        )
+        return
+    }
+
     var recipientMenuExpanded by remember { mutableStateOf(false) }
     val selectedRecipient = meshRecipients.firstOrNull { it.peerId == selectedMeshRecipientId }
     val selectedRecipientUnavailable = selectedMeshRecipientId != null && selectedRecipient == null
@@ -83,6 +94,8 @@ internal fun PremiumChatsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("‹  All chats", color = BlueAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable(onClick = onBackToInbox).padding(vertical = 3.dp))
             Text("YOUR CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
             Text("Chats", color = White, fontSize = 29.sp, fontWeight = FontWeight.ExtraBold)
             Text("Private conversations, closer than ever.", color = Muted, fontSize = 13.sp)
@@ -421,5 +434,106 @@ internal fun PremiumChatsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PremiumChatsInboxScreen(
+    meshRecipients: List<MeshRecipient>,
+    messages: List<ChatMessage>,
+    onSelectConversation: (String) -> Unit,
+    onFindNearby: () -> Unit
+) {
+    val latestMessages = messages
+        .filter { it.conversationId.isNotBlank() }
+        .groupBy { it.conversationId }
+        .mapValues { (_, conversation) -> conversation.maxByOrNull { it.timestamp }!! }
+    val recipientIds = meshRecipients.map { it.peerId }.toSet()
+    val conversationIds = (latestMessages.keys + recipientIds).distinct().sortedByDescending { id ->
+        latestMessages[id]?.timestamp ?: 0L
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(13.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("YOUR CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            Text("Chats", color = White, fontSize = 29.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Your messages and trusted nearby people, together.", color = Muted, fontSize = 13.sp)
+        }
+
+        Button(
+            onClick = onFindNearby,
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = RoundedCornerShape(15.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+        ) {
+            Text("＋  Find people / Start a chat", fontWeight = FontWeight.Bold)
+        }
+
+        if (conversationIds.isEmpty()) {
+            Surface(color = Panel, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(22.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(color = Color(0xFF1D3C61), shape = CircleShape, modifier = Modifier.size(58.dp)) {
+                        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                            Text("✦", color = Gold, fontSize = 27.sp)
+                        }
+                    }
+                    Text("Your conversations start here", color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("Find someone nearby or add a trusted NeaRer ID. Your conversations will stay here when you disconnect.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                }
+            }
+        } else {
+            conversationIds.forEach { id ->
+                val recipient = meshRecipients.firstOrNull { it.peerId == id }
+                val latest = latestMessages[id]
+                val displayName = recipient?.displayName
+                    ?: latest?.conversationName?.takeIf { it.isNotBlank() }
+                    ?: "NeaRer ${id.takeLast(4)}"
+                Surface(
+                    color = Panel,
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier.fillMaxWidth().clickable { onSelectConversation(id) }
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(11.dp)
+                    ) {
+                        Surface(color = Color(0xFF2455A5), shape = CircleShape, modifier = Modifier.size(46.dp)) {
+                            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                                Text(displayName.take(1).uppercase(), color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(displayName, color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                latest?.body?.take(62) ?: if (recipient?.isDirect == true) "Nearby and ready to chat" else if (recipient != null) "Available through NeaRer mesh" else "Previous conversation · reconnect when nearby",
+                                color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                when {
+                                    recipient?.isDirect == true -> "ONLINE"
+                                    recipient != null -> "MESH"
+                                    else -> "OFFLINE"
+                                },
+                                color = if (recipient != null) Color(0xFF8FE0B9) else Muted,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text("›", color = BlueAccent, fontSize = 21.sp)
+                        }
+                    }
+                }
+            }
+        }
+        Text("NeaRer reconnects only to trusted identities when they are discoverable and the required phone permissions and radios are available.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
     }
 }
