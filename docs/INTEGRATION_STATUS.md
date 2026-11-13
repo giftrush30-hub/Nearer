@@ -215,3 +215,4 @@ The current transport still does not pass its authenticated peer ID into the dur
 - This removes a fragile transport-side requirement to independently skip bytes or risk sending the prefix twice. The transport must still authenticate the receiver, negotiate the offset, and close the stream after the declared bytes.
 - Added a JVM test asserting the returned stream begins exactly at the approved offset and exposes no bytes beyond the declared remainder.
 - This is still a transport-neutral helper, not a live Nearby STREAM integration. The PR remains stacked on #137; exact-head CI has not run for this stacked base. No emulator or physical-device testing is claimed.
+- The sender helper also supports sources whose provider cannot supply a reliable modification timestamp: it still requires the exact file size and authenticated receiver-approved prefix digest. A timestamp is compared when available, but its absence is not treated as proof that the source changed.
