@@ -461,8 +461,22 @@ class MainActivity : ComponentActivity() {
                                 NeaRerIdentity.normalize(senderPeerId) == senderPeerId
                             "group_join" -> group != null && group.ownerPeerId == nearbyTransport?.localIdentityId() &&
                                 senderPeerId in group.memberPeerIds
-                            "group_members" -> group != null && group.ownerPeerId == senderPeerId &&
-                                group.memberPeerIds.contains(nearbyTransport?.localIdentityId().orEmpty())
+                            "group_members" -> {
+                                val packetOwnerId = packet.optString("ownerPeerId")
+                                val packetIds = packet.optJSONArray("memberPeerIds")
+                                val incomingPeerIds = packetIds?.let { array ->
+                                    (0 until array.length()).map { array.optString(it) }
+                                }.orEmpty()
+                                val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+                                group != null && CommunityRosterPolicy.mayAcknowledgeRosterUpdate(
+                                    packetOwnerId,
+                                    senderPeerId,
+                                    incomingPeerIds,
+                                    localPeerId,
+                                    group.ownerPeerId,
+                                    group.memberPeerIds
+                                )
+                            }
                             "group_message" -> {
                                 val id = packet.optString("id")
                                 group != null && CommunityRosterPolicy.mayAcceptGroupMessage(senderPeerId, group.memberPeerIds) &&
