@@ -1327,6 +1327,10 @@ internal object IncomingFilePayloadPolicy {
                 listener.onStatus("This phone is not participating as a relay. The packet was not accepted or acknowledged.")
                 return
             }
+            if (packet.destinationId != localStableId && packet.hopsTaken >= packet.hopLimit) {
+                listener.onStatus("A mesh packet reached its forwarding limit before reaching its destination. It was not accepted.")
+                return
+            }
             if (packet.destinationId != localStableId && !meshRouteWithdrawalStoreHealthy) {
                 listener.onStatus("This phone cannot safely relay right now because protected route history is unavailable.")
                 return
