@@ -2294,6 +2294,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     fun disconnect() {
+        connectionTimingMeter.clearAll()
         try { client.stopAllEndpoints() } catch (_: Exception) { }
         synchronized(activeEndpoints) { activeEndpoints.clear() }
         authenticatedEndpoints.clear()
