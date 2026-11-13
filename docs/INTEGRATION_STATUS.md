@@ -174,3 +174,12 @@ The follow-up branch `feature/hypertransfer-restart-discovery` adds a bounded, r
 - Tests simulate a new store instance after process death, multiple transfer discovery, and cleanup of missing/corrupt partials.
 
 This is intentionally a storage/recovery foundation, not a claim that Nearby FILE payloads can yet resume across process death. A candidate must still be bound to the authenticated stable peer and confirmed by the sender's current source identity and prefix digest before a transport applies any offset. The actual Nearby FILE payload lifecycle is still not wired to the durable stream writer/checkpoint protocol. No emulator or physical-device test is claimed.
+
+The same recovery foundation now includes a guarded completion operation, `TransferResumeStore.finalizeVerifiedComplete()`:
+
+- It accepts only a locally re-verified EOF checkpoint and checks the sender-provided whole-file SHA-256 before publishing.
+- It moves the completed partial with an atomic filesystem move; if atomic move is unsupported, it fails closed and keeps the partial rather than exposing a half-copied destination.
+- It refuses an existing destination, does not derive the destination from the untrusted manifest path, and removes the journal record after successful publication.
+- Unit tests cover successful publication, incomplete data, digest mismatch, and destination collision.
+
+This is still a storage primitive. The receive UI/transport must choose a safe destination and call it only after authenticated resume negotiation and complete stream validation. No Nearby payload integration or physical-device validation is claimed.
