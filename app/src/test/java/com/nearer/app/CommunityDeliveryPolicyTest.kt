@@ -26,6 +26,18 @@ class CommunityDeliveryPolicyTest {
         assertNull(CommunityDeliveryPolicy.applyStatus(initial, "PEER_A", "Read"))
     }
 
+    @Test fun discoveredButUnauthenticatedPeerIsQueuedWithoutEndpoint() {
+        assertEquals("", CommunityDeliveryPolicy.usableEndpoint("nearby-endpoint", false, true, false))
+        assertEquals("", CommunityDeliveryPolicy.usableEndpoint("nearby-endpoint", true, false, true))
+    }
+
+    @Test fun fullyAuthenticatedPeerCanUseItsLiveEndpoint() {
+        assertEquals(
+            "nearby-endpoint",
+            CommunityDeliveryPolicy.usableEndpoint("nearby-endpoint", true, true, true)
+        )
+    }
+
     @Test fun summaryCountsDeliveredQueuedAndUnverifiedSeparately() {
         assertEquals(
             CommunityDeliveryPolicy.Summary(1, 1, 1, 3),
