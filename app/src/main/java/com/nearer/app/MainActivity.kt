@@ -170,6 +170,7 @@ class MainActivity : ComponentActivity() {
     // Maps durable transport copies back to their group bubble and stable recipient.
     // This survives process restart so late ACKs update the correct group message.
     private val communityDeliveryRefs = ConcurrentHashMap<String, CommunityDeliveryRef>()
+    private var communityDataDirty = false
     private var selectedCommunityCode by mutableStateOf<String?>(null)
     private var communityNotice by mutableStateOf("Create or join a nearby group.")
     private var incomingGameInvite by mutableStateOf<GameInvite?>(null)
@@ -546,11 +547,9 @@ class MainActivity : ComponentActivity() {
                                 communityMessages[communityIndex] = previous.copy(deliveryByPeerId = updated)
                                 if (status == "Delivered") communityDeliveryRefs.remove(messageId)
                                 if (!persistCommunityData()) {
-                                    // Keep the transport-to-message link if receipt state could
-                                    // not be committed; a later duplicate ACK can safely retry it.
-                                    communityMessages[communityIndex] = previous
-                                    communityDeliveryRefs[messageId] = ref
-                                    communityNotice = "A group delivery receipt could not be saved. It will be reconciled when NeaRer reconnects."
+                                    // Keep the in-memory receipt; retry persistence when the
+                                    // activity pauses/resumes because transport ACK has retired.
+                                    communityNotice = "A group delivery receipt is updated on this phone but could not yet be saved to disk."
                                 }
                             }
                         } else if (status == "Delivered") {
@@ -880,6 +879,9 @@ class MainActivity : ComponentActivity() {
                 statusMessage = "NeaRer opened with limited Wi-Fi discovery: ${error.javaClass.simpleName}. Bluetooth nearby features may still be available."
             }
         }
+        // Retry any local community receipt write that failed during a previous
+        // ACK callback before the activity was paused or the process was reclaimed.
+        if (communityDataDirty) persistCommunityData()
         // Always-Ready: automatically prepare nearby discovery after onboarding.
         // Nearby Connections negotiates the available radios; users do not need
         // to launch a separate Wi-Fi Direct scan or configure a hotspot.
@@ -895,6 +897,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        if (communityDataDirty) persistCommunityData()
         if (receiverRegistered) {
             runCatching { unregisterReceiver(receiver) }
             receiverRegistered = false
@@ -1718,12 +1721,17 @@ class MainActivity : ComponentActivity() {
                         .put("peerId", ref.peerId)
                 )
             }
-            prefs.edit()
+            val saved = prefs.edit()
                 .putString("community_groups", groups.toString())
                 .putString("community_messages", messages.toString())
                 .putString("community_delivery_refs", deliveryRefs.toString())
                 .commit()
-        } catch (_: Exception) { false }
+            communityDataDirty = !saved
+            saved
+        } catch (_: Exception) {
+            communityDataDirty = true
+            false
+        }
     }
     private fun restoreCommunityData() {
         val prefs = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
