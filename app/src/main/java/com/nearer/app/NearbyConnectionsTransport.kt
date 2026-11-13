@@ -2386,20 +2386,27 @@ internal object IncomingFilePayloadPolicy {
                 client.sendPayload(endpointId, Payload.fromBytes(TransferResumeStreamMetadataCodec.encode(metadata)))
                     .addOnSuccessListener {
                         val timeout = Runnable {
-                            if (state.awaitingDecision && outgoingHyperStreams.remove(payloadId, state)) {
-                                // If the peer did not answer the stream handshake, retain the proven FILE fallback.
-                                state.prepared.close()
-                                val filePayload = Payload.fromFile(state.sourceFile)
-                                filePayload.setFileName(state.name)
-                                filePayload.setSensitive(true)
-                                val legacy = OutgoingFile(
-                                    state.endpointId, state.stablePeerId, state.name,
-                                    state.item.sizeBytes, filePayload, state.sourceFile
-                                )
-                                legacy.sha256 = state.sha256
-                                outgoingFiles[filePayload.id] = legacy
-                                listener.onFileStatus("Using standard file transfer with this nearby phone.")
-                                sendPreparedFile(filePayload.id, legacy)
+                            if (state.awaitingDecision && outgoingHyperStreams.containsKey(payloadId)) {
+                                val stillConnected = authenticatedEndpoints.contains(state.endpointId) &&
+                                    synchronized(activeEndpoints) { activeEndpoints.contains(state.endpointId) }
+                                if (!stillConnected) {
+                                    state.endpointId = ""
+                                    state.prepared.close()
+                                } else if (outgoingHyperStreams.remove(payloadId, state)) {
+                                    // If the peer did not answer the stream handshake, retain the proven FILE fallback.
+                                    state.prepared.close()
+                                    val filePayload = Payload.fromFile(state.sourceFile)
+                                    filePayload.setFileName(state.name)
+                                    filePayload.setSensitive(true)
+                                    val legacy = OutgoingFile(
+                                        state.endpointId, state.stablePeerId, state.name,
+                                        state.item.sizeBytes, filePayload, state.sourceFile
+                                    )
+                                    legacy.sha256 = state.sha256
+                                    outgoingFiles[filePayload.id] = legacy
+                                    listener.onFileStatus("Using standard file transfer with this nearby phone.")
+                                    sendPreparedFile(filePayload.id, legacy)
+                                }
                             }
                         }
                         state.timeout = timeout
@@ -2497,7 +2504,10 @@ internal object IncomingFilePayloadPolicy {
 
     fun sendFile(endpointId: String, uri: Uri, displayName: String): Long? {
         val knownPeer = synchronized(names) { stableIds[endpointId].orEmpty() }
-        if (streamCapablePeers.contains(knownPeer)) return sendHyperTransferStream(endpointId, uri, displayName)
+        if (streamCapablePeers.contains(knownPeer)) {
+            val streamId = sendHyperTransferStream(endpointId, uri, displayName)
+            if (streamId != null) return streamId
+        }
         val knownPeer = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (streamCapablePeers.contains(knownPeer)) return sendHyperTransferStream(endpointId, uri, displayName)
         if (!authenticatedEndpoints.contains(endpointId) || synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
@@ -2694,6 +2704,7 @@ internal object IncomingFilePayloadPolicy {
             try { it.payload.close() } catch (_: Exception) { }
             it.temporarySourceFile?.delete()
         }
+        cancelledStreamPayloads.remove(payloadId)
         transferSpeedMeters.remove(payloadId)
     }
 
@@ -2708,6 +2719,8 @@ internal object IncomingFilePayloadPolicy {
         try { client.stopAllEndpoints() } catch (_: Exception) { }
         synchronized(activeEndpoints) { activeEndpoints.clear() }
         authenticatedEndpoints.clear()
+        streamCapablePeers.clear()
+        streamController.clear()
         peerHandshakes.clear()
         messageSessions.clear()
     }
