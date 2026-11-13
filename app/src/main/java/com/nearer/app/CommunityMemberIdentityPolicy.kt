@@ -3,7 +3,7 @@ package com.nearer.app
 /** Identity-based authorization for offline community membership and roster sync. */
 internal object CommunityMemberIdentityPolicy {
     fun isValidPeerId(peerId: String): Boolean =
-        peerId.isNotBlank() && peerId.length <= 64
+        NeaRerIdentity.normalize(peerId) == peerId
 
     fun isAuthorizedMember(memberIds: Collection<String>, senderPeerId: String): Boolean =
         isValidPeerId(senderPeerId) && senderPeerId in memberIds
