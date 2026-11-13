@@ -1607,16 +1607,17 @@ class MainActivity : ComponentActivity() {
     private fun applyIncomingChatReaction(payload: String, actorPeerId: String): Boolean {
         val packet = try { JSONObject(payload) } catch (_: Exception) { return false }
         val targetId = packet.optString("messageId")
-        val emoji = packet.optString("emoji")
-        if (!ChatReactionPolicy.isValidActor(actorPeerId) ||
+        val emoji = if (packet.isNull("emoji")) null else packet.optString("emoji")
+        if (packet.optInt("version", 0) != 1 ||
+            !ChatReactionPolicy.isValidActor(actorPeerId) ||
             targetId.isBlank() || targetId.length > 80 ||
-            !ChatReactionPolicy.isValidEmoji(emoji)) return false
+            (emoji != null && !ChatReactionPolicy.isValidEmoji(emoji))) return false
         val index = chatMessages.indexOfFirst {
             it.id == targetId && it.conversationId == actorPeerId
         }
         if (index < 0) return false
         val previous = chatMessages[index]
-        val updated = ChatReactionPolicy.toggle(previous.reactions, actorPeerId, emoji)
+        val updated = ChatReactionPolicy.set(previous.reactions, actorPeerId, emoji)
         chatMessages[index] = previous.copy(reactions = updated)
         if (persistMessages()) return true
         chatMessages[index] = previous
@@ -1635,15 +1636,18 @@ class MainActivity : ComponentActivity() {
             return
         }
         val previous = target
-        chatMessages[index] = target.copy(reactions = ChatReactionPolicy.toggle(target.reactions, localPeerId, emoji))
+        val updatedReactions = ChatReactionPolicy.toggle(target.reactions, localPeerId, emoji)
+        val nextEmoji = updatedReactions[localPeerId]
+        chatMessages[index] = target.copy(reactions = updatedReactions)
         if (!persistMessages()) {
             chatMessages[index] = previous
             chatNotice = "Couldn't save your reaction. It was not sent."
             return
         }
         val packet = "NR_REACTION:" + JSONObject()
+            .put("version", 1)
             .put("messageId", messageId)
-            .put("emoji", emoji)
+            .put("emoji", nextEmoji ?: JSONObject.NULL)
             .toString()
         val eventId = UUID.randomUUID().toString()
         val meshRecipient = meshRecipients[peerId]
@@ -1657,7 +1661,7 @@ class MainActivity : ComponentActivity() {
             persistMessages()
             chatNotice = "Reaction not sent. Reconnect to this person and try again."
         } else {
-            chatNotice = "Reaction sent over the secure nearby connection."
+            chatNotice = "Reaction saved and queued for secure nearby delivery."
         }
     }
 
