@@ -16,6 +16,13 @@ class CommunityMemberIdentityPolicyTest {
         assertFalse(CommunityMemberIdentityPolicy.isValidPeerId("x".repeat(65)))
     }
 
+    @Test fun onlyThePinnedLocalOwnerAcknowledgesAJoinRequest() {
+        assertTrue(CommunityMemberIdentityPolicy.canAcceptJoin("OWNER123", "OWNER123", "MEMBER12"))
+        assertFalse(CommunityMemberIdentityPolicy.canAcceptJoin("OWNER123", "OTHER123", "MEMBER12"))
+        assertFalse(CommunityMemberIdentityPolicy.canAcceptJoin("OWNER123", "OWNER123", "OWNER123"))
+        assertFalse(CommunityMemberIdentityPolicy.canAcceptJoin("", "", "MEMBER12"))
+    }
+
     @Test fun firstRosterSyncCanBindOnlyItsAnnouncedOwnerIdentity() {
         assertTrue(CommunityMemberIdentityPolicy.canAcceptRoster("", "ABCD23456789", "ABCD23456789"))
         assertFalse(CommunityMemberIdentityPolicy.canAcceptRoster("", "EFGH23456789", "ABCD23456789"))
