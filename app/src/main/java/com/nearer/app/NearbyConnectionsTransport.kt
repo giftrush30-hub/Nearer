@@ -206,7 +206,8 @@ internal object IncomingFilePayloadPolicy {
         val prepared: NearbyStreamPayloadBridge.PreparedOutgoingStream,
         @Volatile var awaitingDecision: Boolean = true,
         @Volatile var timeout: Runnable? = null,
-        @Volatile var retryCount: Int = 0
+        @Volatile var retryCount: Int = 0,
+        @Volatile var resumedFromBytes: Long = 0L
     )
     private val outgoingHyperStreams = ConcurrentHashMap<Long, OutgoingHyperStream>()
     private val preparingHyperStreams = ConcurrentHashMap.newKeySet<Long>()
@@ -215,6 +216,7 @@ internal object IncomingFilePayloadPolicy {
     private val pendingIncomingHyperPayloads = ConcurrentHashMap<Long, Payload>()
     private val activeIncomingHyperPayloads = ConcurrentHashMap<Long, Payload>()
     private val incomingHyperEndpoints = ConcurrentHashMap<Long, String>()
+    private val incomingHyperResumeOffsets = ConcurrentHashMap<Long, Long>()
     private val streamCapablePeers = ConcurrentHashMap.newKeySet<String>()
     private val cancelledStreamPayloads = ConcurrentHashMap.newKeySet<Long>()
     private val streamController = NearbyStreamExchangeController()
@@ -656,7 +658,9 @@ internal object IncomingFilePayloadPolicy {
             val incomingStream = incomingHyperMetadata[payloadId]
             if (outgoingStream != null || incomingStream != null) {
                 val expected = outgoingStream?.item?.sizeBytes ?: incomingStream?.item?.sizeBytes ?: 0L
-                val transferred = update.bytesTransferred.coerceIn(0L, expected)
+                val resumeOffset = outgoingStream?.resumedFromBytes
+                    ?: incomingHyperResumeOffsets[payloadId] ?: 0L
+                val transferred = (update.bytesTransferred + resumeOffset).coerceIn(0L, expected)
                 val label = outgoingStream?.name ?: incomingStream?.item?.displayName ?: "Incoming file"
                 val incomingFlag = outgoingStream == null
                 if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
@@ -1800,6 +1804,13 @@ internal object IncomingFilePayloadPolicy {
             )
         }
         val preparedSource = source
+        state.resumedFromBytes = preparedSource?.acceptedOffsetBytes ?: 0L
+        val progressMeter = transferSpeedMeters.computeIfAbsent(payloadId) { TransferSpeedMeter() }
+        progressMeter.reset()
+        listener.onFileTransferUpdate(
+            state.endpointId, payloadId, state.name, state.resumedFromBytes, state.item.sizeBytes,
+            false, progressMeter.record(state.resumedFromBytes, state.item.sizeBytes)
+        )
         val sendStream = {
             try {
                 if (preparedSource != null) state.prepared.provideSource(preparedSource)
@@ -1845,6 +1856,14 @@ internal object IncomingFilePayloadPolicy {
         if (!pendingIncomingHyperPayloads.remove(payloadId, payload)) return
         activeIncomingHyperPayloads[payloadId] = payload
         val metadata = ready.metadata
+        val resumedFrom = ready.decision.acceptedOffsetBytes.coerceIn(0L, metadata.item.sizeBytes)
+        incomingHyperResumeOffsets[payloadId] = resumedFrom
+        val incomingMeter = transferSpeedMeters.computeIfAbsent(payloadId) { TransferSpeedMeter() }
+        incomingMeter.reset()
+        listener.onFileTransferUpdate(
+            endpointId, payloadId, metadata.item.displayName, resumedFrom, metadata.item.sizeBytes,
+            true, incomingMeter.record(resumedFrom, metadata.item.sizeBytes)
+        )
         val folder = File(appContext.filesDir, "received").apply { mkdirs() }
         val destination = File(folder, System.currentTimeMillis().toString() + "-" + UUID.randomUUID().toString().take(8) + "-" +
             TransferFileNamePolicy.safeName(metadata.item.displayName))
@@ -1854,6 +1873,7 @@ internal object IncomingFilePayloadPolicy {
         ) { result ->
             incomingHyperMetadata.remove(payloadId)
             incomingHyperEndpoints.remove(payloadId)
+            incomingHyperResumeOffsets.remove(payloadId)
             activeIncomingHyperPayloads.remove(payloadId)
             cancelledStreamPayloads.remove(payloadId)
             transferSpeedMeters.remove(payloadId)
@@ -2617,6 +2637,7 @@ internal object IncomingFilePayloadPolicy {
             pendingIncomingHyperPayloads.remove(id)?.let { runCatching { it.close() } }
             activeIncomingHyperPayloads.remove(id)?.let { runCatching { it.close() } }
             incomingHyperEndpoints.remove(id)
+            incomingHyperResumeOffsets.remove(id)
             incomingHyperMetadata.remove(id)
         }
         streamController.clearEndpoint(endpointId)
@@ -2843,6 +2864,7 @@ internal object IncomingFilePayloadPolicy {
         }
         incomingHyperMetadata.remove(payloadId)
         incomingHyperEndpoints.remove(payloadId)
+        incomingHyperResumeOffsets.remove(payloadId)
         try { client.cancelPayload(payloadId) } catch (_: Exception) { }
         outgoingFiles.remove(payloadId)?.let {
             try { it.payload.close() } catch (_: Exception) { }
@@ -2878,6 +2900,7 @@ internal object IncomingFilePayloadPolicy {
         activeIncomingHyperPayloads.clear()
         incomingHyperMetadata.clear()
         incomingHyperEndpoints.clear()
+        incomingHyperResumeOffsets.clear()
         streamController.clear()
         peerHandshakes.clear()
         messageSessions.clear()
