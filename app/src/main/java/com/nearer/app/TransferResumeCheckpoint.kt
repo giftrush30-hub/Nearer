@@ -14,7 +14,9 @@ data class TransferResumeCheckpoint(
     val expectedSizeBytes: Long,
     val sourceModifiedAtMillis: Long?,
     val committedOffsetBytes: Long,
-    val prefixSha256: String
+    val prefixSha256: String,
+    /** Stable authenticated sender identity; null only for legacy/unbound checkpoints. */
+    val sourcePeerId: String? = null
 ) {
     fun validationError(): String? {
         if (transferId.isBlank() || transferId.length > 128) return "Invalid transfer ID"
@@ -26,6 +28,7 @@ data class TransferResumeCheckpoint(
             )).validationErrors().isEmpty()) return "Invalid bundle item identity"
         if (expectedSizeBytes < 0L) return "Negative expected size"
         if (sourceModifiedAtMillis != null && sourceModifiedAtMillis < 0L) return "Invalid source modification time"
+        if (sourcePeerId != null && NeaRerIdentity.normalize(sourcePeerId) != sourcePeerId) return "Invalid stable source peer identity"
         if (committedOffsetBytes < 0L || committedOffsetBytes > expectedSizeBytes) return "Checkpoint offset is outside the file"
         if (committedOffsetBytes > 0L && committedOffsetBytes < expectedSizeBytes &&
             committedOffsetBytes % CHECKPOINT_GRANULARITY_BYTES != 0L) {
