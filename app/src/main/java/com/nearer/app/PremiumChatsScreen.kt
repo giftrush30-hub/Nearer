@@ -35,6 +35,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.util.Date
+import java.util.Locale
 
 @Composable
 internal fun PremiumChatsScreen(
@@ -457,7 +459,6 @@ private fun PremiumChatsInboxScreen(
         .groupBy { it.conversationId }
         .mapValues { (_, conversation) -> conversation.maxByOrNull { it.timestamp }!! }
     val recipientIds = meshRecipients.map { it.peerId }
-    val recipientIds = meshRecipients.map { it.peerId }
     val conversationIds = (latestMessages.keys + recipientIds).distinct().sortedByDescending { id ->
         latestMessages[id]?.timestamp ?: 0L
     }
@@ -527,6 +528,11 @@ private fun PremiumChatsInboxScreen(
                             )
                         }
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                latest?.timestamp?.let { java.text.SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(it)) }.orEmpty(),
+                                color = Muted,
+                                fontSize = 9.sp
+                            )
                             Text(
                                 when {
                                     recipient?.isDirect == true -> "ONLINE"
