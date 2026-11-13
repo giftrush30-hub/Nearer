@@ -234,13 +234,13 @@ class TransferResumeStoreTest {
                 parentFile?.mkdirs()
                 writeBytes(bytes)
             }
-            store.checkpoint("transfer-final", selected, 321L, selected.sizeBytes)
+            store.checkpoint("transfer-final", selected, 321L, selected.sizeBytes, "ABCDEF234567")
             val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
                 .joinToString("") { "%02x".format(it) }
             val destination = File(root, "received/clip.mp4")
 
             val finalized = store.finalizeVerifiedComplete(
-                "transfer-final", selected, 321L, destination, digest
+                "transfer-final", selected, 321L, destination, digest, "ABCDEF234567"
             )
 
             assertEquals(destination.absolutePath, finalized.absolutePath)
