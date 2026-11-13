@@ -62,9 +62,9 @@ class NearbyStreamExchangeControllerTest {
             0L, TransferResumeNegotiation.Reason.NO_VALID_CHECKPOINT
         )
         controller.recordMetadata("endpoint-1", peerId, TransferResumeStreamMetadataCodec.encode(metadata))
-        controller.recordDecision(
+        controller.recordNoResume(
             "endpoint-1", peerId,
-            TransferResumeMessageCodec.encodeDecision(payloadId, noResume)
+            TransferResumeMessageCodec.encodeNoResume(payloadId)
         )
         controller.recordStreamPayload("endpoint-1", peerId, payloadId, true)
         val ready = controller.takeReady("endpoint-1", peerId, payloadId)
