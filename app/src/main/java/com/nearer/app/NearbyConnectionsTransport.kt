@@ -2813,6 +2813,7 @@ internal object IncomingFilePayloadPolicy {
         synchronized(activeEndpoints) { activeEndpoints.clear() }
         authenticatedEndpoints.clear()
         streamCapablePeers.clear()
+        cancelledOutgoingPreparations.addAll(preparingHyperStreams)
         outgoingHyperStreams.values.forEach { state ->
             state.timeout?.let(deliveryHandler::removeCallbacks)
             state.endpointId = ""
@@ -2841,8 +2842,6 @@ internal object IncomingFilePayloadPolicy {
         outgoingFiles.clear()
         outgoingHyperStreams.values.forEach { it.prepared.close(); it.sourceFile.delete() }
         outgoingHyperStreams.clear()
-        preparingHyperStreams.clear()
-        cancelledOutgoingPreparations.clear()
         pendingIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
         pendingIncomingHyperPayloads.clear()
         activeIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
