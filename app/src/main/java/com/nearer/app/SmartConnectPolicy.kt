@@ -5,6 +5,10 @@ package com.nearer.app
  * The policy never turns radios on or bypasses Android permission prompts.
  */
 internal object SmartConnectPolicy {
+    /** Nearby Connections can negotiate either available radio; the app never enables it. */
+    fun hasUsableRadio(bluetoothEnabled: Boolean, wifiEnabled: Boolean): Boolean =
+        bluetoothEnabled || wifiEnabled
+
     fun shouldStartDiscovery(
         onboardingComplete: Boolean,
         permissionsGranted: Boolean,
