@@ -131,6 +131,18 @@ internal class TransferResumeCoordinator(
             "A valid whole-file SHA-256 is required"
         }
 
+        // Compare the transport's accepted offset with the receiver's current
+        // peer-bound checkpoint before opening the partial for append. If the
+        // sender chose a clean restart (offset zero), discard only this same
+        // authenticated sender's verified partial first.
+        val existing = store.findValid(transferId, item, sourceModifiedAtMillis, peerId)
+        val locallyVerifiedOffset = existing?.checkpoint?.committedOffsetBytes ?: 0L
+        if (acceptedOffsetBytes == 0L && locallyVerifiedOffset > 0L) {
+            store.discard(transferId, item.id)
+        } else if (acceptedOffsetBytes != locallyVerifiedOffset) {
+            throw SecurityException("The sender-approved offset does not match the receiver's verified checkpoint")
+        }
+
         val written = writer.write(
             transferId = transferId,
             item = item,
