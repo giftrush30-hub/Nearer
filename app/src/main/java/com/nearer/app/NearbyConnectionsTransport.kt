@@ -205,7 +205,8 @@ internal object IncomingFilePayloadPolicy {
         val sha256: String,
         val prepared: NearbyStreamPayloadBridge.PreparedOutgoingStream,
         @Volatile var awaitingDecision: Boolean = true,
-        @Volatile var timeout: Runnable? = null
+        @Volatile var timeout: Runnable? = null,
+        @Volatile var retryCount: Int = 0
     )
     private val outgoingHyperStreams = ConcurrentHashMap<Long, OutgoingHyperStream>()
     private val preparingHyperStreams = ConcurrentHashMap.newKeySet<Long>()
@@ -2554,6 +2555,7 @@ internal object IncomingFilePayloadPolicy {
 
     private fun scheduleHyperStreamRetry(state: OutgoingHyperStream) {
         state.timeout?.let(deliveryHandler::removeCallbacks)
+        state.retryCount += 1
         state.endpointId = ""
         state.awaitingDecision = true
         state.prepared.close()
@@ -2571,6 +2573,11 @@ internal object IncomingFilePayloadPolicy {
     private fun resumeHyperStreamsForPeer(peerId: String, endpointId: String) {
         if (!streamCapablePeers.contains(peerId)) return
         outgoingHyperStreams.values.filter { it.stablePeerId == peerId && it.endpointId.isBlank() }.forEach { previous ->
+            if (previous.retryCount >= 3) {
+                previous.endpointId = endpointId
+                fallbackHyperStreamToFile(previous)
+                return@forEach
+            }
             if (!outgoingHyperStreams.remove(previous.prepared.payloadId, previous)) return@forEach
             val prepared = runCatching { streamPayloadBridge.prepareOutgoingPayload() }.getOrNull()
             if (prepared == null) {
