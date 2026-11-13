@@ -6,7 +6,7 @@ package com.nearer.app
  *
  * This policy is shared by direct and recipient-encrypted message paths.
  */
-internal object ChatReplyPolicy {
+object ChatReplyPolicy {
     const val MAX_MESSAGE_ID_LENGTH = 80
     const val MAX_PREVIEW_LENGTH = 180
     const val MAX_SENDER_LENGTH = 48
