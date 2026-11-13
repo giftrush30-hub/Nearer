@@ -207,6 +207,8 @@ internal object IncomingFilePayloadPolicy {
         @Volatile var timeout: Runnable? = null
     )
     private val outgoingHyperStreams = ConcurrentHashMap<Long, OutgoingHyperStream>()
+    private val preparingHyperStreams = ConcurrentHashMap.newKeySet<Long>()
+    private val cancelledOutgoingPreparations = ConcurrentHashMap.newKeySet<Long>()
     private val incomingHyperMetadata = ConcurrentHashMap<Long, TransferResumeStreamMetadataCodec.Metadata>()
     private val pendingIncomingHyperPayloads = ConcurrentHashMap<Long, Payload>()
     private val activeIncomingHyperPayloads = ConcurrentHashMap<Long, Payload>()
@@ -2380,11 +2382,17 @@ internal object IncomingFilePayloadPolicy {
             return null
         }
         val payloadId = prepared.payloadId
+        preparingHyperStreams.add(payloadId)
         prepared.payload.setSensitive(true)
         listener.onFileStatus("Preparing a verified transfer for " + safeFileName(displayName) + "…")
         transferPreparation.execute {
             var staged: File? = null
             try {
+                if (cancelledOutgoingPreparations.remove(payloadId)) {
+                    preparingHyperStreams.remove(payloadId)
+                    prepared.close()
+                    return@execute
+                }
                 val staging = File(appContext.cacheDir, "nearer-transfer-staging").apply { mkdirs() }
                 staged = File.createTempFile("nearer-hyper-", ".bin", staging)
                 val input = appContext.contentResolver.openInputStream(uri)
@@ -2405,6 +2413,13 @@ internal object IncomingFilePayloadPolicy {
                     .toByteArray(Charsets.UTF_8)
                 val transferId = MessageDigest.getInstance("SHA-256").digest(transferIdentity)
                     .joinToString("") { "%02x".format(it) }
+                if (cancelledOutgoingPreparations.remove(payloadId)) {
+                    preparingHyperStreams.remove(payloadId)
+                    prepared.close()
+                    staged!!.delete()
+                    return@execute
+                }
+                preparingHyperStreams.remove(payloadId)
                 val state = OutgoingHyperStream(
                     endpointId, peerId, name, staged!!, item, transferId, copied.sha256, prepared
                 )
@@ -2423,8 +2438,11 @@ internal object IncomingFilePayloadPolicy {
                 armHyperStreamTimeout(state)
             } catch (error: Exception) {
                 outgoingHyperStreams.remove(payloadId)
+                preparingHyperStreams.remove(payloadId)
+                val wasCancelled = cancelledOutgoingPreparations.remove(payloadId)
                 prepared.close()
                 staged?.delete()
+                if (wasCancelled) return@execute
                 listener.onFileStatus("The fast resumable stream could not be prepared. Using standard file transfer instead.")
                 sendFileLegacy(endpointId, uri, displayName)
             }
@@ -2738,14 +2756,20 @@ internal object IncomingFilePayloadPolicy {
     }
 
     fun cancelFile(payloadId: Long) {
-        cancelledStreamPayloads.add(payloadId)
+        if (preparingHyperStreams.remove(payloadId)) cancelledOutgoingPreparations.add(payloadId)
         outgoingHyperStreams.remove(payloadId)?.let { state ->
             state.timeout?.let(deliveryHandler::removeCallbacks)
             state.prepared.close()
             state.sourceFile.delete()
         }
         pendingIncomingHyperPayloads.remove(payloadId)?.let { runCatching { it.close() } }
-        activeIncomingHyperPayloads.remove(payloadId)?.let { runCatching { it.close() } }
+        val activeIncoming = activeIncomingHyperPayloads.remove(payloadId)
+        if (activeIncoming != null) {
+            cancelledStreamPayloads.add(payloadId)
+            runCatching { activeIncoming.close() }
+        } else {
+            cancelledStreamPayloads.remove(payloadId)
+        }
         incomingHyperMetadata.remove(payloadId)
         incomingHyperEndpoints.remove(payloadId)
         try { client.cancelPayload(payloadId) } catch (_: Exception) { }
@@ -2753,7 +2777,6 @@ internal object IncomingFilePayloadPolicy {
             try { it.payload.close() } catch (_: Exception) { }
             it.temporarySourceFile?.delete()
         }
-        cancelledStreamPayloads.remove(payloadId)
         transferSpeedMeters.remove(payloadId)
     }
 
@@ -2797,6 +2820,8 @@ internal object IncomingFilePayloadPolicy {
         outgoingFiles.clear()
         outgoingHyperStreams.values.forEach { it.prepared.close(); it.sourceFile.delete() }
         outgoingHyperStreams.clear()
+        preparingHyperStreams.clear()
+        cancelledOutgoingPreparations.clear()
         pendingIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
         pendingIncomingHyperPayloads.clear()
         activeIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
