@@ -420,6 +420,7 @@ class MainActivity : ComponentActivity() {
                         else -> "Connected to $name. Offline chat is ready."
                     }
                     statusMessage = "Connected to $name using Bluetooth / nearby Wi-Fi."
+                    syncCommunityRostersForPeer(stableId)
                 }
             }
             override fun onDisconnected(id: String, stableId: String, name: String) {
@@ -1795,18 +1796,29 @@ class MainActivity : ComponentActivity() {
             "Group $code saved locally. Connect through NeaRer Nearby to request verified membership."
         }
     }
-    private fun sendGroupMembers(code: String) {
+    private fun sendGroupMembers(code: String, targetPeerIds: Set<String>? = null) {
         val group = communityGroups.firstOrNull { it.code == code } ?: return
+        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+        if (group.ownerPeerId != localPeerId) return
+        val recipients = (targetPeerIds ?: group.memberPeerIds.toSet()) - localPeerId
+        if (recipients.isEmpty()) return
         val packet = JSONObject()
             .put("type", "group_members")
             .put("code", code)
             .put("ownerPeerId", group.ownerPeerId)
             .put("members", JSONArray(group.members))
             .put("memberPeerIds", JSONArray(group.memberPeerIds))
-        // The roster is a control update, not a group chat payload. It is encrypted
-        // separately for connected peers; receivers accept it only from the recorded
-        // owner identity (or pin the first trusted roster sender for legacy groups).
-        nearbyTransport?.send("NR_COMMUNITY:$packet")
+        // A roster contains private membership metadata. Send only to authenticated
+        // stable identities already recorded in this group's member roster.
+        nearbyTransport?.sendToPeerIds("NR_COMMUNITY:$packet", recipients)
+    }
+
+    private fun syncCommunityRostersForPeer(peerId: String) {
+        if (peerId.isBlank()) return
+        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+        communityGroups
+            .filter { it.ownerPeerId == localPeerId && peerId in it.memberPeerIds }
+            .forEach { sendGroupMembers(it.code, setOf(peerId)) }
     }
 
     private fun sendCommunityGroupMessage(raw: String) {
