@@ -189,4 +189,37 @@ class TransferResumeStoreTest {
         }
     }
 
+
+    @Test fun discoveryDoesNotOfferZeroOffsetOrAlreadyCompleteFilesAsResumable() {
+        val root = Files.createTempDirectory("nearer-resume-discovery-boundaries").toFile()
+        try {
+            val firstStore = store(root)
+            val tinyItem = item(100L)
+            val tinyPartial = firstStore.partialFileFor("transfer-zero", tinyItem.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(ByteArray(10) { 1 })
+            }
+            firstStore.checkpoint("transfer-zero", tinyItem, null, 10L)
+
+            val completeItem = item(chunk.toLong())
+            val completeBytes = ByteArray(chunk) { (it % 223).toByte() }
+            val completePartial = firstStore.partialFileFor("transfer-complete", completeItem.id).apply {
+                parentFile?.mkdirs()
+                writeBytes(completeBytes)
+            }
+            firstStore.checkpoint("transfer-complete", completeItem, null, chunk.toLong())
+
+            val discovered = store(root).discoverVerifiedCandidates()
+            assertTrue(discovered.isEmpty())
+            // These are valid local records, not corrupt data. They are simply
+            // not resumable offsets and are left for a future completion path.
+            assertTrue(tinyPartial.exists())
+            assertTrue(completePartial.exists())
+            assertNotNull(TransferResumeJournal(File(root, "journal")).load("transfer-zero", tinyItem.id))
+            assertNotNull(TransferResumeJournal(File(root, "journal")).load("transfer-complete", completeItem.id))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
 }
