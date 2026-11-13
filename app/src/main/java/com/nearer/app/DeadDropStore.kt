@@ -84,20 +84,44 @@ internal class DeadDropStore(context: Context) {
 
             val entries = read() ?: return false
             val existing = entries[packet.packetId]
-            if (existing != null) {
-                val oldBytes = LocalDataCipher.decrypt(app, existing.encrypted) ?: return false
-                val oldPacket = MeshRelayPacketV1.decode(oldBytes)
-                if (!oldPacket.sameImmutablePacket(packet) || packet.hopsTaken < oldPacket.hopsTaken) return false
-                // Repeated delivery of an already committed packet is idempotent.
-                // Never replace a stronger stored proof chain with a shorter prefix.
-                return existing.proofChain.isNotEmpty() &&
-                    existing.previousHopPeerId == previousHopPeerId
-            }
-
             val accepted = incoming.appendAcceptance(
                 packet.packetId, packet.immutablePacketDigest(), packet.originId,
                 localPeerId, now, sign
             )
+            if (existing != null) {
+                val oldBytes = LocalDataCipher.decrypt(app, existing.encrypted) ?: return false
+                val oldPacket = MeshRelayPacketV1.decode(oldBytes)
+                if (!oldPacket.sameImmutablePacket(packet) || packet.hopsTaken < oldPacket.hopsTaken) return false
+                val oldProof = if (existing.proofChain.isBlank()) null else try {
+                    MeshForwardingProofChain.decode(
+                        android.util.Base64.decode(existing.proofChain, android.util.Base64.NO_WRAP)
+                    )
+                } catch (_: Exception) { return false }
+                if (oldProof != null &&
+                    oldProof.verifyPrefix(
+                        packet.packetId, packet.immutablePacketDigest(), packet.originId,
+                        localPeerId, trustedAcceptingSigningKey, now
+                    ) &&
+                    oldProof.proofs.lastOrNull()?.previousHopPeerId == previousHopPeerId &&
+                    oldProof.proofs.size >= accepted.proofs.size) {
+                    // Same durable acceptance already exists: safe idempotent ACK.
+                    return true
+                }
+                if (oldProof != null && oldProof.proofs.size > accepted.proofs.size) return false
+                val updatedEncrypted = try { LocalDataCipher.encrypt(app, packet.encode()) } catch (_: Exception) { return false }
+                val proofText = android.util.Base64.encodeToString(accepted.encode(), android.util.Base64.NO_WRAP)
+                entries[packet.packetId] = existing.copy(
+                    encrypted = updatedEncrypted,
+                    state = QUEUED,
+                    dueAt = now,
+                    leaseUntil = 0L,
+                    previousHopPeerId = previousHopPeerId,
+                    preparedForNextHop = false,
+                    expectedNextHopPeerId = "",
+                    proofChain = proofText
+                )
+                return write(entries)
+            }
             val encodedProof = accepted.encode()
             val encodedPacket = packet.encode()
             if (encodedPacket.size > MAX_PACKET_BYTES || entries.size >= MAX_ITEMS) return false
