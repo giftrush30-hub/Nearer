@@ -206,4 +206,16 @@ The messaging branch now includes the first end-to-end quoted-reply implementati
 
 The reply preview is a snapshot of the original text (limited to 180 characters); it does not fetch or reveal the original message from another device. The reply reference remains scoped to the same conversation when created. Replies over the legacy line-based fallback are intentionally not sent because that older wire format cannot carry quote metadata safely.
 
-This is code-level implementation; the latest Android workflow and real two-phone compatibility testing are still required before calling the feature release-ready.
+This is code-level implementation; the latest Android workflow and real two-phone compatibility testing are still required before calling the feature release-ready. 
+
+## Implementation update — message reactions and editing
+
+The current messaging branch also implements:
+- Six familiar reactions (👍 ❤️ 😂 😮 😢 🙏), with one active reaction per verified peer per message.
+- Reaction updates are idempotent set/remove events, so a retried encrypted packet cannot accidentally toggle a reaction off.
+- **Edit** is available only on messages sent by the local user. Each edit increments a bounded revision number and stores its edit time.
+- Edits travel as control events inside the existing authenticated, encrypted nearby message path. A receiver only applies an edit to a message authored by that same verified peer in that conversation.
+- Duplicate edits are safe, stale revisions cannot overwrite newer text, and skipped/conflicting revisions are rejected.
+- Edit version and timestamp persist with local chat history; older stored messages default to revision zero.
+
+Edits are limited to 3,500 characters so the control event remains within the existing message envelope limit. This is code-level implementation; Android CI and two-phone interoperability testing are still required before release claims.
