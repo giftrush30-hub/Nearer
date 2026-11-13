@@ -48,7 +48,7 @@ internal class TransferSpeedMeter(
             if (samples.isNotEmpty()) samples.removeFirst()
             samples.addFirst(oldest)
         }
-        updatePeakWindowRate(now)
+        updatePeakWindowRate()
         return snapshotAt(now)
     }
 
@@ -72,7 +72,7 @@ internal class TransferSpeedMeter(
         }
     }
 
-    private fun updatePeakWindowRate(now: Long) {
+    private fun updatePeakWindowRate() {
         val rate = rateWithinWindow()
         peakWindowBytesPerSecond = maxOf(peakWindowBytesPerSecond, rate)
     }
