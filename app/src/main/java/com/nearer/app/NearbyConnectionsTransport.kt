@@ -263,14 +263,18 @@ internal object IncomingFilePayloadPolicy {
         try {
             val preferences = appContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
             val completedRaw = preferences.getString("nearby_completed_outgoing_ids", "[]") ?: "[]"
-            val completedArray = org.json.JSONArray(completedRaw)
             completedOutgoingMessageIds.clear()
-            for (i in 0 until completedArray.length()) {
-                val id = completedArray.optString(i)
-                if (id.isNotBlank() && id.length <= 80) {
-                    val next = OutgoingReceiptHistoryPolicy.append(completedOutgoingMessageIds.toList(), id)
-                    completedOutgoingMessageIds.clear()
-                    completedOutgoingMessageIds.addAll(next)
+            val completedArray = runCatching { org.json.JSONArray(completedRaw) }.getOrNull()
+            if (completedArray == null) {
+                listener.onStatus("Saved delivery receipt history could not be read; pending messages will still be restored.")
+            } else {
+                for (i in 0 until completedArray.length()) {
+                    val id = completedArray.optString(i)
+                    if (id.isNotBlank() && id.length <= 80) {
+                        val next = OutgoingReceiptHistoryPolicy.append(completedOutgoingMessageIds.toList(), id)
+                        completedOutgoingMessageIds.clear()
+                        completedOutgoingMessageIds.addAll(next)
+                    }
                 }
             }
             val raw = preferences.getString("nearby_outbox", "[]") ?: "[]"
