@@ -13,6 +13,12 @@ internal object ChatEditPolicy {
 
     enum class ApplyResult { APPLIED, ALREADY_APPLIED, STALE, REJECTED }
 
+    /** Only the authenticated author may revise a message stored as incoming in this conversation. */
+    fun mayApplyToMessage(conversationId: String, actorPeerId: String, messageOutgoing: Boolean): Boolean =
+        !messageOutgoing && actorPeerId.isNotBlank() &&
+            conversationId == actorPeerId &&
+            NeaRerIdentity.normalize(actorPeerId) == actorPeerId
+
     fun create(currentBody: String, currentVersion: Int, newBody: String, now: Long): Revision? {
         val body = newBody.trim()
         if (body.isEmpty() || body.length > MAX_BODY_LENGTH ||
