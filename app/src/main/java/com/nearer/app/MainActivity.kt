@@ -504,6 +504,7 @@ class MainActivity : ComponentActivity() {
                         persistMessages()
                         chatNotice = when (status) {
                             "Delivered" -> "Your message was received by the other NeaRer phone."
+                            "Partially delivered" -> "Some group members received your message. NeaRer is still waiting for the others."
                             "Queued" -> "Not delivered yet. NeaRer saved it and will retry when this person reconnects."
                             else -> "Message delivery failed. Reconnect and try again."
                         }
