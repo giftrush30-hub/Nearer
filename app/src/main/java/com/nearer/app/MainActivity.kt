@@ -323,14 +323,24 @@ class MainActivity : ComponentActivity() {
             channel = null
             statusMessage = "Wi-Fi Direct could not initialise on this phone. Bluetooth nearby features can still be used."
         }
-        ultraSpeedMode = runCatching {
-            getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-                .getBoolean("ultra_speed_mode", false)
-        }.getOrDefault(false)
+        // SmartConnect uses the flexible multi-peer strategy by default.
+        // Do not require both people to find and enable a matching speed mode.
+        ultraSpeedMode = false
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("ultra_speed_mode", false)
+            .apply()
         ultraSpeedRestartRequired = false
         nearbyTransport = try {
             NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
-            override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
+            override fun onStatus(message: String) {
+                runOnUiThread {
+                    statusMessage = message
+                    if (message.startsWith("Nearby advertising could not start") ||
+                        message.startsWith("Nearby discovery could not start")) {
+                        hybridSearching = false
+                    }
+                }
+            }
             override fun onMeshRoutesChanged(recipients: List<MeshRecipient>) {
                 runOnUiThread {
                     meshRecipients.clear()
@@ -357,15 +367,25 @@ class MainActivity : ComponentActivity() {
             } }
             override fun onRequest(id: String, name: String, token: String) {
                 runOnUiThread {
+                    val advertisedStableId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                    // Returning peers with both pinned keys reconnect without
+                    // repeating first-contact approval. The handshake still verifies
+                    // key continuity before accepting application data.
+                    if (TrustedPeerKeyStore.hasPinnedPeer(this@MainActivity, advertisedStableId)) {
+                        nearbyTransport?.accept(id)
+                        statusMessage = "Reconnecting securely to $name…"
+                        return@runOnUiThread
+                    }
                     pendingHybridEndpoint = id
                     incomingRequesterName = name
                     pairingCode = token
-                    approvalMessage = "Compare the security code on both phones before accepting"
-                    statusMessage = "$name is requesting a nearby connection."
+                    approvalMessage = "First connection: compare the security code on both phones before accepting"
+                    statusMessage = "$name is requesting a first-time nearby connection."
                 }
             }
             override fun onConnected(id: String, name: String, stableId: String) {
                 runOnUiThread {
+                    hybridSearching = false
                     hybridConnected = true
                     hybridConnectedEndpoint = id
                     hybridConnectedStableId = stableId.ifBlank { null }
@@ -663,7 +683,9 @@ class MainActivity : ComponentActivity() {
                 if (onboardingComplete) {
                 NeaRerHome(
                     status = statusMessage,
-                    scanning = scanning || hybridSearching,
+                    // Keep automatic SmartConnect discovery separate from the manual Wi-Fi Direct refresh spinner.
+                    // Otherwise the screen would look permanently busy and disable its refresh action.
+                    scanning = scanning,
                     devices = nearbyDevices,
                     connectingAddress = connectingAddress,
                     connectedDeviceName = connectedDeviceName,
@@ -769,6 +791,27 @@ class MainActivity : ComponentActivity() {
         runCatching { nearbyTransport?.setDisplayName(cleanName) }
         onboardingComplete = true
         statusMessage = "Welcome to NeaRer, $cleanName."
+        // Request nearby permissions as part of first-run setup. Android retains
+        // control of each permission and the user still controls wireless radios.
+        if (!hasNearbyPermissions()) {
+            ActivityCompat.requestPermissions(this, nearbyPermissionList(), REQUEST_DISCOVERY_PERMISSION)
+        }
+    }
+
+    @Deprecated("Deprecated in Android API 33; retained for Android 7–12 permission callback compatibility.")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_DISCOVERY_PERMISSION) {
+            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                startAlwaysReadyDiscovery()
+            } else {
+                statusMessage = "Nearby access was not granted. You can enable it in Android app settings or tap Find nearby later."
+            }
+        }
     }
 
     override fun onResume() {
@@ -793,6 +836,10 @@ class MainActivity : ComponentActivity() {
                 statusMessage = "NeaRer opened with limited Wi-Fi discovery: ${error.javaClass.simpleName}. Bluetooth nearby features may still be available."
             }
         }
+        // Always-Ready: automatically prepare nearby discovery after onboarding.
+        // Nearby Connections negotiates the available radios; users do not need
+        // to launch a separate Wi-Fi Direct scan or configure a hotspot.
+        startAlwaysReadyDiscovery()
     }
 
     override fun onDestroy() {
@@ -809,6 +856,40 @@ class MainActivity : ComponentActivity() {
             receiverRegistered = false
         }
         super.onPause()
+    }
+
+    /**
+     * Starts the primary Nearby Connections engine without requiring a manual
+     * Wi-Fi Direct peer scan. The SDK selects the available nearby transports.
+     */
+    private fun startAlwaysReadyDiscovery() {
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val bluetoothOn = try { bluetoothManager?.adapter?.isEnabled == true } catch (_: SecurityException) { false }
+        val wifiOn = isWifiEnabled()
+        if (!SmartConnectPolicy.shouldStartDiscovery(
+                onboardingComplete = onboardingComplete,
+                permissionsGranted = hasNearbyPermissions(),
+                radioAvailable = bluetoothOn || wifiOn,
+                alreadySearching = hybridSearching,
+                alreadyConnected = hybridConnected
+            )) {
+            if (onboardingComplete && hasNearbyPermissions() && !bluetoothOn && !wifiOn) {
+                statusMessage = "NeaRer is ready. Turn on Bluetooth or Wi-Fi to discover nearby people; mobile data is not needed."
+            }
+            return
+        }
+        val transport = nearbyTransport
+        if (transport == null) {
+            statusMessage = "Nearby services are unavailable on this phone right now. Reopen NeaRer and try again."
+            return
+        }
+        transport.start()
+        hybridSearching = true
+        statusMessage = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R && !isLocationEnabled()) {
+            "NeaRer is ready. On this Android version, turn Location on too if nearby discovery does not find people."
+        } else {
+            "NeaRer is ready. Nearby people will appear automatically while the app is open."
+        }
     }
 
     private fun hasDiscoveryPermission(): Boolean {
@@ -3268,7 +3349,7 @@ private fun NeaRerHome(
                             modifier = Modifier.fillMaxWidth().height(54.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
-                        ) { Text(if (scanning) "Finding people…" else "Find people nearby", fontWeight = FontWeight.Bold) }
+                        ) { Text(if (scanning) "Refreshing nearby…" else "Refresh nearby people", fontWeight = FontWeight.Bold) }
                         Button(
                             onClick = { selectedTab = "Share" },
                             modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -3461,19 +3542,14 @@ private fun NeaRerHome(
                         }
                     }
                     Surface(shape = RoundedCornerShape(16.dp), color = Midnight, modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("ULTRA SPEED MODE", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    Text(if (ultraSpeedMode) "Enabled • one-to-one connection" else "Standard • flexible multi-device", color = White, fontSize = 13.sp)
-                                }
-                                Button(onClick = { onUltraSpeedModeChange(!ultraSpeedMode) }, enabled = !scanning && !chatReady && !usingNearbyConnections && !ultraSpeedRestartRequired,
-                                    shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = if (ultraSpeedMode) Gold else BlueAccent, contentColor = Midnight)) {
-                                    Text(if (ultraSpeedMode) "Turn off" else "Enable")
-                                }
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("SMARTCONNECT", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Automatic", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             }
                             Text(
-                                if (ultraSpeedMode) "Both phones must enable this mode and restart NeaRer before searching. It uses Google's one-to-one highest-throughput connection strategy. It may improve speed, but 280 MB/s is not guaranteed." else "Standard mode keeps flexible multi-device connections. For a single large-file transfer, both phones can enable Ultra Speed Mode, which uses Google's highest-throughput one-to-one strategy.",
+                                "NeaRer chooses the available nearby connection automatically. No hotspot password, matching speed setting or manual Wi-Fi mode is needed.",
                                 color = Muted, fontSize = 11.sp, lineHeight = 16.sp
                             )
                         }
@@ -3628,7 +3704,7 @@ private fun NeaRerHome(
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("•••", color = BlueAccent, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
                             }
                         }
-                        Text("Nearby names will appear here as phones are discovered.", color = Muted, fontSize = 11.sp)
+                        Text("Nearby names appear automatically. Keep NeaRer open with Bluetooth or Wi-Fi on.", color = Muted, fontSize = 11.sp)
                     }
                     AnimatedVisibility(visible = recentlySeenPeers.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
                         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -3654,16 +3730,20 @@ private fun NeaRerHome(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("CONNECT WITH A NEARBY PERSON", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     hybridPeers.forEach { (id, name) ->
-                        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Panel) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().clickable { onHybridConnect(id) },
+                            shape = RoundedCornerShape(16.dp),
+                            color = Panel
+                        ) {
                             Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(38.dp)) {
                                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(name.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold) }
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
                                     Text(name, color = White, fontWeight = FontWeight.SemiBold)
-                                    Text("Active now • Nearby Connections", color = BlueAccent, fontSize = 10.sp)
+                                    Text("Active now • Tap to open chat", color = BlueAccent, fontSize = 10.sp)
                                 }
-                                Button(onClick = { onHybridConnect(id) }, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)) { Text("Connect") }
+                                Text("Chat", color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
                         }
                     }

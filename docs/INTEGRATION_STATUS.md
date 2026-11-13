@@ -42,3 +42,23 @@ Only publish a release APK after the exact-head build/validation workflow and re
 ## Latest validation feedback
 
 An earlier Android validation attempt exposed integration compile errors in the extracted Chats screen, the Ludo avatar argument, and identity-ID validation calls. Those issues have been corrected on this branch. A fresh validation run against the corrected head is still required; no APK from the failed attempt is publishable.
+
+## Phase 1 — SmartConnect source implementation (branch: phase-1-smartconnect)
+
+Implemented on the Phase 1 branch:
+- Nearby Connections starts automatically after onboarding permissions are granted and when the app returns to the foreground, provided Bluetooth or Wi-Fi is enabled.
+- Permission results trigger the same automatic startup path; the app does not turn radios on or bypass Android permission prompts.
+- The default flexible multi-peer strategy is used without requiring both users to enable and restart a separate Ultra Speed mode.
+- Nearby person cards are tappable to initiate the chat connection flow.
+- Previously trusted peers are automatically accepted for reconnection only when both signing-key and recipient-encryption-key pins exist; the live handshake still validates key continuity.
+- First-contact peers still require user approval and security-code comparison.
+- Deterministic SmartConnect policy tests cover startup gates and trusted reconnect requirements.
+
+Not yet certified / remaining Phase 1 gates:
+- Run JVM tests, APK assembly and emulator launch tests against the exact Phase 1 PR head.
+- Verify discovery, one-tap connect, first-contact approval and trusted reconnect on two physical Android phones, including Android 10 hardware.
+- Confirm discovery recovery when Bluetooth/Wi-Fi is toggled and after app background/foreground transitions.
+- Continuous background discovery after the app is swiped away is not implemented by this activity-owned lifecycle change; Android foreground-service design and notification/Doze behavior require a separate implementation and device validation.
+- Google Nearby Connections manages its supported Bluetooth/BLE/Wi-Fi transports; this does not mean NeaRer independently exposes or guarantees every vendor-specific Wi-Fi Direct/hotspot combination.
+
+Do not mark Phase 1 release-complete until the exact-head CI checks and physical-device gates pass. Android minimum remains API 26 (Android 8.0); API 24/25 are not currently supported.
