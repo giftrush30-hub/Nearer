@@ -140,10 +140,8 @@ fun LudoGamePanel(
     onEndMatch: () -> Unit,
     localAvatarId: String
 ) {
-    var localGame by remember { mutableStateOf(LudoEngine.newGame(
-        mapOf(LudoColor.RED to "You", LudoColor.GREEN to "Nova", LudoColor.YELLOW to "Atlas", LudoColor.BLUE to "Mira"),
-        setOf(LudoColor.GREEN, LudoColor.YELLOW, LudoColor.BLUE)
-    )) }
+    var localHumanPlayers by remember { mutableIntStateOf(1) }
+    var localGame by remember { mutableStateOf(LudoEngine.newLocalGame(1)) }
     var message by remember { mutableStateOf("Roll a six to bring your first token out.") }
     var rolling by remember { mutableStateOf(false) }
     var rollingFace by remember { mutableIntStateOf(1) }
@@ -160,6 +158,15 @@ fun LudoGamePanel(
     val myTurn = if (networkMode) ready && current.color == networkMatch!!.localColor else !current.isComputer
     val diceRotation by animateFloatAsState(if (rolling) 360f else 0f, spring(dampingRatio = .45f, stiffness = 500f), label = "diceRotation")
 
+    fun resetLocalGame() {
+        localGame = LudoEngine.newLocalGame(localHumanPlayers)
+        message = if (localHumanPlayers == 1) {
+            "New solo game. Roll a six to bring your first token out."
+        } else {
+            "Pass-and-play table ready for " + localHumanPlayers + " players. Player 1 starts."
+        }
+    }
+
     LaunchedEffect(networkMatch?.state?.turnNumber, networkMatch?.state?.currentPlayerIndex, networkMatch?.state?.diceValue, networkMatch?.state?.winner, networkMatch?.revision) {
         networkActionPending = false
     }
@@ -174,7 +181,7 @@ fun LudoGamePanel(
         }
     }
 
-    LaunchedEffect(networkMatch, game.currentPlayerIndex, game.diceValue, game.turnNumber, game.winner, game.consecutiveSixes, difficulty) {
+    LaunchedEffect(networkMatch, game.currentPlayerIndex, game.currentPlayer.isComputer, game.diceValue, game.turnNumber, game.winner, game.consecutiveSixes, difficulty) {
         if (!networkMode && !game.isFinished && game.currentPlayer.isComputer) {
             delay(750)
             if (localGame.diceValue == null) {
@@ -220,10 +227,10 @@ fun LudoGamePanel(
                 Column {
                     Text("NEARER • GAME ZONE", color = LudoGold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp)
                     Text("LUDO CLASSIC", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black)
-                    Text(if (networkMode) "NEARBY MULTIPLAYER • ${game.players.size}/4" else "Four players • One champion", color = Color(0xFFAFC1D4), fontSize = 10.sp)
+                    Text(if (networkMode) "NEARBY MULTIPLAYER • ${game.players.size}/4" else if (localHumanPlayers == 1) "SOLO • THREE COMPUTER OPPONENTS" else "LOCAL PASS-AND-PLAY • " + localHumanPlayers + " PLAYERS", color = Color(0xFFAFC1D4), fontSize = 10.sp)
                 }
                 Surface(color = Color(0xFF234463), shape = RoundedCornerShape(30.dp)) {
-                    Text(if (networkMode) "BLUETOOTH / WI-FI" else "OFFLINE VS BOTS", color = Color(0xFF9FE6CD), fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp))
+                    Text(if (networkMode) "BLUETOOTH / WI-FI" else if (localHumanPlayers == 1) "OFFLINE VS BOTS" else "ONE PHONE • LOCAL", color = Color(0xFF9FE6CD), fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp))
                 }
             }
 
@@ -330,17 +337,40 @@ fun LudoGamePanel(
             }
 
             if (!networkMode) {
-                Text("COMPUTER CHALLENGE", color = LudoGold, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                    LudoDifficulty.entries.forEach { level ->
-                        Button(onClick = { difficulty = level }, modifier = Modifier.weight(1f),
+                Text("LOCAL GAME MODE", color = LudoGold, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
+                    (1..4).forEach { count ->
+                        Button(
+                            onClick = {
+                                localHumanPlayers = count
+                                localGame = LudoEngine.newLocalGame(count)
+                                message = if (count == 1) "Solo challenge: you play against three computer opponents." else "Pass-and-play: Player 1 starts. Hand the phone over after each turn."
+                            },
+                            modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (difficulty == level) LudoGold else Color(0xFF294967),
-                                contentColor = if (difficulty == level) LudoNavy else Color.White
-                            ), shape = RoundedCornerShape(11.dp)) {
-                            Text(level.name, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                containerColor = if (localHumanPlayers == count) LudoGold else Color(0xFF294967),
+                                contentColor = if (localHumanPlayers == count) LudoNavy else Color.White
+                            ), shape = RoundedCornerShape(11.dp)
+                        ) {
+                            Text(if (count == 1) "1P + AI" else count.toString() + "P", fontSize = 9.sp, fontWeight = FontWeight.Black)
                         }
                     }
+                }
+                if (localHumanPlayers == 1) {
+                    Text("COMPUTER CHALLENGE", color = LudoGold, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        LudoDifficulty.entries.forEach { level ->
+                            Button(onClick = { difficulty = level }, modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (difficulty == level) LudoGold else Color(0xFF294967),
+                                    contentColor = if (difficulty == level) LudoNavy else Color.White
+                                ), shape = RoundedCornerShape(11.dp)) {
+                                Text(level.name, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+                } else {
+                    Text("Pass the phone to the next player after each turn. No internet or second phone is needed.", color = Color(0xFFAFC1D4), fontSize = 9.sp)
                 }
             }
 
@@ -381,22 +411,10 @@ fun LudoGamePanel(
                 Button(onClick = onEndMatch, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6B3541))) { Text("LEAVE MATCH") }
             } else {
                 if (game.isFinished) {
-                    Button(onClick = {
-                        localGame = LudoEngine.newGame(
-                            mapOf(LudoColor.RED to "You", LudoColor.GREEN to "Nova", LudoColor.YELLOW to "Atlas", LudoColor.BLUE to "Mira"),
-                            setOf(LudoColor.GREEN, LudoColor.YELLOW, LudoColor.BLUE)
-                        )
-                        message = "A fresh game begins. Roll a six!"
-                    }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = LudoGold, contentColor = LudoNavy)) { Text("PLAY AGAIN", fontWeight = FontWeight.Black) }
+                    Button(onClick = { resetLocalGame() }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = LudoGold, contentColor = LudoNavy)) { Text("PLAY AGAIN", fontWeight = FontWeight.Black) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(onClick = {
-                        localGame = LudoEngine.newGame(
-                            mapOf(LudoColor.RED to "You", LudoColor.GREEN to "Nova", LudoColor.YELLOW to "Atlas", LudoColor.BLUE to "Mira"),
-                            setOf(LudoColor.GREEN, LudoColor.YELLOW, LudoColor.BLUE)
-                        )
-                        message = "New game. Roll a six to bring your first token out."
-                    }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF31516F))) {
+                    Button(onClick = { resetLocalGame() }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF31516F))) {
                         Text("NEW GAME", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                     Button(onClick = onInviteNearby, enabled = nearbyConnected && incomingInvite == null, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp),
