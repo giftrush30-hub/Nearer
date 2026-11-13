@@ -1781,17 +1781,26 @@ class MainActivity : ComponentActivity() {
             when (type) {
                 "group_created", "group_join" -> {
                     val i = communityGroups.indexOfFirst { it.code == code }
-                    if (i >= 0) {
+                    if (i >= 0 && CommunityMemberIdentityPolicy.isValidPeerId(senderPeerId)) {
                         val old = communityGroups[i]
-                        val member = sender
-                        if (senderPeerId.isNotBlank()) {
+                        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+                        // A group announcement may establish the owner only on an
+                        // unbound joining device. A join request is admitted only by
+                        // the already-bound owner, never by an arbitrary group member.
+                        val authorized = if (type == "group_created") {
+                            old.ownerId.isBlank() || old.ownerId == senderPeerId
+                        } else {
+                            old.ownerId.isNotBlank() && old.ownerId == localPeerId
+                        }
+                        if (authorized) {
+                            val member = sender
                             val nextMembers = if (member in old.members) old.members else old.members + member
                             val nextIds = if (senderPeerId in old.memberIds) old.memberIds else old.memberIds + senderPeerId
                             val ownerId = if (type == "group_created") senderPeerId else old.ownerId
                             communityGroups[i] = old.copy(members = nextMembers, memberIds = nextIds, ownerId = ownerId)
                             persistCommunityData()
+                            if (type == "group_join") sendGroupMembers(code)
                         }
-                        sendGroupMembers(code)
                     }
                 }
                 "group_members" -> {
