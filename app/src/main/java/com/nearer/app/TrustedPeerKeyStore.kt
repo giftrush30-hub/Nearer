@@ -99,7 +99,10 @@ internal object TrustedPeerKeyStore {
             val prefs = context.applicationContext.getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
             val signing = JSONObject(prefs.getString("nearby_peer_key_pins", "{}") ?: "{}")
             val encryption = JSONObject(prefs.getString("nearby_peer_encryption_key_pins", "{}") ?: "{}")
-            decodePin(signing, publicId) != null && decodePin(encryption, publicId) != null
+            SmartConnectPolicy.shouldAutoAcceptReconnect(
+                hasSigningKeyPin = decodePin(signing, publicId) != null,
+                hasRecipientEncryptionKeyPin = decodePin(encryption, publicId) != null
+            )
         } catch (_: Exception) {
             false
         }
