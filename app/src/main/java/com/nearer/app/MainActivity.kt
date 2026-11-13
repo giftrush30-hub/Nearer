@@ -541,16 +541,17 @@ class MainActivity : ComponentActivity() {
                         val communityIndex = communityMessages.indexOfFirst { it.id == ref.communityMessageId }
                         if (communityIndex >= 0) {
                             val previous = communityMessages[communityIndex]
-                            communityMessages[communityIndex] = previous.copy(
-                                deliveryByPeerId = previous.deliveryByPeerId + (ref.peerId to status)
-                            )
-                            if (status == "Delivered") communityDeliveryRefs.remove(messageId)
-                            if (!persistCommunityData()) {
-                                // Keep the transport-to-message link if receipt state could
-                                // not be committed; a later duplicate ACK can safely retry it.
-                                communityMessages[communityIndex] = previous
-                                communityDeliveryRefs[messageId] = ref
-                                communityNotice = "A group delivery receipt could not be saved. It will be reconciled when NeaRer reconnects."
+                            val updated = CommunityDeliveryPolicy.applyStatus(previous.deliveryByPeerId, ref.peerId, status)
+                            if (updated != null) {
+                                communityMessages[communityIndex] = previous.copy(deliveryByPeerId = updated)
+                                if (status == "Delivered") communityDeliveryRefs.remove(messageId)
+                                if (!persistCommunityData()) {
+                                    // Keep the transport-to-message link if receipt state could
+                                    // not be committed; a later duplicate ACK can safely retry it.
+                                    communityMessages[communityIndex] = previous
+                                    communityDeliveryRefs[messageId] = ref
+                                    communityNotice = "A group delivery receipt could not be saved. It will be reconciled when NeaRer reconnects."
+                                }
                             }
                         } else if (status == "Delivered") {
                             communityDeliveryRefs.remove(messageId)
@@ -1914,9 +1915,7 @@ class MainActivity : ComponentActivity() {
         }
         val targetPeerIds = group.memberPeerIds.filter { it != localPeerId }.toSet()
         val receipts = transport.sendDurableToPeerIdsWithReceipts("NR_COMMUNITY:$packet", targetPeerIds)
-        val deliveryByPeerId = targetPeerIds.associateWith { peerId ->
-            if (receipts.values.contains(peerId)) "Queued" else "Not verified"
-        }
+        val deliveryByPeerId = CommunityDeliveryPolicy.initialStatuses(targetPeerIds, receipts.values.toSet())
         val localIndex = communityMessages.indexOfFirst { it.id == id }
         if (localIndex >= 0) {
             communityMessages[localIndex] = communityMessages[localIndex].copy(deliveryByPeerId = deliveryByPeerId)
@@ -4311,14 +4310,11 @@ private fun CommunityHub(
                     messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { message ->
                         Text(message.sender + ": " + message.body, color = White, fontSize = 12.sp)
                         if (message.deliveryByPeerId.isNotEmpty()) {
-                            val statuses = message.deliveryByPeerId.values
-                            val delivered = statuses.count { it == "Delivered" }
-                            val queued = statuses.count { it == "Queued" }
-                            val unverified = statuses.count { it == "Not verified" }
+                            val summary = CommunityDeliveryPolicy.summarize(message.deliveryByPeerId)
                             val receiptText = buildList {
-                                add("${delivered}/${statuses.size} delivered")
-                                if (queued > 0) add("${queued} queued")
-                                if (unverified > 0) add("${unverified} not verified")
+                                add("${summary.delivered}/${summary.total} delivered")
+                                if (summary.queued > 0) add("${summary.queued} queued")
+                                if (summary.notVerified > 0) add("${summary.notVerified} not verified")
                             }.joinToString(" • ")
                             Text(receiptText, color = Muted, fontSize = 9.sp)
                         }
