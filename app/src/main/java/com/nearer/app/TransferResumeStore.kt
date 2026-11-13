@@ -168,12 +168,13 @@ internal class TransferResumeStore(
         item: TransferBundleItem,
         sourceModifiedAtMillis: Long?,
         destination: File,
-        expectedSha256: String
+        expectedSha256: String,
+        sourcePeerId: String? = null
     ): File {
         require(Regex("^[a-fA-F0-9]{64}$").matches(expectedSha256)) {
             "A valid whole-file SHA-256 is required"
         }
-        val candidate = findValid(transferId, item, sourceModifiedAtMillis)
+        val candidate = findValid(transferId, item, sourceModifiedAtMillis, sourcePeerId)
             ?: throw IllegalStateException("No verified partial is available to finalize")
         require(candidate.checkpoint.committedOffsetBytes == item.sizeBytes) {
             "The partial file has not reached its declared end"
