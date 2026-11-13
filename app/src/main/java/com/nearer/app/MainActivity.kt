@@ -1847,11 +1847,15 @@ class MainActivity : ComponentActivity() {
                     if (i >= 0 && senderId != null && TrustedPeerKeyStore.hasPinnedPeer(this, senderId)) {
                         val old = communityGroups[i]
                         if (old.ownerPeerId == localId) {
-                            communityGroups[i] = old.copy(
-                                members = (old.members + sender).distinct(),
-                                memberPeerIds = (old.memberPeerIds + senderId).distinct()
-                            )
-                            if (persistCommunityData()) sendGroupMembers(code)
+                            if (old.memberPeerIds.size >= 100 && senderId !in old.memberPeerIds) {
+                                communityNotice = "This community has reached its 100-member identity roster limit."
+                            } else {
+                                communityGroups[i] = old.copy(
+                                    members = (old.members + sender).distinct(),
+                                    memberPeerIds = (old.memberPeerIds + senderId).distinct()
+                                )
+                                if (persistCommunityData()) sendGroupMembers(code)
+                            }
                         }
                     }
                 }
