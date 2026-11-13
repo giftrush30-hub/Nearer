@@ -235,6 +235,7 @@ internal object IncomingFilePayloadPolicy {
             listener.onStatus("Restored $restoredRoutes verified route(s) and $restoredWithdrawals route-withdrawal protection record(s).")
         }
     }
+    @Synchronized
     private fun persistPendingOutbox(): Boolean {
         return try {
             val array = org.json.JSONArray()
@@ -1866,6 +1867,78 @@ internal object IncomingFilePayloadPolicy {
                 listener.onStatus("A group message could not be encrypted for one nearby member.")
             }
         }
+        return true
+    }
+
+    /**
+     * Persist a separate encrypted-outbox entry for each currently connected,
+     * authenticated member selected by display name. Each recipient gets its own
+     * transport message ID so its ACK/retry lifecycle is independent.
+     */
+    fun sendDurableToNames(body: String, targetNames: Set<String>): Boolean {
+        if (body.isBlank() || body.length > 4000 || targetNames.isEmpty()) return false
+        val targets = synchronized(activeEndpoints) {
+            activeEndpoints.filter { endpoint ->
+                authenticatedEndpoints.contains(endpoint) &&
+                    synchronized(names) { names[endpoint]?.let { it in targetNames } == true }
+            }
+        }
+        return queueDurableFanout(body, targets)
+    }
+
+    /** Persist and fan out a copy to every currently connected authenticated nearby peer. */
+    fun sendDurableToAll(body: String): Boolean {
+        if (body.isBlank() || body.length > 4000) return false
+        val targets = synchronized(activeEndpoints) {
+            activeEndpoints.filter { authenticatedEndpoints.contains(it) }
+        }
+        return queueDurableFanout(body, targets)
+    }
+
+    /**
+     * Add every recipient copy to the encrypted outbox and commit once before
+     * attempting any network send. Existing reconnect handling retries each
+     * entry only when the same stable peer authenticates again.
+     */
+    @Synchronized
+    private fun queueDurableFanout(body: String, endpoints: List<String>): Boolean {
+        if (endpoints.isEmpty()) return false
+        val queuedIds = mutableListOf<String>()
+        endpoints.distinct().forEach { endpoint ->
+            if (!authenticatedEndpoints.contains(endpoint) ||
+                !synchronized(activeEndpoints) { activeEndpoints.contains(endpoint) } ||
+                messageSessions[endpoint] == null) return@forEach
+            val peerId = synchronized(names) { stableIds[endpoint].orEmpty() }
+            if (peerId.isBlank()) return@forEach
+
+            val messageId = UUID.randomUUID().toString()
+            val envelope = JSONObject()
+                .put("kind", "message")
+                .put("version", 1)
+                .put("id", messageId)
+                .put("body", body)
+                .put("ttl", 0)
+                .put("hops", 0)
+                .put("origin", localName)
+                .put("createdAt", System.currentTimeMillis())
+                .toString()
+                .toByteArray(Charsets.UTF_8)
+
+            pendingOutgoingMessages[messageId] = PendingOutgoingMessage(endpoint, peerId, envelope)
+            outgoingMessageTargets[messageId] = endpoint
+            queuedIds += messageId
+        }
+        if (queuedIds.isEmpty()) return false
+
+        if (!persistPendingOutbox()) {
+            queuedIds.forEach { id ->
+                pendingOutgoingMessages.remove(id)
+                outgoingMessageTargets.remove(id)
+            }
+            return false
+        }
+
+        queuedIds.forEach(::attemptOutgoingMessage)
         return true
     }
 
