@@ -21,6 +21,44 @@ internal class NearbyStreamPayloadBridge(
     private val ioExecutor: Executor
 ) {
     /**
+     * Creates the Nearby payload before the sender's resume decision is known.
+     * This gives the transport a stable payload ID to put in metadata and the
+     * proposal/decision envelopes. The underlying source is supplied only after
+     * the authenticated decision chooses a verified offset (or a full restart).
+     */
+    fun prepareOutgoingPayload(): PreparedOutgoingStream {
+        val deferred = DeferredTransferInputStream()
+        return try {
+            PreparedOutgoingStream(Payload.fromStream(deferred), deferred)
+        } catch (error: Exception) {
+            runCatching { deferred.close() }
+            throw error
+        }
+    }
+
+    class PreparedOutgoingStream internal constructor(
+        val payload: Payload,
+        private val deferred: DeferredTransferInputStream
+    ) : java.io.Closeable {
+        val payloadId: Long get() = payload.id
+
+        fun provideSource(input: InputStream) = deferred.provide(input)
+
+        fun provideSource(source: TransferResumeCoordinator.ValidatedSourceStream) =
+            deferred.provide(source.input)
+
+        fun reject(error: Throwable) {
+            deferred.fail(error)
+            runCatching { payload.close() }
+        }
+
+        override fun close() {
+            runCatching { payload.close() }
+            runCatching { deferred.close() }
+        }
+    }
+
+    /**
      * Wraps an already-positioned source stream in a Nearby STREAM payload.
      * For a resumed transfer, pass ValidatedSourceStream.input so the source
      * begins at the prefix-verified offset and is bounded to the declared size.
