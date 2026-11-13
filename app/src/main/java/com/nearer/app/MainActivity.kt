@@ -330,7 +330,15 @@ class MainActivity : ComponentActivity() {
         ultraSpeedRestartRequired = false
         nearbyTransport = try {
             NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
-            override fun onStatus(message: String) { runOnUiThread { statusMessage = message } }
+            override fun onStatus(message: String) {
+                runOnUiThread {
+                    statusMessage = message
+                    if (message.startsWith("Nearby advertising could not start") ||
+                        message.startsWith("Nearby discovery could not start")) {
+                        hybridSearching = false
+                    }
+                }
+            }
             override fun onMeshRoutesChanged(recipients: List<MeshRecipient>) {
                 runOnUiThread {
                     meshRecipients.clear()
@@ -375,6 +383,7 @@ class MainActivity : ComponentActivity() {
             }
             override fun onConnected(id: String, name: String, stableId: String) {
                 runOnUiThread {
+                    hybridSearching = false
                     hybridConnected = true
                     hybridConnectedEndpoint = id
                     hybridConnectedStableId = stableId.ifBlank { null }
@@ -785,6 +794,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @Deprecated("Deprecated in Android API 33; retained for Android 7–12 permission callback compatibility.")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_DISCOVERY_PERMISSION) {
+            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                startAlwaysReadyDiscovery()
+            } else {
+                statusMessage = "Nearby access was not granted. You can enable it in Android app settings or tap Find nearby later."
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         val filter = IntentFilter().apply {
@@ -834,17 +859,21 @@ class MainActivity : ComponentActivity() {
      * Wi-Fi Direct peer scan. The SDK selects the available nearby transports.
      */
     private fun startAlwaysReadyDiscovery() {
-        if (!onboardingComplete || !hasNearbyPermissions()) return
-        if (hybridSearching || hybridConnected) return
-
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val bluetoothOn = try { bluetoothManager?.adapter?.isEnabled == true } catch (_: SecurityException) { false }
         val wifiOn = isWifiEnabled()
-        if (!bluetoothOn && !wifiOn) {
-            statusMessage = "NeaRer is ready. Turn on Bluetooth or Wi-Fi to discover nearby people; mobile data is not needed."
+        if (!SmartConnectPolicy.shouldStartDiscovery(
+                onboardingComplete = onboardingComplete,
+                permissionsGranted = hasNearbyPermissions(),
+                radioAvailable = bluetoothOn || wifiOn,
+                alreadySearching = hybridSearching,
+                alreadyConnected = hybridConnected
+            )) {
+            if (onboardingComplete && hasNearbyPermissions() && !bluetoothOn && !wifiOn) {
+                statusMessage = "NeaRer is ready. Turn on Bluetooth or Wi-Fi to discover nearby people; mobile data is not needed."
+            }
             return
         }
-
         val transport = nearbyTransport
         if (transport == null) {
             statusMessage = "Nearby services are unavailable on this phone right now. Reopen NeaRer and try again."
