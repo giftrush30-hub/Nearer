@@ -1305,12 +1305,12 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
-    private fun handleMeshPacket(endpointId: String, bytes: ByteArray) {
+    private fun handleMeshPacket(endpointId: String, packetBytes: ByteArray, proofBytes: ByteArray) {
         if (!authenticatedEndpoints.contains(endpointId)) return
         val previousHopId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (previousHopId.isBlank()) return
         try {
-            val packet = MeshRelayPacketV1.decode(bytes)
+            val packet = MeshRelayPacketV1.decode(packetBytes)
             val now = System.currentTimeMillis()
             require(packet.verifyEmbeddedOrigin(now)) { "Mesh packet origin signature or expiry is invalid." }
             if (!MeshRelayParticipationPolicy.mayAcceptPacket(meshTransitEnabled, packet.destinationId, localStableId)) {
@@ -1321,8 +1321,18 @@ internal object IncomingFilePayloadPolicy {
                 listener.onStatus("This phone cannot safely relay right now because protected route history is unavailable.")
                 return
             }
-            if (!deadDropStore.enqueueTransit(packet, previousHopId, now)) {
-                listener.onStatus("A mesh packet was rejected because it could not be safely stored.")
+            val committed = deadDropStore.enqueueTransitWithProof(
+                packet = packet,
+                previousHopPeerId = previousHopId,
+                incomingProofBytes = proofBytes,
+                trustedAcceptingSigningKey = { peerId ->
+                    TrustedPeerKeyStore.pinnedSigningKey(appContext, peerId)
+                },
+                localPeerId = localStableId,
+                now = now
+            ) { signedBytes -> SecurePeerIdentity.signDetached(signedBytes) }
+            if (!committed) {
+                listener.onStatus("A mesh packet or its forwarding-proof chain could not be verified and committed. It was not acknowledged.")
                 return
             }
             // The hop ACK is sent only after the encrypted packet is committed to disk.
@@ -1372,7 +1382,14 @@ internal object IncomingFilePayloadPolicy {
                 ) ?: return@forEach
                 require(packet.sameImmutablePacket(queuedPacket)) { "Queued packet changed while preparing its forwarding hop." }
                 val endpointId = endpointForStablePeer(route.nextHopPeerId) ?: return@forEach
-                client.sendPayload(endpointId, Payload.fromBytes(packet.encode()))
+                val proofBytes = pending.proofChain
+                val envelope = JSONObject()
+                    .put("kind", "mesh_packet_v2")
+                    .put("packet", android.util.Base64.encodeToString(packet.encode(), android.util.Base64.NO_WRAP))
+                    .put("proofChain", android.util.Base64.encodeToString(proofBytes, android.util.Base64.NO_WRAP))
+                    .toString().toByteArray(Charsets.UTF_8)
+                require(envelope.size <= MeshRelayPacketV1.MAX_NEARBY_BYTES) { "Mesh packet proof envelope exceeds Nearby's BYTES payload limit." }
+                client.sendPayload(endpointId, Payload.fromBytes(envelope))
                     .addOnFailureListener { listener.onStatus("A mesh relay transfer failed. NeaRer will retry it.") }
             } catch (_: Exception) {
                 listener.onStatus("A queued mesh packet could not be forwarded and will be retried.")
@@ -1449,8 +1466,18 @@ internal object IncomingFilePayloadPolicy {
                 }
             }
             if (!authenticatedEndpoints.contains(endpointId)) return
+            if (envelope.optString("kind") == "mesh_packet_v2") {
+                if (!authenticatedEndpoints.contains(endpointId)) return
+                val packetBytes = android.util.Base64.decode(envelope.getString("packet"), android.util.Base64.NO_WRAP)
+                val proofBytes = android.util.Base64.decode(envelope.optString("proofChain", ""), android.util.Base64.NO_WRAP)
+                require(packetBytes.size in 1..MeshRelayPacketV1.MAX_NEARBY_BYTES)
+                require(proofBytes.size <= 5 * 1024)
+                handleMeshPacket(endpointId, packetBytes, proofBytes)
+                return
+            }
             if (envelope.optString("kind") == "mesh_packet_v1") {
-                handleMeshPacket(endpointId, bytes ?: return)
+                // Legacy packets carry no verifiable forwarding history and are rejected.
+                listener.onStatus("An older mesh packet without forwarding proofs was rejected. Update both phones.")
                 return
             }
             if (envelope.optString("kind") == "secure_packet_v1") {
