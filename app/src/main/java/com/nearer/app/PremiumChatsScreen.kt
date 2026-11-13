@@ -23,12 +23,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -458,9 +460,39 @@ private fun PremiumChatsInboxScreen(
         .filter { it.conversationId.isNotBlank() }
         .groupBy { it.conversationId }
         .mapValues { (_, conversation) -> conversation.maxByOrNull { it.timestamp }!! }
+    val context = LocalContext.current
+    val preferences = remember { context.getSharedPreferences("nearer_chat_inbox", android.content.Context.MODE_PRIVATE) }
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedFilter by remember { mutableStateOf("All") }
+    var pinnedIds by remember { mutableStateOf(preferences.getStringSet("pinned_conversations", emptySet()).orEmpty()) }
+
     val recipientIds = meshRecipients.map { it.peerId }
-    val conversationIds = (latestMessages.keys + recipientIds).distinct().sortedByDescending { id ->
-        latestMessages[id]?.timestamp ?: 0L
+    val conversationIds = (latestMessages.keys + recipientIds).distinct()
+        .filter { id ->
+            val recipient = meshRecipients.firstOrNull { it.peerId == id }
+            when (selectedFilter) {
+                "Nearby" -> recipient?.isDirect == true
+                "Mesh" -> recipient != null && !recipient.isDirect
+                "Offline" -> recipient == null
+                else -> true
+            }
+        }
+        .filter { id ->
+            if (searchQuery.isBlank()) true else {
+                val latest = latestMessages[id]
+                val name = meshRecipients.firstOrNull { it.peerId == id }?.displayName
+                    ?: latest?.conversationName.orEmpty()
+                name.contains(searchQuery, ignoreCase = true) ||
+                    id.contains(searchQuery, ignoreCase = true) ||
+                    latest?.body.orEmpty().contains(searchQuery, ignoreCase = true)
+            }
+        }
+        .sortedWith(compareByDescending<String> { it in pinnedIds }
+            .thenByDescending { latestMessages[it]?.timestamp ?: 0L })
+
+    fun togglePinned(id: String) {
+        pinnedIds = if (id in pinnedIds) pinnedIds - id else pinnedIds + id
+        preferences.edit().putStringSet("pinned_conversations", pinnedIds).apply()
     }
 
     Column(
@@ -480,6 +512,35 @@ private fun PremiumChatsInboxScreen(
             colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
         ) {
             Text("＋  Find people / Start a chat", fontWeight = FontWeight.Bold)
+        }
+
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it.take(80) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Search chats and messages") },
+            placeholder = { Text("Name, NeaRer ID or message") },
+            shape = RoundedCornerShape(15.dp)
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            listOf("All", "Nearby", "Mesh", "Offline").forEach { filter ->
+                val selected = selectedFilter == filter
+                Surface(
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { selectedFilter = filter },
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (selected) BlueAccent else Color(0xFF20334D)
+                ) {
+                    Text(
+                        filter,
+                        color = if (selected) Midnight else Muted,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp)
+                    )
+                }
+            }
         }
 
         if (conversationIds.isEmpty()) {
@@ -542,6 +603,12 @@ private fun PremiumChatsInboxScreen(
                                 color = if (recipient != null) Color(0xFF8FE0B9) else Muted,
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                if (id in pinnedIds) "★" else "☆",
+                                color = if (id in pinnedIds) Gold else Muted,
+                                fontSize = 17.sp,
+                                modifier = Modifier.clip(CircleShape).clickable { togglePinned(id) }.padding(5.dp)
                             )
                             Text("›", color = BlueAccent, fontSize = 21.sp)
                         }
