@@ -1635,7 +1635,12 @@ internal object IncomingFilePayloadPolicy {
         try { client.disconnectFromEndpoint(endpointId) } catch (_: Exception) { }
     }
 
-    private fun sendHyperTransferControl(endpointId: String, controlBytes: ByteArray, onSent: () -> Unit = {}) {
+    private fun sendHyperTransferControl(
+        endpointId: String,
+        controlBytes: ByteArray,
+        onSent: () -> Unit = {},
+        onFailure: (Exception) -> Unit = {}
+    ) {
         val session = messageSessions[endpointId]
             ?: throw IllegalStateException("The encrypted nearby session is not ready")
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
@@ -1648,6 +1653,7 @@ internal object IncomingFilePayloadPolicy {
         val encrypted = NearbyMessageCrypto.encrypt(session, localStableId, peerId, controlId, wrapper)
         client.sendPayload(endpointId, Payload.fromBytes(encrypted))
             .addOnSuccessListener { onSent() }
+            .addOnFailureListener { onFailure(it) }
     }
 
     private fun handleHyperTransferControl(endpointId: String, controlBytes: ByteArray) {
@@ -1754,7 +1760,8 @@ internal object IncomingFilePayloadPolicy {
                 else state.prepared.provideSource(state.sourceFile.inputStream())
                 client.sendPayload(state.endpointId, state.prepared.payload)
                     .addOnFailureListener {
-                        listener.onFileStatus("The resumable stream could not start. Reconnect to retry safely.")
+                        scheduleHyperStreamRetry(state)
+                        listener.onFileStatus("The resumable stream could not start. Retrying from the last verified checkpoint…")
                     }
             } catch (error: Exception) {
                 state.prepared.reject(error)
@@ -1765,12 +1772,20 @@ internal object IncomingFilePayloadPolicy {
         if (proposal != null) {
             val decisionBytes = TransferResumeMessageCodec.encodeDecision(payloadId, decision)
             try {
-                sendHyperTransferControl(state.endpointId, decisionBytes) { sendStream() }
+                sendHyperTransferControl(
+                    state.endpointId,
+                    decisionBytes,
+                    onSent = { sendStream() },
+                    onFailure = {
+                        preparedSource?.input?.close()
+                        scheduleHyperStreamRetry(state)
+                        listener.onFileStatus("Could not confirm the transfer offset. Retrying safely…")
+                    }
+                )
             } catch (_: Exception) {
                 preparedSource?.input?.close()
-                state.prepared.reject(IllegalStateException("Resume decision could not be sent"))
-                synchronized(state) { state.awaitingDecision = true }
-                listener.onFileStatus("Could not confirm the transfer offset. Please retry.")
+                scheduleHyperStreamRetry(state)
+                listener.onFileStatus("Could not confirm the transfer offset. Retrying safely…")
             }
         } else {
             sendStream()
@@ -2440,6 +2455,22 @@ internal object IncomingFilePayloadPolicy {
             }
         }
         return payloadId
+    }
+
+    private fun scheduleHyperStreamRetry(state: OutgoingHyperStream) {
+        state.timeout?.let(deliveryHandler::removeCallbacks)
+        state.endpointId = ""
+        state.awaitingDecision = true
+        state.prepared.close()
+        deliveryHandler.postDelayed({
+            val endpoint = synchronized(activeEndpoints) {
+                activeEndpoints.firstOrNull { candidate ->
+                    authenticatedEndpoints.contains(candidate) &&
+                        synchronized(names) { stableIds[candidate] == state.stablePeerId }
+                }
+            }
+            if (endpoint != null) resumeHyperStreamsForPeer(state.stablePeerId, endpoint)
+        }, 1500L)
     }
 
     private fun resumeHyperStreamsForPeer(peerId: String, endpointId: String) {
