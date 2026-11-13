@@ -611,8 +611,14 @@ internal fun FileCentreScreen(
             loading = true
             scope.launch {
                 val media = withContext(Dispatchers.IO) { AndroidFileCatalog.scanMedia(context) }
-                items.removeAll { it.category != FileCentreCategory.APPS }
+                items.removeAll {
+                    it.category == FileCentreCategory.PICTURES ||
+                        it.category == FileCentreCategory.VIDEOS ||
+                        it.category == FileCentreCategory.MUSIC
+                }
                 items.addAll(media)
+                val snapshot = items.toList()
+                withContext(Dispatchers.IO) { FileCentreIndexCache.write(context, snapshot) }
                 loading = false
                 notice = "Your accessible pictures, videos and music are ready."
             }
@@ -717,18 +723,45 @@ internal fun FileCentreScreen(
     }
 
     LaunchedEffect(Unit) {
-        loading = true
+        // Paint the last known catalogue first. Each cached media category is
+        // re-authorized before it is shown; the cache never grants file access.
+        val cachedCatalog = withContext(Dispatchers.IO) { FileCentreIndexCache.read(context) }
+        val permittedCached = cachedCatalog.filter { item ->
+            item.category == FileCentreCategory.APPS ||
+                AndroidFileCatalog.hasMediaAccess(context, item.category)
+        }
+        if (permittedCached.isNotEmpty()) {
+            val cachedCategories = setOf(
+                FileCentreCategory.APPS,
+                FileCentreCategory.PICTURES,
+                FileCentreCategory.VIDEOS,
+                FileCentreCategory.MUSIC
+            )
+            items.removeAll { it.category in cachedCategories }
+            items.addAll(permittedCached)
+            notice = "Showing your recent library while NeaRer refreshes the phone index."
+        }
+        loading = permittedCached.isEmpty()
+
+        // Refresh in the background so first paint is not blocked by a full
+        // MediaStore and installed-app scan on every app launch.
         val apps = withContext(Dispatchers.IO) { AndroidFileCatalog.installedApps(context) }
         items.removeAll { it.category == FileCentreCategory.APPS }
         items.addAll(apps)
         if (AndroidFileCatalog.hasMediaAccess(context, category)) {
             val media = withContext(Dispatchers.IO) { AndroidFileCatalog.scanMedia(context) }
-            items.removeAll { it.category != FileCentreCategory.APPS }
+            items.removeAll {
+                it.category == FileCentreCategory.PICTURES ||
+                    it.category == FileCentreCategory.VIDEOS ||
+                    it.category == FileCentreCategory.MUSIC
+            }
             items.addAll(media)
             notice = "Showing accessible files and installed apps on this phone."
         } else {
             notice = "Allow media access to show pictures, videos and music. Your installed apps are already listed."
         }
+        val snapshot = items.toList()
+        withContext(Dispatchers.IO) { FileCentreIndexCache.write(context, snapshot) }
         loading = false
     }
 
