@@ -2425,7 +2425,8 @@ internal object IncomingFilePayloadPolicy {
                 outgoingHyperStreams.remove(payloadId)
                 prepared.close()
                 staged?.delete()
-                listener.onFileStatus("File preparation failed: " + (error.localizedMessage ?: "please try again"))
+                listener.onFileStatus("The fast resumable stream could not be prepared. Using standard file transfer instead.")
+                sendFileLegacy(endpointId, uri, displayName)
             }
         }
         return payloadId
@@ -2554,6 +2555,10 @@ internal object IncomingFilePayloadPolicy {
             val streamId = sendHyperTransferStream(endpointId, uri, displayName)
             if (streamId != null) return streamId
         }
+        return sendFileLegacy(endpointId, uri, displayName)
+    }
+
+    private fun sendFileLegacy(endpointId: String, uri: Uri, displayName: String): Long? {
         if (!authenticatedEndpoints.contains(endpointId) || synchronized(activeEndpoints) { !activeEndpoints.contains(endpointId) }) {
             listener.onFileStatus("The nearby connection is not securely verified or is no longer active.")
             return null
