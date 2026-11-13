@@ -42,3 +42,12 @@ Only publish a release APK after the exact-head build/validation workflow and re
 ## Latest validation feedback
 
 An earlier Android validation attempt exposed integration compile errors in the extracted Chats screen, the Ludo avatar argument, and identity-ID validation calls. Those issues have been corrected on this branch. A fresh validation run against the corrected head is still required; no APK from the failed attempt is publishable.
+
+
+## Coordinated Phase 1 / Phase 2 integration — 13 November 2026
+
+- Phase 1 SmartConnect PR #118 was squash-merged into `main` at `c8c0400e9a2231ac02a7978242b6aad55c98face`. Its JVM unit tests and debug APK assembly passed; the artifact was uploaded. Emulator jobs were not run. This does not certify physical-device behavior.
+- Batch Two / Batch Three work from PR #117 has been carried onto `integration/phase2-coordinated` without replacing the newer SmartConnect `MainActivity.kt` or reverting the current main-branch CI workflow. The coordinated branch contains the mesh proof-chain/envelope implementation, atomic Dead Drop proof persistence, associated tests, Ludo pass-and-play engine/panel and integration documentation.
+- First-contact trust prompts were merged into the SmartConnect activity without discarding its automatic discovery and trusted-reconnect work.
+- Next gate: run JVM tests and assemble the APK on the coordinated branch head, resolve every failure, then review the live message/mesh transport path before merging. Do not merge the original PR #117 as-is while it reports conflicts.
+- Relay remains disabled. A successful compile does not prove remote key trust, multi-hop delivery, process-death recovery or 100+ device scale. Physical A → B → C → D validation remains a later release gate.
