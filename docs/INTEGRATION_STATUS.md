@@ -144,3 +144,8 @@ The durable community fan-out follow-up replaces display-name recipient selectio
 - Old name-only group records remain visible but cannot send secure group messages. The owner must recreate the group using the identity-aware protocol and members must rejoin; the old display-name list cannot safely reveal who the original owner was.
 
 Security limits remain explicit: the first trusted roster coordinator is TOFU rather than a cryptographically signed group invitation, and the six-digit group code is not an authentication secret. Users must compare the existing first-contact pairing code in person. A phone can only queue copies for member identities whose signing and recipient-encryption keys it has pinned; other members are skipped with a visible warning. This is a source-level security improvement awaiting exact-head CI and device validation, not a claim of production-secure group membership.
+
+
+## Combined Community reliability/security stack — PR #125
+
+PR #125 combines the previously validated durable per-recipient group fan-out from PR #124 with the identity-bound roster changes described above. PR #124 and the overlapping transport-only PR #123 were closed as superseded to avoid duplicate implementations. The combined PR targets `main`; its exact-head CI is required before merge. Do not treat the source as merged or device-validated until that gate passes.
