@@ -224,7 +224,7 @@ class TransferResumeStoreTest {
     }
 
 
-    @Test fun finalizesOnlyCompleteDigestVerifiedFilesWithAtomicMove() {
+    @Test fun finalizesOnlyCompleteDigestVerifiedFilesWithoutReplacingDestinations() {
         val root = Files.createTempDirectory("nearer-resume-finalize").toFile()
         try {
             val store = store(root)
