@@ -166,7 +166,7 @@ internal fun PeopleScreen(
                 Text("FIND SOMEONE NEARBY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 Text("Discover NeaRer users around you. Previously trusted devices can reconnect when they are nearby and available.", color = White, fontSize = 13.sp, lineHeight = 19.sp)
                 Button(onClick = onFindNearby, modifier = Modifier.fillMaxWidth().height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight),
+                    colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.Mint, contentColor = Midnight),
                     shape = RoundedCornerShape(14.dp)) {
                     Text(if (scanning) "Searching nearby…" else "Find people nearby", fontWeight = FontWeight.Bold)
                 }
@@ -189,7 +189,7 @@ internal fun PeopleScreen(
                                 Text(peerName, color = White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text("Nearby · not yet connected", color = Muted, fontSize = 10.sp)
                             }
-                            Text("Connect", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            Text("Connect", color = NeaRerPalette.Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                                 modifier = Modifier.clickable { onConnectNearby(endpointId) }.padding(7.dp))
                         }
                     }
@@ -199,7 +199,7 @@ internal fun PeopleScreen(
 
         Surface(color = Panel, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text(if (selectedContactForLink == null) "ADD BY NEARER ID" else "LINK ID TO ${selectedContactForLink?.name?.uppercase()}", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text(if (selectedContactForLink == null) "ADD BY NEARER ID" else "LINK ID TO ${selectedContactForLink?.name?.uppercase()}", color = NeaRerPalette.Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 OutlinedTextField(
                     value = idDraft,
                     onValueChange = { idDraft = it.uppercase().filter { ch -> ch.isLetterOrDigit() || ch == '-' }.take(15) },
@@ -233,7 +233,7 @@ internal fun PeopleScreen(
                                 Text(if (recipient != null) "Trusted · available nearby" else "Saved · waiting to be discovered", color = Muted, fontSize = 10.sp)
                             }
                             if (recipient != null) {
-                                Text("Chat", color = BlueAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                Text("Chat", color = NeaRerPalette.Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                                     modifier = Modifier.clickable { onSelectMeshRecipient(recipient.peerId); onOpenChat() }.padding(8.dp))
                             } else {
                                 Text("×", color = Muted, fontSize = 20.sp, modifier = Modifier.clickable {
@@ -254,7 +254,7 @@ internal fun PeopleScreen(
                     Text("PHONE CONTACTS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text("Your address book", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
-                Text(if (hasContactsPermission) "Refresh" else "Allow access", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                Text(if (hasContactsPermission) "Refresh" else "Allow access", color = NeaRerPalette.Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable {
                         if (hasContactsPermission) loadContacts() else contactsPermission.launch(Manifest.permission.READ_CONTACTS)
                     }.padding(8.dp))
@@ -281,7 +281,7 @@ internal fun PeopleScreen(
                             if (linkedId != null) {
                                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text("ID · ${linkedId.takeLast(4)}", color = Muted, fontSize = 9.sp)
-                                    Text(if (linkedRecipient != null) "Message" else "Change", color = BlueAccent, fontSize = 10.sp,
+                                    Text(if (linkedRecipient != null) "Message" else "Change", color = NeaRerPalette.Mint, fontSize = 10.sp,
                                         modifier = Modifier.clickable {
                                             if (linkedRecipient != null) {
                                                 onSelectMeshRecipient(linkedRecipient.peerId)
@@ -293,7 +293,7 @@ internal fun PeopleScreen(
                                         }.padding(4.dp))
                                 }
                             } else {
-                                Text("Link ID", color = BlueAccent, fontSize = 10.sp,
+                                Text("Link ID", color = NeaRerPalette.Mint, fontSize = 10.sp,
                                     modifier = Modifier.clickable {
                                         selectedContactForLink = contact
                                         idDraft = ""
@@ -329,7 +329,7 @@ internal fun PeopleScreen(
                                 Text(person.displayName, color = White, fontWeight = FontWeight.Bold)
                                 Text(if (person.isDirect) "Direct connection" else "Mesh · ${person.hopCount} relay(s)", color = Muted, fontSize = 10.sp)
                             }
-                            Text("Message  ›", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Message  ›", color = NeaRerPalette.Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
