@@ -422,7 +422,7 @@ fun LudoGameScreen(
                             enabled = LudoDoubleDiceEngine.canRoll(doubleGame) && !game.activePlayer.isComputer && !rolling && (!roomReady || roomCanAct),
                             modifier = Modifier.weight(1f).height(54.dp), shape = RoundedCornerShape(15.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = NeaRerPalette.Midnight,
-                                disabledContainerColor = NeaRerPalette.Border, disabledContentColor = Color(0xFFB8C3D1)),
+                                disabledContainerColor = NeaRerPalette.Border, disabledContentColor = NeaRerPalette.TextMuted),
                             elevation = ButtonDefaults.buttonElevation(defaultElevation = 5.dp, pressedElevation = 1.dp)) {
                             Text(if (rolling) "ROLLING…" else if (LudoDoubleDiceEngine.canRoll(doubleGame)) "ROLL BOTH DICE" else if (doubleGame.turn?.selected != null) "MOVE WITH " + game.dice else "CHOOSE A DIE",
                                 fontWeight = FontWeight.Black, fontSize = 14.sp, letterSpacing = 0.5.sp)
