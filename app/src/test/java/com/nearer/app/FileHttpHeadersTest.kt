@@ -48,6 +48,22 @@ class FileHttpHeadersTest {
         assertFalse(withoutValidator.contains("Last-Modified:"))
     }
 
+    @Test fun receiverPageCspAllowsOnlySameOriginUploadConnections() {
+        val headers = FileHttpHeaders.receiverPageHeaders(100L, "test-nonce")
+        val csp = headers.first { it.first == "Content-Security-Policy" }.second
+        assertTrue(csp.contains("script-src 'nonce-test-nonce'"))
+        assertTrue(csp.contains("connect-src 'self'"))
+        assertFalse(csp.contains("script-src 'unsafe-inline'"))
+        assertTrue(csp.contains("default-src 'none'"))
+    }
+    @Test fun uploadCreatedHeadersArePrivateAndLengthDelimited() {
+        val headers = FileHttpHeaders.uploadCreatedHeaders(12L).toMap()
+        assertEquals("text/plain; charset=utf-8", headers["Content-Type"])
+        assertEquals("12", headers["Content-Length"])
+        assertEquals("no-store", headers["Cache-Control"])
+        assertEquals("nosniff", headers["X-Content-Type-Options"])
+        assertEquals("close", headers["Connection"])
+    }
     @Test fun archiveHeadersDescribePrivateZipAndUseSafeAttachmentName() {
         val headers = FileHttpHeaders.archiveHeaders("NeaRer-Files.zip")
         assertTrue(headers.startsWith("Content-Type: application/zip\r\n"))
@@ -57,7 +73,7 @@ class FileHttpHeadersTest {
         assertTrue(headers.endsWith("Connection: close\r\n\r\n"))
     }
     @Test fun receiverPageHeadersPreventCachingFramingSniffingAndExternalExecution() {
-        val headers = FileHttpHeaders.receiverPageHeaders(123L).toMap()
+        val headers = FileHttpHeaders.receiverPageHeaders(123L, "test-nonce").toMap()
         assertEquals("text/html; charset=utf-8", headers["Content-Type"])
         assertEquals("123", headers["Content-Length"])
         assertEquals("no-store", headers["Cache-Control"])
@@ -66,7 +82,7 @@ class FileHttpHeadersTest {
         assertEquals("no-referrer", headers["Referrer-Policy"])
         assertEquals("DENY", headers["X-Frame-Options"])
         assertEquals(
-            "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-test-nonce'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             headers["Content-Security-Policy"]
         )
         assertEquals("camera=(), microphone=(), geolocation=()", headers["Permissions-Policy"])
@@ -75,7 +91,7 @@ class FileHttpHeadersTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun receiverPageHeadersRejectNegativeContentLength() {
-        FileHttpHeaders.receiverPageHeaders(-1L)
+        FileHttpHeaders.receiverPageHeaders(-1L, "test-nonce")
     }
 
 

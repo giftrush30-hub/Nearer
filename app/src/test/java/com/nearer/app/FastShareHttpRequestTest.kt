@@ -48,6 +48,26 @@ class FastShareHttpRequestTest {
         assertEquals(FastShareHttpRequest.Route.DOWNLOAD_ALL, head.route)
         assertTrue(head.isHeadOnly)
     }
+    @Test fun putUploadRouteAndEncodedFileNameAreRecognized() {
+        val request = FastShareHttpRequest.parse("PUT /upload?key=abc&name=holiday%20video%2B1.mp4 HTTP/1.1")!!
+        assertEquals(FastShareHttpRequest.Route.UPLOAD, request.route)
+        assertTrue(request.supportsMethod)
+        assertEquals("holiday video+1.mp4", request.queryParameter("name"))
+    }
+
+    @Test fun uploadNameMustAppearExactlyOnceAndDecodeSafely() {
+        val duplicate = FastShareHttpRequest.parse("PUT /upload?name=one&name=two HTTP/1.1")!!
+        val malformed = FastShareHttpRequest.parse("PUT /upload?name=%ZZ HTTP/1.1")!!
+        assertNull(duplicate.queryParameter("name"))
+        assertNull(malformed.queryParameter("name"))
+    }
+
+    @Test fun uploadRouteAcceptsOnlyPut() {
+        val get = FastShareHttpRequest.parse("GET /upload HTTP/1.1")!!
+        val putDownload = FastShareHttpRequest.parse("PUT /download HTTP/1.1")!!
+        assertFalse(get.supportsMethod)
+        assertFalse(putDownload.supportsMethod)
+    }
     @Test fun unknownPathSelectsNotFoundRoute() {
         assertEquals(
             FastShareHttpRequest.Route.NOT_FOUND,

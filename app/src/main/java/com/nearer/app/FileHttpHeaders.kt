@@ -7,10 +7,10 @@ internal object FileHttpHeaders {
 
     /**
      * Security and cache headers for the private HTML receiver page.
-     * The page intentionally permits its embedded stylesheet but no scripts,
-     * external resources, forms, framing, or privileged browser capabilities.
+     * The page permits its embedded stylesheet and one nonce-bound upload script,
+     * but no external resources, form submissions, framing, or privileged APIs.
      */
-    fun receiverPageHeaders(contentLength: Long): List<Pair<String, String>> {
+    fun receiverPageHeaders(contentLength: Long, scriptNonce: String): List<Pair<String, String>> {
         require(contentLength >= 0L) { "Content length must be non-negative" }
         return listOf(
             "Content-Type" to "text/html; charset=utf-8",
@@ -20,7 +20,7 @@ internal object FileHttpHeaders {
             "X-Content-Type-Options" to "nosniff",
             "Referrer-Policy" to "no-referrer",
             "X-Frame-Options" to "DENY",
-            "Content-Security-Policy" to "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            "Content-Security-Policy" to "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-$scriptNonce'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             "Permissions-Policy" to "camera=(), microphone=(), geolocation=()",
             "Connection" to "close"
         )
@@ -88,6 +88,18 @@ internal object FileHttpHeaders {
         )
     }
 
+    /** Headers for a successfully stored browser upload. */
+    fun uploadCreatedHeaders(contentLength: Long): List<Pair<String, String>> {
+        require(contentLength >= 0L) { "Content length must be non-negative" }
+        return listOf(
+            "Content-Type" to "text/plain; charset=utf-8",
+            "Content-Length" to contentLength.toString(),
+            "Cache-Control" to "no-store",
+            "X-Content-Type-Options" to "nosniff",
+            "Referrer-Policy" to "no-referrer",
+            "Connection" to "close"
+        )
+    }
     /** Headers for a streaming ZIP archive of the selected files. */
     fun archiveHeaders(fileName: String): String =
         "Content-Type: application/zip\r\n" +

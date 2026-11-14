@@ -3942,7 +3942,7 @@ private fun NeaRerHome(
     }
     val unifiedTransferHistory = remember(transferHistory, fastShare.history) {
         (transferHistory.map { UnifiedTransferHistoryEntry(it.direction, it.fileName, it.bytes, it.status, it.timestamp, "Nearby") } +
-            fastShare.history.map { UnifiedTransferHistoryEntry("Fast Share", it.fileName, it.bytesTransferred, it.result, it.timestampMillis, "Fast Share") })
+            fastShare.history.map { UnifiedTransferHistoryEntry("Fast Share", it.fileName, it.bytesTransferred, it.result, it.timestampMillis, it.direction) })
             .sortedByDescending { it.timestamp }
     }
     var pendingFastShareUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -4077,21 +4077,30 @@ private fun NeaRerHome(
                         ) { Text("Fast Share • multiple large files", fontWeight = FontWeight.Bold) }
                         Text("Send a large video to a phone without NeaRer using a temporary local Wi-Fi connection. No mobile data.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                         Text(fastShare.status, color = if (fastShare.details != null) BlueAccent else Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        if (fastShare.details != null) {
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("ALLOW INCOMING UPLOADS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text(if (fastShare.allowUploads) "On · connected devices can send files to this phone" else "Off · downloads only until you turn this on", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+                                }
+                                androidx.compose.material3.Switch(checked = fastShare.allowUploads, onCheckedChange = fastShare::setUploadsAllowed)
+                            }
+                        }
                         if (fastShare.activeTransfers.isNotEmpty()) {
                             Column(
                                 modifier = Modifier.fillMaxWidth().background(Midnight, RoundedCornerShape(16.dp)).padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Text("LIVE DOWNLOADS · ${fastShare.activeTransfers.count { !it.isQueued }}/5 · ${fastShare.activeTransfers.count { it.isQueued }} waiting", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("LIVE TRANSFERS · ${fastShare.activeTransfers.count { !it.isQueued }} active · ${fastShare.activeTransfers.count { it.isQueued }} waiting", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 fastShare.activeTransfers.forEach { transfer ->
                                     val percent = if (transfer.totalBytes > 0L) ((transfer.bytesSent.toDouble() / transfer.totalBytes.toDouble()) * 100.0).toInt().coerceIn(0, 100) else -1
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text(transfer.fileName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                             Text(
-                                                if (transfer.isQueued) "Waiting for a download slot…"
-                                                else if (percent >= 0) "${formatTransferBytes(transfer.bytesSent)} / ${formatTransferBytes(transfer.totalBytes)} · $percent%"
-                                                else "${formatTransferBytes(transfer.bytesSent)} sent · size unknown",
+                                                if (transfer.isQueued) "Waiting for a transfer slot…"
+                                                else if (percent >= 0) "${if (transfer.isReceiving) "Receiving" else "Sending"} ${formatTransferBytes(transfer.bytesSent)} / ${formatTransferBytes(transfer.totalBytes)} · $percent%"
+                                                else "${if (transfer.isReceiving) "Receiving" else "Sending"} ${formatTransferBytes(transfer.bytesSent)} · size unknown",
                                                 color = Muted, fontSize = 10.sp
                                             )
                                             Text("${formatTransferBytes(transfer.bytesPerSecond)}/s", color = BlueAccent, fontSize = 10.sp)
@@ -4139,6 +4148,7 @@ private fun NeaRerHome(
                                     Text("2. Open a web browser on that device and visit:", color = Muted, fontSize = 12.sp)
                                     Text(share.url, color = BlueAccent, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                     Text("3. Choose the files to download. Keep NeaRer open and stay connected until they finish.", color = Muted, fontSize = 12.sp)
+                                    Text("4. To send files back to this phone, first turn on Allow incoming uploads in NeaRer. It is off by default.", color = Muted, fontSize = 12.sp)
                                     Button(onClick = {
                                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                         clipboard.setPrimaryClip(ClipData.newPlainText("NeaRer Fast Share link", share.url))

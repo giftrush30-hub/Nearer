@@ -41,6 +41,15 @@ class FastShareDownloadCatalogTest {
         ).receiverPage("g".repeat(64))
         assertTrue(!page.contains("/download-all?"))
     }
+    @Test fun receiverPageIncludesCrossPlatformUploadControls() {
+        val page = FastShareDownloadCatalog(
+            listOf(FastShareDownloadItem(0, "photo.jpg", "image/jpeg", 12L))
+        ).receiverPage("h".repeat(64))
+        assertTrue(page.contains("Send files to this phone"))
+        assertTrue(page.contains("id=\"upload-files\" type=\"file\" multiple"))
+        assertTrue(page.contains("/upload?key="))
+        assertTrue(page.contains("xhr.upload.onprogress"))
+    }
     @Test fun receiverPageOffersOneClickArchiveForMultiFileSessions() {
         val key = "f".repeat(64)
         val page = FastShareDownloadCatalog(
