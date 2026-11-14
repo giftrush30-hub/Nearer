@@ -276,3 +276,18 @@ The palette regression test now asserts the original shared values. No feature, 
 2. Verify the latest main-head JVM test and debug APK workflow result.
 3. Selectively forward-port only reviewed missing features and their tests, preserving the latest SmartConnect, messaging, HyperTransfer and Ludo implementations.
 4. Keep this document current after each integration batch so parallel development chats have one shared source of truth.
+
+
+### Additional focused branch checks — 14 November 2026
+
+The following comparisons were checked against the current `main` source, rather than assuming that a branch's ahead/behind count means its features are missing:
+
+- `feature/messaging-forwarding-voice-foundations`: `ChatForwardPolicy`, `VoiceNotePolicy` and both corresponding JVM test files are byte-identical to main. No port is needed.
+- `feature/messaging-inbox-search-pins`: the inspected delivery-label, edit, inbox, inbox-state, reaction, reply policy files, `PeopleScreen.kt` and `PremiumChatsScreen.kt` are byte-identical to main. No duplicate port is needed.
+- `feature/messaging-people-chat-inbox` and `feature/people-discovery-screen`: the inspected `PeopleScreen.kt` and `PremiumChatsScreen.kt` content is already present on main. Their older MainActivity changes are not to be copied over the newer SmartConnect activity.
+- `integration/brand-logo-refresh`: the inspected launcher vector, logo vector, animated splash resource and icon-background colour resource are byte-identical to main. No logo rollback or duplicate port is needed.
+- `feature/game-zone-ludo`: its Ludo engine and screen are older, smaller snapshots than the current main implementation. Do not merge this branch over the newer double-dice board and game logic.
+- `feature/nearer-ui-polish`: its MainActivity and transport are an older product snapshot. Do not merge it wholesale over current messaging, SmartConnect and transfer work.
+- `feature/fast-share-multiple-files`, `feature/fast-share-browser-upload`, `feature/fastshare-browser-upload` and `feature/fastshare-download-all-archive` are older, diverged transfer branches. Current main already has multi-file Fast Share, download-all ZIP and an explicit opt-in browser-upload flow. Compare any proposed isolated hardening against the current PUT implementation before porting.
+
+These checks eliminate several duplicate/stale merge candidates. They do not yet constitute a full review of every branch in the 160+ branch inventory.
