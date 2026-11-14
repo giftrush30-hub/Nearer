@@ -3740,6 +3740,58 @@ private fun NeaRerHome(
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     val context = LocalContext.current
+    val folderPreferences = remember(context) {
+        context.getSharedPreferences("nearer_folder_browser", Context.MODE_PRIVATE)
+    }
+    var phoneFolderTreeUri by remember(context) {
+        mutableStateOf(folderPreferences.getString("tree_uri", null)?.let(Uri::parse))
+    }
+    var showPhoneFolderBrowser by remember { mutableStateOf(false) }
+    var phoneFolderNotice by remember { mutableStateOf("") }
+    val phoneFolderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri == null) {
+            phoneFolderNotice = "No folder was selected."
+        } else {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                phoneFolderTreeUri = uri
+                folderPreferences.edit().putString("tree_uri", uri.toString()).apply()
+                phoneFolderNotice = "Folder access saved. Choose the files you want to send."
+                showPhoneFolderBrowser = true
+            } catch (_: SecurityException) {
+                phoneFolderNotice = "Android could not keep access to that folder. Please choose it again."
+            }
+        }
+    }
+    val hasSavedPhoneFolder = phoneFolderTreeUri?.let { savedUri ->
+        context.contentResolver.persistedUriPermissions.any {
+            it.uri == savedUri && it.isReadPermission
+        }
+    } == true
+    val openPhoneFolderBrowser = {
+        if (hasSavedPhoneFolder) {
+            showPhoneFolderBrowser = true
+        } else {
+            phoneFolderTreeUri = null
+            folderPreferences.edit().remove("tree_uri").apply()
+            phoneFolderPicker.launch(null)
+        }
+    }
+    if (showPhoneFolderBrowser && phoneFolderTreeUri != null) {
+        PhoneFolderBrowser(
+            treeUri = phoneFolderTreeUri!!,
+            onSelectFiles = { uris ->
+                onSendFiles(uris)
+                phoneFolderNotice = "${uris.size} file(s) added to your prepared transfer queue."
+            },
+            onClose = { showPhoneFolderBrowser = false }
+        )
+    }
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
     var selectedConversationKey by remember { mutableStateOf<String?>(null) }
@@ -4365,6 +4417,22 @@ private fun NeaRerHome(
                     openSendSession = openSendSession,
                     openSendNotice = openSendNotice,
                     onPickOpenSendFiles = pickOpenSendFiles,
+                    onBrowsePhoneFolders = openPhoneFolderBrowser,
+                    folderNotice = phoneFolderNotice,
+                    hasSavedFolder = hasSavedPhoneFolder,
+                    onForgetSavedFolder = {
+                        phoneFolderTreeUri?.let { uri ->
+                            runCatching {
+                                context.contentResolver.releasePersistableUriPermission(
+                                    uri,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
+                            }
+                        }
+                        phoneFolderTreeUri = null
+                        folderPreferences.edit().remove("tree_uri").apply()
+                        phoneFolderNotice = "Saved folder access forgotten."
+                    },
                     onStopOpenSend = {
                         openSendManager?.close()
                         openSendManager = null
