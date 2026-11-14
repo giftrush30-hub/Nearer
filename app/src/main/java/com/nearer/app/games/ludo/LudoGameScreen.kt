@@ -254,7 +254,7 @@ fun LudoGameScreen(
                 }
             }
 
-            Surface(color = Panel, shape = RoundedCornerShape(21.dp), border = BorderStroke(1.dp, Color(0xFF24466F)),
+            Surface(color = Panel, shape = RoundedCornerShape(21.dp), border = BorderStroke(1.dp, NeaRerPalette.Border),
                 modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -353,7 +353,7 @@ fun LudoGameScreen(
                 }
             }
 
-            Surface(color = Panel, shape = RoundedCornerShape(21.dp), border = BorderStroke(1.dp, Color(0xFF294D78)),
+            Surface(color = Panel, shape = RoundedCornerShape(21.dp), border = BorderStroke(1.dp, NeaRerPalette.Border),
                 modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -549,7 +549,7 @@ fun LudoGameScreen(
                         Text("Playing with $roomPeerName", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         if (roomMessages.isNotEmpty()) {
                             Column(Modifier.fillMaxWidth().heightIn(max = 130.dp)
-                                .clip(RoundedCornerShape(12.dp)).background(Color(0xFF091A2D)).padding(9.dp),
+                                .clip(RoundedCornerShape(12.dp)).background(NeaRerPalette.Midnight).padding(9.dp),
                                 verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 roomMessages.takeLast(12).forEach { message ->
                                     Text(message, color = White, fontSize = 10.sp)
