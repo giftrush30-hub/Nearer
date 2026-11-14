@@ -291,3 +291,15 @@ The following comparisons were checked against the current `main` source, rather
 - `feature/fast-share-multiple-files`, `feature/fast-share-browser-upload`, `feature/fastshare-browser-upload` and `feature/fastshare-download-all-archive` are older, diverged transfer branches. Current main already has multi-file Fast Share, download-all ZIP and an explicit opt-in browser-upload flow. Compare any proposed isolated hardening against the current PUT implementation before porting.
 
 These checks eliminate several duplicate/stale merge candidates. They do not yet constitute a full review of every branch in the 160+ branch inventory.
+
+
+### Cross-screen palette completion — 14 November 2026
+
+The audit found that Chats and People still had hard-coded blue surfaces and action accents even after the first theme pass. Those screens have now been aligned to the shared original palette too:
+
+- Chats: conversation cards, incoming/outgoing bubbles, action surfaces, status accents, and muted text now use shared midnight/panel/raised-panel/mint/gold tokens. Semantic danger and success indicators remain distinguishable.
+- People: contact cards, avatar backplates, buttons, and action labels now use the shared panel/brand-blue/mint tokens.
+- Ludo: its outer controls and surfaces use the shared palette; the four traditional player colours, board markings, dice highlights and gameplay status colours remain distinct.
+- The palette test now verifies that the main Activity tokens and shared design-system tokens remain identical.
+
+The restored theme therefore covers the main shell, Chats, People, File Centre, Ludo, Android window bars and splash background. The logo's original brand-blue and mint artwork remains unchanged.
