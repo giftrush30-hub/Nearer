@@ -37,7 +37,7 @@ class FastShareHttpErrorsTest {
         val (headers, body) = headersAndBody(FastShareHttpErrors.tooManyRequests())
         assertTrue(headers.startsWith("HTTP/1.1 429 Too Many Requests"))
         assertTrue(headers.contains("\r\nRetry-After: 2\r\n"))
-        assertEquals("Another download is already in progress. Wait briefly, then retry.\n", body)
+        assertEquals("Another transfer is already in progress. Wait briefly, then retry.\n", body)
         assertContentLength(headers, body)
     }
 
@@ -46,6 +46,8 @@ class FastShareHttpErrorsTest {
             FastShareHttpErrors.badRequest(),
             FastShareHttpErrors.methodNotAllowed(),
             FastShareHttpErrors.tooManyRequests(),
+            FastShareHttpErrors.uploadsDisabled(),
+            FastShareHttpErrors.insufficientStorage(),
             FastShareHttpErrors.forbidden(),
             FastShareHttpErrors.notFound()
         ).forEach { response ->
@@ -53,6 +55,17 @@ class FastShareHttpErrorsTest {
             assertTrue(headers.contains("\r\nCache-Control: no-store\r\n"))
             assertTrue(headers.contains("\r\nX-Content-Type-Options: nosniff\r\n"))
         }
+    }
+
+    @Test fun disabledUploadsAndLowStorageReturnExplicitErrors() {
+        val (disabledHeaders, disabledBody) = headersAndBody(FastShareHttpErrors.uploadsDisabled())
+        assertTrue(disabledHeaders.startsWith("HTTP/1.1 403 Uploads Disabled"))
+        assertTrue(disabledBody.contains("off"))
+        assertContentLength(disabledHeaders, disabledBody)
+        val (storageHeaders, storageBody) = headersAndBody(FastShareHttpErrors.insufficientStorage())
+        assertTrue(storageHeaders.startsWith("HTTP/1.1 507 Insufficient Storage"))
+        assertTrue(storageBody.contains("free storage"))
+        assertContentLength(storageHeaders, storageBody)
     }
 
     @Test fun unknownRouteReturns404WithEmptyBody() {
