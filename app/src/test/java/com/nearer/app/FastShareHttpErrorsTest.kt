@@ -33,7 +33,7 @@ class FastShareHttpErrorsTest {
         assertContentLength(headers, body)
     }
 
-    @Test fun concurrentDownloadReturns429WithRetryAndAccurateBodyLength() {
+    @Test fun concurrentTransferReturns429WithRetryAndAccurateBodyLength() {
         val (headers, body) = headersAndBody(FastShareHttpErrors.tooManyRequests())
         assertTrue(headers.startsWith("HTTP/1.1 429 Too Many Requests"))
         assertTrue(headers.contains("\r\nRetry-After: 2\r\n"))
@@ -87,7 +87,7 @@ class FastShareHttpErrorsTest {
         assertTrue(response.startsWith("HTTP/1.1 429 Too Many Requests\r\n"))
         assertTrue(response.contains("Retry-After: 2\r\n"))
         assertTrue(response.contains("Cache-Control: no-store\r\n"))
-        assertTrue(response.contains("Another download is already in progress"))
+        assertTrue(response.contains("Another transfer is already in progress"))
     }
 
 }
