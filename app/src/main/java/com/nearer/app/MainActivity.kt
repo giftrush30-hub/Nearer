@@ -3787,7 +3787,7 @@ private fun NeaRerHome(
             treeUri = phoneFolderTreeUri!!,
             onSelectFiles = { uris ->
                 onSendFiles(uris)
-                phoneFolderNotice = "${uris.size} file(s) added to your prepared transfer queue."
+                phoneFolderNotice = "${uris.size} file(s) selected. Check the chat notice if a connection or active transfer prevents queuing."
             },
             onClose = { showPhoneFolderBrowser = false }
         )
