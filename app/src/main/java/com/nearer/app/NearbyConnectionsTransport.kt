@@ -1773,10 +1773,10 @@ internal object IncomingFilePayloadPolicy {
             !state.sha256.equals(receipt.sha256, ignoreCase = true)) return
         state.receiptTimeout?.let(deliveryHandler::removeCallbacks)
         state.receiptTimeout = null
-        state.retentionTimeout?.let(deliveryHandler::removeCallbacks)
-        state.retentionTimeout = null
         state.awaitingReceipt = false
         if (receipt.saved) {
+            state.retentionTimeout?.let(deliveryHandler::removeCallbacks)
+            state.retentionTimeout = null
             if (outgoingHyperStreams.remove(receipt.payloadId, state)) {
                 state.prepared.close()
                 state.sourceFile.delete()
