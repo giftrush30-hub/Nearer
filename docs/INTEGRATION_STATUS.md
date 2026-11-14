@@ -306,3 +306,24 @@ The restored theme therefore covers the main shell, Chats, People, File Centre, 
 
 
 A deeper PR #4 Ludo check also confirmed that `LudoRoomProtocol`, `LudoRoomAuthority`, `LudoRoomEnvelopeCodec`, `LudoRoomStateCodec`, `LudoRoomSession`, `LudoSoundEffects`, `LudoTwoDiceRules` and `LudoAiEngine` are byte-identical between that draft branch and main. The draft's Ludo screen was an older visual snapshot; its colour differences are superseded by the shared-palette update. No Ludo protocol or game-engine merge is needed from PR #4.
+
+
+### Continued consolidation audit — 14 November 2026
+
+A further focused review checked trusted reconnect and the older Fast Share implementation branches against the current main-head source:
+
+- `feature/trusted-peer-auto-reconnect` is one commit ahead but 61 commits behind main and changes only `MainActivity.kt`. Its auto-reconnect behavior is already present on main in a newer form: main delegates duplicate-request suppression and request lifecycle cleanup to `trustedPeerReconnectTracker`, clears the tracker through the transport request callback, and clears it when transport is unavailable. The old branch uses a mutable endpoint-ID set and direct request call. Do not merge or cherry-pick it; doing so would replace the newer tracker implementation with older state handling.
+- `feature/fastshare-download-all-archive` contains an `FastShareArchiveWriter.kt` whose blob SHA is identical to main. The branch's download catalog, HTTP request parser and HTTP session are older snapshots than main. In particular, the old parser supports only GET/HEAD, while main has the explicit PUT upload route; main's session validates bounded HTTP headers, requires a declared Content-Length for PUT, rejects chunked bodies and rejects request bodies on download routes. No archive-writer port is needed and the older parser/session must not overwrite main.
+- `feature/fast-share-browser-upload` also contains the same archive-writer blob as main. Its upload receiver is an older self-contained file-publication implementation; main instead separates bounded stream copying from the current authenticated HTTP session and publication/admission path. Its session/parser snapshots are older and do not include the current PUT route. Do not port these files wholesale.
+- `feature/fast-share-multiple-files` has older catalog/request/session snapshots than main. Current main's catalog and HTTP server are further evolved; no unique safe improvement was established in this pass.
+- The compare endpoint returned 404 for `feature/offline-folder-sharing`; this is an unavailable ref, not evidence that the feature is integrated or absent. Revisit only if the branch name/ref can be confirmed.
+
+### Latest main-head CI lookup
+
+- Re-queried combined commit status for `7a60a082c7b3def1c8988755a64441a28a0347aa`: no status checks were returned.
+- Re-queried workflow runs for that commit. The available repository wrapper returned an empty list and is documented to return only pull-request-triggered runs, so it cannot confirm the push-triggered `main` workflow.
+- Therefore exact-head JVM tests and debug APK assembly remain unverified for this latest main commit. Earlier passing PR-head runs recorded above do not validate later colour and integration commits.
+
+### Consolidation decision
+
+No code was copied from these candidates because the reviewed main implementations are newer or already contain the useful functionality. This is deliberate: avoiding a stale merge that silently regresses trusted reconnect or browser-upload security is more valuable than increasing the number of merged branches. Continue with source-level audits of remaining unique candidates, then obtain an exact-main-head CI result through a workflow-run source that includes push events. Relay stays disabled and no physical-device tests are claimed.
