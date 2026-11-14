@@ -777,7 +777,7 @@ class MainActivity : ComponentActivity() {
                 background = Midnight,
                 surface = Panel,
                 surfaceVariant = Panel,
-                primary = BlueAccent,
+                primary = Mint,
                 onPrimary = Midnight,
                 secondary = Gold,
                 onSecondary = Midnight,
@@ -4056,7 +4056,7 @@ private fun NeaRerHome(
                             onClick = { selectedTab = "Nearby"; onFindNearby() },
                             modifier = Modifier.fillMaxWidth().height(54.dp),
                             shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                            colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
                         ) { Text(if (scanning) "Refreshing nearby…" else "Refresh nearby people", fontWeight = FontWeight.Bold) }
                         Button(
                             onClick = { selectedTab = "Share" },
@@ -4073,10 +4073,10 @@ private fun NeaRerHome(
                             onClick = { fastSharePicker.launch(arrayOf("*/*")) },
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                            colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
                         ) { Text("Fast Share • multiple large files", fontWeight = FontWeight.Bold) }
                         Text("Send a large video to a phone without NeaRer using a temporary local Wi-Fi connection. No mobile data.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
-                        Text(fastShare.status, color = if (fastShare.details != null) BlueAccent else Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        Text(fastShare.status, color = if (fastShare.details != null) Mint else Muted, fontSize = 12.sp, lineHeight = 18.sp)
                         if (fastShare.details != null) {
                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                                 Column(modifier = Modifier.weight(1f)) {
@@ -4103,7 +4103,7 @@ private fun NeaRerHome(
                                                 else "${if (transfer.isReceiving) "Receiving" else "Sending"} ${formatTransferBytes(transfer.bytesSent)} · size unknown",
                                                 color = Muted, fontSize = 10.sp
                                             )
-                                            Text("${formatTransferBytes(transfer.bytesPerSecond)}/s", color = BlueAccent, fontSize = 10.sp)
+                                            Text("${formatTransferBytes(transfer.bytesPerSecond)}/s", color = Mint, fontSize = 10.sp)
                                         }
                                         if (percent >= 0 && !transfer.isQueued) {
                                             androidx.compose.material3.LinearProgressIndicator(
@@ -4115,7 +4115,7 @@ private fun NeaRerHome(
                                         } else {
                                             androidx.compose.material3.LinearProgressIndicator(
                                                 modifier = Modifier.fillMaxWidth().height(5.dp),
-                                                color = BlueAccent,
+                                                color = Mint,
                                                 trackColor = Panel
                                             )
                                         }
@@ -4146,7 +4146,7 @@ private fun NeaRerHome(
                                     Text(share.ssid, color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                                     Text("Password: ${share.password}", color = White, fontSize = 14.sp)
                                     Text("2. Open a web browser on that device and visit:", color = Muted, fontSize = 12.sp)
-                                    Text(share.url, color = BlueAccent, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                    Text(share.url, color = Mint, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                     Text("3. Choose the files to download. Keep NeaRer open and stay connected until they finish.", color = Muted, fontSize = 12.sp)
                                     Text("4. To send files back to this phone, first turn on Allow incoming uploads in NeaRer. It is off by default.", color = Muted, fontSize = 12.sp)
                                     Button(onClick = {
@@ -4154,7 +4154,7 @@ private fun NeaRerHome(
                                         clipboard.setPrimaryClip(ClipData.newPlainText("NeaRer Fast Share link", share.url))
                                         android.widget.Toast.makeText(context, "Download link copied.", android.widget.Toast.LENGTH_SHORT).show()
                                     }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = BlueAccent)) {
+                                        colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)) {
                                         Text("Copy download link")
                                     }
                                     Button(onClick = { fastShare.stop() }, modifier = Modifier.fillMaxWidth(),
@@ -4169,7 +4169,7 @@ private fun NeaRerHome(
                             onClick = { anyPhonePicker.launch(arrayOf("*/*")) },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
                             shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = BlueAccent)
+                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)
                         ) { Text("Send to any phone • no NeaRer needed", fontWeight = FontWeight.Bold) }
                         Text("Choose a file, then select Bluetooth or Quick Share. The receiving phone does not need NeaRer.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                         Button(
@@ -4204,7 +4204,7 @@ private fun NeaRerHome(
                 }
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("YOUR NEARBY NAME", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("YOUR NEARBY NAME", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         OutlinedTextField(
                             value = nameDraft,
                             onValueChange = { nameDraft = it.take(24) },
@@ -4217,7 +4217,7 @@ private fun NeaRerHome(
                             onClick = { onSaveDisplayName(nameDraft) },
                             enabled = nameDraft.trim().isNotBlank(),
                             shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = BlueAccent)
+                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)
                         ) { Text("Save my nearby name") }
                         androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Midnight))
                         Text("YOUR NEARER ID", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -4255,7 +4255,7 @@ private fun NeaRerHome(
             if (selectedTab == "Nearby") {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), color = Panel) {
                 Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("NEARBY CONNECTION", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("NEARBY CONNECTION", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text("Find your people nearby.", color = White, fontSize = 25.sp, lineHeight = 31.sp, fontWeight = FontWeight.ExtraBold)
                     Text(
                         "NeaRer advertises your chosen name while searching for other NeaRer phones. Nearby Connections can use Bluetooth and nearby Wi-Fi automatically; Wi-Fi Direct is an additional discovery path. Hotspot and mobile data are not required.",
@@ -4263,7 +4263,7 @@ private fun NeaRerHome(
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(onClick = onFindNearby, modifier = Modifier.weight(1f).height(52.dp), enabled = !scanning,
-                            shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)) {
+                            shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                             Text(if (scanning) "Searching…" else "Find people / Receive", fontWeight = FontWeight.Bold)
                         }
                         if (scanning) {
@@ -4276,7 +4276,7 @@ private fun NeaRerHome(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("SMARTCONNECT", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.width(8.dp))
-                                Text("Automatic", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Automatic", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             }
                             Text(
                                 "NeaRer chooses the available nearby connection automatically. No hotspot password, matching speed setting or manual Wi-Fi mode is needed.",
@@ -4292,21 +4292,21 @@ private fun NeaRerHome(
             Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(18.dp), color = if (chatReady) Color(0xFF173C3A) else Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("CONNECTION STATUS", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("CONNECTION STATUS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Spacer(modifier = Modifier.weight(1f))
                         if (chatReady) Surface(shape = RoundedCornerShape(30.dp), color = Color(0xFF174B43), modifier = Modifier.alpha(pulse)) {
                             Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text("✓", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Black)
-                                Text("CONNECTED", color = BlueAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Text("✓", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                                Text("CONNECTED", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                     Text(connectedDeviceName?.let { "You are connected to $it" } ?: connectionMessage, color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     Text(connectionMessage, color = Muted, fontSize = 11.sp)
-                    Text(approvalMessage, color = if (chatReady) BlueAccent else Muted, fontSize = 12.sp)
+                    Text(approvalMessage, color = if (chatReady) Mint else Muted, fontSize = 12.sp)
                     pairingCode?.let { code ->
                         Text("PAIRING CODE", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        Text(code, color = BlueAccent, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
+                        Text(code, color = Mint, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
                         Text("Never approve by guesswork. Both phones must show the same code, and you must recognize the person requesting the connection.", color = Muted, fontSize = 10.sp)
                     }
                     if (connectedDeviceName != null || connectingAddress != null) {
@@ -4390,7 +4390,7 @@ private fun NeaRerHome(
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
                 Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("COMMUNITY MESH RELAY", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("COMMUNITY MESH RELAY", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Text("Multi-hop delivery is being upgraded with recipient routing and end-to-end encryption.", color = White, fontSize = 12.sp, lineHeight = 17.sp)
                         Text("Temporarily paused for privacy. Direct phone-to-phone chat still works.", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
                     }
@@ -4401,18 +4401,18 @@ private fun NeaRerHome(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("NEARBY DEVICES", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
                 Spacer(modifier = Modifier.weight(1f))
-                Text("${devices.size} found", color = BlueAccent, fontSize = 11.sp)
+                Text("${devices.size} found", color = Mint, fontSize = 11.sp)
             }
 
             Surface(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(24.dp), color = Panel) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("PEOPLE AROUND YOU", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("PEOPLE AROUND YOU", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text(if (hybridPeers.isEmpty()) "Your nearby circle" else "${hybridPeers.size} active nearby", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     if (scanning && hybridPeers.isEmpty()) {
                         androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(142.dp), contentAlignment = Alignment.Center) {
                             Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(118.dp).alpha(pulse)) {}
                             Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(82.dp).rotate(orbitRotation)) {
-                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.TopCenter) { Surface(shape = CircleShape, color = BlueAccent, modifier = Modifier.size(12.dp)) {} }
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.TopCenter) { Surface(shape = CircleShape, color = Mint, modifier = Modifier.size(12.dp)) {} }
                             }
                             Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(54.dp)) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("N", color = White, fontSize = 24.sp, fontWeight = FontWeight.Black) }
@@ -4429,14 +4429,14 @@ private fun NeaRerHome(
                                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text(entry.value.take(1).uppercase(), color = White, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
                                     }
                                     Text(entry.value, color = White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                    Text("Active now", color = BlueAccent, fontSize = 9.sp)
+                                    Text("Active now", color = Mint, fontSize = 9.sp)
                                 }
                             }
                         }
                     } else {
                         androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(78.dp), contentAlignment = Alignment.Center) {
                             Surface(shape = CircleShape, color = Panel, modifier = Modifier.size(68.dp)) {
-                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("•••", color = BlueAccent, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("•••", color = Mint, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
                             }
                         }
                         Text("Nearby names appear automatically. Keep NeaRer open with Bluetooth or Wi-Fi on.", color = Muted, fontSize = 11.sp)
@@ -4463,7 +4463,7 @@ private fun NeaRerHome(
 
             if (hybridPeers.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("CONNECT WITH A NEARBY PERSON", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("CONNECT WITH A NEARBY PERSON", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     hybridPeers.forEach { (id, name) ->
                         Surface(
                             modifier = Modifier.fillMaxWidth().clickable { onHybridConnect(id) },
@@ -4476,7 +4476,7 @@ private fun NeaRerHome(
                                 }
                                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
                                     Text(name, color = White, fontWeight = FontWeight.SemiBold)
-                                    Text("Active now • Tap to open chat", color = BlueAccent, fontSize = 10.sp)
+                                    Text("Active now • Tap to open chat", color = Mint, fontSize = 10.sp)
                                 }
                                 Text("Chat", color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
@@ -4503,7 +4503,7 @@ private fun NeaRerHome(
                                                 Text(device.deviceName.ifBlank { "Nearby Android device" }, color = White, fontWeight = FontWeight.SemiBold)
                                                 Text(deviceStatus(device.status), color = Muted, fontSize = 11.sp)
                                             }
-                                            Button(onClick = { onConnect(device) }, enabled = connectingAddress == null && connectedDeviceName == null && device.status != WifiP2pDevice.UNAVAILABLE, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)) {
+                                            Button(onClick = { onConnect(device) }, enabled = connectingAddress == null && connectedDeviceName == null && device.status != WifiP2pDevice.UNAVAILABLE, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                                                 Text(if (connectingAddress == device.deviceAddress) "Requesting…" else "Connect", fontWeight = FontWeight.Bold)
                                             }
                                         }
@@ -4540,7 +4540,7 @@ private fun NeaRerHome(
                             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(displayName, color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                                 Text("Avatar: $profileAvatarId", color = Muted, fontSize = 10.sp)
-                                Text("NeaRer ID  •  $nearbyIdentityId", color = BlueAccent, fontSize = 10.sp)
+                                Text("NeaRer ID  •  $nearbyIdentityId", color = Mint, fontSize = 10.sp)
                             }
                         }
                         OutlinedTextField(
@@ -4555,13 +4555,13 @@ private fun NeaRerHome(
                             enabled = nameDraft.isNotBlank() && nameDraft.trim() != displayName,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(13.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                            colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
                         ) { Text("Save profile", fontWeight = FontWeight.Bold) }
                         Button(
                             onClick = { showProfileEditor = true },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(13.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = BlueAccent)
+                            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)
                         ) { Text("Edit name, avatar and photo", fontWeight = FontWeight.Bold) }
                     }
                 }
@@ -4604,7 +4604,7 @@ private fun NeaRerHome(
                             },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                            colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
                         ) { Text("Share NeaRer link", fontWeight = FontWeight.Bold) }
                     }
                 }
@@ -4674,7 +4674,7 @@ private fun NeaRerHome(
         androidx.compose.material3.AlertDialog(
             onDismissRequest = onReject,
             containerColor = Panel,
-            title = { Text("NeaRer connection request", color = BlueAccent, fontWeight = FontWeight.Bold) },
+            title = { Text("NeaRer connection request", color = Mint, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("$requester wants to connect with you.", color = White)
@@ -4687,7 +4687,7 @@ private fun NeaRerHome(
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = onAccept) {
-                    Text("Accept", color = BlueAccent, fontWeight = FontWeight.Bold)
+                    Text("Accept", color = Mint, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -4718,7 +4718,7 @@ private fun CommunityHub(
     val selected = groups.firstOrNull { it.code == selectedCode }
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("NEARER COMMUNITY", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("NEARER COMMUNITY", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Text("Groups and nearby broadcasts", color = White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -4750,7 +4750,7 @@ private fun CommunityHub(
                 Button(onClick = { onSelect(group.code) }, Modifier.fillMaxWidth()) { Text(group.name + " • " + group.code + " • " + group.members.size + " known") }
             }
             if (selected != null) {
-                Text("GROUP CHAT • " + selected.name, color = BlueAccent, fontWeight = FontWeight.Bold)
+                Text("GROUP CHAT • " + selected.name, color = Mint, fontWeight = FontWeight.Bold)
                 Text("Share code " + selected.code + " with connected members.", color = Muted, fontSize = 10.sp)
                 Column(Modifier.fillMaxWidth().height(130.dp).verticalScroll(rememberScrollState())) {
                     messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { message ->
@@ -4771,13 +4771,13 @@ private fun CommunityHub(
                     Button(onClick = { onGroupMessage(groupText); groupText = "" }, enabled = groupText.isNotBlank()) { Text("Send") }
                 }
             }
-            Text("BROADCAST TO CONNECTED PEOPLE", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text("BROADCAST TO CONNECTED PEOPLE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(broadcastText, { broadcastText = it.take(500) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Announcement") })
                 Button(onClick = { onBroadcast(broadcastText); broadcastText = "" }, enabled = broadcastText.isNotBlank()) { Text("Send") }
             }
             Text("Only currently connected NeaRer devices receive these broadcasts.", color = Muted, fontSize = 10.sp)
-            Text(notice, color = BlueAccent, fontSize = 10.sp)
+            Text(notice, color = Mint, fontSize = 10.sp)
         }
     }
     LudoGamePanel(game, invite, nearbyConnected, onInviteGame, onAccept, onReject, onMove, gameChat, onGameChat, onGameRematch, onEndGame, localAvatarId = localAvatarId)
