@@ -213,7 +213,9 @@ internal object IncomingFilePayloadPolicy {
         @Volatile var awaitingDecision: Boolean = true,
         @Volatile var timeout: Runnable? = null,
         @Volatile var retryCount: Int = 0,
-        @Volatile var resumedFromBytes: Long = 0L
+        @Volatile var resumedFromBytes: Long = 0L,
+        @Volatile var awaitingReceipt: Boolean = false,
+        @Volatile var receiptTimeout: Runnable? = null
     )
     private val outgoingHyperStreams = ConcurrentHashMap<Long, OutgoingHyperStream>()
     private val preparingHyperStreams = ConcurrentHashMap.newKeySet<Long>()
@@ -679,13 +681,25 @@ internal object IncomingFilePayloadPolicy {
                     val meter = transferSpeedMeters.computeIfAbsent(payloadId) { TransferSpeedMeter() }
                     listener.onFileTransferUpdate(id, payloadId, label, expected, expected, incomingFlag,
                         meter.record(expected, expected))
-                    if (outgoingStream != null && outgoingHyperStreams.remove(payloadId, outgoingStream)) {
+                    if (outgoingStream != null && outgoingHyperStreams[payloadId] === outgoingStream &&
+                        !outgoingStream.awaitingReceipt) {
                         transferSpeedMeters.remove(payloadId)
                         cancelledStreamPayloads.remove(payloadId)
                         outgoingStream.timeout?.let(deliveryHandler::removeCallbacks)
                         outgoingStream.prepared.close()
-                        outgoingStream.sourceFile.delete()
-                        listener.onFileStatus("File sent to the nearby phone: " + label)
+                        outgoingStream.awaitingReceipt = true
+                        val receiptTimeout = Runnable {
+                            if (outgoingStream.awaitingReceipt &&
+                                outgoingHyperStreams[payloadId] === outgoingStream) {
+                                outgoingStream.awaitingReceipt = false
+                                outgoingStream.receiptTimeout = null
+                                listener.onFileStatus("The recipient's save confirmation did not arrive. Retrying from the last verified checkpoint…")
+                                scheduleHyperStreamRetry(outgoingStream)
+                            }
+                        }
+                        outgoingStream.receiptTimeout = receiptTimeout
+                        deliveryHandler.postDelayed(receiptTimeout, 20_000L)
+                        listener.onFileStatus("Bytes transferred — verifying on the recipient's phone…")
                     }
                     // The receive bridge owns final verification and publication.
                     return
@@ -1722,6 +1736,32 @@ internal object IncomingFilePayloadPolicy {
                     tryProcessHyperStream(decoded.payloadId)
                 }
             }
+            HyperTransferCompletionReceiptCodec.MAGIC -> handleHyperTransferCompletionReceipt(endpointId, controlBytes)
+        }
+    }
+
+    private fun handleHyperTransferCompletionReceipt(endpointId: String, raw: ByteArray) {
+        if (!authenticatedEndpoints.contains(endpointId)) return
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (NeaRerIdentity.normalize(peerId) == null) return
+        val receipt = runCatching { HyperTransferCompletionReceiptCodec.decode(raw) }.getOrNull() ?: return
+        val state = outgoingHyperStreams[receipt.payloadId] ?: return
+        if (state.stablePeerId != peerId || !state.awaitingReceipt ||
+            state.transferId != receipt.transferId || state.item.id != receipt.itemId ||
+            !state.sha256.equals(receipt.sha256, ignoreCase = true)) return
+        state.receiptTimeout?.let(deliveryHandler::removeCallbacks)
+        state.receiptTimeout = null
+        state.awaitingReceipt = false
+        if (receipt.saved) {
+            if (outgoingHyperStreams.remove(receipt.payloadId, state)) {
+                state.prepared.close()
+                state.sourceFile.delete()
+                transferSpeedMeters.remove(receipt.payloadId)
+                listener.onFileStatus("Verified and saved on the recipient's phone: " + state.name)
+            }
+        } else {
+            listener.onFileStatus("The recipient could not verify the file. NeaRer is retrying safely…")
+            scheduleHyperStreamRetry(state)
         }
     }
 
@@ -1894,6 +1934,20 @@ internal object IncomingFilePayloadPolicy {
             cancelledStreamPayloads.remove(payloadId)
             transferSpeedMeters.remove(payloadId)
             result.onSuccess { completed ->
+                runCatching {
+                    sendHyperTransferControl(
+                        endpointId,
+                        HyperTransferCompletionReceiptCodec.encode(
+                            HyperTransferCompletionReceiptCodec.Receipt(
+                                payloadId = payloadId,
+                                transferId = metadata.transferId,
+                                itemId = metadata.item.id,
+                                sha256 = metadata.wholeFileSha256,
+                                saved = true
+                            )
+                        )
+                    )
+                }
                 val meter = TransferSpeedMeter()
                 listener.onFileTransferUpdate(endpointId, payloadId, metadata.item.displayName,
                     completed.totalBytes, completed.totalBytes, true,
@@ -1901,6 +1955,20 @@ internal object IncomingFilePayloadPolicy {
                 listener.onFileReceived(endpointId, metadata.item.displayName, completed.completedFile)
                 listener.onFileStatus("Verified transfer complete: " + metadata.item.displayName)
             }.onFailure { error ->
+                runCatching {
+                    sendHyperTransferControl(
+                        endpointId,
+                        HyperTransferCompletionReceiptCodec.encode(
+                            HyperTransferCompletionReceiptCodec.Receipt(
+                                payloadId = payloadId,
+                                transferId = metadata.transferId,
+                                itemId = metadata.item.id,
+                                sha256 = metadata.wholeFileSha256,
+                                saved = false
+                            )
+                        )
+                    )
+                }
                 val reason = error.message.orEmpty()
                 listener.onFileStatus(
                     if (reason.contains("Not enough free storage", ignoreCase = true)) reason
@@ -2626,7 +2694,9 @@ internal object IncomingFilePayloadPolicy {
 
     private fun resumeHyperStreamsForPeer(peerId: String, endpointId: String) {
         if (!streamCapablePeers.contains(peerId)) return
-        outgoingHyperStreams.values.filter { it.stablePeerId == peerId && it.endpointId.isBlank() }.forEach { previous ->
+        outgoingHyperStreams.values.filter {
+            it.stablePeerId == peerId && it.endpointId.isBlank() && !it.awaitingReceipt
+        }.forEach { previous ->
             if (previous.retryCount >= 3) {
                 previous.endpointId = endpointId
                 fallbackHyperStreamToFile(previous)
@@ -2662,9 +2732,11 @@ internal object IncomingFilePayloadPolicy {
     private fun pauseHyperStreamsForEndpoint(endpointId: String) {
         outgoingHyperStreams.values.filter { it.endpointId == endpointId }.forEach { state ->
             state.timeout?.let(deliveryHandler::removeCallbacks)
-            state.awaitingDecision = true
             state.endpointId = ""
-            state.prepared.close()
+            if (!state.awaitingReceipt) {
+                state.awaitingDecision = true
+                state.prepared.close()
+            }
         }
         val incomingIds = incomingHyperEndpoints.entries.filter { it.value == endpointId }.map { it.key }
         incomingIds.forEach { id ->
@@ -2885,6 +2957,7 @@ internal object IncomingFilePayloadPolicy {
         if (preparingHyperStreams.remove(payloadId)) cancelledOutgoingPreparations.add(payloadId)
         outgoingHyperStreams.remove(payloadId)?.let { state ->
             state.timeout?.let(deliveryHandler::removeCallbacks)
+            state.receiptTimeout?.let(deliveryHandler::removeCallbacks)
             state.prepared.close()
             state.sourceFile.delete()
         }
@@ -2925,8 +2998,10 @@ internal object IncomingFilePayloadPolicy {
         outgoingHyperStreams.values.forEach { state ->
             state.timeout?.let(deliveryHandler::removeCallbacks)
             state.endpointId = ""
-            state.awaitingDecision = true
-            state.prepared.close()
+            if (!state.awaitingReceipt) {
+                state.awaitingDecision = true
+                state.prepared.close()
+            }
         }
         pendingIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
         activeIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
@@ -2949,7 +3024,12 @@ internal object IncomingFilePayloadPolicy {
             it.temporarySourceFile?.delete()
         }
         outgoingFiles.clear()
-        outgoingHyperStreams.values.forEach { it.prepared.close(); it.sourceFile.delete() }
+        outgoingHyperStreams.values.forEach {
+            it.timeout?.let(deliveryHandler::removeCallbacks)
+            it.receiptTimeout?.let(deliveryHandler::removeCallbacks)
+            it.prepared.close()
+            it.sourceFile.delete()
+        }
         outgoingHyperStreams.clear()
         pendingIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
         pendingIncomingHyperPayloads.clear()
