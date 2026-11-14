@@ -215,7 +215,8 @@ internal object IncomingFilePayloadPolicy {
         @Volatile var retryCount: Int = 0,
         @Volatile var resumedFromBytes: Long = 0L,
         @Volatile var awaitingReceipt: Boolean = false,
-        @Volatile var receiptTimeout: Runnable? = null
+        @Volatile var receiptTimeout: Runnable? = null,
+        @Volatile var retentionTimeout: Runnable? = null
     )
     private val outgoingHyperStreams = ConcurrentHashMap<Long, OutgoingHyperStream>()
     private val preparingHyperStreams = ConcurrentHashMap.newKeySet<Long>()
@@ -699,6 +700,27 @@ internal object IncomingFilePayloadPolicy {
                         }
                         outgoingStream.receiptTimeout = receiptTimeout
                         deliveryHandler.postDelayed(receiptTimeout, 20_000L)
+                        if (outgoingStream.retentionTimeout == null) {
+                            lateinit var cleanup: Runnable
+                            cleanup = Runnable {
+                                val pending = outgoingHyperStreams.entries.firstOrNull {
+                                    it.value.retentionTimeout === cleanup
+                                }
+                                if (pending != null && outgoingHyperStreams.remove(pending.key, pending.value)) {
+                                    pending.value.receiptTimeout?.let(deliveryHandler::removeCallbacks)
+                                    pending.value.receiptTimeout = null
+                                    pending.value.retentionTimeout = null
+                                    pending.value.prepared.close()
+                                    pending.value.sourceFile.delete()
+                                    transferSpeedMeters.remove(pending.key)
+                                    listener.onFileStatus(
+                                        "The recipient did not confirm the save in time. The temporary retry copy was cleared; please send the file again."
+                                    )
+                                }
+                            }
+                            outgoingStream.retentionTimeout = cleanup
+                            deliveryHandler.postDelayed(cleanup, 5 * 60 * 1000L)
+                        }
                         listener.onFileStatus("Bytes transferred — verifying on the recipient's phone…")
                     }
                     // The receive bridge owns final verification and publication.
@@ -1751,6 +1773,8 @@ internal object IncomingFilePayloadPolicy {
             !state.sha256.equals(receipt.sha256, ignoreCase = true)) return
         state.receiptTimeout?.let(deliveryHandler::removeCallbacks)
         state.receiptTimeout = null
+        state.retentionTimeout?.let(deliveryHandler::removeCallbacks)
+        state.retentionTimeout = null
         state.awaitingReceipt = false
         if (receipt.saved) {
             if (outgoingHyperStreams.remove(receipt.payloadId, state)) {
@@ -2641,6 +2665,10 @@ internal object IncomingFilePayloadPolicy {
         val payloadId = state.prepared.payloadId
         if (!state.awaitingDecision || !outgoingHyperStreams.remove(payloadId, state)) return
         state.timeout?.let(deliveryHandler::removeCallbacks)
+        state.receiptTimeout?.let(deliveryHandler::removeCallbacks)
+        state.retentionTimeout?.let(deliveryHandler::removeCallbacks)
+        state.receiptTimeout = null
+        state.retentionTimeout = null
         transferSpeedMeters.remove(payloadId)
         state.prepared.close()
         val filePayload = try { Payload.fromFile(state.sourceFile) } catch (_: Exception) {
@@ -2958,6 +2986,7 @@ internal object IncomingFilePayloadPolicy {
         outgoingHyperStreams.remove(payloadId)?.let { state ->
             state.timeout?.let(deliveryHandler::removeCallbacks)
             state.receiptTimeout?.let(deliveryHandler::removeCallbacks)
+            state.retentionTimeout?.let(deliveryHandler::removeCallbacks)
             state.prepared.close()
             state.sourceFile.delete()
         }
@@ -3027,6 +3056,7 @@ internal object IncomingFilePayloadPolicy {
         outgoingHyperStreams.values.forEach {
             it.timeout?.let(deliveryHandler::removeCallbacks)
             it.receiptTimeout?.let(deliveryHandler::removeCallbacks)
+            it.retentionTimeout?.let(deliveryHandler::removeCallbacks)
             it.prepared.close()
             it.sourceFile.delete()
         }
