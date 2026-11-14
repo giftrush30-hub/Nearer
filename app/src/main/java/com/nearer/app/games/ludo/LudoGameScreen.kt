@@ -1,5 +1,7 @@
 package com.nearer.app.games.ludo
 
+import com.nearer.app.NeaRerPalette
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
