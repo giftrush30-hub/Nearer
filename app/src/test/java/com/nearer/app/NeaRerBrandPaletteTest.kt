@@ -15,6 +15,16 @@ class NeaRerBrandPaletteTest {
         assertEquals(Color(0xFFFFD12D), Gold)
     }
 
+    @Test fun sharedDesignSystemMatchesMainThemeTokens() {
+        assertEquals(Midnight, NeaRerPalette.Midnight)
+        assertEquals(Panel, NeaRerPalette.Panel)
+        assertEquals(BrandBlue, NeaRerPalette.AccentBlue)
+        assertEquals(Gold, NeaRerPalette.Gold)
+        assertEquals(Mint, NeaRerPalette.Mint)
+        assertEquals(White, NeaRerPalette.TextPrimary)
+        assertEquals(Muted, NeaRerPalette.TextMuted)
+    }
+
     @Test fun signatureAccentsRemainOpaqueAndDistinct() {
         assertEquals(1f, Mint.alpha, 0f)
         assertEquals(1f, Gold.alpha, 0f)
