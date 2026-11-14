@@ -359,3 +359,14 @@ Privacy and implementation notes:
 - The feature is now present in main, but exact-head compilation, JVM tests and APK assembly have not yet been verified. No device test is claimed.
 
 Related draft PRs #162 and #163 were not merged: their shared accent alias and Ludo palette-import changes are already resolved in main's current design-system references. Keep the original palette restoration as the source of truth.
+
+
+### Additional transfer-reliability branch checks — 14 November 2026
+
+- `feature/group-d-received-file-reliability`: the received-file catalog policy, received-file notification helper and resume stream writer blobs checked in this pass are identical to main. Its older MainActivity/transport snapshot is not a safe wholesale merge.
+- `feature/fast-range-skip-performance`: `StreamRangeCopy.kt` is byte-identical to main; no port required.
+- `feature/write-stall-watchdog-race`: both `SocketWriteStallGuard.kt` and its JVM test are byte-identical to main. The sibling `feature/slow-receiver-write-protection` contains an older guard implementation and must not overwrite the current race-hardened implementation.
+- `feature/group-c-resume-integration-main` is an earlier, diverged HyperTransfer integration stage. Main already contains the newer stream bridge, coordinator and tests; do not merge the old stage wholesale.
+- `fix/fast-share-header-safety`, `fix/fast-share-http-session-bounds`, `fix/incoming-file-metadata-peer-binding`, `fix/reject-unidentified-incoming-file-peer` and `fix/resume-incoming-files-after-reconnect` are historical diverged snapshots. Their affected files have moved substantially on main; do not cherry-pick whole files without a line-by-line security comparison.
+
+These are selective source checks, not a claim that every repository branch has been exhaustively audited. The new phone-folder browser is a direct feature port with updated palette and current-main wiring; it is not a wholesale merge of PR #161.
