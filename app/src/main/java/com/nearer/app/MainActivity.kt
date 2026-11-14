@@ -3743,6 +3743,8 @@ private fun NeaRerHome(
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
     var selectedConversationKey by remember { mutableStateOf<String?>(null) }
+    var showRoyalLudo by remember { mutableStateOf(false) }
+    BackHandler(enabled = showRoyalLudo) { showRoyalLudo = false }
     val chatAttachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) onSendFiles(uris)
     }
@@ -4000,6 +4002,14 @@ private fun NeaRerHome(
                 android.widget.Toast.makeText(context, "Could not open multi-file sharing. Please try again.", android.widget.Toast.LENGTH_LONG).show()
             }
         }
+    }
+    if (showRoyalLudo) {
+        com.nearer.app.games.ludo.LudoGameScreen(
+            playerName = displayName,
+            onExit = { showRoyalLudo = false },
+            roomStatus = "Royal Double Dice is playable offline against computer opponents. Classic Ludo below remains available for nearby multiplayer."
+        )
+        return
     }
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -4361,7 +4371,8 @@ private fun NeaRerHome(
             CommunityHub(groups, groupMessages, selectedGroupCode, communityNotice, incomingGameInvite,
                 activeGame, gameChatMessages, (usingNearbyConnections || chatReady), onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
-                onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame, profileAvatarId)
+                onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame, profileAvatarId,
+                onOpenRoyalLudo = { showRoyalLudo = true })
 
             }
 
@@ -4686,7 +4697,8 @@ private fun CommunityHub(
     onCreate: (String) -> Unit, onJoin: (String) -> Unit, onSelect: (String) -> Unit,
     onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
     onAccept: () -> Unit, onReject: () -> Unit, onMove: (String, Int) -> Unit, onGameChat: (String) -> Unit, onGameRematch: () -> Unit, onEndGame: () -> Unit,
-    localAvatarId: String
+    localAvatarId: String,
+    onOpenRoyalLudo: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
@@ -4698,6 +4710,24 @@ private fun CommunityHub(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("NEARER COMMUNITY", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Text("Groups and nearby broadcasts", color = White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFF142D4B),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.75f))
+            ) {
+                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("ROYAL LUDO • DOUBLE DICE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                    Text("A new animated Ludo board with two dice, computer opponents and a premium blue-and-gold look.", color = White, fontSize = 12.sp, lineHeight = 17.sp)
+                    Button(
+                        onClick = onOpenRoyalLudo,
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(13.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                    ) { Text("PLAY ROYAL LUDO", fontWeight = FontWeight.Black) }
+                    Text("Offline play is ready here. The existing Classic Ludo below keeps its nearby multiplayer.", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it.take(32) }, Modifier.weight(1f), singleLine = true, label = { Text("Group name") })
                 Button(onClick = { onCreate(name); name = "" }, enabled = name.isNotBlank()) { Text("Create") }
