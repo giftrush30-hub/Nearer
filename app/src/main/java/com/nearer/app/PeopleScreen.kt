@@ -161,7 +161,7 @@ internal fun PeopleScreen(
             Text("Connect by NeaRer ID, trusted nearby devices or your phone contacts.", color = Muted, fontSize = 13.sp)
         }
 
-        Surface(color = Color(0xFF172B49), shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
+        Surface(color = NeaRerPalette.Panel, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("FIND SOMEONE NEARBY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 Text("Discover NeaRer users around you. Previously trusted devices can reconnect when they are nearby and available.", color = White, fontSize = 13.sp, lineHeight = 19.sp)
@@ -180,7 +180,7 @@ internal fun PeopleScreen(
                 hybridPeers.entries.sortedBy { it.value.lowercase() }.forEach { (endpointId, peerName) ->
                     Surface(color = Panel, shape = RoundedCornerShape(15.dp), modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Surface(color = Color(0xFF2455A5), shape = CircleShape, modifier = Modifier.size(38.dp)) {
+                            Surface(color = NeaRerPalette.AccentBlue, shape = CircleShape, modifier = Modifier.size(38.dp)) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                                     Text(peerName.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold)
                                 }
@@ -223,7 +223,7 @@ internal fun PeopleScreen(
                     val recipient = meshRecipients.firstOrNull { it.peerId.equals(id, true) || NeaRerIdentity.normalize(it.peerId) == id }
                     Surface(color = Panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                            Surface(color = Color(0xFF2455A5), shape = CircleShape, modifier = Modifier.size(38.dp)) {
+                            Surface(color = NeaRerPalette.AccentBlue, shape = CircleShape, modifier = Modifier.size(38.dp)) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                                     Text(id.takeLast(2), color = White, fontWeight = FontWeight.Bold)
                                 }
@@ -265,7 +265,7 @@ internal fun PeopleScreen(
                 filteredContacts.forEach { contact ->
                     Surface(color = Panel, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Surface(color = Color(0xFF263F61), shape = CircleShape, modifier = Modifier.size(38.dp)) {
+                            Surface(color = NeaRerPalette.RaisedPanel, shape = CircleShape, modifier = Modifier.size(38.dp)) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                                     Text(contact.name.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold)
                                 }
@@ -320,7 +320,7 @@ internal fun PeopleScreen(
                     Surface(color = Panel, shape = RoundedCornerShape(15.dp), modifier = Modifier.fillMaxWidth()
                         .clickable { onSelectMeshRecipient(person.peerId); onOpenChat() }) {
                         Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Surface(color = Color(0xFF2455A5), shape = CircleShape, modifier = Modifier.size(40.dp)) {
+                            Surface(color = NeaRerPalette.AccentBlue, shape = CircleShape, modifier = Modifier.size(40.dp)) {
                                 androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                                     Text(person.displayName.take(1).uppercase(), color = White, fontWeight = FontWeight.Bold)
                                 }
