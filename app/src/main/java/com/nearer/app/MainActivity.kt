@@ -3786,11 +3786,11 @@ private fun NeaRerHome(
         PhoneFolderBrowser(
             treeUri = phoneFolderTreeUri!!,
             onSelectFiles = { uris ->
-                if (connectedPeerStableId.isNullOrBlank()) {
+                if (!chatReady && !usingNearbyConnections) {
                     phoneFolderNotice = "${uris.size} file(s) selected. Connect to a nearby person first; these files were not queued."
                 } else {
                     onSendFiles(uris)
-                    phoneFolderNotice = "${uris.size} file(s) submitted to NeaRer. If a transfer is already active, finish it before trying again."
+                    phoneFolderNotice = "${uris.size} file(s) handed to NeaRer. The transfer queue will confirm whether they can be sent."
                 }
             },
             onClose = { showPhoneFolderBrowser = false }
