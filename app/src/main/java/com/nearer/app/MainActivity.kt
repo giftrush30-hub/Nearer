@@ -114,14 +114,14 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 
-// NeaRer signature palette: rich brand blue, deep ink surfaces, clear blue and warm gold.
-internal val Midnight = Color(0xFF07182A)
-internal val Panel = Color(0xFF102B46)
-internal val BlueAccent = Color(0xFF78B9FF)
-internal val Muted = Color(0xFFB2C2D3)
-internal val White = Color(0xFFF7FAFF)
-internal val BrandBlue = Color(0xFF004B90)
-internal val Gold = Color(0xFFFFC928)
+// Original NeaRer palette: midnight, deep panel, mint, soft white and gold.
+internal val Midnight = Color(0xFF101A2B)
+internal val Panel = Color(0xFF1A2940)
+internal val Mint = Color(0xFF69E0C0)
+internal val Muted = Color(0xFFA8B6C9)
+internal val White = Color(0xFFF6F8FC)
+internal val BrandBlue = Color(0xFF2563EB)
+internal val Gold = Color(0xFFFFD12D)
 
 class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
@@ -279,7 +279,7 @@ class MainActivity : ComponentActivity() {
             window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
             setContent {
                 MaterialTheme(colorScheme = darkColorScheme(
-                    background = Midnight, surface = Panel, primary = BlueAccent,
+                    background = Midnight, surface = Panel, primary = Mint,
                     secondary = Gold, onBackground = White, onSurface = White
                 )) {
                     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
@@ -776,7 +776,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme(
                 background = Midnight,
                 surface = Panel,
-                surfaceVariant = Color(0xFF173A5B),
+                surfaceVariant = Panel,
                 primary = BlueAccent,
                 onPrimary = Midnight,
                 secondary = Gold,
@@ -4521,7 +4521,7 @@ private fun NeaRerHome(
                                     modifier = Modifier.size(58.dp).clip(CircleShape)
                                 )
                             } else {
-                                Surface(modifier = Modifier.size(58.dp), shape = CircleShape, color = Color(0xFF2455A5)) {
+                                Surface(modifier = Modifier.size(58.dp), shape = CircleShape, color = BrandBlue) {
                                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                                         Text(displayName.take(1).uppercase(), color = White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
                                     }
