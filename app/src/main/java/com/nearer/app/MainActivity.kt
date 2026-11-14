@@ -121,7 +121,7 @@ internal val Mint = Color(0xFF69E0C0)
 internal val Muted = Color(0xFFA8B6C9)
 internal val White = Color(0xFFF6F8FC)
 internal val BrandBlue = Color(0xFF2563EB)
-internal val Gold = Gold
+internal val Gold = Color(0xFFFFD12D)
 
 class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
