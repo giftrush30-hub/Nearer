@@ -130,7 +130,10 @@ private fun queryPhoneFolder(context: Context, treeUri: Uri, folderUri: Uri): Pa
     val children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, DocumentsContract.getDocumentId(folderUri))
     val columns = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_SIZE)
     val result = mutableListOf<PhoneDocumentEntry>()
-    context.contentResolver.query(children, columns, null, null, null)?.use { cursor ->
+    var truncated = false
+    val cursor = context.contentResolver.query(children, columns, null, null, null)
+        ?: throw IllegalStateException("This storage provider could not open the selected folder.")
+    cursor.use {
         val idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
         val nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
         val mimeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
