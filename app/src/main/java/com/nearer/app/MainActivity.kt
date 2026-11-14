@@ -3740,6 +3740,52 @@ private fun NeaRerHome(
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     val context = LocalContext.current
+    val folderPreferences = remember(context) { context.getSharedPreferences("nearer_folder_browser", Context.MODE_PRIVATE) }
+    var phoneFolderTreeUri by remember {
+        mutableStateOf(folderPreferences.getString("tree_uri", null)?.let(Uri::parse))
+    }
+    var showPhoneFolderBrowser by remember { mutableStateOf(false) }
+    var phoneFolderNotice by remember { mutableStateOf("") }
+    val phoneFolderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri == null) {
+            phoneFolderNotice = "No folder was selected."
+        } else {
+            try {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                phoneFolderTreeUri = uri
+                folderPreferences.edit().putString("tree_uri", uri.toString()).apply()
+                phoneFolderNotice = "Folder access saved. Choose the files you want to send."
+                showPhoneFolderBrowser = true
+            } catch (_: SecurityException) {
+                phoneFolderNotice = "Android could not keep access to that folder. Please choose it again."
+            }
+        }
+    }
+    val openPhoneFolderBrowser = {
+        val grantIsValid = phoneFolderTreeUri != null && context.contentResolver.persistedUriPermissions.any {
+            it.uri == phoneFolderTreeUri && it.isReadPermission
+        }
+        if (grantIsValid) {
+            showPhoneFolderBrowser = true
+        } else {
+            phoneFolderTreeUri = null
+            folderPreferences.edit().remove("tree_uri").apply()
+            phoneFolderPicker.launch(null)
+        }
+    }
+    val hasSavedPhoneFolder = phoneFolderTreeUri != null && context.contentResolver.persistedUriPermissions.any {
+        it.uri == phoneFolderTreeUri && it.isReadPermission
+    }
+    if (showPhoneFolderBrowser && phoneFolderTreeUri != null) {
+        PhoneFolderBrowser(
+            treeUri = phoneFolderTreeUri!!,
+            onSelectFiles = { uris ->
+                onSendFiles(uris)
+                phoneFolderNotice = "${uris.size} file(s) added to your prepared transfer queue."
+            },
+            onClose = { showPhoneFolderBrowser = false }
+        )
+    }
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
     var selectedConversationKey by remember { mutableStateOf<String?>(null) }
@@ -4365,6 +4411,17 @@ private fun NeaRerHome(
                     openSendSession = openSendSession,
                     openSendNotice = openSendNotice,
                     onPickOpenSendFiles = pickOpenSendFiles,
+                    onBrowsePhoneFolders = openPhoneFolderBrowser,
+                    folderNotice = phoneFolderNotice,
+                    hasSavedFolder = hasSavedPhoneFolder,
+                    onForgetSavedFolder = {
+                        phoneFolderTreeUri?.let { uri ->
+                            runCatching { context.contentResolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                        }
+                        phoneFolderTreeUri = null
+                        folderPreferences.edit().remove("tree_uri").apply()
+                        phoneFolderNotice = "Saved folder access forgotten."
+                    },
                     onStopOpenSend = {
                         openSendManager?.close()
                         openSendManager = null
@@ -4723,7 +4780,7 @@ private fun CommunityHub(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF142D4B),
+                color = Panel,
                 border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.75f))
             ) {
                 Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
