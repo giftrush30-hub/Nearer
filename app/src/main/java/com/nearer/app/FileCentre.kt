@@ -845,7 +845,7 @@ internal fun FileCentreScreen(
                 shape = RoundedCornerShape(11.dp)
             ) { Text(if (allVisibleSelected) "Deselect visible" else "Select visible", fontSize = 10.sp) }
         }
-        if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = BlueAccent)
+        if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Mint)
         if (!hasAccess && category in listOf(FileCentreCategory.ALL_FILES, FileCentreCategory.PICTURES, FileCentreCategory.VIDEOS, FileCentreCategory.MUSIC)) {
             Surface(color = Panel, shape = RoundedCornerShape(16.dp)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -853,7 +853,7 @@ internal fun FileCentreScreen(
                     Text("Android asks permission before NeaRer can list your photos, videos and music. You stay in control.", color = Muted, fontSize = 12.sp)
                     Button(
                         onClick = { permissionLauncher.launch(AndroidFileCatalog.mediaPermissions()) },
-                        colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                        colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
                     ) { Text("Allow media access") }
                 }
             }
@@ -865,7 +865,7 @@ internal fun FileCentreScreen(
                     Text(if (category == FileCentreCategory.ALL_FILES) "Choose a storage folder below to show its files. Android requires your approval; NeaRer cannot scan private app data." else if (category == FileCentreCategory.DOWNLOADS) "Choose files from your Downloads folder. Android controls access, so NeaRer only lists files you select." else "Android protects documents and many folders. Choose files using the system file picker; NeaRer can then send them without scanning private folders.", color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
                     Button(
                         onClick = { documentPicker.launch(arrayOf("*/*")) },
-                        colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                        colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
                     ) { Text("Choose files") }
                     Button(
                         onClick = { folderPicker.launch(null) },
@@ -884,7 +884,7 @@ internal fun FileCentreScreen(
                     Text("Share contacts privately", color = White, fontWeight = FontWeight.Bold)
                     Text("Android asks permission before NeaRer lists contacts. Only people you select are included in the vCard.", color = Muted, fontSize = 12.sp)
                     Button(onClick = { contactPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
-                        colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)) {
+                        colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                         Text("Allow contacts access")
                     }
                 }
@@ -1093,7 +1093,7 @@ private fun FileCentreTile(
                         FileCentreCategory.MUSIC -> "AUDIO"
                         else -> "FILE"
                     },
-                    color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold
+                    color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold
                 )
             }
             Text(item.name, color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
@@ -1105,7 +1105,7 @@ private fun FileCentreTile(
                 TextButton(onClick = onToggleFavourite) { Text(if (favourite) "★" else "☆", color = Gold, fontSize = 17.sp) }
                 if (item.uri != null) {
                     TextButton(onClick = { AndroidFileCatalog.openPreview(context, item) }) {
-                        Text("Preview", color = BlueAccent, fontSize = 10.sp)
+                        Text("Preview", color = Mint, fontSize = 10.sp)
                     }
                 }
             }
@@ -1136,7 +1136,7 @@ private fun FileCentreRow(
                     FileCentreCategory.APPS -> "APP"
                     else -> "FILE"
                 },
-                color = if (selected) Gold else BlueAccent,
+                color = if (selected) Gold else Mint,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -1147,7 +1147,7 @@ private fun FileCentreRow(
             TextButton(onClick = onToggleFavourite) { Text(if (favourite) "★" else "☆", color = Gold, fontSize = 17.sp) }
             if (item.uri != null) {
                 TextButton(onClick = { AndroidFileCatalog.openPreview(context, item) }) {
-                    Text("Preview", color = BlueAccent, fontSize = 10.sp)
+                    Text("Preview", color = Mint, fontSize = 10.sp)
                 }
             }
             Text(if (selected) "✓" else "＋", color = if (selected) Gold else Muted, fontWeight = FontWeight.Bold)
