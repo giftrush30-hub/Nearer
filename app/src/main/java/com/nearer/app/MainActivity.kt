@@ -121,7 +121,7 @@ internal val Mint = Color(0xFF69E0C0)
 internal val Muted = Color(0xFFA8B6C9)
 internal val White = Color(0xFFF6F8FC)
 internal val BrandBlue = Color(0xFF2563EB)
-internal val Gold = Color(0xFFFFD12D)
+internal val Gold = Gold
 
 class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
@@ -4723,7 +4723,7 @@ private fun CommunityHub(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF142D4B),
+                color = Panel,
                 border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.75f))
             ) {
                 Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
