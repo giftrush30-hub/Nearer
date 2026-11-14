@@ -222,7 +222,7 @@ internal fun PremiumChatsScreen(
                         Text("PRIVATE CHAT", color = NeaRerPalette.Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
                         Text(activeName ?: "Choose a nearby recipient", color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     }
-                    Surface(shape = RoundedCornerShape(30.dp), color = if (chatAvailable) Color(0xFF174B43) else Color(0xFF3C3540)) {
+                    Surface(shape = RoundedCornerShape(30.dp), color = if (chatAvailable) Color(0xFF174B43) else NeaRerPalette.Panel) {
                         Text(
                             if (selectedRecipientUnavailable) "ROUTE LOST"
                             else if (selectedRecipient?.isDirect == false) "VIA OTHERS"
