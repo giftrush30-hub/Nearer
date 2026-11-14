@@ -135,7 +135,7 @@ internal fun PremiumChatsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("‹  All chats", color = BlueAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            Text("‹  All chats", color = NeaRerPalette.Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable(onClick = onBackToInbox).padding(vertical = 3.dp))
             Text("YOUR CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
             Text("Chats", color = White, fontSize = 29.sp, fontWeight = FontWeight.ExtraBold)
@@ -145,7 +145,7 @@ internal fun PremiumChatsScreen(
         Surface(
             modifier = Modifier.fillMaxWidth().animateContentSize(),
             shape = RoundedCornerShape(24.dp),
-            color = Color(0xFF172B49)
+            color = NeaRerPalette.Panel
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(17.dp),
@@ -155,7 +155,7 @@ internal fun PremiumChatsScreen(
                 Surface(
                     modifier = Modifier.size(54.dp),
                     shape = CircleShape,
-                    color = Color(0xFF2455A5)
+                    color = NeaRerPalette.AccentBlue
                 ) {
                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                         Text(
@@ -179,7 +179,7 @@ internal fun PremiumChatsScreen(
                         Surface(
                             modifier = Modifier.size(7.dp),
                             shape = CircleShape,
-                            color = if (chatAvailable) Color(0xFF43D7A0) else Gold
+                            color = if (chatAvailable) NeaRerPalette.Mint else Gold
                         ) {}
                         Text(
                             when {
@@ -188,7 +188,7 @@ internal fun PremiumChatsScreen(
                                 chatAvailable -> "Direct nearby · Private chat ready"
                                 else -> "Not connected yet"
                             },
-                            color = if (chatAvailable) Color(0xFF9DE8C9) else Muted,
+                            color = if (chatAvailable) NeaRerPalette.Mint else Muted,
                             fontSize = 11.sp,
                             maxLines = 2
                         )
@@ -198,12 +198,12 @@ internal fun PremiumChatsScreen(
                     Surface(
                         modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onFindNearby),
                         shape = RoundedCornerShape(12.dp),
-                        color = BlueAccent
+                        color = NeaRerPalette.Mint
                     ) {
                         Text("Find", color = Midnight, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
                     }
                 } else {
-                    Text("●", color = Color(0xFF43D7A0), fontSize = 12.sp)
+                    Text("●", color = NeaRerPalette.Mint, fontSize = 12.sp)
                 }
             }
         }
@@ -219,7 +219,7 @@ internal fun PremiumChatsScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("PRIVATE CHAT", color = BlueAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                        Text("PRIVATE CHAT", color = NeaRerPalette.Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
                         Text(activeName ?: "Choose a nearby recipient", color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     }
                     Surface(shape = RoundedCornerShape(30.dp), color = if (chatAvailable) Color(0xFF174B43) else Color(0xFF3C3540)) {
@@ -227,7 +227,7 @@ internal fun PremiumChatsScreen(
                             if (selectedRecipientUnavailable) "ROUTE LOST"
                             else if (selectedRecipient?.isDirect == false) "VIA OTHERS"
                             else if (chatAvailable) "SECURE LINK" else "OFFLINE",
-                            color = if (chatAvailable) Color(0xFF9DE8C9) else Gold,
+                            color = if (chatAvailable) NeaRerPalette.Mint else Gold,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
@@ -243,7 +243,7 @@ internal fun PremiumChatsScreen(
                                 recipientMenuExpanded = true
                             },
                             shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFF172A43)
+                            color = NeaRerPalette.Panel
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 13.dp, vertical = 12.dp),
@@ -263,7 +263,7 @@ internal fun PremiumChatsScreen(
                                         fontSize = 10.sp
                                     )
                                 }
-                                Text("⌄", color = BlueAccent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Text("⌄", color = NeaRerPalette.Mint, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                         Text(
@@ -300,7 +300,7 @@ internal fun PremiumChatsScreen(
 
                 if (chatAvailable || selectedRecipientUnavailable) {
                     if (visibleMessages.isEmpty()) {
-                        Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFF142238)) {
+                        Surface(shape = RoundedCornerShape(18.dp), color = NeaRerPalette.Midnight) {
                             Column(
                                 modifier = Modifier.fillMaxWidth().padding(18.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -329,7 +329,7 @@ internal fun PremiumChatsScreen(
                                     horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start
                                 ) {
                                     Surface(
-                                        color = if (message.outgoing) Color(0xFF174B72) else Color(0xFF22334B),
+                                        color = if (message.outgoing) NeaRerPalette.RaisedPanel else NeaRerPalette.Panel,
                                         shape = RoundedCornerShape(
                                             topStart = 17.dp,
                                             topEnd = 17.dp,
@@ -340,7 +340,7 @@ internal fun PremiumChatsScreen(
                                     ) {
                                         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                             if (!message.replyToPreview.isNullOrBlank()) {
-                                                Surface(color = Color(0xFF10243A), shape = RoundedCornerShape(9.dp)) {
+                                                Surface(color = NeaRerPalette.Midnight, shape = RoundedCornerShape(9.dp)) {
                                                     Column(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                                         Text(message.replyToSender ?: "Reply", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                                         Text(message.replyToPreview.orEmpty(), color = Muted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -350,7 +350,7 @@ internal fun PremiumChatsScreen(
                                             Text(message.body, color = White, fontSize = 14.sp, lineHeight = 20.sp)
                                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                    Text(if (message.outgoing) ChatDeliveryLabelPolicy.label(message.delivery) else "Received", color = if (message.outgoing) Color(0xFF9BD8FF) else Muted, fontSize = 9.sp)
+                                                    Text(if (message.outgoing) ChatDeliveryLabelPolicy.label(message.delivery) else "Received", color = if (message.outgoing) NeaRerPalette.Mint else Muted, fontSize = 9.sp)
                                                     if (message.editVersion > 0) Text("Edited", color = Gold, fontSize = 9.sp)
                                                 }
                                                 Box {
@@ -411,7 +411,7 @@ internal fun PremiumChatsScreen(
                                         ) {
                                             counts.forEach { (emoji, count) ->
                                                 Surface(
-                                                    color = Color(0xFF263B59),
+                                                    color = NeaRerPalette.RaisedPanel,
                                                     shape = RoundedCornerShape(14.dp),
                                                     modifier = Modifier.clickable {
                                                         onReactToMessage(message.id, emoji)
@@ -430,7 +430,7 @@ internal fun PremiumChatsScreen(
                                         ) {
                                             listOf("👍", "❤️", "😂", "😮", "😢", "🙏").forEach { emoji ->
                                                 Surface(
-                                                    color = Color(0xFF263B59),
+                                                    color = NeaRerPalette.RaisedPanel,
                                                     shape = CircleShape,
                                                     modifier = Modifier.clickable {
                                                         onReactToMessage(message.id, emoji)
@@ -453,25 +453,25 @@ internal fun PremiumChatsScreen(
 
                     if (chatAvailable) {
                         editingMessage?.let { target ->
-                            Surface(color = Color(0xFF142238), shape = RoundedCornerShape(12.dp)) {
+                            Surface(color = NeaRerPalette.Midnight, shape = RoundedCornerShape(12.dp)) {
                                 Row(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                         Text("Editing your message", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                         Text(target.body, color = Muted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     }
-                                    Text("Cancel", color = BlueAccent, fontSize = 11.sp,
+                                    Text("Cancel", color = NeaRerPalette.Mint, fontSize = 11.sp,
                                         modifier = Modifier.clickable { editingMessage = null; onDraftChange("") }.padding(6.dp))
                                 }
                             }
                         }
                         replyingTo?.let { target ->
-                            Surface(color = Color(0xFF142238), shape = RoundedCornerShape(12.dp)) {
+                            Surface(color = NeaRerPalette.Midnight, shape = RoundedCornerShape(12.dp)) {
                                 Row(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                         Text("Replying to " + if (target.outgoing) "your message" else target.conversationName, color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                         Text(target.body, color = Muted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     }
-                                    Text("Cancel", color = BlueAccent, fontSize = 11.sp, modifier = Modifier.clickable { replyingTo = null }.padding(6.dp))
+                                    Text("Cancel", color = NeaRerPalette.Mint, fontSize = 11.sp, modifier = Modifier.clickable { replyingTo = null }.padding(6.dp))
                                 }
                             }
                         }
@@ -506,11 +506,11 @@ internal fun PremiumChatsScreen(
                                 enabled = draft.isNotBlank() && (editingMessage == null || draft.trim() != editingMessage?.body),
                                 modifier = Modifier.height(54.dp),
                                 shape = RoundedCornerShape(17.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                                colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.Mint, contentColor = Midnight)
                             ) { Text(if (editingMessage != null) "Save" else "Send", fontWeight = FontWeight.Bold) }
                         }
                     } else {
-                        Surface(color = Color(0xFF142238), shape = RoundedCornerShape(14.dp)) {
+                        Surface(color = NeaRerPalette.Midnight, shape = RoundedCornerShape(14.dp)) {
                             Text("Offline · reconnect to send a new message", color = Muted, fontSize = 11.sp,
                                 modifier = Modifier.fillMaxWidth().padding(13.dp))
                         }
@@ -526,7 +526,7 @@ internal fun PremiumChatsScreen(
                                 onClick = onChooseFiles,
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263B59), contentColor = White)
+                                colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.RaisedPanel, contentColor = White)
                             ) { Text("＋  Share files", fontSize = 12.sp) }
                         } else {
                             Text("File sharing needs a direct nearby connection.", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
@@ -545,8 +545,8 @@ internal fun PremiumChatsScreen(
                             LinearProgressIndicator(
                                 progress = { incomingProgress },
                                 modifier = Modifier.fillMaxWidth(),
-                                color = BlueAccent,
-                                trackColor = Color(0xFF31435B)
+                                color = NeaRerPalette.Mint,
+                                trackColor = NeaRerPalette.Border
                             )
                         }
                     }
@@ -557,7 +557,7 @@ internal fun PremiumChatsScreen(
                                 progress = { outgoingProgress },
                                 modifier = Modifier.fillMaxWidth(),
                                 color = Gold,
-                                trackColor = Color(0xFF31435B)
+                                trackColor = NeaRerPalette.Border
                             )
                             Button(
                                 onClick = onCancelTransfer,
@@ -572,12 +572,12 @@ internal fun PremiumChatsScreen(
                         Surface(
                             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).clickable { onOpenFile(fileItem) },
                             shape = RoundedCornerShape(13.dp),
-                            color = Color(0xFF223650)
+                            color = NeaRerPalette.Panel
                         ) {
                             Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("↓", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                                 Text(fileItem.displayName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 9.dp))
-                                Text("Open", color = BlueAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Open", color = NeaRerPalette.Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -587,7 +587,7 @@ internal fun PremiumChatsScreen(
                             Text("RECENT FILE ACTIVITY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                             transferHistory.take(3).forEach { record ->
                                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(if (record.direction == "Sent") "↑" else "↓", color = BlueAccent, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                    Text(if (record.direction == "Sent") "↑" else "↓", color = NeaRerPalette.Mint, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                     Column(modifier = Modifier.weight(1f).padding(start = 9.dp)) {
                                         Text(record.fileName, color = White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Text("${formatTransferBytes(record.bytes)} · ${record.status}", color = Muted, fontSize = 9.sp)
@@ -611,7 +611,7 @@ internal fun PremiumChatsScreen(
                             onClick = onFindNearby,
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(15.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+                            colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.Mint, contentColor = Midnight)
                         ) { Text("Find people nearby", fontWeight = FontWeight.Bold) }
                         Text(connectionMessage, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                     }
@@ -694,7 +694,7 @@ private fun PremiumChatsInboxScreen(
             onClick = onFindNearby,
             modifier = Modifier.fillMaxWidth().height(50.dp),
             shape = RoundedCornerShape(15.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = BlueAccent, contentColor = Midnight)
+            colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.Mint, contentColor = Midnight)
         ) {
             Text("＋  Find people / Start a chat", fontWeight = FontWeight.Bold)
         }
@@ -715,7 +715,7 @@ private fun PremiumChatsInboxScreen(
                 Surface(
                     modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { selectedFilter = filter },
                     shape = RoundedCornerShape(20.dp),
-                    color = if (selected) BlueAccent else Color(0xFF20334D)
+                    color = if (selected) NeaRerPalette.Mint else NeaRerPalette.Panel
                 ) {
                     Text(
                         filter,
@@ -735,7 +735,7 @@ private fun PremiumChatsInboxScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Surface(color = Color(0xFF1D3C61), shape = CircleShape, modifier = Modifier.size(58.dp)) {
+                    Surface(color = NeaRerPalette.RaisedPanel, shape = CircleShape, modifier = Modifier.size(58.dp)) {
                         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                             Text("✦", color = Gold, fontSize = 27.sp)
                         }
@@ -758,7 +758,7 @@ private fun PremiumChatsInboxScreen(
                     if (searchQuery.isNotBlank() || selectedFilter != "All") {
                         Text(
                             "Clear search and filters",
-                            color = BlueAccent,
+                            color = NeaRerPalette.Mint,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.clickable {
@@ -789,7 +789,7 @@ private fun PremiumChatsInboxScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(11.dp)
                     ) {
-                        Surface(color = Color(0xFF2455A5), shape = CircleShape, modifier = Modifier.size(46.dp)) {
+                        Surface(color = NeaRerPalette.AccentBlue, shape = CircleShape, modifier = Modifier.size(46.dp)) {
                             androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
                                 Text(displayName.take(1).uppercase(), color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                             }
@@ -813,7 +813,7 @@ private fun PremiumChatsInboxScreen(
                                     recipient != null -> "VIA OTHERS"
                                     else -> "OFFLINE"
                                 },
-                                color = if (recipient != null) Color(0xFF8FE0B9) else Muted,
+                                color = if (recipient != null) NeaRerPalette.Mint else Muted,
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -836,7 +836,7 @@ private fun PremiumChatsInboxScreen(
                                     modifier = Modifier.clip(CircleShape).clickable { togglePinned(id) }.padding(5.dp)
                                 )
                                 Box {
-                                    Text("⋮", color = BlueAccent, fontSize = 20.sp,
+                                    Text("⋮", color = NeaRerPalette.Mint, fontSize = 20.sp,
                                         modifier = Modifier.clickable { expandedConversationActions = id }.padding(horizontal = 5.dp))
                                     DropdownMenu(
                                         expanded = expandedConversationActions == id,
@@ -857,7 +857,7 @@ private fun PremiumChatsInboxScreen(
                                     }
                                 }
                             }
-                            Text("›", color = BlueAccent, fontSize = 21.sp)
+                            Text("›", color = NeaRerPalette.Mint, fontSize = 21.sp)
                         }
                     }
                 }
