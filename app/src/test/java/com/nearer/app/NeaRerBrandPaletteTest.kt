@@ -5,18 +5,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class NeaRerBrandPaletteTest {
-    @Test fun primaryPaletteUsesBlueAndGoldOnMidnightPanels() {
-        assertEquals(Color(0xFF07182A), Midnight)
-        assertEquals(Color(0xFF102B46), Panel)
-        assertEquals(Color(0xFF78B9FF), BlueAccent)
-        assertEquals(Color(0xFFFFC928), Gold)
+    @Test fun originalNeaRerPaletteIsRestored() {
+        assertEquals(Color(0xFF101A2B), Midnight)
+        assertEquals(Color(0xFF1A2940), Panel)
+        assertEquals(Color(0xFF69E0C0), Mint)
+        assertEquals(Color(0xFFA8B6C9), Muted)
+        assertEquals(Color(0xFFF6F8FC), White)
+        assertEquals(Color(0xFF2563EB), BrandBlue)
+        assertEquals(Color(0xFFFFD12D), Gold)
     }
 
-    @Test fun blueAndGoldAccentsRemainDistinctAndOpaque() {
-        assertEquals(1f, BlueAccent.alpha, 0f)
+    @Test fun signatureAccentsRemainOpaqueAndDistinct() {
+        assertEquals(1f, Mint.alpha, 0f)
         assertEquals(1f, Gold.alpha, 0f)
-        assertEquals(Color(0xFF004B90), BrandBlue)
-        assertEquals(Color(0xFF78B9FF), BlueAccent)
-        assertEquals(Color(0xFFFFC928), Gold)
+        assertEquals(Color(0xFF69E0C0), Mint)
+        assertEquals(Color(0xFFFFD12D), Gold)
     }
 }
