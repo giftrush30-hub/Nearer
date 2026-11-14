@@ -45,6 +45,10 @@ fun NeaRerShareHub(
     openSendSession: OpenSendSession?,
     openSendNotice: String,
     onPickOpenSendFiles: () -> Unit,
+    onBrowsePhoneFolders: () -> Unit,
+    folderNotice: String,
+    hasSavedFolder: Boolean,
+    onForgetSavedFolder: () -> Unit,
     onStopOpenSend: () -> Unit,
     pendingApp: AppShareArchiveInfo?,
     onInstallPendingApp: () -> Unit,
@@ -85,6 +89,34 @@ fun NeaRerShareHub(
                             Text("02  OPEN SEND", color = ShareGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             Text("Send without the app", color = ShareWhite, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         }
+                    }
+                }
+            }
+        }
+
+        Surface(shape = RoundedCornerShape(22.dp), color = SharePanel, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("PHONE FOLDERS • PICK FILES", color = ShareGold, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                Text("Browse folders on this phone.", color = ShareWhite, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "Choose a folder in Android, then select the files you want to send. NeaRer reads only the files you select.",
+                    color = ShareMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp
+                )
+                Button(
+                    onClick = onBrowsePhoneFolders,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ShareGold, contentColor = ShareMidnight)
+                ) { Text("Browse phone folders", fontWeight = FontWeight.Bold) }
+                if (folderNotice.isNotBlank()) {
+                    Text(folderNotice, color = ShareMint, fontSize = 11.sp, lineHeight = 16.sp)
+                }
+                if (hasSavedFolder) {
+                    Text("NeaRer has read-only access to your selected folder.", color = ShareMuted, fontSize = 10.sp)
+                    androidx.compose.material3.TextButton(onClick = onForgetSavedFolder) {
+                        Text("Forget saved folder access", color = ShareGold)
                     }
                 }
             }
