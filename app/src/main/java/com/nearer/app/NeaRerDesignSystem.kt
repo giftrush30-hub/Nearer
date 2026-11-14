@@ -34,6 +34,9 @@ internal object NeaRerPalette {
     val Border = Color(0xFF26364D)
 }
 
+/** Shared accent token used by separate Compose screens. */
+internal val BlueAccent = NeaRerPalette.AccentBlue
+
 /** Five persistent destinations keep the phone navigation clear and thumb-friendly. */
 internal data class NeaRerDestination(
     val id: String,
