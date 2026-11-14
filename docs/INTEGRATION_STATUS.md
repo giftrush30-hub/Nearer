@@ -303,3 +303,6 @@ The audit found that Chats and People still had hard-coded blue surfaces and act
 - The palette test now verifies that the main Activity tokens and shared design-system tokens remain identical.
 
 The restored theme therefore covers the main shell, Chats, People, File Centre, Ludo, Android window bars and splash background. The logo's original brand-blue and mint artwork remains unchanged.
+
+
+A deeper PR #4 Ludo check also confirmed that `LudoRoomProtocol`, `LudoRoomAuthority`, `LudoRoomEnvelopeCodec`, `LudoRoomStateCodec`, `LudoRoomSession`, `LudoSoundEffects`, `LudoTwoDiceRules` and `LudoAiEngine` are byte-identical between that draft branch and main. The draft's Ludo screen was an older visual snapshot; its colour differences are superseded by the shared-palette update. No Ludo protocol or game-engine merge is needed from PR #4.
