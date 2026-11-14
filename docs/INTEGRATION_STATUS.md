@@ -377,3 +377,8 @@ These are selective source checks, not a claim that every repository branch has 
 A final source check of draft PRs #162 and #163 found one real mainline omission that the earlier audit had incorrectly treated as already resolved: `NeaRerDesignSystem.kt` defined `NeaRerPalette.AccentBlue`, but did not expose the `BlueAccent` compatibility alias still referenced by separate Compose screens. The missing alias has now been added directly to main as `internal val BlueAccent = NeaRerPalette.AccentBlue`.
 
 The Ludo screen's `NeaRerPalette` import and palette-token conversion from PR #162 are already present in main, so no duplicate Ludo change was copied. No palette values, gameplay behavior, navigation, or logo assets were changed by this compatibility fix. Exact-main-head JVM tests and APK assembly remain unverified because the available GitHub status/workflow lookup returned no records for the new commit.
+
+
+### Phone-folder connection-path correction — 14 November 2026
+
+A follow-up integration check found that the folder browser's pre-send guard checked only `connectedPeerStableId`. That was narrower than the existing `sendFiles` pipeline, which supports both the Nearby Connections path and the Wi-Fi Direct fallback. The guard now allows either `chatReady` or `usingNearbyConnections` to proceed to the existing send callback. The callback/queue remains authoritative for transfer admission, active-transfer conflicts and missing identity errors; the folder browser does not bypass those checks or create a separate transfer path.
