@@ -337,3 +337,25 @@ No code was copied from these candidates because the reviewed main implementatio
 - Both `security/mesh-routing-foundation` and `backup/batch-one-mesh-before-main-integration` are 139 commits behind main with no commits ahead. No merge action is needed; their shared ancestry is already incorporated or superseded.
 
 This review found no additional safe code to port. The current main implementations remain the source of truth for trusted reconnect, Fast Share upload admission, HyperTransfer STREAM lifecycle and mesh foundations.
+
+
+### Share Hub phone-folder browser integration — 14 November 2026
+
+A useful feature from draft PR #161 (`integration/phone-folder-browser`) was reviewed and selectively forward-ported into main rather than merging its old MainActivity snapshot.
+
+Implemented on main:
+- Added `PhoneFolderBrowser.kt`, using Android's Storage Access Framework. The user explicitly chooses a folder; NeaRer requests and persists read-only access only.
+- Added folder navigation, current-folder search, multi-file selection across visited folders, image/video thumbnails on supported Android versions, and a bounded 2,000-entry listing with a visible truncation explanation.
+- Added a Share Hub card that explains what the feature does and exposes the saved-folder permission's explicit “Forget saved folder access” action.
+- Connected the selected document URIs to the existing `onSendFiles` pipeline. No separate transfer protocol or storage permission was introduced.
+- Reused the original shared NeaRer palette tokens in the new browser. No brand colour or logo changes were made.
+- Added feedback that distinguishes “files selected but no nearby peer is connected” from files submitted to the existing transfer queue.
+
+Privacy and implementation notes:
+- No broad storage permission is requested. The Android folder picker is the authority for access.
+- Only selected file URIs are submitted; NeaRer does not recursively send an entire folder.
+- Persisted read access is checked before reopening the saved folder and can be released by the user.
+- The 2,000-entry limit is a display/listing safety bound, not a file-size or transfer-size cap.
+- The feature is now present in main, but exact-head compilation, JVM tests and APK assembly have not yet been verified. No device test is claimed.
+
+Related draft PRs #162 and #163 were not merged: their shared accent alias and Ludo palette-import changes are already resolved in main's current design-system references. Keep the original palette restoration as the source of truth.
