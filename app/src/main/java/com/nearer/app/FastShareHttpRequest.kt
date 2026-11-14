@@ -14,7 +14,18 @@ internal data class FastShareHttpRequest(
         return values.size == 1 && FastShareAccessKey.matches(expected, values.single())
     }
     val isHeadOnly: Boolean get() = method == "HEAD"
-    val supportsMethod: Boolean get() = method == "GET" || isHeadOnly
+    val supportsMethod: Boolean get() = when (route) {
+        Route.UPLOAD -> method == "PUT"
+        else -> method == "GET" || isHeadOnly
+    }
+
+    /** Returns a query parameter only when it appears exactly once and decodes safely. */
+    fun queryParameter(name: String): String? {
+        val matches = query.split('&').filter { it.substringBefore('=') == name }
+        if (matches.size != 1) return null
+        val encoded = matches.single().substringAfter('=', "")
+        return runCatching { java.net.URLDecoder.decode(encoded, Charsets.UTF_8.name()) }.getOrNull()
+    }
 
     /** Zero-based item requested by /download/N; legacy /download means item zero. */
     val downloadIndex: Int?
@@ -29,11 +40,12 @@ internal data class FastShareHttpRequest(
             path == "/" || path == "/index.html" -> Route.RECEIVER_PAGE
             path == "/download" -> Route.DOWNLOAD
             path == "/download-all" -> Route.DOWNLOAD_ALL
+            path == "/upload" -> Route.UPLOAD
             path.matches(Regex("/download/[0-9]{1,4}")) && downloadIndex != null -> Route.DOWNLOAD
             else -> Route.NOT_FOUND
         }
 
-    internal enum class Route { RECEIVER_PAGE, DOWNLOAD, DOWNLOAD_ALL, NOT_FOUND }
+    internal enum class Route { RECEIVER_PAGE, DOWNLOAD, DOWNLOAD_ALL, UPLOAD, NOT_FOUND }
 
     companion object {
         /**

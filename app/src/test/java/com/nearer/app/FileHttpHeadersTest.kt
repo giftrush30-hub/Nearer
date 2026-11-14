@@ -48,6 +48,22 @@ class FileHttpHeadersTest {
         assertFalse(withoutValidator.contains("Last-Modified:"))
     }
 
+    @Test fun receiverPageCspAllowsOnlySameOriginUploadConnections() {
+        val headers = FileHttpHeaders.receiverPageHeaders(100L, "test-nonce")
+        val csp = headers.first { it.first == "Content-Security-Policy" }.second
+        assertTrue(csp.contains("script-src 'nonce-test-nonce'"))
+        assertTrue(csp.contains("connect-src 'self'"))
+        assertTrue(!csp.contains("script-src 'unsafe-inline'"))
+        assertTrue(csp.contains("default-src 'none'"))
+    }
+    @Test fun uploadCreatedHeadersArePrivateAndLengthDelimited() {
+        val headers = FileHttpHeaders.uploadCreatedHeaders(12L).toMap()
+        assertEquals("text/plain; charset=utf-8", headers["Content-Type"])
+        assertEquals("12", headers["Content-Length"])
+        assertEquals("no-store", headers["Cache-Control"])
+        assertEquals("nosniff", headers["X-Content-Type-Options"])
+        assertEquals("close", headers["Connection"])
+    }
     @Test fun archiveHeadersDescribePrivateZipAndUseSafeAttachmentName() {
         val headers = FileHttpHeaders.archiveHeaders("NeaRer-Files.zip")
         assertTrue(headers.startsWith("Content-Type: application/zip\r\n"))
@@ -66,7 +82,7 @@ class FileHttpHeadersTest {
         assertEquals("no-referrer", headers["Referrer-Policy"])
         assertEquals("DENY", headers["X-Frame-Options"])
         assertEquals(
-            "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             headers["Content-Security-Policy"]
         )
         assertEquals("camera=(), microphone=(), geolocation=()", headers["Permissions-Policy"])

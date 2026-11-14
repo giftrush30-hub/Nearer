@@ -18,15 +18,27 @@ internal object FastShareHttpErrors {
     fun badRequest(): ByteArray =
         response("400 Bad Request")
 
-    fun methodNotAllowed(): ByteArray =
-        response("405 Method Not Allowed", "Allow: GET, HEAD\r\n")
+    fun methodNotAllowed(allow: String = "GET, HEAD"): ByteArray =
+        response("405 Method Not Allowed", "Allow: $allow\r\n")
+
+    fun lengthRequired(): ByteArray =
+        response("411 Length Required", "Content-Type: text/plain; charset=utf-8\r\n", "Upload requires a valid Content-Length header.\n")
 
     fun tooManyRequests(): ByteArray =
         response(
             "429 Too Many Requests",
             "Retry-After: 2\r\nContent-Type: text/plain; charset=utf-8\r\n",
-            "Another download is already in progress. Wait briefly, then retry.\n"
+            "Another transfer is already in progress. Wait briefly, then retry.\n"
         )
+
+    fun uploadsDisabled(): ByteArray =
+        response("403 Uploads Disabled", "Content-Type: text/plain; charset=utf-8\\r\\n", "Incoming uploads are off. Ask the NeaRer owner to enable them in the app.\\n")
+
+    fun insufficientStorage(): ByteArray =
+        response("507 Insufficient Storage", "Content-Type: text/plain; charset=utf-8\\r\\n", "This phone does not have enough free storage for the upload.\\n")
+
+    fun uploadFailed(): ByteArray =
+        response("500 Upload Failed", "Content-Type: text/plain; charset=utf-8\r\n", "The file was not saved. Check the connection and try again.\n")
 
     fun forbidden(): ByteArray =
         response("403 Forbidden", "Content-Type: text/plain; charset=utf-8\r\n", "This Fast Share link is missing or invalid. Ask the sender for the current link.\n")
