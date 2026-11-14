@@ -236,3 +236,43 @@ The current received-file implementation adds a durable, bounded catalog and mor
 JVM tests cover catalog round trips (including Unicode names), duplicate-path replacement, traversal rejection, corrupt/oversized catalog input, the 200-entry bound and storage-space boundary conditions.
 
 This supersedes the earlier release-boundary note above that described the HyperTransfer Nearby STREAM call-site work as still awaiting integration: Group C is merged on `main`, and Group D builds on that integrated transport plus the later receive-lock and journal-repair hardening. PR #152 is merged into `main` at `f7fdd80bb6c2cb9cc5de2bf9b7a38a624eb1125e`. Exact synchronized PR head `eb1a21416a27ef1685c5178fd0c88813fbb3fa37` passed GitHub Actions run #2392: JVM unit tests, debug APK assembly and artifact upload. The APK artifact is #14062314264 (11,422,816 bytes). No physical-device validation is claimed; Android 8–16 storage-provider behavior, notification permission states and low-storage recovery still require the user's phone tests.
+
+
+## Phase 1 consolidation audit — 14 November 2026
+
+### Original NeaRer colour restoration
+
+The original app palette is the design baseline again:
+
+- Midnight: `#101A2B`
+- Panel: `#1A2940`
+- Mint: `#69E0C0`
+- Muted text: `#A8B6C9`
+- Soft white: `#F6F8FC`
+- Brand blue: `#2563EB`
+- Gold: `#FFD12D`
+
+The shared `NeaRerPalette` design-system tokens and Android window/splash backgrounds already use the original values. The main Compose theme and File Centre were aligned to the same palette. The Ludo screen's surrounding panels, controls, borders and typography were also aligned to the shared palette. Traditional Ludo player colours and board markings were deliberately preserved; this is a brand-colour restoration, not a redesign of the game board or its rules.
+
+The palette regression test now asserts the original shared values. No feature, navigation, transport, storage or game-rule logic was intentionally changed by this colour pass.
+
+### Open-branch / PR consolidation findings
+
+- **PR #4 — Royal Electric redesign:** still a draft and targets `feature/nearer-premium-blue-gold-ludo`, not `main`. Its head is substantially diverged from current main. The inspected Ludo double-dice engine and its tests are byte-identical to main; the inspected Ludo screen's meaningful differences were the old colour definitions and UI colour literals, now superseded by the original-palette restoration. Do not merge this PR or its old MainActivity wholesale. Continue reviewing only any independently unique, still-missing files before porting.
+- **PR #65 — phone-free identity / Fast Share upload:** still open and targets an old UI branch, not main. Its identity primitives are already present in main. Current main also already contains an authenticated local browser-upload route using HTTP PUT, an explicit uploads-off-by-default control, bounded upload admission and private-file publication. PR #65's older POST-based upload implementation is therefore not a safe wholesale merge. Its remaining tests or isolated hardening changes should be compared against the current PUT implementation before any selective port.
+- The old Ludo engine and test files inspected in PR #4 match current main; no duplicate Ludo engine merge is required from that branch.
+- The branch inventory spans two pages (more than 160 branches). Branch count is not a merge list: many are historical snapshots, overlapping experiments or already-integrated work. Each candidate must be compared against current main and checked for unique code before integration.
+
+### Current validation boundary
+
+- The repository's Android workflow runs JVM unit tests and assembles/uploads a debug APK on pushes to `main`.
+- The GitHub status endpoint currently exposes no status checks for the colour-restoration commits, and the available workflow-run lookup is limited to pull-request-triggered runs. The exact latest main-head build result therefore remains unverified here; do not claim a fresh APK build passed.
+- Per the user's instruction, physical-device and human testing remain deferred to the user. This does not waive automated JVM tests or APK assembly checks.
+- Keep relay disabled. Do not enable mesh forwarding or make speed, unlimited-size, or production-reliability claims as part of this consolidation pass.
+
+### Phase 1 next engineering actions
+
+1. Complete the branch-by-branch unique-change audit without merging stale branches wholesale.
+2. Verify the latest main-head JVM test and debug APK workflow result.
+3. Selectively forward-port only reviewed missing features and their tests, preserving the latest SmartConnect, messaging, HyperTransfer and Ludo implementations.
+4. Keep this document current after each integration batch so parallel development chats have one shared source of truth.
