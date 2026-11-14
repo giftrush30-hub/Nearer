@@ -53,7 +53,7 @@ class FileHttpHeadersTest {
         val csp = headers.first { it.first == "Content-Security-Policy" }.second
         assertTrue(csp.contains("script-src 'nonce-test-nonce'"))
         assertTrue(csp.contains("connect-src 'self'"))
-        assertTrue(!csp.contains("script-src 'unsafe-inline'"))
+        assertTrue(!csp.contains("script-src 'nonce-test-nonce'"))
         assertTrue(csp.contains("default-src 'none'"))
     }
     @Test fun uploadCreatedHeadersArePrivateAndLengthDelimited() {
@@ -73,7 +73,7 @@ class FileHttpHeadersTest {
         assertTrue(headers.endsWith("Connection: close\r\n\r\n"))
     }
     @Test fun receiverPageHeadersPreventCachingFramingSniffingAndExternalExecution() {
-        val headers = FileHttpHeaders.receiverPageHeaders(123L).toMap()
+        val headers = FileHttpHeaders.receiverPageHeaders(123L, "test-nonce").toMap()
         assertEquals("text/html; charset=utf-8", headers["Content-Type"])
         assertEquals("123", headers["Content-Length"])
         assertEquals("no-store", headers["Cache-Control"])
@@ -91,7 +91,7 @@ class FileHttpHeadersTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun receiverPageHeadersRejectNegativeContentLength() {
-        FileHttpHeaders.receiverPageHeaders(-1L)
+        FileHttpHeaders.receiverPageHeaders(-1L, "test-nonce")
     }
 
 
