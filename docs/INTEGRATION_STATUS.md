@@ -327,3 +327,13 @@ A further focused review checked trusted reconnect and the older Fast Share impl
 ### Consolidation decision
 
 No code was copied from these candidates because the reviewed main implementations are newer or already contain the useful functionality. This is deliberate: avoiding a stale merge that silently regresses trusted reconnect or browser-upload security is more valuable than increasing the number of merged branches. Continue with source-level audits of remaining unique candidates, then obtain an exact-main-head CI result through a workflow-run source that includes push events. Relay stays disabled and no physical-device tests are claimed.
+
+
+### HyperTransfer and mesh branch follow-up — 14 November 2026
+
+- The older HyperTransfer development branches (`feature/hypertransfer-engine`, `feature/hypertransfer-nearby-stream-bridge`, `feature/hypertransfer-nearby-transport-final`, `feature/hypertransfer-nearby-transport-integration`, `feature/hypertransfer-stream-coordinator` and `feature/hypertransfer-validated-sender-stream`) are all deeply diverged historical stages. Main already contains the later STREAM transport, durable resume integration and subsequent concurrency/journal hardening. Do not merge these earlier stages over main.
+- `fix/hypertransfer-receipt-retention-cleanup` has no unique transport change: its `NearbyConnectionsTransport.kt`, completion receipt codec and codec test blobs are identical to main.
+- `fix/hypertransfer-recipient-completion-receipt` is an earlier snapshot. Its receipt handler removes the outgoing stream after a successful receipt but does not cancel and clear the retention timeout. Main now cancels `retentionTimeout` and clears the reference before removing the completed stream, preventing a stale timeout callback from acting on a completed transfer. Its completion receipt codec and test are already identical to main. Do not cherry-pick the older handler.
+- Both `security/mesh-routing-foundation` and `backup/batch-one-mesh-before-main-integration` are 139 commits behind main with no commits ahead. No merge action is needed; their shared ancestry is already incorporated or superseded.
+
+This review found no additional safe code to port. The current main implementations remain the source of truth for trusted reconnect, Fast Share upload admission, HyperTransfer STREAM lifecycle and mesh foundations.
