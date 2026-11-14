@@ -789,7 +789,7 @@ internal fun FileCentreScreen(
             }
             Button(
                 onClick = { gridMode = !gridMode },
-                colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = BlueAccent),
+                colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint),
                 shape = RoundedCornerShape(12.dp)
             ) { Text(if (gridMode) "List" else "Grid") }
         }
