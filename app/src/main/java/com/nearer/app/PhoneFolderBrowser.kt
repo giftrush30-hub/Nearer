@@ -51,7 +51,7 @@ fun PhoneFolderBrowser(treeUri: Uri, onSelectFiles: (List<Uri>) -> Unit, onClose
     AlertDialog(
         onDismissRequest = onClose,
         containerColor = Color(0xFF142238),
-        title = { Column { Text("PHONE FILES", color = Color(0xFFFFD12D), fontWeight = FontWeight.Black, fontSize = 11.sp); Text("Browse folders before connecting", color = Color(0xFFF6F8FC), fontWeight = FontWeight.Bold) } },
+        title = { Column { Text("PHONE FILES", color = Color(0xFFFFD12D), fontWeight = FontWeight.Black, fontSize = 11.sp); Text("Choose files to send", color = Color(0xFFF6F8FC), fontWeight = FontWeight.Bold) } },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -70,7 +70,7 @@ fun PhoneFolderBrowser(treeUri: Uri, onSelectFiles: (List<Uri>) -> Unit, onClose
                                 if (!directory && (item.mime.startsWith("image/") || item.mime.startsWith("video/"))) {
                                     PhoneMediaThumbnail(uri = item.uri, mime = item.mime)
                                 } else {
-                                    Text(if (directory) "📁" else documentGlyph(item.mime), fontSize = 20.sp)
+                                    Text(if (directory) "DIR" else documentGlyph(item.mime), color = Color(0xFFFFD12D), fontSize = 10.sp, fontWeight = FontWeight.Black)
                                 }
                                 Column(Modifier.weight(1f).padding(start = 10.dp)) {
                                     Text(item.name, color = Color(0xFFF6F8FC), fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
@@ -160,15 +160,15 @@ private fun queryPhoneFolder(context: Context, treeUri: Uri, folderUri: Uri): Pa
 } catch (e: Exception) { Pair(emptyList(), e.message ?: "This folder could not be read.") }
 
 private fun documentGlyph(mime: String): String = when {
-    mime.startsWith("image/") -> "🖼️"
-    mime.startsWith("video/") -> "🎬"
-    mime.startsWith("audio/") -> "🎵"
-    mime.contains("pdf") -> "📕"
-    mime.contains("zip") || mime.contains("compressed") -> "🗜️"
-    mime.contains("spreadsheet") || mime.contains("excel") -> "📊"
-    mime.contains("presentation") || mime.contains("powerpoint") -> "📽️"
-    mime.contains("word") || mime.contains("document") -> "📝"
-    else -> "📄"
+    mime.startsWith("image/") -> "IMG"
+    mime.startsWith("video/") -> "VID"
+    mime.startsWith("audio/") -> "AUD"
+    mime.contains("pdf") -> "PDF"
+    mime.contains("zip") || mime.contains("compressed") -> "ZIP"
+    mime.contains("spreadsheet") || mime.contains("excel") -> "XLS"
+    mime.contains("presentation") || mime.contains("powerpoint") -> "PPT"
+    mime.contains("word") || mime.contains("document") -> "DOC"
+    else -> "FILE"
 }
 
 private fun readableSize(size: Long): String = when { size <= 0L -> "Size unavailable"; size < 1024L -> size.toString() + " B"; size < 1048576L -> (size / 1024L).toString() + " KB"; else -> String.format("%.1f MB", size / 1048576.0) }
