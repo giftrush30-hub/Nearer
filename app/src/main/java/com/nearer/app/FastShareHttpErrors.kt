@@ -32,10 +32,10 @@ internal object FastShareHttpErrors {
         )
 
     fun uploadsDisabled(): ByteArray =
-        response("403 Uploads Disabled", "Content-Type: text/plain; charset=utf-8\\r\\n", "Incoming uploads are off. Ask the NeaRer owner to enable them in the app.\\n")
+        response("403 Uploads Disabled", "Content-Type: text/plain; charset=utf-8\r\n", "Incoming uploads are off. Ask the NeaRer owner to enable them in the app.\n")
 
     fun insufficientStorage(): ByteArray =
-        response("507 Insufficient Storage", "Content-Type: text/plain; charset=utf-8\\r\\n", "This phone does not have enough free storage for the upload.\\n")
+        response("507 Insufficient Storage", "Content-Type: text/plain; charset=utf-8\r\n", "This phone does not have enough free storage for the upload.\n")
 
     fun uploadFailed(): ByteArray =
         response("500 Upload Failed", "Content-Type: text/plain; charset=utf-8\r\n", "The file was not saved. Check the connection and try again.\n")

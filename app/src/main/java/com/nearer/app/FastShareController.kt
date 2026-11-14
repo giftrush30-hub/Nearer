@@ -229,7 +229,7 @@ class FastShareController(private val context: Context) {
                     val address = httpServer.start()
                     server = httpServer
                     details = FastShareDetails(ssid, password, "http://$address:8765/?key=$accessKey")
-                    status = "Fast Share is ready · ${selectedUris.size} file(s). Other devices can download from or upload to this phone."
+                    status = "Fast Share is ready · ${selectedUris.size} file(s). Downloads are ready; incoming uploads are off until you enable them."
                 } catch (error: Exception) {
                     status = "Could not start the download page: ${error.message ?: "please try again"}"
                     stop(updateStatus = false)
@@ -245,6 +245,7 @@ class FastShareController(private val context: Context) {
                 details = null
                 transferLedger.clear()
                 activeTransfers = emptyList()
+                setUploadsAllowed(false)
                 callback = null
                 status = "The temporary Wi-Fi connection stopped."
             }
@@ -667,7 +668,6 @@ private class FastShareHttpServer(
         }
     }
 
-    /** Receives a browser PUT body directly into a private file using a fixed buffer. */
     /** Receives a browser PUT body directly into private storage using a fixed buffer. */
     private fun receiveUpload(
         input: BufferedInputStream,
@@ -707,12 +707,12 @@ private class FastShareHttpServer(
             FastShareUploadGate.Admission.ACCEPTED -> Unit
         }
         val transferId = java.util.UUID.randomUUID().toString()
-        onUploadQueued(transferId, fileName, totalBytes)
         var temporaryFile: java.io.File? = null
         var savedFile: java.io.File? = null
         var receivedBytes = 0L
         var lastReportedBytes = 0L
         try {
+            onUploadQueued(transferId, fileName, totalBytes)
             if (!running || !uploadsEnabled()) throw java.io.InterruptedIOException("Incoming uploads were stopped.")
             val uploadTempFile = java.io.File.createTempFile(".nearer-upload-", ".part", folder)
             temporaryFile = uploadTempFile
@@ -741,7 +741,7 @@ private class FastShareHttpServer(
             savedFile = finalFile
             runCatching { onFileReceived(fileName, finalFile) }
             onUploadProgress(transferId, fileName, receivedBytes, totalBytes, true, false)
-            val body = ("Received " + fileName + "\\n").toByteArray(Charsets.UTF_8)
+            val body = ("Received " + fileName + "\n").toByteArray(Charsets.UTF_8)
             writeGuard.arm()
             output.write(FastShareHttpWire.responseHead("HTTP/1.1 201 Created", FileHttpHeaders.uploadCreatedHeaders(body.size.toLong())))
             output.write(body)
