@@ -2092,7 +2092,10 @@ class MainActivity : ComponentActivity() {
     private fun setReadReceiptsEnabled(enabled: Boolean) {
         readReceiptsEnabled = enabled
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("read_receipts_enabled", enabled).apply()
-        if (enabled) (selectedMeshRecipientId ?: hybridConnectedStableId)?.let(::sendPendingReadReceipts)
+        if (enabled) {
+            (selectedMeshRecipientId ?: hybridConnectedStableId)?.let(::sendPendingReadReceipts)
+            selectedCommunityCode?.let(::sendGroupReadReceipts)
+        }
     }
 
     private fun markConversationRead(conversationId: String?) {
