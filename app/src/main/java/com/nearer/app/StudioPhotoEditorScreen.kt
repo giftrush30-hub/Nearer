@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,12 +44,14 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 
 @Composable
 internal fun StudioPhotoEditorScreen(uri: Uri, title: String, onBack: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var source by remember(uri) { mutableStateOf<Bitmap?>(null) }
     var brightness by remember(uri) { mutableStateOf(0f) }
     var contrast by remember(uri) { mutableStateOf(1f) }
@@ -70,10 +74,11 @@ internal fun StudioPhotoEditorScreen(uri: Uri, title: String, onBack: () -> Unit
         if (source == null) message = "This image could not be opened. Try another photo format."
     }
 
+    val previewOffset = 128f * (1f - contrast) + brightness
     val matrix = ColorMatrix(floatArrayOf(
-        contrast, 0f, 0f, 0f, brightness,
-        0f, contrast, 0f, 0f, brightness,
-        0f, 0f, contrast, 0f, brightness,
+        contrast, 0f, 0f, 0f, previewOffset,
+        0f, contrast, 0f, 0f, previewOffset,
+        0f, 0f, contrast, 0f, previewOffset,
         0f, 0f, 0f, 1f, 0f
     ))
 
@@ -123,7 +128,7 @@ internal fun StudioPhotoEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                 val brightnessValue = brightness
                 val contrastValue = contrast
                 val rotationValue = rotation
-                kotlinx.coroutines.CoroutineScope(Dispatchers.Main).launch {
+                scope.launch {
                     val output = withContext(Dispatchers.IO) {
                         runCatching {
                             val transform = Matrix().apply { postRotate(rotationValue.toFloat()) }
