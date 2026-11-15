@@ -2380,13 +2380,18 @@ class MainActivity : ComponentActivity() {
                 "broadcast" -> communityNotice = "Broadcast from " + sender + ": " + packet.optString("body").take(500)
                 "ludo_invite" -> {
                     val matchId = packet.optString("matchId")
-                    if (activeGame == null && matchId.isNotBlank() && matchId.length <= 80) incomingGameInvite = GameInvite(matchId, sender)
+                    if (activeGame == null && matchId.isNotBlank() && matchId.length <= 80) {
+                        incomingGameInvite = GameInvite(matchId, sender, senderPeerId.trim())
+                    }
                 }
                 "ludo_reject" -> activeGame?.let { game ->
                     if (game.matchId == packet.optString("matchId")) {
                         if (game.isHost) {
                             communityNotice = "$sender declined the invitation. Your Ludo room remains open."
-                        } else if (sender == game.opponentName) {
+                        } else if (LudoPeerAuthorization.matches(
+                                game.hostPeerId, senderPeerId, game.opponentName, sender,
+                                allowLegacyNameFallback = game.hostPeerId.isBlank() && senderPeerId.isBlank()
+                            )) {
                             activeGame = null
                             gameChatMessages.clear()
                             communityNotice = "The host can no longer add players to this Ludo room."
@@ -2397,7 +2402,9 @@ class MainActivity : ComponentActivity() {
                     val rosterOpen = game.isHost && game.matchId == packet.optString("matchId") &&
                         game.state.turnNumber == 1L && game.state.diceValue == null &&
                         !game.state.isFinished && game.state.players.size < 4
-                    if (rosterOpen && sender !in game.remotePlayers.values) {
+                    val alreadyJoined = if (senderPeerId.isNotBlank()) senderPeerId in game.remotePeerIds.values
+                        else sender in game.remotePlayers.values
+                    if (rosterOpen && !alreadyJoined) {
                         val nextColor = LudoColor.entries.firstOrNull { color -> game.state.players.none { it.color == color } }
                         if (nextColor != null) {
                             val names = game.state.players.associate { it.color to it.name }.toMutableMap()
@@ -2405,19 +2412,21 @@ class MainActivity : ComponentActivity() {
                             val expanded = LudoEngine.newGame(names, playerColors = game.state.players.map { it.color } + nextColor)
                                 .copy(currentPlayerIndex = game.state.currentPlayerIndex, turnNumber = game.state.turnNumber)
                             val remotes = game.remotePlayers + (nextColor to sender)
+                            val remoteIds = if (senderPeerId.isNotBlank()) game.remotePeerIds + (nextColor to senderPeerId.trim()) else game.remotePeerIds
                             val updated = game.copy(
                                 state = expanded,
                                 opponentName = game.opponentName.takeIf { it != "Waiting for players…" } ?: sender,
                                 ready = true,
                                 revision = game.revision + 1L,
-                                remotePlayers = remotes
+                                remotePlayers = remotes,
+                                remotePeerIds = remoteIds
                             )
                             activeGame = updated
                             sendLudoState(updated)
                             communityNotice = "$sender joined as ${nextColor.name}. ${expanded.players.size}/4 seats filled."
                         }
                     } else if (game.isHost && game.matchId == packet.optString("matchId") &&
-                        sender !in game.remotePlayers.values) {
+                        (if (senderPeerId.isNotBlank()) senderPeerId !in game.remotePeerIds.values else sender !in game.remotePlayers.values)) {
                         sendCommunityToNames(
                             "NR_COMMUNITY:" + JSONObject().put("type", "ludo_reject")
                                 .put("matchId", game.matchId).put("reason", "room_closed"),
@@ -2428,7 +2437,10 @@ class MainActivity : ComponentActivity() {
                 "ludo_state" -> activeGame?.let { game ->
                     val revision = packet.optLong("revision", -1L)
                     if (!game.isHost && game.matchId == packet.optString("matchId") &&
-                        sender == game.opponentName && revision > game.revision) {
+                        LudoPeerAuthorization.matches(
+                            game.hostPeerId, senderPeerId, game.opponentName, sender,
+                            allowLegacyNameFallback = game.hostPeerId.isBlank() && senderPeerId.isBlank()
+                        ) && revision > game.revision) {
                         parseLudoState(packet.optJSONObject("state"))?.let { state ->
                             val assignedColor = runCatching { LudoColor.valueOf(packet.optString("localColor", game.localColor.name)) }.getOrDefault(game.localColor)
                             if (state.players.any { it.color == assignedColor }) {
@@ -2439,7 +2451,10 @@ class MainActivity : ComponentActivity() {
                 }
                 "ludo_sync" -> activeGame?.let { game ->
                     if (game.isHost && game.matchId == packet.optString("matchId") &&
-                        sender in game.remotePlayers.values) {
+                        LudoPeerAuthorization.findRemoteColor(
+                            game.remotePeerIds, game.remotePlayers, senderPeerId, sender,
+                            allowLegacyNameFallback = senderPeerId.isBlank()
+                        ) != null) {
                         // A room may have several remote players. One player's reconnect
                         // must not prevent another player from syncing later.
                         val resumed = game.copy(ready = true, revision = game.revision + 1L)
@@ -2450,8 +2465,10 @@ class MainActivity : ComponentActivity() {
                 }
                 "ludo_rematch" -> activeGame?.let { game ->
                     if (game.isHost && game.matchId == packet.optString("matchId") &&
-                        game.ready && game.state.isFinished && sender in game.remotePlayers.values &&
-                        packet.optLong("revision", -1L) == game.revision) {
+                        game.ready && game.state.isFinished && LudoPeerAuthorization.findRemoteColor(
+                            game.remotePeerIds, game.remotePlayers, senderPeerId, sender,
+                            allowLegacyNameFallback = senderPeerId.isBlank()
+                        ) != null && packet.optLong("revision", -1L) == game.revision) {
                         val reset = newNetworkLudoState(game)
                         activeGame = reset
                         gameChatMessages.clear()
@@ -2461,7 +2478,10 @@ class MainActivity : ComponentActivity() {
                 }
                 "ludo_action" -> activeGame?.let { game ->
                     if (game.isHost && game.ready && game.matchId == packet.optString("matchId")) {
-                        val senderColor = game.remotePlayers.entries.firstOrNull { it.value == sender }?.key
+                        val senderColor = LudoPeerAuthorization.findRemoteColor(
+                            game.remotePeerIds, game.remotePlayers, senderPeerId, sender,
+                            allowLegacyNameFallback = senderPeerId.isBlank()
+                        )
                         if (senderColor != null && senderColor == game.state.currentPlayer.color &&
                             packet.optLong("revision", -1L) == game.revision) {
                             applyHostLudoAction(game, packet.optString("action"), packet.optInt("token", -1))
@@ -2470,7 +2490,13 @@ class MainActivity : ComponentActivity() {
                 }
                 "ludo_chat" -> activeGame?.let { game ->
                     if (game.matchId == packet.optString("matchId") &&
-                        (sender == game.opponentName || sender in game.remotePlayers.values)) {
+                        (LudoPeerAuthorization.matches(
+                            game.hostPeerId, senderPeerId, game.opponentName, sender,
+                            allowLegacyNameFallback = game.hostPeerId.isBlank() && senderPeerId.isBlank()
+                        ) || LudoPeerAuthorization.findRemoteColor(
+                            game.remotePeerIds, game.remotePlayers, senderPeerId, sender,
+                            allowLegacyNameFallback = senderPeerId.isBlank()
+                        ) != null)) {
                         val chatSender = packet.optString("sender").ifBlank { sender }.take(23)
                         val body = packet.optString("body").take(300)
                         gameChatMessages.add("$chatSender: $body")
@@ -2489,12 +2515,18 @@ class MainActivity : ComponentActivity() {
                 }
                 "ludo_end" -> activeGame?.let { game ->
                     if (game.matchId == packet.optString("matchId")) {
-                        if (!game.isHost && sender == game.opponentName) {
+                        if (!game.isHost && LudoPeerAuthorization.matches(
+                            game.hostPeerId, senderPeerId, game.opponentName, sender,
+                            allowLegacyNameFallback = game.hostPeerId.isBlank() && senderPeerId.isBlank()
+                        )) {
                             activeGame = null
                             gameChatMessages.clear()
                             communityNotice = "$sender ended the Ludo match."
-                        } else if (game.isHost && sender in game.remotePlayers.values) {
-                            removeLudoParticipant(game, sender)
+                        } else if (game.isHost && LudoPeerAuthorization.findRemoteColor(
+                                game.remotePeerIds, game.remotePlayers, senderPeerId, sender,
+                                allowLegacyNameFallback = senderPeerId.isBlank()
+                            ) != null) {
+                            removeLudoParticipant(game, sender, senderPeerId)
                         }
                     }
                 }
@@ -2502,8 +2534,11 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) { communityNotice = "A community packet was invalid and ignored." }
     }
 
-    private fun removeLudoParticipant(game: LudoNetworkMatch, sender: String) {
-        val leavingColor = game.remotePlayers.entries.firstOrNull { it.value == sender }?.key ?: return
+    private fun removeLudoParticipant(game: LudoNetworkMatch, sender: String, senderPeerId: String) {
+        val leavingColor = LudoPeerAuthorization.findRemoteColor(
+            game.remotePeerIds, game.remotePlayers, senderPeerId, sender,
+            allowLegacyNameFallback = senderPeerId.isBlank()
+        ) ?: return
         if (game.state.isFinished) {
             val others = game.remotePlayers.values.filter { it != sender }.toSet()
             if (others.isNotEmpty()) sendCommunityToNames(
@@ -2516,7 +2551,8 @@ class MainActivity : ComponentActivity() {
             return
         }
         val remainingPlayers = game.state.players.filterNot { it.color == leavingColor }
-        val remainingRemotes = game.remotePlayers.filterValues { it != sender }
+        val remainingRemotes = game.remotePlayers - leavingColor
+        val remainingRemoteIds = game.remotePeerIds - leavingColor
         if (remainingPlayers.size < 2) {
             val others = remainingRemotes.values.toSet()
             if (others.isNotEmpty()) {
@@ -2545,6 +2581,7 @@ class MainActivity : ComponentActivity() {
             state = nextState,
             revision = game.revision + 1L,
             remotePlayers = remainingRemotes,
+            remotePeerIds = remainingRemoteIds,
             opponentName = remainingRemotes.values.firstOrNull() ?: "Nearby player"
         )
         activeGame = updated
@@ -2595,7 +2632,7 @@ class MainActivity : ComponentActivity() {
             mapOf(LudoColor.RED to invite.sender, LudoColor.YELLOW to displayName),
             playerColors = listOf(LudoColor.RED, LudoColor.YELLOW)
         )
-        activeGame = LudoNetworkMatch(invite.matchId, initial, LudoColor.YELLOW, false, invite.sender, false)
+        activeGame = LudoNetworkMatch(invite.matchId, initial, LudoColor.YELLOW, false, invite.sender, false, hostPeerId = invite.senderPeerId)
         incomingGameInvite = null
         gameChatMessages.clear()
         val sent = sendLudoPacket(
@@ -4943,7 +4980,7 @@ private data class CommunityChatMessage(
     val deliveryByPeerId: Map<String, String> = emptyMap()
 )
 private data class CommunityDeliveryRef(val communityMessageId: String, val peerId: String)
-data class GameInvite(val matchId: String, val sender: String)
+data class GameInvite(val matchId: String, val sender: String, val senderPeerId: String = "")
 
 private data class NearbyPerson(val name: String, val lastSeenAt: Long)
 
