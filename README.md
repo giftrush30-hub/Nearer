@@ -96,3 +96,15 @@ The current group/broadcast methods encrypt a separate packet for each connected
 ### Process lifecycle boundary
 
 The direct outbox is restored when the transport is recreated and retries when the matching trusted peer authenticates again. This is reconnect-driven recovery, not a guarantee of background delivery while the app is stopped or the phone is in Doze. Android background execution and a durable scheduled retry mechanism remain separate work.
+
+
+## Direct chat read receipts and delete-for-everyone
+
+- Direct-chat read state is stored separately from receipt delivery state. Opening a conversation marks its incoming messages locally read.
+- Read receipts are authenticated against the original conversation peer and are sent through the encrypted durable outbox, so a trusted peer can receive the receipt after reconnecting.
+- Users can disable read receipts in the chat screen. When disabled, NeaRer keeps local read state but does not send a receipt.
+- A sender can delete a message for everyone only after delivery has been confirmed (or a valid read receipt has arrived). The deletion is queued to the pinned recipient identity.
+- The receiving phone accepts a delete event only from the original sender for that conversation. Deletion is idempotent, removes message content and reactions, and clears quoted previews that referenced the deleted message.
+- Local "Delete for me" remains separate from remote deletion.
+
+Automated policy tests cover packet bounds, identity authorization, delivery eligibility and receipt retry. These tests do not replace physical two-phone testing.
