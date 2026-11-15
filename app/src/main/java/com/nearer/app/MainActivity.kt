@@ -490,6 +490,9 @@ class MainActivity : ComponentActivity() {
                     } else if (body.startsWith("NR_EDIT:")) {
                         val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
                         safelyStored = applyIncomingChatEdit(body.removePrefix("NR_EDIT:"), actorPeerId)
+                    } else if (body.startsWith("NR_READ_RECEIPT:")) {
+                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        safelyStored = applyIncomingChatReadReceipt(body.removePrefix("NR_READ_RECEIPT:"), actorPeerId)
                     } else if (body.startsWith("NR_COMMUNITY:")) {
                         val senderPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
                         val communityBody = body.removePrefix("NR_COMMUNITY:")
@@ -579,6 +582,8 @@ class MainActivity : ComponentActivity() {
                         safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), originPeerId)
                     } else if (body.startsWith("NR_EDIT:")) {
                         safelyStored = applyIncomingChatEdit(body.removePrefix("NR_EDIT:"), originPeerId)
+                    } else if (body.startsWith("NR_READ_RECEIPT:")) {
+                        safelyStored = applyIncomingChatReadReceipt(body.removePrefix("NR_READ_RECEIPT:"), originPeerId)
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
@@ -838,6 +843,7 @@ class MainActivity : ComponentActivity() {
                     onDeleteMessage = ::deleteChatMessage,
                     onEditMessage = ::editChatMessage,
                     onReactToMessage = ::sendChatReaction,
+                    onMarkConversationRead = ::markConversationRead,
                     onEnableMessageNotifications = ::requestMessageNotifications,
                     groups = communityGroups.toList(),
                     groupMessages = communityMessages.toList(),
@@ -1633,6 +1639,8 @@ class MainActivity : ComponentActivity() {
                         replyToSender = item.optString("replyToSender").takeIf { it.isNotBlank() },
                         editVersion = item.optInt("editVersion", 0).coerceIn(0, ChatEditPolicy.MAX_REVISION),
                         editedAt = item.optLong("editedAt", 0L).coerceAtLeast(0L),
+                        readAt = item.optLong("readAt", 0L).coerceAtLeast(0L),
+                        readReceiptSentAt = item.optLong("readReceiptSentAt", 0L).coerceAtLeast(0L),
                         reactions = item.optJSONObject("reactions")?.let { reactionObject ->
                             buildMap {
                                 val keys = reactionObject.keys()
@@ -1873,6 +1881,80 @@ class MainActivity : ComponentActivity() {
         return false
     }
 
+    private fun applyIncomingChatReadReceipt(payload: String, actorPeerId: String): Boolean {
+        val packet = try { JSONObject(payload) } catch (_: Exception) { return false }
+        if (!ChatReactionPolicy.isValidActor(actorPeerId)) return false
+        val idsArray = packet.optJSONArray("messageIds") ?: return false
+        val ids = (0 until idsArray.length()).map { idsArray.optString(it) }
+        val readAt = packet.optLong("readAt", 0L)
+        if (!ChatReadReceiptPolicy.isValidPacket(packet.optInt("version", 0), ids, readAt, System.currentTimeMillis())) return false
+        val idSet = ids.toSet()
+        val changed = mutableListOf<Pair<Int, ChatMessage>>()
+        chatMessages.forEachIndexed { index, message ->
+            if (message.id in idSet && ChatReadReceiptPolicy.canApplyReceipt(
+                    message.outgoing, message.conversationId, actorPeerId, readAt
+                ) && readAt > message.readAt) {
+                changed += index to message
+                chatMessages[index] = message.copy(readAt = readAt)
+            }
+        }
+        if (changed.isEmpty()) return true
+        if (persistMessages()) {
+            chatNotice = "Your message was read by ${changed.first().second.conversationName.ifBlank { "the recipient" }}."
+            return true
+        }
+        changed.forEach { (index, previous) -> chatMessages[index] = previous }
+        chatNotice = "A read receipt arrived but could not be saved. It was not confirmed."
+        return false
+    }
+
+    private fun markConversationRead(conversationId: String) {
+        if (!activityResumed || !ChatReactionPolicy.isValidActor(conversationId)) return
+        val unread = chatMessages.filter { message ->
+            ChatReadReceiptPolicy.shouldMarkRead(
+                message.outgoing, message.conversationId, conversationId, message.readReceiptSentAt
+            )
+        }
+        if (unread.isEmpty()) return
+
+        unread.chunked(ChatReadReceiptPolicy.MAX_MESSAGE_IDS).forEach { batch ->
+            val now = System.currentTimeMillis()
+            val ids = batch.map { it.id }
+            val packet = "NR_READ_RECEIPT:" + JSONObject()
+                .put("version", 1)
+                .put("messageIds", JSONArray(ids))
+                .put("readAt", now)
+                .toString()
+            val eventId = UUID.randomUUID().toString()
+            val recipient = meshRecipients[conversationId]
+            var queued = if (recipient != null) {
+                nearbyTransport?.sendMeshMessage(conversationId, packet, eventId) == true
+            } else false
+            if (!queued && conversationId == hybridConnectedStableId && !hybridConnectedEndpoint.isNullOrBlank()) {
+                queued = nearbyTransport?.send(packet, eventId, hybridConnectedEndpoint) == true
+            }
+            if (!queued) {
+                chatNotice = "NeaRer could not queue a read receipt yet. It will try again when this conversation reconnects."
+                return
+            }
+
+            val previous = batch.associate { it.id to it.readReceiptSentAt }
+            batch.forEach { message ->
+                val index = chatMessages.indexOfFirst { it.id == message.id }
+                if (index >= 0) chatMessages[index] = chatMessages[index].copy(readReceiptSentAt = now)
+            }
+            if (!persistMessages()) {
+                batch.forEach { message ->
+                    val index = chatMessages.indexOfFirst { it.id == message.id }
+                    val old = previous[message.id] ?: 0L
+                    if (index >= 0) chatMessages[index] = chatMessages[index].copy(readReceiptSentAt = old)
+                }
+                chatNotice = "The read receipt was queued, but its local state could not be saved. A duplicate may be sent after reopening this chat."
+                return
+            }
+        }
+    }
+
     private fun sendChatReaction(messageId: String, emoji: String) {
         val index = chatMessages.indexOfFirst { it.id == messageId }
         if (index < 0 || !ChatReactionPolicy.isValidEmoji(emoji)) return
@@ -1945,6 +2027,8 @@ class MainActivity : ComponentActivity() {
                     .put("replyToSender", message.replyToSender)
                     .put("editVersion", message.editVersion)
                     .put("editedAt", message.editedAt)
+                    .put("readAt", message.readAt)
+                    .put("readReceiptSentAt", message.readReceiptSentAt)
                     .put("reactions", JSONObject(message.reactions)))
             }
             // commit() is intentional here: a delivery receipt must follow the disk write,
@@ -3770,6 +3854,7 @@ private fun NeaRerHome(
     onDeleteMessage: (String) -> Boolean,
     onEditMessage: (String, String) -> Boolean,
     onReactToMessage: (String, String) -> Unit,
+    onMarkConversationRead: (String) -> Unit,
     onEnableMessageNotifications: () -> Unit,
     groups: List<CommunityGroup>,
     groupMessages: List<CommunityChatMessage>,
@@ -4524,6 +4609,7 @@ private fun NeaRerHome(
                     onDeleteMessage = onDeleteMessage,
                     onEditMessage = onEditMessage,
                     onReactToMessage = onReactToMessage,
+                    onMarkConversationRead = onMarkConversationRead,
                     onFindNearby = { selectedTab = "Nearby"; onFindNearby() },
                     onBackToInbox = { onSelectMeshRecipient(null) },
                     onChooseFiles = { chatAttachmentPicker.launch(arrayOf("*/*")) },
@@ -5089,7 +5175,9 @@ internal data class ChatMessage(
     val replyToSender: String? = null,
     val reactions: Map<String, String> = emptyMap(),
     val editVersion: Int = 0,
-    val editedAt: Long = 0L
+    val editedAt: Long = 0L,
+    val readAt: Long = 0L,
+    val readReceiptSentAt: Long = 0L
 )
 
 private fun isNeaRerAppBundle(file: File): Boolean {
