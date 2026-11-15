@@ -41,6 +41,10 @@ import androidx.core.content.FileProvider
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.effect.Brightness
+import androidx.media3.effect.Contrast
+import androidx.media3.effect.HslAdjustment
+import androidx.media3.transformer.Effects
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
@@ -82,10 +86,24 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
     var exporting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Add video clips, arrange their order, trim each clip and optionally lay music underneath.") }
     var exported by remember { mutableStateOf<File?>(null) }
+    val gradePreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_grade", android.content.Context.MODE_PRIVATE) }
+    val restoredGrade = remember(context) { StudioVideoGradeCodec.decode(gradePreferences.getString("grade_v1", null)) }
+    var brightness by remember(context) { mutableStateOf(restoredGrade.brightness) }
+    var contrast by remember(context) { mutableStateOf(restoredGrade.contrast) }
+    var saturation by remember(context) { mutableStateOf(restoredGrade.saturation) }
+    fun videoGradeEffects() = buildList<androidx.media3.common.Effect> {
+        if (brightness != 0f) add(Brightness(brightness))
+        if (contrast != 0f) add(Contrast(contrast))
+        if (saturation != 0f) add(HslAdjustment.Builder().adjustSaturation(saturation).build())
+    }
+    LaunchedEffect(brightness, contrast, saturation) {
+        gradePreferences.edit().putString("grade_v1", StudioVideoGradeCodec.encode(StudioVideoGrade(brightness, contrast, saturation))).apply()
+    }
     val player = remember(context) { ExoPlayer.Builder(context).build() }
 
     DisposableEffect(player) { onDispose { player.release() } }
-    LaunchedEffect(clips.toList()) {
+    LaunchedEffect(clips.toList(), brightness, contrast, saturation) {
+        player.setVideoEffects(videoGradeEffects())
         if (clips.isNotEmpty()) {
             val previewItems = clips.map { clip ->
                 MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
@@ -138,6 +156,19 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
         Text("Shape the story.", color = White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Text("Arrange up to 12 clips in sequence. Trim each one, preview the ordered reel and optionally add a looping music bed.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
         Text("● TIMELINE AUTO-SAVED ON THIS PHONE", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("COLOUR LAB  ·  LIVE PREVIEW + EXPORT", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.7.sp)
+                Text("Fine-tune the look of your whole sequence. These same adjustments are used in the preview and final render.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Text("BRIGHTNESS  ·  ${((brightness + 0.5f) * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = brightness, onValueChange = { brightness = it; exported = null }, valueRange = -0.5f..0.5f)
+                Text("CONTRAST  ·  ${((contrast + 0.5f) * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = contrast, onValueChange = { contrast = it; exported = null }, valueRange = -0.5f..0.5f)
+                Text("SATURATION  ·  ${saturation.toInt()}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = saturation, onValueChange = { saturation = it; exported = null }, valueRange = -50f..50f)
+                Button(onClick = { brightness = 0f; contrast = 0f; saturation = 0f; exported = null }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("RESET COLOUR") }
+            }
+        }
         if (clips.isNotEmpty()) {
             AndroidView(factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true } },
                 update = { it.player = player }, modifier = Modifier.fillMaxWidth().height(190.dp))
@@ -206,7 +237,7 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                     val item = MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
                         MediaItem.ClippingConfiguration.Builder().setStartPositionMs(clip.inMs).setEndPositionMs(clip.outMs).build()
                     ).build()
-                    EditedMediaItem.Builder(item).build()
+                    EditedMediaItem.Builder(item).setEffects(Effects(emptyList(), videoGradeEffects())).build()
                 }
                 val videoSequence = EditedMediaItemSequence.Builder(videoItems).build()
                 val sequences = mutableListOf(videoSequence)
