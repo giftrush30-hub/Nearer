@@ -8,8 +8,15 @@ internal data class FastShareHttpRequest(
     val query: String = ""
 ) {
     fun hasAccessKey(expected: String): Boolean {
-        val values = query.split('&').mapNotNull { part ->
-            if (part.startsWith("key=")) part.substringAfter("key=") else null
+        val values = mutableListOf<String>()
+        for (part in query.split('&')) {
+            val separator = part.indexOf('=')
+            val rawName = if (separator >= 0) part.substring(0, separator) else part
+            val decodedName = decodeQueryComponent(rawName) ?: return false
+            if (decodedName == "key") {
+                if (separator < 0) return false
+                values += part.substring(separator + 1)
+            }
         }
         return values.size == 1 && FastShareAccessKey.matches(expected, values.single())
     }
@@ -21,11 +28,22 @@ internal data class FastShareHttpRequest(
 
     /** Returns a query parameter only when it appears exactly once and decodes safely. */
     fun queryParameter(name: String): String? {
-        val matches = query.split('&').filter { it.substringBefore('=') == name }
+        val matches = mutableListOf<String>()
+        for (part in query.split('&')) {
+            val separator = part.indexOf('=')
+            val rawName = if (separator >= 0) part.substring(0, separator) else part
+            val decodedName = decodeQueryComponent(rawName) ?: return null
+            if (decodedName == name) {
+                if (separator < 0) return null
+                matches += part.substring(separator + 1)
+            }
+        }
         if (matches.size != 1) return null
-        val encoded = matches.single().substringAfter('=', "")
-        return runCatching { java.net.URLDecoder.decode(encoded, Charsets.UTF_8.name()) }.getOrNull()
+        return decodeQueryComponent(matches.single())
     }
+
+    private fun decodeQueryComponent(value: String): String? =
+        runCatching { java.net.URLDecoder.decode(value, Charsets.UTF_8.name()) }.getOrNull()
 
     /** Zero-based item requested by /download/N; legacy /download means item zero. */
     val downloadIndex: Int?
