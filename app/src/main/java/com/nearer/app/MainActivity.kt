@@ -1546,7 +1546,9 @@ class MainActivity : ComponentActivity() {
                         id = item.getString("id"),
                         body = item.getString("body"),
                         outgoing = item.getBoolean("outgoing"),
-                        delivery = item.optString("delivery", "Sent"),
+                        delivery = ChatMessageRecoveryPolicy.deliveryAfterProcessRestart(
+                            item.getBoolean("outgoing"), item.optString("delivery", "Sent")
+                        ),
                         timestamp = item.optLong("timestamp", System.currentTimeMillis()),
                         conversationId = item.optString("conversationId", ""),
                         conversationName = item.optString("conversationName", ""),
