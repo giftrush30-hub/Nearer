@@ -7,12 +7,14 @@ import java.nio.ByteBuffer
 import kotlin.math.roundToInt
 
 /**
- * Applies one track's offline gain and fade envelope during Media3 export.
- * ToInt16PcmAudioProcessor is placed before this processor in the effects chain.
+ * Applies per-track gain, fades and stereo balance during offline Media3 export.
+ * Mono sources are duplicated to stereo so mixed tracks share one output layout.
+ * ToInt16PcmAudioProcessor must precede this processor in the effects chain.
  */
 @androidx.media3.common.util.UnstableApi
 internal class StudioTrackGainProcessor(
     private val gain: Float,
+    private val pan: Float,
     private val durationMs: Long,
     private val fadeInMs: Long,
     private val fadeOutMs: Long
@@ -21,33 +23,41 @@ internal class StudioTrackGainProcessor(
     private var frameCursor = 0L
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
+        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT || inputAudioFormat.channelCount !in 1..2) {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
-        return inputAudioFormat
+        return if (inputAudioFormat.channelCount == 1) {
+            AudioProcessor.AudioFormat(inputAudioFormat.sampleRate, 2, C.ENCODING_PCM_16BIT)
+        } else inputAudioFormat
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         val inputBytes = inputBuffer.remaining()
         if (inputBytes == 0) return
-        val channels = inputAudioFormat.channelCount.coerceAtLeast(1)
-        val sampleCount = inputBytes / 2
-        val outputBuffer = replaceOutputBuffer(sampleCount * 2)
-        var sampleIndex = 0
-        while (inputBuffer.remaining() >= 2) {
-            val frame = frameCursor + (sampleIndex / channels)
-            val multiplier = studioAudioGainAtFrame(
-                frame = frame,
-                totalFrames = durationMs * inputAudioFormat.sampleRate / 1_000L,
-                baseGain = gain,
-                fadeInFrames = fadeInMs * inputAudioFormat.sampleRate / 1_000L,
-                fadeOutFrames = fadeOutMs * inputAudioFormat.sampleRate / 1_000L
-            )
-            val sample = inputBuffer.short.toInt()
-            outputBuffer.putShort((sample * multiplier).roundToInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort())
-            sampleIndex++
+        val inputChannels = inputAudioFormat.channelCount
+        val frames = inputBytes / (inputChannels * 2)
+        val outputBuffer = replaceOutputBuffer(frames * 2 * 2)
+        val (leftPan, rightPan) = studioAudioPanFactors(pan)
+        val sampleRate = inputAudioFormat.sampleRate
+        val totalFrames = durationMs * sampleRate / 1_000L
+        val fadeInFrames = fadeInMs * sampleRate / 1_000L
+        val fadeOutFrames = fadeOutMs * sampleRate / 1_000L
+
+        repeat(frames) { frameInBuffer ->
+            val frame = frameCursor + frameInBuffer
+            val envelope = studioAudioGainAtFrame(frame, totalFrames, gain, fadeInFrames, fadeOutFrames)
+            if (inputChannels == 1) {
+                val mono = inputBuffer.short.toInt()
+                outputBuffer.putShort(applyStudioGain(mono, envelope * leftPan))
+                outputBuffer.putShort(applyStudioGain(mono, envelope * rightPan))
+            } else {
+                val left = inputBuffer.short.toInt()
+                val right = inputBuffer.short.toInt()
+                outputBuffer.putShort(applyStudioGain(left, envelope * leftPan))
+                outputBuffer.putShort(applyStudioGain(right, envelope * rightPan))
+            }
         }
-        frameCursor += sampleIndex / channels
+        frameCursor += frames
         outputBuffer.flip()
     }
 
@@ -55,3 +65,7 @@ internal class StudioTrackGainProcessor(
         frameCursor = 0L
     }
 }
+
+private fun applyStudioGain(sample: Int, gain: Float): Short =
+    (sample * gain.coerceIn(0f, 1f)).roundToInt()
+        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
