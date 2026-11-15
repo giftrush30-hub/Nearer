@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,11 +73,13 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
             elapsedSeconds++
         }
     }
+    val latestRecorder = rememberUpdatedState(recorder)
+    val latestRecording = rememberUpdatedState(recording)
     DisposableEffect(Unit) {
         onDispose {
-            if (recording) runCatching { recorder?.stop() }
-            runCatching { recorder?.release() }
-            recorder = null
+            val active = latestRecorder.value
+            if (latestRecording.value) runCatching { active?.stop() }
+            runCatching { active?.release() }
         }
     }
 
@@ -104,7 +107,7 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
                                 next.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                                 next.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                                 next.setAudioEncodingBitRate(192000)
-                                next.setAudioSamplingRate(48000)
+                                next.setAudioSamplingRate(44100)
                                 next.setOutputFile(file.absolutePath)
                                 next.prepare()
                                 next.start()
