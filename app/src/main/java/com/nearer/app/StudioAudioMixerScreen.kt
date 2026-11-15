@@ -247,7 +247,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 Text("SHARE FINISHED MIX")
             }
         }
-        Text("Track volume, stereo balance, mute, reorder, and non-destructive fade-in/fade-out are applied during the offline render. Mono tracks are normalized to stereo so they can be mixed with stereo sources. Live simultaneous monitoring, stereo pan, EQ, reverb, tempo automation and project save/load are planned for the next audio-engine milestone.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
+        Text("Track volume, stereo balance, mute, reorder, and non-destructive fade-in/fade-out are applied during the offline render. Mono tracks are normalized to stereo so they can be mixed with stereo sources. Live simultaneous monitoring, EQ, reverb, tempo automation and multiple named projects are planned for the next audio-engine milestone.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
 }
 
