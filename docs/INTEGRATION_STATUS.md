@@ -548,3 +548,21 @@ A focused follow-up review was completed against `main` at `e732eedc308e7702dbe9
 - Continue to keep mesh relay disabled until the identity, routing, privacy and physical multi-hop gates are independently satisfied.
 
 The previous exact-head CI run for this baseline is successful: workflow run `43750353756`, commit `e732eedc308e7702dbe9bba1624ced7418cd1e81`. The debug APK artifact is 11,677,919 bytes and expires 29 November 2026. This validation applies to the baseline commit only, not to any later edits.
+
+
+## Original NeaRer navy-and-mint palette restored — 15 November 2026
+
+The merged royal-blue/gold palette change in PR #171 replaced the original mint token with royal blue. This did not match the user's explicit brand direction. The original palette is restored in this correction:
+
+- Midnight navy: `#101A2B`
+- Deep panel: `#1A2940`
+- Raised panel: `#203858`
+- Signature mint: `#69E0C0`
+- Soft white: `#F6F8FC`
+- Muted text: `#A8B6C9`
+- Secondary action blue: `#2563EB`
+- Gold highlight: `#FFD12D`
+
+The main app theme again uses mint as its primary accent, while retaining distinct secondary blue and gold tokens where appropriate. The shared design-system palette, Share Hub, Ludo Double Dice screen and the active Classic Ludo multiplayer panel use the actual mint token and shared midnight/panel/raised-panel surfaces. The board's traditional red, green, yellow and blue player identities and ivory track artwork remain distinct. The palette regression test asserts the original mint and navy values.
+
+This is a colour-token correction only: no navigation, screen structure, transfer logic, messaging behavior, permissions, game rules, identity, or logo assets were changed. Existing features and logo artwork remain intact.
