@@ -477,7 +477,7 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, stepDurationMs
         val palette = LudoColor.entries.associateWith { it.paint() }
         val boardCorner = androidx.compose.ui.geometry.CornerRadius(unit * .34f)
         drawRoundRect(NeaRerPalette.Midnight.copy(alpha = .72f), topLeft = Offset(0f, unit * .08f), size = Size(size.width, size.height), cornerRadius = boardCorner)
-        drawRoundRect(Brush.linearGradient(listOf(NeaRerPalette.RaisedPanel, Color(0xFF0B1728))), cornerRadius = boardCorner)
+        drawRoundRect(Brush.linearGradient(listOf(NeaRerPalette.RaisedPanel, NeaRerPalette.Midnight)), cornerRadius = boardCorner)
         drawRoundRect(LudoGold.copy(alpha = .9f), topLeft = Offset(unit * .07f, unit * .07f), size = Size(size.width - unit * .14f, size.height - unit * .14f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(unit * .3f), style = Stroke(unit * .055f))
         drawRoundRect(NeaRerPalette.Midnight, Offset(unit * .22f, unit * .22f), Size(unit * 14.56f, unit * 14.56f), androidx.compose.ui.geometry.CornerRadius(unit * .18f))
         drawRoundRect(Brush.linearGradient(listOf(NeaRerPalette.Panel, NeaRerPalette.Midnight)), Offset(unit * .3f, unit * .3f), Size(unit * 14.4f, unit * 14.4f), androidx.compose.ui.geometry.CornerRadius(unit * .12f))
