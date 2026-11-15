@@ -497,3 +497,23 @@ Implemented on main in commit `f06e83fad22c4418a5e995f09ee930077e38de34`.
 - The old Home branch remains in source but is not a top-level destination; its useful overview actions are represented compactly in More. This avoids creating a second competing landing screen.
 
 Validation is pending for the exact post-navigation main head. The next Android Actions run must pass JVM unit tests and debug APK assembly before this change is considered build-verified. No emulator or physical-device UI test is claimed.
+
+
+### Navigation source-of-truth and Ludo stable-identity follow-up — 15 November 2026
+
+The navigation consolidation received a consistency follow-up after a test/source audit found that the older `NeaRerNavigation.destinations` model still described Home / Nearby / Chats / Groups / More even though the actual Compose bottom bar displayed Chats / People / Share / Games / More. The model was stale and the bottom bar had its own hard-coded list.
+
+- Updated the shared destination model to the five destinations actually displayed: Chats, People, Share, Games and More.
+- Changed the Compose bottom bar to render directly from that shared model, so the test and visible navigation now use one source of truth.
+- Replaced the stale navigation assertions with tests for the actual five labels, unique IDs, Games visibility, More visibility, and Chats-first default ordering.
+- The selected tab remains `Chats`; Share still owns the Phone files / Share Hub switch; More retains the ecosystem cards and profile/settings content.
+
+Ludo identity hardening is also now wired further into the live room flow:
+
+- The existing authenticated `NearbyConnectionsTransport.sendToPeerIds` path is reused; no duplicate sender or alternate crypto path is retained.
+- Ludo accept/reject, action, rematch, state-sync, chat, end and reconnect paths use stable peer IDs whenever the room has them. Display-name targeting is retained only as a compatibility fallback for older identity-less room/socket cases.
+- Host-side action and room authorization resolve a participant seat from the authenticated stable ID. Ambiguous legacy duplicate names do not resolve to a seat.
+- Guest state acceptance and host end/reject handling verify the expected host identity before applying room changes.
+- Added focused tests for same-display-name peers, mismatched identities, ambiguous duplicate IDs, whitespace-normalized IDs and legacy fallback restrictions.
+
+The legacy single-peer Wi-Fi Direct route remains intentionally compatible because it does not expose the same Nearby stable peer identity. This is a bounded fallback, not equivalent identity assurance; full real-device multi-transport testing remains outstanding. Mesh relay stays disabled pending the wider routing, identity and privacy gates.
