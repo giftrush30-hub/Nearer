@@ -152,7 +152,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 message = "Mixing ${activeTracks.size} track(s)… Keep NeaRer open until export finishes."
                 val sequences = activeTracks.map { track ->
                     val item = EditedMediaItem.Builder(MediaItem.fromUri(track.uri)).build()
-                    EditedMediaItemSequence.withAudioFrom(listOf(item))
+                    EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO)).addItem(item).build()
                 }
                 val composition = Composition.Builder(sequences).build()
                 val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Mix_${System.currentTimeMillis()}.mp4")
