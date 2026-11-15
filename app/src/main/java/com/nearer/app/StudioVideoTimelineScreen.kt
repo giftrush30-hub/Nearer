@@ -87,16 +87,17 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
     var message by remember { mutableStateOf("Add video clips, arrange their order, trim each clip and optionally lay music underneath.") }
     var exported by remember { mutableStateOf<File?>(null) }
     val gradePreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_grade", android.content.Context.MODE_PRIVATE) }
-    var brightness by remember(context) { mutableStateOf(gradePreferences.getFloat("brightness", 0f).coerceIn(-0.5f, 0.5f)) }
-    var contrast by remember(context) { mutableStateOf(gradePreferences.getFloat("contrast", 0f).coerceIn(-0.5f, 0.5f)) }
-    var saturation by remember(context) { mutableStateOf(gradePreferences.getFloat("saturation", 0f).coerceIn(-50f, 50f)) }
+    val restoredGrade = remember(context) { StudioVideoGradeCodec.decode(gradePreferences.getString("grade_v1", null)) }
+    var brightness by remember(context) { mutableStateOf(restoredGrade.brightness) }
+    var contrast by remember(context) { mutableStateOf(restoredGrade.contrast) }
+    var saturation by remember(context) { mutableStateOf(restoredGrade.saturation) }
     fun videoGradeEffects() = buildList<androidx.media3.common.Effect> {
         if (brightness != 0f) add(Brightness(brightness))
         if (contrast != 0f) add(Contrast(contrast))
         if (saturation != 0f) add(HslAdjustment.Builder().adjustSaturation(saturation).build())
     }
     LaunchedEffect(brightness, contrast, saturation) {
-        gradePreferences.edit().putFloat("brightness", brightness).putFloat("contrast", contrast).putFloat("saturation", saturation).apply()
+        gradePreferences.edit().putString("grade_v1", StudioVideoGradeCodec.encode(StudioVideoGrade(brightness, contrast, saturation))).apply()
     }
     val player = remember(context) { ExoPlayer.Builder(context).build() }
 
