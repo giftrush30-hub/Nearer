@@ -1,7 +1,5 @@
 package com.nearer.app.games.ludo
 
-import com.nearer.app.NeaRerPalette
-
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -62,13 +60,13 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.random.Random
 
-private val Night = NeaRerPalette.Midnight
-private val Panel = NeaRerPalette.Panel
-private val Raised = NeaRerPalette.RaisedPanel
-private val Cobalt = NeaRerPalette.Mint
-private val Gold = NeaRerPalette.Gold
-private val White = NeaRerPalette.TextPrimary
-private val Muted = NeaRerPalette.TextMuted
+private val Night = Color(0xFF081426)
+private val Panel = Color(0xFF112746)
+private val Raised = Color(0xFF19365E)
+private val Cobalt = Color(0xFF2868E8)
+private val Gold = Color(0xFFFFD34E)
+private val White = Color(0xFFF6F8FF)
+private val Muted = Color(0xFFAABBD4)
 
 @Composable
 fun LudoGameScreen(
@@ -215,7 +213,7 @@ fun LudoGameScreen(
                         onClick = { showRules = false },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = NeaRerPalette.Midnight)
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF14233A))
                     ) {
                         Text("LET'S PLAY", fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                     }
@@ -230,7 +228,7 @@ fun LudoGameScreen(
             verticalArrangement = Arrangement.spacedBy(13.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Surface(color = Raised, shape = RoundedCornerShape(13.dp), border = BorderStroke(1.dp, NeaRerPalette.Border),
+                Surface(color = Raised, shape = RoundedCornerShape(13.dp), border = BorderStroke(1.dp, Color(0xFF315987)),
                     modifier = Modifier.clickable(onClick = onExit)) {
                     Text("‹  BACK", color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp))
@@ -241,7 +239,7 @@ fun LudoGameScreen(
                     Text("LUDO", color = White, fontSize = 29.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                 }
                 Surface(
-                    color = NeaRerPalette.RaisedPanel,
+                    color = Color(0xFF17365A),
                     shape = RoundedCornerShape(50),
                     border = BorderStroke(1.dp, Gold.copy(alpha = 0.75f)),
                     modifier = Modifier.clickable { showRules = true }
@@ -250,13 +248,13 @@ fun LudoGameScreen(
                         modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp))
                 }
                 Spacer(Modifier.width(6.dp))
-                Surface(color = NeaRerPalette.Panel, shape = RoundedCornerShape(50), border = BorderStroke(1.dp, Cobalt)) {
-                    Text("OFFLINE", color = NeaRerPalette.TextMuted, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold,
+                Surface(color = Color(0xFF153D79), shape = RoundedCornerShape(50), border = BorderStroke(1.dp, Cobalt)) {
+                    Text("OFFLINE", color = Color(0xFFBFD5FF), fontSize = 9.sp, fontWeight = FontWeight.ExtraBold,
                         modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp))
                 }
             }
 
-            Surface(color = Panel, shape = RoundedCornerShape(21.dp), border = BorderStroke(1.dp, NeaRerPalette.Border),
+            Surface(color = Panel, shape = RoundedCornerShape(21.dp), border = BorderStroke(1.dp, Color(0xFF24466F)),
                 modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -277,20 +275,20 @@ fun LudoGameScreen(
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(NeaRerPalette.Midnight)
+                            .background(Color(0xFF0B1D33))
                             .padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text("LIVE", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                        Text(game.lastAction, color = NeaRerPalette.TextMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                        Text(game.lastAction, color = Color(0xFFB8C9E1), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                         game.players.forEach { player ->
                             val active = player.id == game.activePlayer.id
-                            Surface(color = if (active) NeaRerPalette.RaisedPanel else NeaRerPalette.Midnight,
+                            Surface(color = if (active) Color(0xFF244B80) else Color(0xFF0D1E35),
                                 shape = RoundedCornerShape(11.dp),
-                                border = BorderStroke(1.dp, if (active) Gold.copy(alpha = 0.8f) else NeaRerPalette.Border),
+                                border = BorderStroke(1.dp, if (active) Gold.copy(alpha = 0.8f) else Color(0xFF294362)),
                                 modifier = Modifier.weight(1f)) {
                                 Column(Modifier.padding(vertical = 7.dp, horizontal = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(player.name.take(8), color = if (active) White else Muted, fontSize = 9.sp,
@@ -305,8 +303,8 @@ fun LudoGameScreen(
                 }
             }
 
-            Surface(color = NeaRerPalette.Midnight, shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, NeaRerPalette.Border), shadowElevation = 10.dp, modifier = Modifier.fillMaxWidth()) {
+            Surface(color = Color(0xFF0D2039), shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color(0xFF42618B)), shadowElevation = 10.dp, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 5.dp)) {
                         Text("THE ROYAL BOARD", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp)
@@ -323,7 +321,7 @@ fun LudoGameScreen(
             if (game.isFinished) {
                 val champion = game.players.firstOrNull { it.id == game.winnerId }?.name ?: "Player"
                 Surface(
-                    color = NeaRerPalette.RaisedPanel,
+                    color = Color(0xFF18375D),
                     shape = RoundedCornerShape(22.dp),
                     border = BorderStroke(1.5.dp, Gold.copy(alpha = pulse.value)),
                     shadowElevation = 12.dp,
@@ -347,7 +345,7 @@ fun LudoGameScreen(
                             onClick = { doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents)); rolling = false },
                             modifier = Modifier.fillMaxWidth().padding(top = 5.dp).height(48.dp),
                             shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = NeaRerPalette.Midnight)
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF14233A))
                         ) {
                             Text("PLAY AGAIN", fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                         }
@@ -355,7 +353,7 @@ fun LudoGameScreen(
                 }
             }
 
-            Surface(color = Panel, shape = RoundedCornerShape(21.dp), border = BorderStroke(1.dp, NeaRerPalette.Border),
+            Surface(color = Panel, shape = RoundedCornerShape(21.dp), border = BorderStroke(1.dp, Color(0xFF294D78)),
                 modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -399,7 +397,7 @@ fun LudoGameScreen(
                         LudoTwoDiceRules.legalTokenIndexes(game.activePlayer, doubleGame.turn!!.copy(selected = LudoDieSlot.BOTH)).isNotEmpty()) {
                         val pairTotal = (doubleGame.dice?.first ?: 0) + (doubleGame.dice?.second ?: 0)
                         Surface(
-                            color = NeaRerPalette.RaisedPanel,
+                            color = Color(0xFF263E5B),
                             shape = RoundedCornerShape(13.dp),
                             border = BorderStroke(1.dp, Gold.copy(alpha = 0.9f)),
                             modifier = Modifier.fillMaxWidth().clickable(enabled = !roomReady || roomCanAct) {
@@ -423,27 +421,27 @@ fun LudoGameScreen(
                         },
                             enabled = LudoDoubleDiceEngine.canRoll(doubleGame) && !game.activePlayer.isComputer && !rolling && (!roomReady || roomCanAct),
                             modifier = Modifier.weight(1f).height(54.dp), shape = RoundedCornerShape(15.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = NeaRerPalette.Midnight,
-                                disabledContainerColor = NeaRerPalette.Border, disabledContentColor = NeaRerPalette.TextMuted),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF14233A),
+                                disabledContainerColor = Color(0xFF59677B), disabledContentColor = Color(0xFFB8C3D1)),
                             elevation = ButtonDefaults.buttonElevation(defaultElevation = 5.dp, pressedElevation = 1.dp)) {
                             Text(if (rolling) "ROLLING…" else if (LudoDoubleDiceEngine.canRoll(doubleGame)) "ROLL BOTH DICE" else if (doubleGame.turn?.selected != null) "MOVE WITH " + game.dice else "CHOOSE A DIE",
                                 fontWeight = FontWeight.Black, fontSize = 14.sp, letterSpacing = 0.5.sp)
                         }
                         Button(onClick = { if (!roomReady) { doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents)); rolling = false } }, enabled = !roomReady,
                             modifier = Modifier.height(54.dp), shape = RoundedCornerShape(15.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.RaisedPanel, contentColor = White),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25466F), contentColor = White),
                             contentPadding = PaddingValues(horizontal = 13.dp)) {
                             Text("NEW GAME", fontWeight = FontWeight.Bold, fontSize = 10.sp)
                         }
                     }
                     if (game.activePlayer.isComputer && !game.isFinished) {
-                        Text("NEARER BOT • THINKING", color = NeaRerPalette.TextMuted, fontSize = 9.sp,
+                        Text("NEARER BOT • THINKING", color = Color(0xFF9FC1FF), fontSize = 9.sp,
                             fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp)
                     } else if (doubleGame.turn?.selected != null && game.legalTokenIndexes.isNotEmpty()) {
                         Text("SELECT YOUR TOKEN", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
                             game.legalTokenIndexes.forEach { tokenIndex ->
-                                Surface(color = NeaRerPalette.RaisedPanel, shape = RoundedCornerShape(13.dp),
+                                Surface(color = Color(0xFF1B3B65), shape = RoundedCornerShape(13.dp),
                                     border = BorderStroke(1.dp, Gold.copy(alpha = pulse.value)),
                                     modifier = Modifier.weight(1f).clickable {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -460,7 +458,7 @@ fun LudoGameScreen(
                         }
                     }
                     if (!game.isFinished) {
-                        Text(game.lastAction, color = NeaRerPalette.TextMuted, fontSize = 10.sp,
+                        Text(game.lastAction, color = Color(0xFF9FC1FF), fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                     }
                 }
@@ -471,7 +469,7 @@ fun LudoGameScreen(
                 Spacer(Modifier.weight(1f))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Surface(color = if (computerOpponents) Cobalt else Panel, shape = RoundedCornerShape(11.dp),
-                        border = BorderStroke(1.dp, if (computerOpponents) Gold else NeaRerPalette.Border),
+                        border = BorderStroke(1.dp, if (computerOpponents) Gold else Color(0xFF294362)),
                         modifier = Modifier.clickable(enabled = !roomReady) {
                             computerOpponents = true
                             doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = true))
@@ -480,7 +478,7 @@ fun LudoGameScreen(
                             modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp))
                     }
                     Surface(color = if (!computerOpponents) Cobalt else Panel, shape = RoundedCornerShape(11.dp),
-                        border = BorderStroke(1.dp, if (!computerOpponents) Gold else NeaRerPalette.Border),
+                        border = BorderStroke(1.dp, if (!computerOpponents) Gold else Color(0xFF294362)),
                         modifier = Modifier.clickable(enabled = !roomReady) {
                             computerOpponents = false
                             doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = false))
@@ -498,7 +496,7 @@ fun LudoGameScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                         LudoAiDifficulty.values().forEach { level ->
                             Surface(color = if (aiDifficulty == level) Cobalt else Panel, shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, if (aiDifficulty == level) Gold else NeaRerPalette.Border),
+                                border = BorderStroke(1.dp, if (aiDifficulty == level) Gold else Color(0xFF294362)),
                                 modifier = Modifier.clickable { aiDifficulty = level }) {
                                 Text(level.label, color = White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp))
@@ -506,7 +504,7 @@ fun LudoGameScreen(
                         }
                     }
                 }
-                Text(aiDifficulty.description, color = NeaRerPalette.TextMuted, fontSize = 10.sp)
+                Text(aiDifficulty.description, color = Color(0xFF9FB5D2), fontSize = 10.sp)
             }
 
             Surface(color = Panel, shape = RoundedCornerShape(20.dp),
@@ -526,7 +524,7 @@ fun LudoGameScreen(
                             color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = onAcceptInvite, modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = NeaRerPalette.Midnight)) {
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF14233A))) {
                                 Text("ACCEPT", fontWeight = FontWeight.Black)
                             }
                             Button(onClick = onDeclineInvite, modifier = Modifier.weight(1f),
@@ -551,7 +549,7 @@ fun LudoGameScreen(
                         Text("Playing with $roomPeerName", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         if (roomMessages.isNotEmpty()) {
                             Column(Modifier.fillMaxWidth().heightIn(max = 130.dp)
-                                .clip(RoundedCornerShape(12.dp)).background(NeaRerPalette.Midnight).padding(9.dp),
+                                .clip(RoundedCornerShape(12.dp)).background(Color(0xFF091A2D)).padding(9.dp),
                                 verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 roomMessages.takeLast(12).forEach { message ->
                                     Text(message, color = White, fontSize = 10.sp)
@@ -566,7 +564,7 @@ fun LudoGameScreen(
                                 onSendRoomChat(roomChatDraft)
                                 roomChatDraft = ""
                             }, enabled = roomChatDraft.isNotBlank(),
-                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = NeaRerPalette.Midnight)) {
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF14233A))) {
                                 Text("SEND", fontWeight = FontWeight.Black, fontSize = 10.sp)
                             }
                         }
@@ -584,7 +582,7 @@ fun LudoGameScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(2, 3, 4).forEach { count ->
                         Surface(color = if (playerCount == count) Cobalt else Panel, shape = RoundedCornerShape(11.dp),
-                            border = BorderStroke(1.dp, if (playerCount == count) Gold else NeaRerPalette.Border),
+                            border = BorderStroke(1.dp, if (playerCount == count) Gold else Color(0xFF294362)),
                             modifier = Modifier.clickable {
                                 playerCount = count
                                 doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, count, computerOpponents = computerOpponents))
@@ -602,9 +600,9 @@ fun LudoGameScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    color = if (soundEnabled) NeaRerPalette.RaisedPanel else Panel,
+                    color = if (soundEnabled) Color(0xFF18375D) else Panel,
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, if (soundEnabled) Gold.copy(alpha = 0.7f) else NeaRerPalette.Border),
+                    border = BorderStroke(1.dp, if (soundEnabled) Gold.copy(alpha = 0.7f) else Color(0xFF294362)),
                     modifier = Modifier.clickable { soundEnabled = !soundEnabled }
                 ) {
                     Text(
@@ -617,7 +615,7 @@ fun LudoGameScreen(
                 }
             }
             Text(if (computerOpponents) "TRADITIONAL LUDO  •  YOU VS COMPUTER OPPONENTS  •  OFFLINE" else "TRADITIONAL LUDO  •  LOCAL PASS & PLAY  •  OFFLINE",
-                color = NeaRerPalette.TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold,
+                color = Color(0xFF8299B8), fontSize = 8.sp, fontWeight = FontWeight.Bold,
                 letterSpacing = 0.7.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp))
         }
     }
