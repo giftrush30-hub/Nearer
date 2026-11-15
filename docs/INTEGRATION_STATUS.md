@@ -458,3 +458,27 @@ Recommended implementation direction (planning only; no navigation source was ch
 Before implementing the navigation consolidation, map every existing click path and state transition, then move screens without changing their underlying callbacks, data stores, transport, permissions or feature logic. Add UI/navigation tests for every preserved destination and deep-link/return path. The current five-item bar should not be changed by a blind text replacement.
 
 This is a source inspection and product-structure recommendation, not an implemented navigation change. It is intentionally conservative: the immediate task is to make the existing product easier to understand while preserving the work already completed.
+
+### Live community packet ingress validation — 15 November 2026
+
+Implemented on main after the source audit above.
+
+- Added `CommunityIngressPolicy` and focused JVM tests. This policy matches the packet names and fields currently emitted by the live app (`group_created`, `group_join`, `group_members`, `group_message`, `broadcast`, and the current `ludo_*` packet family), rather than the older vocabulary in the unused `CommunityPacketPolicy`.
+- The Nearby Connections receive callback now runs structural, size, field-bound and authenticated stable-identity checks before calling `handleCommunityPacket`. Invalid packets are rejected before group or Ludo state can be mutated.
+- Group packets require a valid current NeaRer stable identity, six-digit group code, bounded fields, and per-type constraints. Roster arrays are capped at 100 and each roster identity is normalized and validated.
+- Ludo packets are checked against the actual current vocabulary and expected match/action/revision/body fields. State snapshots are bounded before parsing.
+- The legacy single-peer Wi-Fi Direct socket path remains available for bounded Ludo packets to avoid breaking its existing compatibility route. It cannot use that fallback to submit group packets without an authenticated stable peer identity.
+- Authorization against the current saved group roster and Ludo room state remains in the existing handler; this ingress policy is a precondition, not a replacement for authorization.
+- Added tests for authenticated group messages, missing/spoofed identities, malformed/oversized packets, roster bounds and stable IDs, legacy fallback restrictions, Ludo action vocabulary/revisions, and malformed Ludo state.
+
+Validation for exact main head `c6f0b00bf381e5d4c60949026a3857d91864f9b1`:
+- GitHub Actions run [#2455](https://github.com/giftrush30-hub/Nearer/actions/runs/43747851331) completed successfully.
+- JVM unit tests passed.
+- Installable Android debug APK build passed and artifact upload completed.
+- Debug APK artifact size: 11,662,707 bytes (about 11.1 MiB); artifact expiry: 29 November 2026.
+
+Remaining security work:
+1. Bind Ludo room seats, participant departures, state updates, actions, chat and rematch requests to authenticated stable peer IDs, not display names alone. The current ingress check confirms the transport identity but the Ludo room authorization still largely uses names.
+2. Reconcile or retire the older unused `CommunityPacketPolicy` so there is one clear source of truth for community packet validation.
+3. Add stateful receive-path tests for roster authorization, duplicate message idempotency, persistence failure and same-display-name Ludo participants.
+4. Keep mesh relay paused until routing, identity and privacy gates are complete. CI success is not physical-device or security certification.
