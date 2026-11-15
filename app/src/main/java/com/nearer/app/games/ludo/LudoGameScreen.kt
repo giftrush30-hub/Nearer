@@ -283,12 +283,12 @@ fun LudoGameScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text("LIVE", color = Gold, fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                        Text(game.lastAction, color = Color(0xFFB8C9E1), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                        Text(game.lastAction, color = NeaRerPalette.TextMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                         game.players.forEach { player ->
                             val active = player.id == game.activePlayer.id
-                            Surface(color = if (active) Color(0xFF244B80) else Color(0xFF0D1E35),
+                            Surface(color = if (active) NeaRerPalette.RaisedPanel else NeaRerPalette.Midnight,
                                 shape = RoundedCornerShape(11.dp),
                                 border = BorderStroke(1.dp, if (active) Gold.copy(alpha = 0.8f) else NeaRerPalette.Border),
                                 modifier = Modifier.weight(1f)) {
@@ -305,8 +305,8 @@ fun LudoGameScreen(
                 }
             }
 
-            Surface(color = Color(0xFF0D2039), shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, Color(0xFF42618B)), shadowElevation = 10.dp, modifier = Modifier.fillMaxWidth()) {
+            Surface(color = NeaRerPalette.RaisedPanel, shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, NeaRerPalette.Border), shadowElevation = 10.dp, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 5.dp)) {
                         Text("THE ROYAL BOARD", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp)
@@ -323,7 +323,7 @@ fun LudoGameScreen(
             if (game.isFinished) {
                 val champion = game.players.firstOrNull { it.id == game.winnerId }?.name ?: "Player"
                 Surface(
-                    color = Color(0xFF18375D),
+                    color = NeaRerPalette.Panel,
                     shape = RoundedCornerShape(22.dp),
                     border = BorderStroke(1.5.dp, Gold.copy(alpha = pulse.value)),
                     shadowElevation = 12.dp,
@@ -355,7 +355,7 @@ fun LudoGameScreen(
                 }
             }
 
-            Surface(color = Panel, shape = RoundedCornerShape(21.dp), border = BorderStroke(1.dp, Color(0xFF294D78)),
+            Surface(color = Panel, shape = RoundedCornerShape(21.dp), border = BorderStroke(1.dp, NeaRerPalette.Border),
                 modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -399,7 +399,7 @@ fun LudoGameScreen(
                         LudoTwoDiceRules.legalTokenIndexes(game.activePlayer, doubleGame.turn!!.copy(selected = LudoDieSlot.BOTH)).isNotEmpty()) {
                         val pairTotal = (doubleGame.dice?.first ?: 0) + (doubleGame.dice?.second ?: 0)
                         Surface(
-                            color = Color(0xFF263E5B),
+                            color = NeaRerPalette.Border,
                             shape = RoundedCornerShape(13.dp),
                             border = BorderStroke(1.dp, Gold.copy(alpha = 0.9f)),
                             modifier = Modifier.fillMaxWidth().clickable(enabled = !roomReady || roomCanAct) {
@@ -431,19 +431,19 @@ fun LudoGameScreen(
                         }
                         Button(onClick = { if (!roomReady) { doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = computerOpponents)); rolling = false } }, enabled = !roomReady,
                             modifier = Modifier.height(54.dp), shape = RoundedCornerShape(15.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25466F), contentColor = White),
+                            colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.Border, contentColor = White),
                             contentPadding = PaddingValues(horizontal = 13.dp)) {
                             Text("NEW GAME", fontWeight = FontWeight.Bold, fontSize = 10.sp)
                         }
                     }
                     if (game.activePlayer.isComputer && !game.isFinished) {
-                        Text("NEARER BOT • THINKING", color = Color(0xFF9FC1FF), fontSize = 9.sp,
+                        Text("NEARER BOT • THINKING", color = NeaRerPalette.Mint, fontSize = 9.sp,
                             fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp)
                     } else if (doubleGame.turn?.selected != null && game.legalTokenIndexes.isNotEmpty()) {
                         Text("SELECT YOUR TOKEN", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
                             game.legalTokenIndexes.forEach { tokenIndex ->
-                                Surface(color = Color(0xFF1B3B65), shape = RoundedCornerShape(13.dp),
+                                Surface(color = NeaRerPalette.RaisedPanel, shape = RoundedCornerShape(13.dp),
                                     border = BorderStroke(1.dp, Gold.copy(alpha = pulse.value)),
                                     modifier = Modifier.weight(1f).clickable {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -460,7 +460,7 @@ fun LudoGameScreen(
                         }
                     }
                     if (!game.isFinished) {
-                        Text(game.lastAction, color = Color(0xFF9FC1FF), fontSize = 10.sp,
+                        Text(game.lastAction, color = NeaRerPalette.Mint, fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                     }
                 }
@@ -506,7 +506,7 @@ fun LudoGameScreen(
                         }
                     }
                 }
-                Text(aiDifficulty.description, color = Color(0xFF9FB5D2), fontSize = 10.sp)
+                Text(aiDifficulty.description, color = NeaRerPalette.TextMuted, fontSize = 10.sp)
             }
 
             Surface(color = Panel, shape = RoundedCornerShape(20.dp),
@@ -517,7 +517,7 @@ fun LudoGameScreen(
                             fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
                         Spacer(Modifier.weight(1f))
                         Text(if (roomReady) "ROOM ACTIVE" else if (roomPeerName != null) "INVITE PENDING" else "OFFLINE READY",
-                            color = if (roomPeerName != null) Color(0xFF79E2B2) else Muted,
+                            color = if (roomPeerName != null) NeaRerPalette.Mint else Muted,
                             fontSize = 8.sp, fontWeight = FontWeight.ExtraBold)
                     }
                     Text(roomStatus, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
@@ -551,7 +551,7 @@ fun LudoGameScreen(
                         Text("Playing with $roomPeerName", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         if (roomMessages.isNotEmpty()) {
                             Column(Modifier.fillMaxWidth().heightIn(max = 130.dp)
-                                .clip(RoundedCornerShape(12.dp)).background(Color(0xFF091A2D)).padding(9.dp),
+                                .clip(RoundedCornerShape(12.dp)).background(NeaRerPalette.Midnight).padding(9.dp),
                                 verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 roomMessages.takeLast(12).forEach { message ->
                                     Text(message, color = White, fontSize = 10.sp)
@@ -602,7 +602,7 @@ fun LudoGameScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    color = if (soundEnabled) Color(0xFF18375D) else Panel,
+                    color = if (soundEnabled) NeaRerPalette.Panel else Panel,
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, if (soundEnabled) Gold.copy(alpha = 0.7f) else NeaRerPalette.Border),
                     modifier = Modifier.clickable { soundEnabled = !soundEnabled }
@@ -693,7 +693,7 @@ private fun DiceFace(value: Int, rolling: Boolean, modifier: Modifier = Modifier
             5 -> listOf(l to t, r to t, m to c, l to b, r to b)
             else -> listOf(l to t, r to t, l to c, r to c, l to b, r to b)
         }
-        points.forEach { (x, y) -> drawCircle(Color(0xFF172A45), dot, Offset(x, y)) }
+        points.forEach { (x, y) -> drawCircle(NeaRerPalette.Panel, dot, Offset(x, y)) }
     }
 }
 
@@ -767,13 +767,13 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
                 ),
                 topLeft, tileSize, radius
             )
-            drawRoundRect(Color(0xFF14243A).copy(alpha = 0.30f), topLeft, tileSize, radius,
+            drawRoundRect(NeaRerPalette.Midnight.copy(alpha = 0.30f), topLeft, tileSize, radius,
                 style = Stroke(cell * 0.055f))
             drawRoundRect(Color.White.copy(alpha = 0.28f), topLeft, tileSize, radius,
                 style = Stroke(cell * 0.018f))
         }
-        drawRoundRect(Brush.linearGradient(listOf(Color(0xFF28466D), Color(0xFF0D1E35))), cornerRadius = CornerRadius(cell * 0.3f))
-        drawRoundRect(Color(0xFF8FB8F2).copy(alpha = 0.16f), cornerRadius = CornerRadius(cell * 0.3f), style = Stroke(cell * 0.10f))
+        drawRoundRect(Brush.linearGradient(listOf(NeaRerPalette.RaisedPanel, NeaRerPalette.Midnight)), cornerRadius = CornerRadius(cell * 0.3f))
+        drawRoundRect(NeaRerPalette.Mint.copy(alpha = 0.16f), cornerRadius = CornerRadius(cell * 0.3f), style = Stroke(cell * 0.10f))
         for (y in 0..5) for (x in 0..5) tile(x, y, Color(0xFF3B2036))
         for (y in 9..14) for (x in 0..5) tile(x, y, Color(0xFF173D3B))
         for (y in 9..14) for (x in 9..14) tile(x, y, Color(0xFF49391F))
@@ -781,7 +781,7 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
         val yards = listOf(Offset(0f, 0f), Offset(0f, 9f), Offset(9f, 9f), Offset(9f, 0f))
         yards.forEachIndexed { i, p ->
             val yardTopLeft = Offset((p.x + 1f) * cell, (p.y + 1f) * cell)
-            drawRoundRect(Color(0xFF172A45).copy(alpha = 0.10f),
+            drawRoundRect(NeaRerPalette.Panel.copy(alpha = 0.10f),
                 Offset(yardTopLeft.x, yardTopLeft.y + cell * 0.09f),
                 Size(4f * cell, 4f * cell), CornerRadius(cell * 0.42f))
             drawRoundRect(
@@ -799,7 +799,7 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
                 val socket = Offset((x + 0.5f) * cell, (y + 0.5f) * cell)
                 drawCircle(colors[i].copy(alpha = 0.14f), cell * 0.39f, socket)
                 drawCircle(colors[i].copy(alpha = 0.8f), cell * 0.34f, socket, style = Stroke(cell * 0.055f))
-                drawCircle(Color(0xFF172A45), cell * 0.25f, socket)
+                drawCircle(NeaRerPalette.Panel, cell * 0.25f, socket)
             }
         }
         ludoTrackCells.forEachIndexed { index, point ->
@@ -845,7 +845,7 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
         }
         drawPath(center, Gold, style = Stroke(cell * 0.075f))
         drawCircle(Color(0xFFFFE99A), cell * 0.13f, centerPoint)
-        drawCircle(Color(0xFF102746), cell * 0.055f, centerPoint)
+        drawCircle(NeaRerPalette.Panel, cell * 0.055f, centerPoint)
 
         val tokenLocations = game.players.flatMapIndexed { pIndex, player ->
             player.tokens.mapIndexed { tokenIndex, _ ->
@@ -870,7 +870,7 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
                 }
                 // Sculpted pawn silhouette: shadow, tapered body, raised head and enamel highlight.
                 drawOval(
-                    Color(0xFF061326).copy(alpha = 0.58f),
+                    NeaRerPalette.Midnight.copy(alpha = 0.58f),
                     Offset(x - cell * 0.24f, y + cell * 0.19f),
                     Size(cell * 0.48f, cell * 0.18f)
                 )
@@ -881,7 +881,7 @@ private fun LudoBoard(game: LudoState, pulse: Float, modifier: Modifier = Modifi
                     cubicTo(x + cell * 0.09f, y - cell * 0.015f, x + cell * 0.18f, y + cell * 0.02f, x + cell * 0.19f, y + cell * 0.19f)
                     close()
                 }
-                drawPath(pawn, Color(0xFF07162B).copy(alpha = 0.72f))
+                drawPath(pawn, NeaRerPalette.Midnight.copy(alpha = 0.72f))
                 drawPath(
                     pawn,
                     Brush.linearGradient(
