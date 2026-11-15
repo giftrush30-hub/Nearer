@@ -27,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,6 +66,7 @@ internal fun PremiumChatsScreen(
     onDeleteMessage: (String) -> Boolean,
     onEditMessage: (String, String) -> Boolean,
     onReactToMessage: (String, String) -> Unit,
+    onMarkConversationRead: (String) -> Unit,
     onFindNearby: () -> Unit,
     onBackToInbox: () -> Unit,
     onChooseFiles: () -> Unit,
@@ -129,6 +131,12 @@ internal fun PremiumChatsScreen(
     val directConversation = chatReady && (
         selectedRecipient == null || selectedRecipient.peerId == connectedPeerStableId
     )
+    val activeConversationId = selectedMeshRecipientId ?: connectedPeerStableId
+    LaunchedEffect(activeConversationId, visibleMessages.size, visibleMessages.lastOrNull()?.id, meshRecipients) {
+        if (chatAvailable && !activeConversationId.isNullOrBlank()) {
+            onMarkConversationRead(activeConversationId)
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -350,7 +358,7 @@ internal fun PremiumChatsScreen(
                                             Text(message.body, color = White, fontSize = 14.sp, lineHeight = 20.sp)
                                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                    Text(if (message.outgoing) ChatDeliveryLabelPolicy.label(message.delivery) else "Received", color = if (message.outgoing) NeaRerPalette.Mint else Muted, fontSize = 9.sp)
+                                                    Text(if (message.outgoing && message.readAt > 0L) "Read" else if (message.outgoing) ChatDeliveryLabelPolicy.label(message.delivery) else "Received", color = if (message.outgoing) NeaRerPalette.Mint else Muted, fontSize = 9.sp)
                                                     if (message.editVersion > 0) Text("Edited", color = Gold, fontSize = 9.sp)
                                                 }
                                                 Box {
