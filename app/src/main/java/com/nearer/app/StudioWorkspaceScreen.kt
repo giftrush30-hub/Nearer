@@ -90,7 +90,11 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
 
     if (editingAsset != null) {
         val asset = editingAsset!!
-        StudioVideoEditorScreen(uri = asset.uri, title = asset.name, onBack = { editingAsset = null })
+        if (asset.kind == "VIDEO") {
+            StudioVideoEditorScreen(uri = asset.uri, title = asset.name, onBack = { editingAsset = null })
+        } else {
+            StudioPhotoEditorScreen(uri = asset.uri, title = asset.name, onBack = { editingAsset = null })
+        }
     } else Column(
         modifier = Modifier.fillMaxSize().background(Midnight).verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -128,7 +132,7 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                             Text(asset.name, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
                             Text(asset.kind, color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
-                        if (asset.kind == "VIDEO") Text("EDIT", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editingAsset = asset }.padding(7.dp))
+                        if (asset.kind == "VIDEO" || asset.kind == "PHOTO") Text("EDIT", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editingAsset = asset }.padding(7.dp))
                         Text("OPEN", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                             runCatching {
                                 val mime = context.contentResolver.getType(asset.uri) ?: "*/*"
@@ -145,6 +149,6 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
             }
         }
         Text("NEXT IN STUDIO", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-        Text("More Studio tools are coming in stages: multi-clip timelines, captions, transitions, audio mixing, photo layers and motion graphics. The video trim tool is the first real editor.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+        Text("More Studio tools are coming in stages: multi-clip timelines, captions, transitions, audio mixing, photo layers, selective masks and motion graphics. Video trimming and photo light/tone adjustments are the first real editors.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
     }
 }
