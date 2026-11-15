@@ -441,11 +441,27 @@ internal object IncomingFilePayloadPolicy {
         val pending = pendingOutgoingMessages[messageId] ?: return
         pending.retryTask?.let(deliveryHandler::removeCallbacks)
         if (pending.attempts >= maxMessageAttempts) {
-            pending.endpointId = ""
+            val endpoint = pending.endpointId
+            val sameSecureSessionStillActive = MessageRetryPolicy.shouldRetryOnActiveSession(
+                authenticatedEndpoints.contains(endpoint),
+                endpoint.isNotBlank() && synchronized(activeEndpoints) { activeEndpoints.contains(endpoint) },
+                messageSessions[endpoint] != null
+            )
             pending.attempts = 0
-            outgoingMessageTargets.remove(messageId)
-            persistPendingOutbox()
-            listener.onMessageStatus(messageId, "Queued")
+            if (sameSecureSessionStillActive) {
+                // The recipient may have saved the message while its ACK was lost.
+                // Re-send the same stable ID after a cooldown: receiver dedupe then
+                // returns the ACK without creating a second chat bubble.
+                listener.onMessageStatus(messageId, "Queued")
+                val retry = Runnable { attemptOutgoingMessage(messageId) }
+                pending.retryTask = retry
+                deliveryHandler.postDelayed(retry, MessageRetryPolicy.CONNECTED_RETRY_DELAY_MS)
+            } else {
+                pending.endpointId = ""
+                outgoingMessageTargets.remove(messageId)
+                persistPendingOutbox()
+                listener.onMessageStatus(messageId, "Queued")
+            }
             return
         }
         val retry = Runnable { attemptOutgoingMessage(messageId) }
