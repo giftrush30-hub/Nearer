@@ -92,6 +92,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
         }
     }
 
+    @Composable
     fun fieldColors() = TextFieldDefaults.colors(
         focusedContainerColor = Midnight,
         unfocusedContainerColor = Midnight,
