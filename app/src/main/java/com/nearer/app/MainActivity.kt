@@ -4733,7 +4733,7 @@ private fun NeaRerHome(
                                     Text(space.first, color = White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                     Text(space.second, color = Muted, fontSize = 11.sp)
                                 }
-                                Text(if (space.first == "File Hub" || space.first == "Studio" || space.first == "Academy" || space.first == "Library" || space.first == "Business Center") "OPEN" else "SOON", color = if (space.first == "File Hub" || space.first == "Studio" || space.first == "Academy") Mint else Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Text(if (space.first == "File Hub" || space.first == "Studio" || space.first == "Academy" || space.first == "Library" || space.first == "Business Center") "OPEN" else "SOON", color = if (space.first == "File Hub" || space.first == "Studio" || space.first == "Academy" || space.first == "Library" || space.first == "Business Center") Mint else Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
