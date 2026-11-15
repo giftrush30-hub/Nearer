@@ -439,6 +439,7 @@ class MainActivity : ComponentActivity() {
                     incomingRequesterName = null
                     connectedDeviceName = name
                     chatReady = true
+                    sendPendingReadReceipts(stableId)
                     resumeLudoAfterReconnect(name, stableId)
                     connectionMessage = "Secure nearby connection active"
                     approvalMessage = "Connection approved"
@@ -933,6 +934,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         activityResumed = true
+        selectedMeshRecipientId?.let(::sendPendingReadReceipts)
         val filter = IntentFilter().apply {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
@@ -1921,14 +1923,36 @@ class MainActivity : ComponentActivity() {
 
     private fun markConversationRead(conversationId: String) {
         if (!activityResumed || !ChatReactionPolicy.isValidActor(conversationId)) return
-        val unread = chatMessages.filter { message ->
+        val newlyRead = chatMessages.indices.filter { index ->
+            val message = chatMessages[index]
             ChatReadReceiptPolicy.shouldMarkRead(
-                message.outgoing, message.conversationId, conversationId, message.readReceiptSentAt
+                message.outgoing, message.conversationId, conversationId,
+                message.readReceiptSentAt, message.readAt
             )
         }
-        if (unread.isEmpty()) return
+        if (newlyRead.isNotEmpty()) {
+            val now = System.currentTimeMillis()
+            val previous = newlyRead.associateWith { chatMessages[it] }
+            newlyRead.forEach { index -> chatMessages[index] = chatMessages[index].copy(readAt = now) }
+            if (!persistMessages()) {
+                previous.forEach { (index, message) -> chatMessages[index] = message }
+                chatNotice = "NeaRer could not save the read state. No read receipt was sent."
+                return
+            }
+        }
+        sendPendingReadReceipts(conversationId)
+    }
 
-        unread.chunked(ChatReadReceiptPolicy.MAX_MESSAGE_IDS).forEach { batch ->
+    /** Retries receipts for messages the user already opened, including after reconnect/restart. */
+    private fun sendPendingReadReceipts(conversationId: String) {
+        if (!ChatReactionPolicy.isValidActor(conversationId)) return
+        val pending = chatMessages.filter { message ->
+            ChatReadReceiptPolicy.shouldSendReceipt(
+                message.outgoing, message.conversationId, conversationId,
+                message.readAt, message.readReceiptSentAt
+            )
+        }
+        pending.chunked(ChatReadReceiptPolicy.MAX_MESSAGE_IDS).forEach { batch ->
             val now = System.currentTimeMillis()
             val ids = batch.map { it.id }
             val packet = "NR_READ_RECEIPT:" + JSONObject()
@@ -1945,7 +1969,7 @@ class MainActivity : ComponentActivity() {
                 queued = nearbyTransport?.send(packet, eventId, hybridConnectedEndpoint) == true
             }
             if (!queued) {
-                chatNotice = "NeaRer could not queue a read receipt yet. It will try again when this conversation reconnects."
+                chatNotice = "Read state is saved on this phone. NeaRer will retry the receipt when this person reconnects."
                 return
             }
 
@@ -1960,7 +1984,7 @@ class MainActivity : ComponentActivity() {
                     val old = previous[message.id] ?: 0L
                     if (index >= 0) chatMessages[index] = chatMessages[index].copy(readReceiptSentAt = old)
                 }
-                chatNotice = "The read receipt was queued, but its local state could not be saved. A duplicate may be sent after reopening this chat."
+                chatNotice = "The receipt was queued but its sent marker could not be saved. NeaRer may retry it safely."
                 return
             }
         }
