@@ -59,12 +59,13 @@ private data class StudioMixTrack(
     val durationMs: Long,
     val muted: Boolean = false,
     val gain: Float = 1f,
+    val pan: Float = 0f,
     val fadeInMs: Long = 0L,
     val fadeOutMs: Long = 0L
 ) {
     fun toProjectState() = StudioAudioProjectTrackState(
         uri = uri.toString(), name = name, durationMs = durationMs, muted = muted,
-        gain = gain, fadeInMs = fadeInMs, fadeOutMs = fadeOutMs
+        gain = gain, pan = pan, fadeInMs = fadeInMs, fadeOutMs = fadeOutMs
     )
 }
 
@@ -76,7 +77,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     val tracks = remember(context) {
         mutableStateListOf<StudioMixTrack>().apply {
             addAll(StudioAudioProjectCodec.decode(projectPreferences.getString("tracks_v1", null)).mapNotNull { saved ->
-                runCatching { StudioMixTrack(Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.fadeInMs, saved.fadeOutMs) }.getOrNull()
+                runCatching { StudioMixTrack(Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan, saved.fadeInMs, saved.fadeOutMs) }.getOrNull()
             })
         }
     }
@@ -169,6 +170,11 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 if (previewUri == track.uri) previewPlayer.volume = it
                             }, valueRange = 0f..1f)
                             val maxFade = (track.durationMs / 1000f).coerceAtMost(8f)
+                            Text("STEREO PAN  ·  ${if (track.pan < -0.01f) "L ${(-track.pan * 100).toInt()}%" else if (track.pan > 0.01f) "R ${(track.pan * 100).toInt()}%" else "CENTRE"}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Slider(value = track.pan, onValueChange = {
+                                tracks[index] = track.copy(pan = it); exported = null
+                            }, valueRange = -1f..1f)
+                            Text("PAN IS APPLIED TO THE EXPORTED MIX", color = Muted, fontSize = 8.sp)
                             Text("FADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = (track.fadeInMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
                                 tracks[index] = track.copy(fadeInMs = (it * 1000f).toLong()); exported = null
@@ -197,7 +203,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                     val effects = Effects(
                         listOf(
                             ToInt16PcmAudioProcessor(),
-                            StudioTrackGainProcessor(track.gain, track.durationMs, track.fadeInMs, track.fadeOutMs)
+                            StudioTrackGainProcessor(track.gain, track.pan, track.durationMs, track.fadeInMs, track.fadeOutMs)
                         ),
                         emptyList()
                     )
@@ -241,7 +247,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 Text("SHARE FINISHED MIX")
             }
         }
-        Text("Track volume, mute, reorder, and non-destructive fade-in/fade-out are applied during the offline render. Live simultaneous monitoring, stereo pan, EQ, reverb, tempo automation and project save/load are planned for the next audio-engine milestone.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
+        Text("Track volume, stereo balance, mute, reorder, and non-destructive fade-in/fade-out are applied during the offline render. Mono tracks are normalized to stereo so they can be mixed with stereo sources. Live simultaneous monitoring, stereo pan, EQ, reverb, tempo automation and project save/load are planned for the next audio-engine milestone.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
 }
 
