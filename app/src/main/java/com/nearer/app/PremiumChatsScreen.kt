@@ -68,6 +68,7 @@ internal fun PremiumChatsScreen(
     readReceiptsEnabled: Boolean,
     onReadReceiptsEnabledChange: (Boolean) -> Unit,
     onDeleteMessage: (String) -> Boolean,
+    onDeleteMessageForEveryone: (String) -> Boolean,
     onEditMessage: (String, String) -> Boolean,
     onReactToMessage: (String, String) -> Unit,
     onFindNearby: () -> Unit,
@@ -102,6 +103,7 @@ internal fun PremiumChatsScreen(
     var expandedMessageActions by remember { mutableStateOf<String?>(null) }
     var reactingToMessageId by remember { mutableStateOf<String?>(null) }
     var pendingDeleteMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var pendingDeleteForEveryone by remember { mutableStateOf<ChatMessage?>(null) }
     val context = LocalContext.current
     pendingDeleteMessage?.let { target ->
         AlertDialog(
@@ -121,6 +123,21 @@ internal fun PremiumChatsScreen(
             dismissButton = {
                 TextButton(onClick = { pendingDeleteMessage = null }) { Text("Cancel") }
             }
+        )
+    }
+
+    pendingDeleteForEveryone?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteForEveryone = null },
+            title = { Text("Delete for everyone?") },
+            text = { Text("This will remove the message from both phones when the other phone receives the deletion. Only messages already delivered can be recalled.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (onDeleteMessageForEveryone(target.id) && replyingTo?.id == target.id) replyingTo = null
+                    pendingDeleteForEveryone = null
+                }) { Text("Delete for everyone", color = Color(0xFFE6A0A0)) }
+            },
+            dismissButton = { TextButton(onClick = { pendingDeleteForEveryone = null }) { Text("Cancel") } }
         )
     }
 
@@ -363,7 +380,7 @@ internal fun PremiumChatsScreen(
                                                     }
                                                 }
                                             }
-                                            Text(message.body, color = White, fontSize = 14.sp, lineHeight = 20.sp)
+                                            Text(if (message.deletedForEveryone) "This message was deleted" else message.body, color = if (message.deletedForEveryone) Muted else White, fontSize = 14.sp, lineHeight = 20.sp)
                                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                                     Text(if (message.outgoing) { if (message.readAt > 0L) "Read" else ChatDeliveryLabelPolicy.label(message.delivery) } else "Received", color = if (message.outgoing) NeaRerPalette.Mint else Muted, fontSize = 9.sp)
@@ -407,6 +424,12 @@ internal fun PremiumChatsScreen(
                                                                 expandedMessageActions = null
                                                             }
                                                         )
+                                                        if (ChatDeletePolicy.canDeleteForEveryone(message.outgoing, message.delivery, message.readAt, message.deletedForEveryone)) {
+                                                            DropdownMenuItem(
+                                                                text = { Text("Delete for everyone") },
+                                                                onClick = { expandedMessageActions = null; pendingDeleteForEveryone = message }
+                                                            )
+                                                        }
                                                         DropdownMenuItem(
                                                             text = { Text("Delete for me") },
                                                             onClick = {
