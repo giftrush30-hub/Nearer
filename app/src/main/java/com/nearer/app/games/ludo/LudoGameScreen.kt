@@ -618,7 +618,7 @@ fun LudoGameScreen(
                 }
             }
             Text(if (computerOpponents) "TRADITIONAL LUDO  •  YOU VS COMPUTER OPPONENTS  •  OFFLINE" else "TRADITIONAL LUDO  •  LOCAL PASS & PLAY  •  OFFLINE",
-                color = Color(0xFF8299B8), fontSize = 8.sp, fontWeight = FontWeight.Bold,
+                color = NeaRerPalette.TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold,
                 letterSpacing = 0.7.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp))
         }
     }
