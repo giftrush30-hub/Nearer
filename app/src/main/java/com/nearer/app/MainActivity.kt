@@ -1989,30 +1989,9 @@ class MainActivity : ComponentActivity() {
             chatNotice = "This older Wi-Fi Direct link is not encrypted for chat. Your message was kept private. Reconnect through NeaRer Nearby Connections to send it securely."
             return
         }
-        if (replyQuote != null) {
-            chatNotice = "Replies need the updated secure nearby connection. Reconnect before sending this reply."
-            return
-        }
-        val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
-        chatMessages.add(ChatMessage(
-            id, body, outgoing = true, delivery = "Sending…",
-            conversationId = connectedDeviceName?.let { "direct:$it" }.orEmpty(),
-            conversationName = connectedDeviceName.orEmpty()
-        ))
-        if (!persistMessages()) {
-            chatMessages.removeAll { it.id == id }
-            chatNotice = "NeaRer could not save this message on your phone. It was not sent."
-            return
-        }
-        trimChatMessages()
-        if (!sendWireLine("MSG|$id|$encoded")) {
-            val index = chatMessages.indexOfFirst { it.id == id }
-            if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
-            persistMessages()
-            chatNotice = "Message could not be sent. Check the nearby connection."
-            return
-        }
-        chatNotice = "Sent directly • waiting for the recipient app to save and acknowledge it."
+        // Deliberately no plaintext socket-chat implementation remains here.
+        chatNotice = "Private chat requires an authenticated, encrypted Nearby Connections session."
+
     }
 
 
