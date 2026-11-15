@@ -85,6 +85,7 @@ internal fun PremiumChatsScreen(
     onMarkConversationRead: (String?) -> Unit,
     readReceiptsEnabled: Boolean,
     onReadReceiptsEnabledChange: (Boolean) -> Unit,
+    onRequestNotifications: () -> Unit,
     onDeleteMessage: (String) -> Boolean,
     onDeleteMessageForEveryone: (String) -> Boolean,
     onEditMessage: (String, String) -> Boolean,
@@ -252,6 +253,12 @@ internal fun PremiumChatsScreen(
                 }
                 Switch(checked = readReceiptsEnabled, onCheckedChange = onReadReceiptsEnabledChange)
             }
+            Button(
+                onClick = onRequestNotifications,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.RaisedPanel, contentColor = NeaRerPalette.Mint)
+            ) { Text("Enable private message alerts", fontSize = 11.sp) }
             Text("Chats", color = White, fontSize = 29.sp, fontWeight = FontWeight.ExtraBold)
             Text("Private conversations, closer than ever.", color = Muted, fontSize = 13.sp)
         }
