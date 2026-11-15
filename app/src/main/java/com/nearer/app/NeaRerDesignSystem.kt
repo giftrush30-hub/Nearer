@@ -21,14 +21,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Shared brand tokens. Accent blue is reserved for actions, not used as a page fill. */
+/** Original NeaRer brand tokens: midnight navy and mint lead the interface. */
 internal object NeaRerPalette {
     val Midnight = Color(0xFF101A2B)
     val Panel = Color(0xFF1A2940)
     val RaisedPanel = Color(0xFF203858)
-    val AccentBlue = Color(0xFF2868E8)
+    val AccentBlue = Color(0xFF2563EB)
     val Gold = Color(0xFFFFD12D)
-    val Mint = AccentBlue // Compatibility alias; blue is the brand accent
+    val Mint = Color(0xFF69E0C0)
     val TextPrimary = Color(0xFFF6F8FC)
     val TextMuted = Color(0xFFA8B6C9)
     val Border = Color(0xFF26364D)
