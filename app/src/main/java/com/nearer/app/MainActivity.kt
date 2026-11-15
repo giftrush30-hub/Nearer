@@ -5,6 +5,9 @@ import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.Context
 import android.app.AlertDialog
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ContentValues
 import android.content.Intent
@@ -127,6 +130,7 @@ class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
     private var channel: WifiP2pManager.Channel? = null
     private var receiverRegistered = false
+    @Volatile private var activityResumed = false
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
     private var ultraSpeedMode by mutableStateOf(false)
@@ -479,6 +483,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 runOnUiThread {
                     var safelyStored = false
+                    var notifyForNewMessage = false
                     if (body.startsWith("NR_REACTION:")) {
                         val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
                         safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), actorPeerId)
@@ -543,6 +548,7 @@ class MainActivity : ComponentActivity() {
                             safelyStored = persistMessages()
                             if (safelyStored) {
                                 trimChatMessages()
+                                notifyForNewMessage = true
                                 chatNotice = "New offline message received from $senderName."
                             } else {
                                 chatMessages.removeAll { it.id == messageId }
@@ -550,7 +556,10 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    if (safelyStored) acknowledge()
+                    if (safelyStored) {
+                        if (notifyForNewMessage && !activityResumed) showIncomingMessageNotification(senderName, messageId)
+                        acknowledge()
+                    }
                 }
             }
             override fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
@@ -563,6 +572,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 runOnUiThread {
                     var safelyStored = false
+                    var notifyForNewMessage = false
                     if (body.startsWith("NR_REACTION:")) {
                         safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), originPeerId)
                     } else if (body.startsWith("NR_EDIT:")) {
@@ -583,6 +593,7 @@ class MainActivity : ComponentActivity() {
                             safelyStored = persistMessages()
                             if (safelyStored) {
                                 trimChatMessages()
+                                notifyForNewMessage = true
                                 chatNotice = "New offline message received from $senderName."
                             } else {
                                 chatMessages.removeAll { it.id == messageId }
@@ -590,7 +601,10 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    if (safelyStored) acknowledge()
+                    if (safelyStored) {
+                        if (notifyForNewMessage && !activityResumed) showIncomingMessageNotification(senderName, messageId)
+                        acknowledge()
+                    }
                 }
             }
             override fun onMessageStatus(messageId: String, status: String) {
@@ -925,6 +939,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        activityResumed = true
         val filter = IntentFilter().apply {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
@@ -963,12 +978,54 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        activityResumed = false
         if (communityDataDirty) persistCommunityData()
         if (receiverRegistered) {
             runCatching { unregisterReceiver(receiver) }
             receiverRegistered = false
         }
         super.onPause()
+    }
+
+    private fun showIncomingMessageNotification(senderName: String, messageId: String) {
+        if (messageId.isBlank() || activityResumed) return
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        val channelId = "nearer_messages"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager.getNotificationChannel(channelId) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(channelId, "NeaRer messages", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = "Alerts for new nearby NeaRer messages"
+                    lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+                }
+            )
+        }
+        val requestCode = ChatNotificationPolicy.notificationId(messageId)
+        val openApp = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val contentIntent = PendingIntent.getActivity(
+            this, requestCode, openApp, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = Notification.Builder(this, channelId)
+            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setContentTitle("New message from ${senderName.take(40)}")
+            .setContentText("Open NeaRer to read your message")
+            .setCategory(Notification.CATEGORY_MESSAGE)
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setPublicVersion(
+                Notification.Builder(this, channelId)
+                    .setSmallIcon(android.R.drawable.stat_notify_chat)
+                    .setContentTitle("NeaRer")
+                    .setContentText("New message")
+                    .setVisibility(Notification.VISIBILITY_PUBLIC)
+                    .build()
+            )
+            .setContentIntent(contentIntent)
+            .setAutoCancel(true)
+            .build()
+        manager.notify(requestCode, notification)
     }
 
     /**
