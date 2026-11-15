@@ -5240,6 +5240,9 @@ private fun CommunityHub(
     var broadcastText by remember { mutableStateOf("") }
     var gameText by remember { mutableStateOf("") }
     val selected = groups.firstOrNull { it.code == selectedCode }
+    LaunchedEffect(selectedCode, messages.size, selected?.memberPeerIds) {
+        selectedCode?.let(onMarkGroupRead)
+    }
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("NEARER COMMUNITY", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -5279,6 +5282,9 @@ private fun CommunityHub(
                 Column(Modifier.fillMaxWidth().height(130.dp).verticalScroll(rememberScrollState())) {
                     messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { message ->
                         Text(message.sender + ": " + message.body, color = White, fontSize = 12.sp)
+                        if (message.readByPeerId.isNotEmpty()) {
+                            Text("Read by ${message.readByPeerId.size}", color = Mint, fontSize = 9.sp)
+                        }
                         if (message.deliveryByPeerId.isNotEmpty()) {
                             val summary = CommunityDeliveryPolicy.summarize(message.deliveryByPeerId)
                             val receiptText = buildList {
