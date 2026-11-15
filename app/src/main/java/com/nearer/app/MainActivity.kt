@@ -936,12 +936,29 @@ class MainActivity : ComponentActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 7901) {
+            chatNotice = if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                "NeaRer message notifications are enabled."
+            } else {
+                "Notifications were not allowed. You can enable them later in Android app settings."
+            }
+        }
         if (requestCode == REQUEST_DISCOVERY_PERMISSION) {
             if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
                 startAlwaysReadyDiscovery()
             } else {
                 statusMessage = "Nearby access was not granted. You can enable it in Android app settings or tap Find nearby later."
             }
+        }
+    }
+
+    private fun requestChatNotifications() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7901)
+        } else {
+            chatNotice = "Message alerts are controlled by your Android notification settings."
         }
     }
 
@@ -4673,6 +4690,7 @@ private fun NeaRerHome(
                     onMarkConversationRead = { peerId -> markConversationRead(peerId ?: hybridConnectedStableId) },
                     readReceiptsEnabled = readReceiptsEnabled,
                     onReadReceiptsEnabledChange = ::setReadReceiptsEnabled,
+                    onRequestNotifications = ::requestChatNotifications,
                     onDeleteMessage = onDeleteMessage,
                     onDeleteMessageForEveryone = ::deleteChatMessageForEveryone,
                     onEditMessage = onEditMessage,
