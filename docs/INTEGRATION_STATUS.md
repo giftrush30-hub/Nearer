@@ -563,6 +563,6 @@ The merged royal-blue/gold palette change in PR #171 replaced the original mint 
 - Secondary action blue: `#2563EB`
 - Gold highlight: `#FFD12D`
 
-The main app theme again uses mint as its primary accent, while retaining the distinct secondary blue and gold tokens where appropriate. The shared design-system palette and Share Hub now reference the actual mint token instead of aliasing mint to blue. The palette regression test explicitly asserts the original mint and navy values.
+The main app theme again uses mint as its primary accent, while retaining the distinct secondary blue and gold tokens where appropriate. The shared design-system palette, Share Hub and Ludo screen now reference the actual mint token instead of aliasing mint to blue. Ludo's primary surfaces also use the shared midnight/panel/raised-panel tokens; its traditional red, green, yellow and blue player identities remain distinct. The palette regression test explicitly asserts the original mint and navy values.
 
 This is a colour-token correction only: no navigation, screen structure, transfer logic, messaging behavior, permissions, game rules, identity, or logo assets were changed. Existing navy surfaces and content remain intact. CI validation is required on the correction branch before merge.
