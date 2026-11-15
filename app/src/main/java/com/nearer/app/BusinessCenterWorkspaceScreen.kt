@@ -61,6 +61,9 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
     var tagline by remember { mutableStateOf(prefs.getString("tagline", "").orEmpty()) }
     var contact by remember { mutableStateOf(prefs.getString("contact", "").orEmpty()) }
     var showEditor by remember { mutableStateOf(false) }
+    var editingDraftId by remember { mutableStateOf<Long?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+    var catalogueFilter by remember { mutableStateOf("ALL") }
     var title by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -75,6 +78,23 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                 add(BusinessDraft(item.optLong("id"), item.optString("title"), item.optString("price"), item.optString("category", "PRODUCT"), item.optString("description"), item.optString("image")))
             }
         }
+    }
+
+
+    val visibleDrafts = drafts.filter { draft ->
+        val matchesSearch = searchQuery.isBlank() || draft.title.contains(searchQuery, true) || draft.description.contains(searchQuery, true)
+        val matchesFilter = catalogueFilter == "ALL" || draft.category == catalogueFilter
+        matchesSearch && matchesFilter
+    }
+
+    fun editDraft(draft: BusinessDraft) {
+        editingDraftId = draft.id
+        title = draft.title
+        price = draft.price
+        description = draft.description
+        category = draft.category
+        imageUri = draft.imageUri.takeIf { it.isNotBlank() }?.let(Uri::parse)
+        showEditor = true
     }
 
     fun saveDrafts() {
@@ -143,7 +163,15 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                 Text("YOUR CATALOGUE", color = White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Text("${drafts.size} local drafts", color = Muted, fontSize = 10.sp)
             }
-            Button(onClick = { showEditor = !showEditor }, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
+            Button(onClick = {
+                if (showEditor) {
+                    showEditor = false
+                } else {
+                    editingDraftId = null
+                    title = ""; price = ""; description = ""; imageUri = null; category = "PRODUCT"
+                    showEditor = true
+                }
+            }, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                 Text(if (showEditor) "Close" else "+ Add listing", fontWeight = FontWeight.Bold)
             }
         }
@@ -151,7 +179,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
         if (showEditor) {
             Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("CREATE A LISTING", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text(if (editingDraftId == null) "CREATE A LISTING" else "EDIT LISTING", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     TextField(value = title, onValueChange = { title = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Product or service name") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("PRODUCT", "SERVICE").forEach { item ->
@@ -170,22 +198,45 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                     }
                     Button(
                         onClick = {
-                            drafts.add(0, BusinessDraft(System.currentTimeMillis(), title.trim(), price.trim(), category, description.trim(), imageUri?.toString().orEmpty()))
+                            val newImage = imageUri?.toString().orEmpty()
+                            val existingIndex = editingDraftId?.let { id -> drafts.indexOfFirst { it.id == id } } ?: -1
+                            if (existingIndex >= 0) {
+                                val oldImage = drafts[existingIndex].imageUri
+                                drafts[existingIndex] = BusinessDraft(editingDraftId!!, title.trim(), price.trim(), category, description.trim(), newImage)
+                                if (oldImage.isNotBlank() && oldImage != newImage) runCatching {
+                                    context.contentResolver.releasePersistableUriPermission(Uri.parse(oldImage), Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                            } else {
+                                drafts.add(0, BusinessDraft(System.currentTimeMillis(), title.trim(), price.trim(), category, description.trim(), newImage))
+                            }
                             saveDrafts()
-                            title = ""; price = ""; description = ""; imageUri = null; showEditor = false
+                            title = ""; price = ""; description = ""; imageUri = null; editingDraftId = null; showEditor = false
                         },
                         enabled = title.isNotBlank() && profileSaved,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
                     ) {
-                        Text("Save as local draft", fontWeight = FontWeight.Bold)
+                        Text(if (editingDraftId == null) "Save as local draft" else "Update listing", fontWeight = FontWeight.Bold)
                     }
                     if (!profileSaved) Text("Save your business identity first so your catalogue has an owner.", color = Gold, fontSize = 10.sp)
                 }
             }
         }
 
+        if (drafts.isNotEmpty()) {
+            TextField(value = searchQuery, onValueChange = { searchQuery = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                placeholder = { Text("Search your listings") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                listOf("ALL", "PRODUCT", "SERVICE").forEach { filter ->
+                    Surface(color = if (catalogueFilter == filter) Mint.copy(alpha = 0.18f) else Panel, shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.clickable { catalogueFilter = filter }) {
+                        Text(filter, color = if (catalogueFilter == filter) Mint else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
+                    }
+                }
+            }
+        }
         if (drafts.isEmpty()) {
             Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
                 Column(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -193,8 +244,10 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                     Text("Create your first product or service listing. You can prepare it now and share it when you are ready.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                 }
             }
+        } else if (visibleDrafts.isEmpty()) {
+            Text("No listings match this search or filter.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(12.dp))
         } else {
-            drafts.forEach { draft ->
+            visibleDrafts.forEach { draft ->
                 Surface(color = Panel, shape = RoundedCornerShape(17.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
@@ -224,10 +277,11 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                             }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                                 Text("Share listing", fontWeight = FontWeight.Bold)
                             }
+                            Text("EDIT", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editDraft(draft) }.padding(10.dp))
                             Text("DELETE", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                                 drafts.remove(draft); saveDrafts()
                                 if (draft.imageUri.isNotBlank()) runCatching { context.contentResolver.releasePersistableUriPermission(Uri.parse(draft.imageUri), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                            }.padding(12.dp))
+                            }.padding(10.dp))
                         }
                     }
                 }
