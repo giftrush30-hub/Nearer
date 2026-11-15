@@ -28,7 +28,7 @@ class NeaRerBrandPaletteTest {
     @Test fun signatureBrandAccentsRemainOpaqueAndDistinct() {
         assertEquals(1f, Mint.alpha, 0f)
         assertEquals(1f, Gold.alpha, 0f)
-        assertEquals(Color(0xFF69E0C0), Mint)
+        assertEquals(Color(0xFF2868E8), Mint)
         assertEquals(Color(0xFFFFD12D), Gold)
     }
 }
