@@ -3769,6 +3769,17 @@ private fun NeaRerHome(
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
+                // Keep only the folder grant the user most recently selected.
+                // Acquire the new grant first so a failed selection never removes
+                // the previous working folder permission.
+                phoneFolderTreeUri?.takeIf { it != uri }?.let { previousUri ->
+                    runCatching {
+                        context.contentResolver.releasePersistableUriPermission(
+                            previousUri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    }
+                }
                 phoneFolderTreeUri = uri
                 folderPreferences.edit().putString("tree_uri", uri.toString()).apply()
                 phoneFolderNotice = "Folder access saved. Choose the files you want to send."
