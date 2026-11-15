@@ -9,6 +9,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import java.io.File
 import kotlinx.coroutines.delay
 
@@ -189,6 +192,23 @@ internal fun PremiumChatsScreen(
     val latestVoiceRecorder = rememberUpdatedState(voiceRecorder)
     val latestVoiceRecording = rememberUpdatedState(voiceRecording)
     val latestVoiceFile = rememberUpdatedState(voiceNoteFile)
+    val lifecycleOwner = context as? LifecycleOwner
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && latestVoiceRecording.value) {
+                val active = latestVoiceRecorder.value
+                runCatching { active?.stop() }
+                runCatching { active?.release() }
+                latestVoiceFile.value?.delete()
+                voiceRecorder = null
+                voiceNoteFile = null
+                voiceRecording = false
+                voiceNoteNotice = "Recording cancelled when NeaRer went into the background."
+            }
+        }
+        lifecycleOwner?.lifecycle?.addObserver(observer)
+        onDispose { lifecycleOwner?.lifecycle?.removeObserver(observer) }
+    }
     DisposableEffect(selectedMeshRecipientId, connectedPeerStableId) {
         onDispose {
             val wasRecording = latestVoiceRecording.value
