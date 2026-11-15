@@ -62,9 +62,23 @@ private data class StudioVideoClip(
 @Composable
 internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val clips = remember { mutableStateListOf<StudioVideoClip>() }
-    var backgroundAudio by remember { mutableStateOf<Uri?>(null) }
-    var backgroundName by remember { mutableStateOf("") }
+    val projectPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_timeline", android.content.Context.MODE_PRIVATE) }
+    val restoredProject = remember(context) { StudioVideoProjectCodec.decode(projectPreferences.getString("project_v1", null)) }
+    val clips = remember(context) {
+        mutableStateListOf<StudioVideoClip>().apply {
+            addAll(restoredProject.clips.map { saved -> StudioVideoClip(Uri.parse(saved.uri), saved.name, saved.durationMs, saved.inMs, saved.outMs) })
+        }
+    }
+    var backgroundAudio by remember(context) { mutableStateOf(restoredProject.backgroundAudioUri?.let { Uri.parse(it) }) }
+    var backgroundName by remember(context) { mutableStateOf(restoredProject.backgroundAudioName) }
+    LaunchedEffect(clips.map { StudioVideoClipState(it.uri.toString(), it.name, it.durationMs, it.inMs, it.outMs) }, backgroundAudio?.toString(), backgroundName) {
+        val project = StudioVideoProjectState(
+            clips = clips.map { StudioVideoClipState(it.uri.toString(), it.name, it.durationMs, it.inMs, it.outMs) },
+            backgroundAudioUri = backgroundAudio?.toString(),
+            backgroundAudioName = backgroundName
+        )
+        projectPreferences.edit().putString("project_v1", StudioVideoProjectCodec.encode(project)).apply()
+    }
     var exporting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Add video clips, arrange their order, trim each clip and optionally lay music underneath.") }
     var exported by remember { mutableStateOf<File?>(null) }
@@ -123,6 +137,7 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
         }
         Text("Shape the story.", color = White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Text("Arrange up to 12 clips in sequence. Trim each one, preview the ordered reel and optionally add a looping music bed.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+        Text("● TIMELINE AUTO-SAVED ON THIS PHONE", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         if (clips.isNotEmpty()) {
             AndroidView(factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true } },
                 update = { it.player = player }, modifier = Modifier.fillMaxWidth().height(190.dp))
@@ -233,7 +248,7 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                 Text("SHARE EXPORTED VIDEO")
             }
         }
-        Text("This first timeline joins clips in sequence and can mix a looping music bed. It does not yet include crossfades, captions, stickers, speed ramps or frame-accurate waveform editing.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
+        Text("The timeline and trim points are saved locally so you can return to your edit. This first timeline joins clips in sequence and can mix a looping music bed. It does not yet include crossfades, captions, stickers, speed ramps or frame-accurate waveform editing.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
 }
 
