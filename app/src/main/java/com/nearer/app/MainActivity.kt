@@ -1867,6 +1867,7 @@ class MainActivity : ComponentActivity() {
         }
         val peerId = message.conversationId
         val now = System.currentTimeMillis()
+        val previousMessages = chatMessages.toList()
         val deleted = message.copy(
             body = "This message was deleted",
             deletedForEveryone = true,
@@ -1877,8 +1878,10 @@ class MainActivity : ComponentActivity() {
             replyToSender = null
         )
         chatMessages[index] = deleted
+        scrubDeletedMessageQuotes(messageId)
         if (!persistMessages()) {
-            chatMessages[index] = message
+            chatMessages.clear()
+            chatMessages.addAll(previousMessages)
             chatNotice = "Couldn't save the deletion. The message was kept."
             return false
         }
@@ -1894,7 +1897,8 @@ class MainActivity : ComponentActivity() {
             sent = nearbyTransport?.send(packet, eventId, hybridConnectedEndpoint!!) == true
         }
         if (!sent) {
-            chatMessages[index] = message
+            chatMessages.clear()
+            chatMessages.addAll(previousMessages)
             persistMessages()
             chatNotice = "Deletion could not be queued. The original message was restored on this phone."
             return false
@@ -1913,7 +1917,7 @@ class MainActivity : ComponentActivity() {
         val message = chatMessages[index]
         if (message.deletedForEveryone) return true
         if (!ChatDeletePolicy.canApplyIncoming(message.outgoing, message.conversationId, actorPeerId, message.deletedForEveryone)) return false
-        val previous = message
+        val previousMessages = chatMessages.toList()
         chatMessages[index] = message.copy(
             body = "This message was deleted",
             deletedForEveryone = true,
@@ -1923,10 +1927,25 @@ class MainActivity : ComponentActivity() {
             replyToPreview = null,
             replyToSender = null
         )
+        scrubDeletedMessageQuotes(messageId)
         if (persistMessages()) return true
-        chatMessages[index] = previous
+        chatMessages.clear()
+        chatMessages.addAll(previousMessages)
         chatNotice = "A deletion arrived but could not be saved. Delivery was not confirmed."
         return false
+    }
+
+    private fun scrubDeletedMessageQuotes(messageId: String) {
+        chatMessages.indices.forEach { quoteIndex ->
+            val quoted = chatMessages[quoteIndex]
+            if (quoted.replyToMessageId == messageId) {
+                chatMessages[quoteIndex] = quoted.copy(
+                    replyToMessageId = null,
+                    replyToPreview = null,
+                    replyToSender = null
+                )
+            }
+        }
     }
 
     private fun deleteChatMessage(messageId: String): Boolean {
