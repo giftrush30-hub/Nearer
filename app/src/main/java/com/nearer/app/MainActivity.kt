@@ -435,6 +435,7 @@ class MainActivity : ComponentActivity() {
                     incomingRequesterName = null
                     connectedDeviceName = name
                     chatReady = true
+                    sendPendingReadReceipts(stableId)
                     resumeLudoAfterReconnect(name, stableId)
                     connectionMessage = "Secure nearby connection active"
                     approvalMessage = "Connection approved"
@@ -953,6 +954,7 @@ class MainActivity : ComponentActivity() {
         // Retry any local community receipt write that failed during a previous
         // ACK callback before the activity was paused or the process was reclaimed.
         if (communityDataDirty) persistCommunityData()
+        (selectedMeshRecipientId ?: hybridConnectedStableId)?.let(::sendPendingReadReceipts)
         // Always-Ready: automatically prepare nearby discovery after onboarding.
         // Nearby Connections negotiates the available radios; users do not need
         // to launch a separate Wi-Fi Direct scan or configure a hotspot.
