@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -137,7 +138,7 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                 Column(Modifier.weight(1f)) {
                                     Text("${index + 1}. ${clip.name}", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
-                                    Text("${formatStudioTime(clip.outMs - clip.inMs)} selected / ${formatStudioTime(clip.durationMs)} source", color = Mint, fontSize = 9.sp)
+                                    Text("${formatStudioTimelineTime(clip.outMs - clip.inMs)} selected / ${formatStudioTimelineTime(clip.durationMs)} source", color = Mint, fontSize = 9.sp)
                                 }
                                 Text("↑", color = Mint, modifier = Modifier.clickable(enabled = index > 0) {
                                     val item = clips.removeAt(index); clips.add(index - 1, item); exported = null
@@ -147,11 +148,11 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                                 }.padding(5.dp))
                                 Text("×", color = Gold, modifier = Modifier.clickable { clips.removeAt(index); exported = null }.padding(5.dp))
                             }
-                            Text("IN  ·  ${formatStudioTime(clip.inMs)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text("IN  ·  ${formatStudioTimelineTime(clip.inMs)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = clip.inMs.toFloat(), onValueChange = { value ->
                                 clips[index] = clip.copy(inMs = value.toLong().coerceAtMost(clip.outMs - 500L)); exported = null
                             }, valueRange = 0f..(clip.durationMs - 500L).coerceAtLeast(0L).toFloat())
-                            Text("OUT  ·  ${formatStudioTime(clip.outMs)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text("OUT  ·  ${formatStudioTimelineTime(clip.outMs)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = clip.outMs.toFloat(), onValueChange = { value ->
                                 clips[index] = clip.copy(outMs = value.toLong().coerceAtLeast(clip.inMs + 500L).coerceAtMost(clip.durationMs)); exported = null
                             }, valueRange = (clip.inMs + 500L).coerceAtMost(clip.durationMs).toFloat()..clip.durationMs.toFloat())
@@ -188,11 +189,11 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                     ).build()
                     EditedMediaItem.Builder(item).build()
                 }
-                val videoSequence = EditedMediaItemSequence.withAudioAndVideoFrom(videoItems)
+                val videoSequence = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO, C.TRACK_TYPE_VIDEO)).addItems(videoItems).build()
                 val sequences = mutableListOf(videoSequence)
                 if (backgroundAudio != null) {
                     val musicItem = EditedMediaItem.Builder(MediaItem.fromUri(backgroundAudio!!)).build()
-                    sequences.add(EditedMediaItemSequence.withAudioFrom(listOf(musicItem)).buildUpon().setIsLooping(true).build())
+                    sequences.add(EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO)).addItem(musicItem).setIsLooping(true).build())
                 }
                 val composition = Composition.Builder(sequences).build()
                 val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Film_${System.currentTimeMillis()}.mp4")
@@ -230,4 +231,10 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
         }
         Text("This first timeline joins clips in sequence and can mix a looping music bed. It does not yet include crossfades, captions, stickers, speed ramps or frame-accurate waveform editing.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
+}
+
+
+private fun formatStudioTimelineTime(milliseconds: Long): String {
+    val seconds = (milliseconds / 1000L).coerceAtLeast(0L)
+    return String.format("%d:%02d", seconds / 60L, seconds % 60L)
 }
