@@ -184,10 +184,17 @@ internal fun PremiumChatsScreen(
     val latestVoiceFile = rememberUpdatedState(voiceNoteFile)
     DisposableEffect(selectedMeshRecipientId, connectedPeerStableId) {
         onDispose {
+            val wasRecording = latestVoiceRecording.value
             val active = latestVoiceRecorder.value
-            if (latestVoiceRecording.value) runCatching { active?.stop() }
+            if (wasRecording) runCatching { active?.stop() }
             runCatching { active?.release() }
-            if (latestVoiceRecording.value) latestVoiceFile.value?.delete()
+            if (wasRecording) {
+                latestVoiceFile.value?.delete()
+                voiceRecording = false
+                voiceRecorder = null
+                voiceNoteFile = null
+                voiceNoteNotice = "Recording cancelled because the conversation changed."
+            }
         }
     }
     pendingDeleteMessage?.let { target ->
