@@ -3871,7 +3871,7 @@ private fun NeaRerHome(
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
     var shareSection by remember { mutableStateOf("Files") }
-    BackHandler(enabled = selectedTab == "Studio" || selectedTab == "Academy" || selectedTab == "Library" || selectedTab == "Business Center") { selectedTab = "More" }
+    BackHandler(enabled = selectedTab == "Studio" || selectedTab == "Academy" || selectedTab == "Library" || selectedTab == "Business Center" || selectedTab == "Movies" || selectedTab == "File Hub") { selectedTab = "More" }
     var selectedConversationKey by remember { mutableStateOf<String?>(null) }
     var showRoyalLudo by remember { mutableStateOf(false) }
     BackHandler(enabled = showRoyalLudo) { showRoyalLudo = false }
@@ -4144,7 +4144,7 @@ private fun NeaRerHome(
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share" || selectedTab == "Share Hub" || selectedTab == "Studio" || selectedTab == "Academy" || selectedTab == "Library" || selectedTab == "Business Center") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 20.dp, vertical = 18.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share" || selectedTab == "Share Hub" || selectedTab == "Studio" || selectedTab == "Academy" || selectedTab == "Library" || selectedTab == "Business Center" || selectedTab == "Movies" || selectedTab == "File Hub") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 20.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
             Row(
@@ -4695,6 +4695,12 @@ private fun NeaRerHome(
             if (selectedTab == "Business Center") {
                 BusinessCenterWorkspaceScreen(onBack = { selectedTab = "More" })
             }
+            if (selectedTab == "Movies") {
+                MoviesWorkspaceScreen(onBack = { selectedTab = "More" })
+            }
+            if (selectedTab == "File Hub") {
+                FileHubWorkspaceScreen(onBack = { selectedTab = "More" })
+            }
 
             if (selectedTab == "More") {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
@@ -4717,8 +4723,8 @@ private fun NeaRerHome(
                             "Academy" to "Ready · learn and practise offline",
                             "Library" to "Ready · your offline knowledge space",
                             "Business Center" to "Ready · offline business desk",
-                            "Movies" to "Coming soon · watch and discover",
-                            "File Hub" to "Ready · open sharing tools"
+                            "Movies" to "Ready · offline video library",
+                            "File Hub" to "Ready · browse and organise files"
                         ).forEach { space ->
                             Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Midnight).clickable {
                                 when (space.first) {
@@ -4726,14 +4732,15 @@ private fun NeaRerHome(
                                     "Academy" -> selectedTab = "Academy"
                                     "Library" -> selectedTab = "Library"
                                     "Business Center" -> selectedTab = "Business Center"
-                                    "File Hub" -> { selectedTab = "Share"; shareSection = "Hub" }
+                                    "Movies" -> selectedTab = "Movies"
+                                    "File Hub" -> selectedTab = "File Hub"
                                 }
                             }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                     Text(space.first, color = White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                     Text(space.second, color = Muted, fontSize = 11.sp)
                                 }
-                                Text(if (space.first == "File Hub" || space.first == "Studio" || space.first == "Academy" || space.first == "Library" || space.first == "Business Center") "OPEN" else "SOON", color = if (space.first == "File Hub" || space.first == "Studio" || space.first == "Academy" || space.first == "Library" || space.first == "Business Center") Mint else Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Text(if (space.first == "File Hub" || space.first == "Studio" || space.first == "Academy" || space.first == "Library" || space.first == "Business Center" || space.first == "Movies" || space.first == "File Hub") "OPEN" else "SOON", color = if (space.first == "File Hub" || space.first == "Studio" || space.first == "Academy" || space.first == "Library" || space.first == "Business Center" || space.first == "Movies" || space.first == "File Hub") Mint else Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
