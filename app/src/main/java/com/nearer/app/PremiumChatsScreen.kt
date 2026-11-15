@@ -139,9 +139,9 @@ internal fun PremiumChatsScreen(
         voiceRecorder = null
         voiceNoteFile = null
         voiceRecording = false
-        runCatching { recorder?.stop() }.onFailure { voiceNoteNotice = "The recording was too short and was discarded." }
+        val stoppedSuccessfully = runCatching { recorder?.stop(); recorder != null }.getOrDefault(false)
         runCatching { recorder?.release() }
-        if (send && file != null && file.exists() && file.length() > 512L) {
+        if (send && stoppedSuccessfully && file != null && file.exists() && file.length() > 512L) {
             runCatching {
                 onSendVoiceNote(FileProvider.getUriForFile(context, "${context.packageName}.files", file))
                 voiceNoteNotice = "Voice note queued for nearby transfer."
