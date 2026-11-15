@@ -1890,7 +1890,6 @@ class MainActivity : ComponentActivity() {
             .put("messageId", messageId)
             .put("deletedAt", now)
             .toString()
-        val eventId = UUID.randomUUID().toString()
         // Queue to the pinned identity, even if the peer is offline now.
         val sent = nearbyTransport?.sendDurableToPeerIds(packet, setOf(peerId)) == true
         if (!sent) {
@@ -2046,7 +2045,6 @@ class MainActivity : ComponentActivity() {
                 .put("messageIds", JSONArray(batch.map { it.id }))
                 .put("readAt", now)
                 .toString()
-            val eventId = UUID.randomUUID().toString()
             // The durable outbox is keyed by the pinned stable identity, so a
             // receipt can wait safely when the peer is temporarily offline.
             val queued = nearbyTransport?.sendDurableToPeerIds(packet, setOf(peerId)) == true
