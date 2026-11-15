@@ -105,6 +105,7 @@ The direct outbox is restored when the transport is recreated and retries when t
 - Users can disable read receipts in the chat screen. When disabled, NeaRer keeps local read state but does not send direct or group receipts.
 - Group messages store the authenticated sender identity. When a member opens a group, bounded read receipts are durably queued to each original author; the author records which verified group members have read the message.
 - Group read receipts are accepted only from an authenticated identity in the group's verified member roster, and their message IDs and timestamps are validated.
+- Direct-chat typing indicators are short-lived authenticated control packets sent only to currently connected peers. They are not persisted or queued for later delivery; the receiver expires stale indicators automatically.
 - A sender can delete a message for everyone only after delivery has been confirmed (or a valid read receipt has arrived). The deletion is queued to the pinned recipient identity.
 - The receiving phone accepts a delete event only from the original sender for that conversation. Deletion is idempotent, removes message content and reactions, and clears quoted previews that referenced the deleted message.
 - Local "Delete for me" remains separate from remote deletion.
