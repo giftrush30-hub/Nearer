@@ -130,3 +130,12 @@ This notification is not a guarantee of delivery after Android kills the app: th
 - Received common audio formats are labelled as voice notes in the chat file area and open in the phone's available audio player.
 - Voice notes currently require a direct nearby connection; they are not yet inline message-bubble playback, group voice notes, or multi-hop mesh attachments.
 - Physical recording, transfer, playback, interruption and permission-denial tests remain required.
+
+
+## Delete-for-everyone — 15 November 2026
+
+- A sender can recall a direct message only after the recipient has acknowledged durable local storage (or a read receipt has arrived).
+- The delete event travels inside the authenticated encrypted chat session and is accepted only from the original sender identity for that conversation.
+- Both local copies replace the message with a deletion placeholder; reply previews quoting the deleted message are scrubbed too.
+- Duplicate delete events are idempotent. A stale event for a message no longer in retained history is acknowledged without recreating content.
+- This does not remotely erase screenshots, exports, notifications already seen, or copies made outside NeaRer.
