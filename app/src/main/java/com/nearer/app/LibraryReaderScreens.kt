@@ -52,7 +52,7 @@ internal fun LibraryPdfReaderScreen(uri: Uri, title: String, onBack: () -> Unit)
         val rendered = withContext(Dispatchers.IO) {
             runCatching {
                 val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
-                    ?: error("Android could not open this PDF.")
+                    ?: throw IllegalStateException("Android could not open this PDF.")
                 descriptor.use { pfd ->
                     PdfRenderer(pfd).use { renderer ->
                         require(renderer.pageCount > 0) { "This PDF has no readable pages." }
@@ -117,7 +117,7 @@ internal fun LibraryTextReaderScreen(uri: Uri, title: String, onBack: () -> Unit
             runCatching {
                 context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
                     reader.readText().take(1_000_000)
-                } ?: error("Android could not open this text file.")
+                } ?: throw IllegalStateException("Android could not open this text file.")
             }
         }
         result.onSuccess { content = it }.onFailure { error = it.message ?: "Unable to read this file." }
