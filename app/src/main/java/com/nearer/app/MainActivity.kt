@@ -4710,7 +4710,7 @@ private fun NeaRerHome(
                         Text("NEARER SPACES", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Text("More ways to use NeaRer", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         listOf(
-                            "Studio" to "Coming soon · create and share",
+                            "Studio" to "Ready · offline creative workspace",
                             "Academy" to "Ready · learn and practise offline",
                             "Library" to "Ready · your offline knowledge space",
                             "Movies" to "Coming soon · watch and discover",
