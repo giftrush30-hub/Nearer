@@ -24,6 +24,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -60,13 +61,28 @@ private data class StudioMixTrack(
     val gain: Float = 1f,
     val fadeInMs: Long = 0L,
     val fadeOutMs: Long = 0L
-)
+) {
+    fun toProjectState() = StudioAudioProjectTrackState(
+        uri = uri.toString(), name = name, durationMs = durationMs, muted = muted,
+        gain = gain, fadeInMs = fadeInMs, fadeOutMs = fadeOutMs
+    )
+}
 
 @OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val tracks = remember { mutableStateListOf<StudioMixTrack>() }
+    val projectPreferences = remember(context) { context.getSharedPreferences("nearer_studio_audio_project", android.content.Context.MODE_PRIVATE) }
+    val tracks = remember(context) {
+        mutableStateListOf<StudioMixTrack>().apply {
+            addAll(StudioAudioProjectCodec.decode(projectPreferences.getString("tracks_v1", null)).mapNotNull { saved ->
+                runCatching { StudioMixTrack(Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.fadeInMs, saved.fadeOutMs) }.getOrNull()
+            })
+        }
+    }
+    LaunchedEffect(tracks.map { it.toProjectState() }) {
+        projectPreferences.edit().putString("tracks_v1", StudioAudioProjectCodec.encode(tracks.map { it.toProjectState() })).apply()
+    }
     var exporting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Build a layered mix from voice, music and sound effects stored on your phone.") }
     var exported by remember { mutableStateOf<File?>(null) }
@@ -102,6 +118,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
         }
         Text("Mix every layer.", color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
         Text("A phone-friendly multitrack desk. Balance each layer, shape its entrance and ending, reorder the arrangement, then render one local mix.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+        Text("● PROJECT AUTO-SAVED ON THIS PHONE", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
             Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
