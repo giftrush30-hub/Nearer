@@ -3869,6 +3869,7 @@ private fun NeaRerHome(
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
     var shareSection by remember { mutableStateOf("Files") }
+    BackHandler(enabled = selectedTab == "Studio") { selectedTab = "More" }
     var selectedConversationKey by remember { mutableStateOf<String?>(null) }
     var showRoyalLudo by remember { mutableStateOf(false) }
     BackHandler(enabled = showRoyalLudo) { showRoyalLudo = false }
@@ -4141,7 +4142,7 @@ private fun NeaRerHome(
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share" || selectedTab == "Share Hub") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 20.dp, vertical = 18.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share" || selectedTab == "Share Hub" || selectedTab == "Studio") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 20.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
             Row(
@@ -4677,6 +4678,10 @@ private fun NeaRerHome(
             }
             }
 
+            if (selectedTab == "Studio") {
+                StudioWorkspaceScreen(onBack = { selectedTab = "More" })
+            }
+
             if (selectedTab == "More") {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
                     Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -4701,7 +4706,12 @@ private fun NeaRerHome(
                             "Business Center" to "Coming soon · tools for work",
                             "File Hub" to "Ready · open sharing tools"
                         ).forEach { space ->
-                            Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Midnight).clickable { if (space.first == "File Hub") { selectedTab = "Share"; shareSection = "Hub" } }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Midnight).clickable {
+                                when (space.first) {
+                                    "Studio" -> selectedTab = "Studio"
+                                    "File Hub" -> { selectedTab = "Share"; shareSection = "Hub" }
+                                }
+                            }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                     Text(space.first, color = White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                     Text(space.second, color = Muted, fontSize = 11.sp)
