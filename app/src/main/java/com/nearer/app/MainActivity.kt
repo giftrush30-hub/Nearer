@@ -1857,6 +1857,18 @@ class MainActivity : ComponentActivity() {
         return false
     }
 
+    private fun markDeletedMessageAndReplyPreviews(index: Int, previous: ChatMessage): List<Pair<Int, ChatMessage>> {
+        val changed = mutableListOf(index to previous)
+        chatMessages[index] = previous.copy(body = "", deletedForEveryone = true, reactions = emptyMap())
+        chatMessages.forEachIndexed { replyIndex, reply ->
+            if (replyIndex != index && reply.replyToMessageId == previous.id && reply.replyToPreview != "This message was deleted") {
+                changed += replyIndex to reply
+                chatMessages[replyIndex] = reply.copy(replyToPreview = "This message was deleted")
+            }
+        }
+        return changed
+    }
+
     private fun applyIncomingChatDelete(payload: String, actorPeerId: String): Boolean {
         val packet = try { JSONObject(payload) } catch (_: Exception) { return false }
         val messageId = packet.optString("messageId")
@@ -1868,12 +1880,12 @@ class MainActivity : ComponentActivity() {
         val previous = chatMessages[index]
         if (previous.deletedForEveryone) return true
         if (!ChatDeletePolicy.canApplyIncoming(previous.outgoing, previous.conversationId, actorPeerId, previous.deletedForEveryone)) return false
-        chatMessages[index] = previous.copy(body = "", deletedForEveryone = true, reactions = emptyMap())
+        val changed = markDeletedMessageAndReplyPreviews(index, previous)
         if (persistMessages()) {
             chatNotice = "A message was deleted by its sender."
             return true
         }
-        chatMessages[index] = previous
+        changed.asReversed().forEach { (changedIndex, oldMessage) -> chatMessages[changedIndex] = oldMessage }
         chatNotice = "A delete request arrived but could not be saved. It was not confirmed."
         return false
     }
@@ -2025,9 +2037,9 @@ class MainActivity : ComponentActivity() {
             chatNotice = "Delete for everyone could not be queued. Reconnect and try again."
             return false
         }
-        chatMessages[index] = previous.copy(body = "", deletedForEveryone = true, reactions = emptyMap())
+        val changed = markDeletedMessageAndReplyPreviews(index, previous)
         if (!persistMessages()) {
-            chatMessages[index] = previous
+            changed.asReversed().forEach { (changedIndex, oldMessage) -> chatMessages[changedIndex] = oldMessage }
             chatNotice = "The delete was queued but local history could not be updated. The recipient may still receive it."
             return false
         }
