@@ -17,7 +17,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -52,7 +51,6 @@ import java.io.File
 private data class StudioMixTrack(
     val uri: Uri,
     val name: String,
-    val startMs: Long = 0L,
     val muted: Boolean = false
 )
 
@@ -96,7 +94,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
             Text("MULTITRACK MIX", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         }
         Text("Build your sound.", color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
-        Text("Layer up to eight local audio tracks. Set when each track enters, mute tracks you don't want, and export one combined mix.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+        Text("Layer up to eight local audio tracks. Layer local audio files together, mute tracks you don't want, and export one combined mix.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
         Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
             Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -111,7 +109,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Column(Modifier.weight(1f)) {
                                     Text(track.name, color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
-                                    Text("TRACK ${index + 1}  ·  ENTERS AT ${track.startMs / 1000}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text("TRACK ${index + 1}  ·  STARTS WITH THE MIX", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 }
                                 Text(if (previewName == track.name && previewPlayer.isPlaying) "PAUSE" else "PREVIEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                                     if (previewName == track.name && previewPlayer.isPlaying) previewPlayer.pause()
@@ -128,11 +126,6 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                     exported = null
                                 }.padding(5.dp))
                             }
-                            Text("START POSITION", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                            Slider(value = track.startMs.toFloat(), onValueChange = {
-                                tracks[index] = track.copy(startMs = it.toLong())
-                                exported = null
-                            }, valueRange = 0f..60000f)
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Mute this track", color = Muted, fontSize = 11.sp)
                                 Switch(checked = track.muted, onCheckedChange = {
@@ -159,10 +152,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 message = "Mixing ${activeTracks.size} track(s)… Keep NeaRer open until export finishes."
                 val sequences = activeTracks.map { track ->
                     val item = EditedMediaItem.Builder(MediaItem.fromUri(track.uri)).build()
-                    EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO))
-                        .addGap(track.startMs * 1000L)
-                        .addItem(item)
-                        .build()
+                    EditedMediaItemSequence.withAudioFrom(listOf(item))
                 }
                 val composition = Composition.Builder(sequences).build()
                 val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Mix_${System.currentTimeMillis()}.mp4")
