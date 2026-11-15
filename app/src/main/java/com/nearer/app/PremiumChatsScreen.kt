@@ -118,18 +118,24 @@ internal fun PremiumChatsScreen(
     LaunchedEffect(selectedMeshRecipientId, chatReady, messages.size) {
         if (chatReady || selectedMeshRecipientId != null) onMarkConversationRead(selectedMeshRecipientId)
     }
+    var typingSignalActive by remember(selectedMeshRecipientId) { mutableStateOf(false) }
     LaunchedEffect(draft, selectedMeshRecipientId, chatReady) {
         if (draft.isBlank() || !chatReady) {
-            onTyping(false)
+            if (typingSignalActive) {
+                onTyping(false)
+                typingSignalActive = false
+            }
         } else {
             delay(300)
             onTyping(true)
+            typingSignalActive = true
             delay(1_800)
             onTyping(false)
+            typingSignalActive = false
         }
     }
     DisposableEffect(selectedMeshRecipientId) {
-        onDispose { onTyping(false) }
+        onDispose { if (typingSignalActive) onTyping(false) }
     }
 
     var recipientMenuExpanded by remember { mutableStateOf(false) }
