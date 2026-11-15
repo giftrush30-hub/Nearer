@@ -2521,7 +2521,6 @@ class MainActivity : ComponentActivity() {
         }
 
         val transport = nearbyTransport
-        val localPeerId = transport?.localIdentityId().orEmpty()
         if (transport == null || group.ownerPeerId.isBlank() || localPeerId !in group.memberPeerIds) {
             communityNotice = "Secure group messaging needs a synced identity roster. The message is saved on this phone."
             return
