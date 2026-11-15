@@ -121,3 +121,12 @@ This notification is not a guarantee of delivery after Android kills the app: th
 - Read timestamps and receipt-send timestamps are persisted with the local message history.
 - This does not turn the transport ACK into a read receipt: transport ACK still means the other phone committed the message locally.
 - Group read receipts, privacy controls for read receipts, and physical two-phone validation remain future work.
+
+
+## Direct-chat voice notes — 15 November 2026
+
+- Added local AAC voice-note recording to the direct chat composer using Android's microphone permission.
+- Recordings are written to the app-private `voice-notes/` directory and shared through NeaRer's existing Nearby file-transfer queue.
+- Received common audio formats are labelled as voice notes in the chat file area and open in the phone's available audio player.
+- Voice notes currently require a direct nearby connection; they are not yet inline message-bubble playback, group voice notes, or multi-hop mesh attachments.
+- Physical recording, transfer, playback, interruption and permission-denial tests remain required.
