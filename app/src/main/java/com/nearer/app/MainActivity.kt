@@ -838,6 +838,7 @@ class MainActivity : ComponentActivity() {
                     onDeleteMessage = ::deleteChatMessage,
                     onEditMessage = ::editChatMessage,
                     onReactToMessage = ::sendChatReaction,
+                    onEnableMessageNotifications = ::requestMessageNotifications,
                     groups = communityGroups.toList(),
                     groupMessages = communityMessages.toList(),
                     selectedGroupCode = selectedCommunityCode,
@@ -939,6 +940,13 @@ class MainActivity : ComponentActivity() {
                 statusMessage = "Nearby access was not granted. You can enable it in Android app settings or tap Find nearby later."
             }
         }
+        if (requestCode == REQUEST_NOTIFICATION_PERMISSION) {
+            chatNotice = if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                "Message notifications are enabled."
+            } else {
+                "Notifications are off. You can enable them later in Android app settings."
+            }
+        }
     }
 
     override fun onResume() {
@@ -989,6 +997,13 @@ class MainActivity : ComponentActivity() {
             receiverRegistered = false
         }
         super.onPause()
+    }
+
+    private fun requestMessageNotifications() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATION_PERMISSION)
+        }
     }
 
     private fun showIncomingMessageNotification(senderName: String, messageId: String) {
@@ -3724,6 +3739,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val REQUEST_DISCOVERY_PERMISSION = 410
+        private const val REQUEST_NOTIFICATION_PERMISSION = 411
     }
 }
 
@@ -3754,6 +3770,7 @@ private fun NeaRerHome(
     onDeleteMessage: (String) -> Boolean,
     onEditMessage: (String, String) -> Boolean,
     onReactToMessage: (String, String) -> Unit,
+    onEnableMessageNotifications: () -> Unit,
     groups: List<CommunityGroup>,
     groupMessages: List<CommunityChatMessage>,
     selectedGroupCode: String?,
@@ -4187,6 +4204,20 @@ private fun NeaRerHome(
                             )
                         }
                         Text("Find people around you, chat and share files — without mobile data.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+                if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(LocalContext.current, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Midnight) {
+                        Column(modifier = Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Text("NEARER MESSAGE ALERTS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text("Allow notifications so NeaRer can alert you when a new nearby message arrives while you are using another app.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                            Button(
+                                onClick = onEnableMessageNotifications,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
+                            ) { Text("Enable message notifications", fontWeight = FontWeight.Bold) }
+                        }
+                    }
+                }
                         Button(
                             onClick = { selectedTab = "Nearby"; onFindNearby() },
                             modifier = Modifier.fillMaxWidth().height(54.dp),
