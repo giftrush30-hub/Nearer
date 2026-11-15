@@ -19,6 +19,14 @@ class MessageRetryPolicyTest {
         assertEquals(5000L, MessageRetryPolicy.delayMillis(4, 1200L))
     }
 
+    @Test fun keepsRetryingWhenTheSameAuthenticatedSessionIsStillActive() {
+        assertEquals(true, MessageRetryPolicy.shouldRetryOnActiveSession(true, true, true))
+        assertEquals(false, MessageRetryPolicy.shouldRetryOnActiveSession(false, true, true))
+        assertEquals(false, MessageRetryPolicy.shouldRetryOnActiveSession(true, false, true))
+        assertEquals(false, MessageRetryPolicy.shouldRetryOnActiveSession(true, true, false))
+        assertEquals(15_000L, MessageRetryPolicy.CONNECTED_RETRY_DELAY_MS)
+    }
+
     @Test fun rejectsInvalidAttemptAndBaseDelay() {
         assertThrows(IllegalArgumentException::class.java) {
             MessageRetryPolicy.delayMillis(0, 1000L)
