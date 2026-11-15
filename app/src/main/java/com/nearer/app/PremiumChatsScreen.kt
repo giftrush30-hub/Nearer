@@ -62,6 +62,7 @@ internal fun PremiumChatsScreen(
     draft: String,
     onDraftChange: (String) -> Unit,
     onSendMessage: (String, ChatMessage?) -> Unit,
+    onMarkConversationRead: (String?) -> Unit,
     onDeleteMessage: (String) -> Boolean,
     onEditMessage: (String, String) -> Boolean,
     onReactToMessage: (String, String) -> Unit,
@@ -85,6 +86,10 @@ internal fun PremiumChatsScreen(
             onFindNearby = onFindNearby
         )
         return
+    }
+
+    LaunchedEffect(selectedMeshRecipientId, chatReady) {
+        if (chatReady || selectedMeshRecipientId != null) onMarkConversationRead(selectedMeshRecipientId)
     }
 
     var recipientMenuExpanded by remember { mutableStateOf(false) }
