@@ -116,7 +116,7 @@ This notification is not a guarantee of delivery after Android kills the app: th
 ## Messaging read receipts — 15 November 2026
 
 - Added a bounded, authenticated read-receipt event for direct one-to-one conversations.
-- When a user opens a conversation, NeaRer queues receipts for locally saved incoming messages in batches of at most 80 IDs.
+- When a user opens a conversation, NeaRer queues receipts for locally saved incoming messages in batches of at most 40 IDs.
 - The receiving sender applies a receipt only to outgoing messages addressed to the authenticated peer identity; stale/duplicate receipts are idempotent.
 - Read timestamps and receipt-send timestamps are persisted with the local message history.
 - This does not turn the transport ACK into a read receipt: transport ACK still means the other phone committed the message locally.
