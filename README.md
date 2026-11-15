@@ -109,4 +109,15 @@ This notification is not a guarantee of delivery after Android kills the app: th
 - Duplicate deliveries, local persistence failures, edits, reactions and community control packets do not trigger a new-message alert.
 - Notification eligibility and stable notification IDs have JVM unit tests.
 - On Android 13 and later, users can explicitly opt in through the Home screen's message-notification prompt; the app does not request notification permission silently. Android notification channel settings remain user-controlled.
-- The alert does not keep Nearby Connections alive after the Activity/process is stopped; a dedicated connected-device service remains future messaging work.
+- Opening a conversation queues a separate authenticated read receipt for the original sender; the sender's outgoing bubble can then show `Read`. Read receipts are distinct from transport delivery ACKs, and receipt state is stored locally.
+- The alert and read-receipt trigger do not keep Nearby Connections alive after the Activity/process is stopped; a dedicated connected-device service remains future messaging work.
+
+
+## Messaging read receipts — 15 November 2026
+
+- Added a bounded, authenticated read-receipt event for direct one-to-one conversations.
+- When a user opens a conversation, NeaRer queues receipts for locally saved incoming messages in batches of at most 80 IDs.
+- The receiving sender applies a receipt only to outgoing messages addressed to the authenticated peer identity; stale/duplicate receipts are idempotent.
+- Read timestamps and receipt-send timestamps are persisted with the local message history.
+- This does not turn the transport ACK into a read receipt: transport ACK still means the other phone committed the message locally.
+- Group read receipts, privacy controls for read receipts, and physical two-phone validation remain future work.
