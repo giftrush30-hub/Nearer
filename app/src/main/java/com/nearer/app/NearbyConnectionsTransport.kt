@@ -2614,10 +2614,9 @@ internal object IncomingFilePayloadPolicy {
                 val item = TransferBundleItem(
                     copied.sha256.take(32), name, name, copied.bytesCopied, null
                 )
-                val transferIdentity = (localStableId + "|" + peerId + "|" + item.sizeBytes + "|" + copied.sha256 + "|" + name)
-                    .toByteArray(Charsets.UTF_8)
-                val transferId = MessageDigest.getInstance("SHA-256").digest(transferIdentity)
-                    .joinToString("") { "%02x".format(it) }
+                val transferId = HyperTransferIdentity.createTransferId(
+                    localStableId, peerId, item, copied.sha256
+                )
                 if (cancelledOutgoingPreparations.remove(payloadId)) {
                     preparingHyperStreams.remove(payloadId)
                     prepared.close()
