@@ -129,6 +129,7 @@ This notification is not a guarantee of delivery after Android kills the app: th
 - Recordings are written to the app-private `voice-notes/` directory and shared through NeaRer's existing Nearby file-transfer queue.
 - Received common audio formats are labelled as voice notes in the chat file area and open in the phone's available audio player.
 - Voice notes currently require a direct nearby connection; they are not yet inline message-bubble playback, group voice notes, or multi-hop mesh attachments.
+- An active recording is stopped, released and deleted if the app enters the background or the conversation/connection changes; NeaRer does not silently keep the microphone recording.
 - Physical recording, transfer, playback, interruption and permission-denial tests remain required.
 
 
@@ -139,3 +140,20 @@ This notification is not a guarantee of delivery after Android kills the app: th
 - Both local copies replace the message with a deletion placeholder; reply previews quoting the deleted message are scrubbed too.
 - Duplicate delete events are idempotent. A stale event for a message no longer in retained history is acknowledged without recreating content.
 - This does not remotely erase screenshots, exports, notifications already seen, or copies made outside NeaRer.
+
+
+## A messaging acceptance checklist — before release
+
+Run this checklist with two physical Android phones. Automated JVM tests and APK assembly do not replace radio, lifecycle or real transfer testing.
+
+1. Install the same debug APK on both phones; grant the nearby-device permissions when asked and enable Bluetooth and Wi-Fi on both.
+2. Discover each other, compare the first-contact security code in person, approve the connection, and send text in both directions.
+3. Confirm the sender first sees the queued/sent state and then `Delivered` only after the receiver has saved the message. Open the receiver's conversation and confirm the sender later sees `Read`.
+4. Send a reply, edit a message, add/remove a reaction, and delete a delivered message for everyone. Confirm the other phone updates each event and that a non-sender cannot delete the message.
+5. Record and send a voice note. Confirm the receiver can open/play it. Start another recording and background the app; confirm recording stops and the partial file is discarded.
+6. Create a group, join the group from the second phone, and exchange messages. Add a third phone before treating group fan-out as verified.
+7. Background each app, send a message, and confirm a private notification appears only when notification permission and channel settings allow it.
+8. Turn off one phone's radios, reconnect, and confirm queued direct messages retry to the same trusted identity without creating duplicate bubbles.
+9. Repeat after swiping the app away and after a device restart. Record the exact behavior; continuous background discovery/reconnect is not yet promised because the Nearby transport is still Activity-owned.
+
+A is not release-complete until the above two-/three-device checks pass and the dedicated connected-device messaging service has been implemented and validated.
