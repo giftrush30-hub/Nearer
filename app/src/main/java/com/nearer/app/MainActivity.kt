@@ -2669,8 +2669,9 @@ class MainActivity : ComponentActivity() {
                     val idsJson = packet.optJSONArray("messageIds") ?: JSONArray()
                     val ids = (0 until idsJson.length()).map { idsJson.optString(it) }
                     val readAt = packet.optLong("readAt", 0L).coerceAtMost(System.currentTimeMillis())
-                    if (group != null && readerPeerId == senderPeerId &&
-                        senderPeerId in group.memberPeerIds && localPeerId in group.memberPeerIds &&
+                    if (group != null &&
+                        CommunityReadReceiptPolicy.mayAcceptReader(senderPeerId, readerPeerId, group.memberPeerIds.toSet()) &&
+                        localPeerId in group.memberPeerIds &&
                         CommunityReadReceiptPolicy.isValid(ids, packet.optLong("readAt", 0L), System.currentTimeMillis())
                     ) {
                         ids.forEach { id ->
