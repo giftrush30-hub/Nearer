@@ -432,3 +432,29 @@ A focused review of the current `MainActivity` receive and send paths found a pr
 6. Run the exact-head JVM test and debug APK workflow after implementation. Relay remains disabled; no physical-device or security certification is implied by this source audit.
 
 This is a source-level finding and an implementation plan, not a claim that the current app is already exploitable in every transport configuration. Avoid merging older community branches wholesale; port only after their wire format has been reconciled with this canonical protocol.
+
+### Messaging-first product and navigation synchronization audit — 15 November 2026
+
+The latest product direction from the parallel planning conversation is now the governing product constraint: **messaging remains NeaRer's core experience**. The app may expand into more useful sections, but existing chat, nearby discovery, file sharing, communities, Ludo, profiles and identity work must be preserved. New capabilities should be placed around the messaging foundation, with plain-language navigation and no unnecessary complexity. Do not replace the existing product with a new shell or remove working features as part of a redesign.
+
+A source-level navigation inspection of the current main branch found:
+
+- The bottom navigation currently exposes five items: Chats, People, Share, Share Hub and Games.
+- The code also contains Home and More screen branches, but neither is exposed by the current bottom-navigation list. The Home branch therefore has no visible navigation entry, and the More branch (which contains profile editing, app sharing and connection/privacy information) is also not reachable through that bottom bar.
+- Share and Share Hub are separate top-level destinations. Share opens File Centre; Share Hub contains additional app sharing, OpenSend and phone-folder browsing. These are useful capabilities and must not be deleted, but the current split competes for limited primary navigation space.
+- The initial selected destination is Chats, which is consistent with the messaging-first direction and should remain the default.
+- The current main shell already has the original dark navy/panel and mint/gold palette. Do not apply the older blue/gold redesign branch or change the palette as part of this navigation work.
+
+Recommended implementation direction (planning only; no navigation source was changed in this audit):
+
+1. Keep Chats as the default and most prominent destination.
+2. Keep People as the nearby identity/discovery and conversation-entry area.
+3. Group File Centre and Share Hub capabilities under one clearly named Share destination, using simple internal sections/cards rather than deleting either feature.
+4. Keep Games as a separate destination so Ludo remains easy to find without competing with messaging.
+5. Add a reachable More destination for profile, app sharing, privacy/connection settings and secondary tools. Preserve the existing More content.
+6. Re-home the currently unreachable Home content as a compact overview within the appropriate existing screen or More hub; do not introduce a second competing home/chat landing screen.
+7. Keep Communities accessible from the Games/Communities area only if the labels are clear, or give it a clear standalone entry within a broader Explore/Communities section after checking user flow. Do not bury community messaging or confuse it with game-only features.
+
+Before implementing the navigation consolidation, map every existing click path and state transition, then move screens without changing their underlying callbacks, data stores, transport, permissions or feature logic. Add UI/navigation tests for every preserved destination and deep-link/return path. The current five-item bar should not be changed by a blind text replacement.
+
+This is a source inspection and product-structure recommendation, not an implemented navigation change. It is intentionally conservative: the immediate task is to make the existing product easier to understand while preserving the work already completed.
