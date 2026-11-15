@@ -15,6 +15,12 @@ class HyperTransferIdentityTest {
         val afterReconnect = HyperTransferIdentity.createTransferId("SENDER123456", "PEER12345678", item(), digest)
         assertEquals(first, afterReconnect)
         assertEquals(64, first.length)
+        // Golden value from the pre-extraction inline derivation. This guards
+        // compatibility with receiver checkpoints already stored on user phones.
+        assertEquals(
+            "e4f70e8122d0207d4983f6d3dbe50708eb52c04f6edb14940ed57727d6c0f15b",
+            first
+        )
     }
 
     @Test fun transferIdentityIsScopedToTheRecipient() {
