@@ -149,8 +149,10 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                         if (asset.kind == "VIDEO" || asset.kind == "PHOTO") Text("EDIT", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editingAsset = asset }.padding(7.dp))
                         Text("OPEN", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                             runCatching {
-                                val mime = context.contentResolver.getType(asset.uri) ?: "*/*"
-                                context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(asset.uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                                val localFile = if (asset.uri.scheme == "file") File(asset.uri.path.orEmpty()) else null
+                                val openUri = if (localFile != null) androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", localFile) else asset.uri
+                                val mime = context.contentResolver.getType(asset.uri) ?: if (asset.kind == "AUDIO") "audio/mp4" else "*/*"
+                                context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(openUri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                             }
                         }.padding(8.dp))
                         Text("×", color = Muted, fontSize = 18.sp, modifier = Modifier.clickable {
