@@ -26,7 +26,7 @@ internal object NeaRerPalette {
     val Midnight = Color(0xFF101A2B)
     val Panel = Color(0xFF1A2940)
     val RaisedPanel = Color(0xFF203858)
-    val AccentBlue = Color(0xFF2563EB)
+    val AccentBlue = Color(0xFF2868E8)
     val Gold = Color(0xFFFFD12D)
     val Mint = AccentBlue // Compatibility alias; NeaRer no longer uses mint as a brand accent
     val TextPrimary = Color(0xFFF6F8FC)
