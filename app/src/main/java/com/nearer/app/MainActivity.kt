@@ -117,10 +117,10 @@ import androidx.core.content.FileProvider
 // Original NeaRer palette: midnight, deep panel, mint, soft white and gold.
 internal val Midnight = Color(0xFF101A2B)
 internal val Panel = Color(0xFF1A2940)
-internal val Mint = Color(0xFF69E0C0)
+internal val Mint = Color(0xFF2868E8) // Compatibility token: royal blue
 internal val Muted = Color(0xFFA8B6C9)
 internal val White = Color(0xFFF6F8FC)
-internal val BrandBlue = Color(0xFF2563EB)
+internal val BrandBlue = Color(0xFF2868E8)
 internal val Gold = Color(0xFFFFD12D)
 
 class MainActivity : ComponentActivity() {
