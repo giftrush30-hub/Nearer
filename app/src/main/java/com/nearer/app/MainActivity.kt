@@ -3871,7 +3871,7 @@ private fun NeaRerHome(
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
     var shareSection by remember { mutableStateOf("Files") }
-    BackHandler(enabled = selectedTab == "Studio") { selectedTab = "More" }
+    BackHandler(enabled = selectedTab == "Studio" || selectedTab == "Academy") { selectedTab = "More" }
     var selectedConversationKey by remember { mutableStateOf<String?>(null) }
     var showRoyalLudo by remember { mutableStateOf(false) }
     BackHandler(enabled = showRoyalLudo) { showRoyalLudo = false }
@@ -4144,7 +4144,7 @@ private fun NeaRerHome(
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share" || selectedTab == "Share Hub" || selectedTab == "Studio") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 20.dp, vertical = 18.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share" || selectedTab == "Share Hub" || selectedTab == "Studio" || selectedTab == "Academy") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 20.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
             Row(
@@ -4683,6 +4683,12 @@ private fun NeaRerHome(
             if (selectedTab == "Studio") {
                 StudioWorkspaceScreen(onBack = { selectedTab = "More" })
             }
+            if (selectedTab == "Academy") {
+                AcademyWorkspaceScreen(
+                    onBack = { selectedTab = "More" },
+                    onOpenStudio = { selectedTab = "Studio" }
+                )
+            }
 
             if (selectedTab == "More") {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
@@ -4702,7 +4708,7 @@ private fun NeaRerHome(
                         Text("More ways to use NeaRer", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         listOf(
                             "Studio" to "Coming soon · create and share",
-                            "Academy" to "Coming soon · learn together",
+                            "Academy" to "Ready · learn and practise offline",
                             "Library" to "Coming soon · save useful resources",
                             "Movies" to "Coming soon · watch and discover",
                             "Business Center" to "Coming soon · tools for work",
@@ -4711,6 +4717,7 @@ private fun NeaRerHome(
                             Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Midnight).clickable {
                                 when (space.first) {
                                     "Studio" -> selectedTab = "Studio"
+                                    "Academy" -> selectedTab = "Academy"
                                     "File Hub" -> { selectedTab = "Share"; shareSection = "Hub" }
                                 }
                             }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -4718,7 +4725,7 @@ private fun NeaRerHome(
                                     Text(space.first, color = White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                     Text(space.second, color = Muted, fontSize = 11.sp)
                                 }
-                                Text(if (space.first == "File Hub") "OPEN" else "SOON", color = if (space.first == "File Hub") Mint else Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Text(if (space.first == "File Hub" || space.first == "Studio" || space.first == "Academy") "OPEN" else "SOON", color = if (space.first == "File Hub" || space.first == "Studio" || space.first == "Academy") Mint else Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
