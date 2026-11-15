@@ -42,6 +42,8 @@ internal class StudioVocalPolishProcessor(
     private var gateEnvelope = 0f
     private var delay = FloatArray(2)
     private var delayIndex = 0
+    private val inputScratch = FloatArray(2)
+    private val processedScratch = FloatArray(2)
     private var highPassCoefficient = 0f
     private var presenceCoefficient = 0f
     private var essCoefficient = 0f
@@ -76,11 +78,11 @@ internal class StudioVocalPolishProcessor(
             val left = inputBuffer.short / 32768f
             val right = if (inputChannels == 2) inputBuffer.short / 32768f else left
             var framePeak = 0f
-            val inputs = floatArrayOf(left, right)
-            val processed = FloatArray(2)
+            inputScratch[0] = left
+            inputScratch[1] = right
 
             for (channel in 0..1) {
-                val raw = inputs[channel]
+                val raw = inputScratch[channel]
                 val highPass = highPassCoefficient * (previousHighPass[channel] + raw - previousInput[channel])
                 previousInput[channel] = raw
                 previousHighPass[channel] = highPass
@@ -95,8 +97,8 @@ internal class StudioVocalPolishProcessor(
                 val essReduction = if (essLevel > 0.075f) {
                     (1f - profile.deEssAmount * ((essLevel - 0.075f) / 0.35f).coerceIn(0f, 1f))
                 } else 1f
-                processed[channel] = present - sibilance * (1f - essReduction)
-                framePeak = maxOf(framePeak, abs(processed[channel]))
+                processedScratch[channel] = present - sibilance * (1f - essReduction)
+                framePeak = maxOf(framePeak, abs(processedScratch[channel]))
             }
 
             val gateCoefficient = if (framePeak > gateEnvelope) gateAttack else gateRelease
@@ -116,7 +118,7 @@ internal class StudioVocalPolishProcessor(
             } else 1f
 
             for (channel in 0..1) {
-                val driven = processed[channel] * gateGain * compressorGain * profile.drive
+                val driven = processedScratch[channel] * gateGain * compressorGain * profile.drive
                 val saturated = tanh(driven.toDouble()).toFloat() / driveNorm
                 val delayPosition = delayIndex * 2 + channel
                 val delayed = delay[delayPosition]
