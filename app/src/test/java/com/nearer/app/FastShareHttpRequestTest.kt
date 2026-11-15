@@ -182,4 +182,19 @@ class FastShareHttpRequestTest {
         assertFalse(FastShareAccessKey.matches(key, key.uppercase(java.util.Locale.ROOT)))
     }
 
+    @Test fun encodedDuplicateAccessKeyNamesAreRejected() {
+        val key = "f".repeat(64)
+        val encodedDuplicate = FastShareHttpRequest.parse("GET /?key=$key&%6Bey=wrong HTTP/1.1")!!
+        val encodedOnly = FastShareHttpRequest.parse("GET /?%6Bey=$key HTTP/1.1")!!
+        assertFalse(encodedDuplicate.hasAccessKey(key))
+        assertTrue(encodedOnly.hasAccessKey(key))
+    }
+
+    @Test fun encodedDuplicateUploadNamesAreRejected() {
+        val duplicate = FastShareHttpRequest.parse("PUT /upload?name=one&%6Eame=two HTTP/1.1")!!
+        val malformedName = FastShareHttpRequest.parse("PUT /upload?%ZZ=one&name=two HTTP/1.1")!!
+        assertNull(duplicate.queryParameter("name"))
+        assertNull(malformedName.queryParameter("name"))
+    }
+
 }
