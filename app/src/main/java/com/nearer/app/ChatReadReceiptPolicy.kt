@@ -5,7 +5,7 @@ package com.nearer.app
  * originally sent to the authenticated peer that is reporting the read event.
  */
 internal object ChatReadReceiptPolicy {
-    const val MAX_MESSAGE_IDS = 80
+    const val MAX_MESSAGE_IDS = 40
     fun isValidPacket(version: Int, messageIds: List<String>, readAt: Long, @Suppress("UNUSED_PARAMETER") now: Long): Boolean =
         version == 1 &&
             readAt > 0L &&
