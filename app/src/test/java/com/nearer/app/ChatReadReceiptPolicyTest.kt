@@ -26,7 +26,7 @@ class ChatReadReceiptPolicyTest {
         assertFalse(ChatReadReceiptPolicy.isValidPacket(1, emptyList(), 1_000L, 1_000L))
         assertFalse(ChatReadReceiptPolicy.isValidPacket(1, listOf("id-1", "id-1"), 1_000L, 1_000L))
         assertFalse(ChatReadReceiptPolicy.isValidPacket(1, listOf(""), 1_000L, 1_000L))
-        assertFalse(ChatReadReceiptPolicy.isValidPacket(1, List(81) { "id-$it" }, 1_000L, 1_000L))
+        assertFalse(ChatReadReceiptPolicy.isValidPacket(1, List(41) { "id-$it" }, 1_000L, 1_000L))
         assertTrue(ChatReadReceiptPolicy.isValidPacket(1, listOf("id-1"), 600_001L, 1_000L)) // Phone clocks may differ offline.
         assertFalse(ChatReadReceiptPolicy.isValidPacket(1, listOf("id-1"), 0L, 1_000L))
     }
