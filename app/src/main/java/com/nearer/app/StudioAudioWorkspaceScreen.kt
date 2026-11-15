@@ -1,0 +1,263 @@
+package com.nearer.app
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.MediaRecorder
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.transformer.Composition
+import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.ExportException
+import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.Transformer
+import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.io.File
+
+@Composable
+internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, String) -> Unit) {
+    val context = LocalContext.current
+    var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
+    var recording by remember { mutableStateOf(false) }
+    var elapsedSeconds by remember { mutableStateOf(0) }
+    var message by remember { mutableStateOf("Record voice, narration, music ideas or sound effects. Everything stays on this phone.") }
+    var output by remember { mutableStateOf<File?>(null) }
+    var permissionGranted by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        permissionGranted = granted
+        if (!granted) message = "Microphone permission is needed to record. You can still import and edit existing audio."
+    }
+
+    LaunchedEffect(recording) {
+        while (recording) {
+            delay(1000)
+            elapsedSeconds++
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            if (recording) runCatching { recorder?.stop() }
+            runCatching { recorder?.release() }
+            recorder = null
+        }
+    }
+
+    Column(Modifier.fillMaxSize().background(Midnight).padding(20.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("‹  STUDIO", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 8.dp))
+            Text("VOICE RECORDER", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        }
+        Text("Capture the moment.", color = White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+        Text("Offline recording · AAC audio · Original take preserved", color = Mint, fontSize = 12.sp)
+        Surface(color = Panel, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().weight(1f)) {
+            Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(if (recording) "● RECORDING" else "READY TO RECORD", color = if (recording) Gold else Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                Text(String.format("%02d:%02d", elapsedSeconds / 60, elapsedSeconds % 60), color = White, fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
+                Text(if (recording) "Keep the phone steady and speak clearly." else "Use your phone microphone or a compatible connected mic.", color = Muted, fontSize = 12.sp)
+                Button(onClick = {
+                    if (!recording) {
+                        if (!permissionGranted) permission.launch(Manifest.permission.RECORD_AUDIO)
+                        else {
+                            val file = File(File(context.filesDir, "studio-recordings").apply { mkdirs() }, "NeaRer_Take_${System.currentTimeMillis()}.m4a")
+                            runCatching {
+                                @Suppress("DEPRECATION")
+                                val next = MediaRecorder()
+                                next.setAudioSource(MediaRecorder.AudioSource.MIC)
+                                next.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                                next.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                                next.setAudioEncodingBitRate(192000)
+                                next.setAudioSamplingRate(48000)
+                                next.setOutputFile(file.absolutePath)
+                                next.prepare()
+                                next.start()
+                                recorder = next
+                                output = file
+                                elapsedSeconds = 0
+                                recording = true
+                                message = "Recording in progress. Tap stop when finished."
+                            }.onFailure { error ->
+                                runCatching { recorder?.release() }
+                                recorder = null
+                                message = "Could not start recording: ${error.message ?: "microphone unavailable"}"
+                            }
+                        }
+                    } else {
+                        val file = output
+                        val active = recorder
+                        runCatching { active?.stop() }.onSuccess {
+                            runCatching { active?.release() }
+                            recorder = null
+                            recording = false
+                            if (file != null && file.exists() && file.length() > 1024L) {
+                                message = "Take saved safely. Open it in the audio editor to trim and export."
+                                onRecorded(Uri.fromFile(file), file.name)
+                            } else message = "The take was too short or empty. Please record again."
+                        }.onFailure {
+                            runCatching { active?.release() }
+                            recorder = null
+                            recording = false
+                            message = "Recording could not be finalised. Please try again."
+                        }
+                    }
+                }, modifier = Modifier.fillMaxWidth().padding(top = 24.dp), shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (recording) Gold else Mint, contentColor = Midnight)) {
+                    Text(if (recording) "STOP & SAVE TAKE" else "●  START RECORDING", fontWeight = FontWeight.ExtraBold)
+                }
+            }
+        }
+        Text(message, color = Muted, fontSize = 11.sp, lineHeight = 17.sp)
+        if (!recording) Button(onClick = onBack, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)) { Text("BACK TO STUDIO") }
+    }
+}
+
+@Composable
+internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val player = remember(context) { ExoPlayer.Builder(context).build() }
+    var durationMs by remember { mutableStateOf(0L) }
+    var startMs by remember { mutableStateOf(0L) }
+    var endMs by remember { mutableStateOf(0L) }
+    var exportBusy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("Preview your recording, set the cut points and export a new audio file.") }
+    var exportedFile by remember { mutableStateOf<File?>(null) }
+    var playhead by remember { mutableStateOf(0L) }
+
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY && player.duration > 0L) {
+                    durationMs = player.duration
+                    if (endMs == 0L || endMs > player.duration) endMs = player.duration
+                }
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) playhead = player.currentPosition }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener); player.release() }
+    }
+    LaunchedEffect(uri) {
+        player.setMediaItem(MediaItem.fromUri(uri))
+        player.prepare()
+        player.playWhenReady = false
+    }
+    LaunchedEffect(player, durationMs) {
+        while (true) {
+            if (player.isPlaying) playhead = player.currentPosition
+            delay(250)
+        }
+    }
+
+    val durationSeconds = (durationMs / 1000L).toFloat().coerceAtLeast(1f)
+    val startSeconds = (startMs / 1000L).toFloat().coerceIn(0f, durationSeconds)
+    val endSeconds = (endMs / 1000L).toFloat().coerceIn(startSeconds + 0.25f, durationSeconds.coerceAtLeast(startSeconds + 0.25f))
+
+    Column(Modifier.fillMaxSize().background(Midnight).padding(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("‹  STUDIO", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 8.dp))
+            Text("AUDIO EDIT", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        }
+        Text(title, color = White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2)
+        AndroidView(factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true } },
+            update = { it.player = player }, modifier = Modifier.fillMaxWidth().height(150.dp))
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("TRIM YOUR AUDIO", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("PLAYHEAD  ·  ${formatStudioTime(playhead)} / ${formatStudioTime(durationMs)}", color = Muted, fontSize = 10.sp)
+                Slider(value = playhead.toFloat().coerceIn(0f, durationMs.toFloat().coerceAtLeast(1f)), onValueChange = { player.seekTo(it.toLong()); playhead = it.toLong() }, valueRange = 0f..durationMs.toFloat().coerceAtLeast(1f), enabled = durationMs > 0L)
+                Text("IN  ·  ${formatStudioTime(startMs)}", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Slider(value = startSeconds, onValueChange = { startMs = (it * 1000f).toLong().coerceAtMost((endMs - 250L).coerceAtLeast(0L)); exportedFile = null },
+                    valueRange = 0f..(durationSeconds - 0.25f).coerceAtLeast(0f), enabled = durationMs > 0L)
+                Text("OUT  ·  ${formatStudioTime(endMs)}", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Slider(value = endSeconds, onValueChange = { endMs = (it * 1000f).toLong().coerceAtLeast(startMs + 250L).coerceAtMost(durationMs); exportedFile = null },
+                    valueRange = (startSeconds + 0.25f).coerceAtMost(durationSeconds)..durationSeconds, enabled = durationMs > 0L)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { startMs = player.currentPosition.coerceAtMost((endMs - 250L).coerceAtLeast(0L)) }, modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) { Text("SET IN") }
+                    Button(onClick = { endMs = player.currentPosition.coerceAtLeast(startMs + 250L).coerceAtMost(durationMs) }, modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("SET OUT") }
+                }
+            }
+        }
+        Button(onClick = {
+            if (durationMs <= 0L || endMs <= startMs) message = "Wait for the audio to load and choose a valid range."
+            else {
+                exportBusy = true
+                exportedFile = null
+                message = "Exporting a clean trimmed audio copy…"
+                val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Audio_${System.currentTimeMillis()}.m4a")
+                val clip = MediaItem.Builder().setUri(uri).setClippingConfiguration(
+                    MediaItem.ClippingConfiguration.Builder().setStartPositionMs(startMs).setEndPositionMs(endMs).build()
+                ).build()
+                val edited = EditedMediaItem.Builder(clip).build()
+                val transformer = Transformer.Builder(context).addListener(object : Transformer.Listener {
+                    override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                        exportBusy = false
+                        exportedFile = output
+                        message = "Audio export complete · ${output.length() / 1024L} KB saved on this device."
+                    }
+                    override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
+                        exportBusy = false
+                        message = "Audio export failed: ${exportException.message ?: "unsupported format or device encoder error"}"
+                    }
+                }).build()
+                runCatching { transformer.start(edited, output.absolutePath) }.onFailure {
+                    exportBusy = false
+                    message = "Could not start audio export: ${it.message ?: "unknown error"}"
+                }
+            }
+        }, enabled = !exportBusy && durationMs > 0L, modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight), shape = RoundedCornerShape(14.dp)) {
+            Text(if (exportBusy) "EXPORTING…" else "EXPORT TRIMMED AUDIO", fontWeight = FontWeight.Bold)
+        }
+        Text(message, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+        exportedFile?.let { file ->
+            Button(onClick = {
+                runCatching {
+                    val outUri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
+                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("audio/mp4")
+                        .putExtra(Intent.EXTRA_STREAM, outUri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share edited audio"))
+                }.onFailure { message = "Could not share audio: ${it.message}" }
+            }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)) {
+                Text("SHARE EDITED AUDIO")
+            }
+        }
+    }
+}
