@@ -25,6 +25,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +65,8 @@ internal fun PremiumChatsScreen(
     onDraftChange: (String) -> Unit,
     onSendMessage: (String, ChatMessage?) -> Unit,
     onMarkConversationRead: (String?) -> Unit,
+    readReceiptsEnabled: Boolean,
+    onReadReceiptsEnabledChange: (Boolean) -> Unit,
     onDeleteMessage: (String) -> Boolean,
     onEditMessage: (String, String) -> Boolean,
     onReactToMessage: (String, String) -> Unit,
@@ -89,7 +92,7 @@ internal fun PremiumChatsScreen(
         return
     }
 
-    LaunchedEffect(selectedMeshRecipientId, chatReady) {
+    LaunchedEffect(selectedMeshRecipientId, chatReady, messages.size) {
         if (chatReady || selectedMeshRecipientId != null) onMarkConversationRead(selectedMeshRecipientId)
     }
 
@@ -144,6 +147,13 @@ internal fun PremiumChatsScreen(
             Text("‹  All chats", color = NeaRerPalette.Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable(onClick = onBackToInbox).padding(vertical = 3.dp))
             Text("YOUR CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Read receipts", color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (readReceiptsEnabled) "People can see when you read their messages." else "Your read status stays private.", color = Muted, fontSize = 10.sp)
+                }
+                Switch(checked = readReceiptsEnabled, onCheckedChange = onReadReceiptsEnabledChange)
+            }
             Text("Chats", color = White, fontSize = 29.sp, fontWeight = FontWeight.ExtraBold)
             Text("Private conversations, closer than ever.", color = Muted, fontSize = 13.sp)
         }
