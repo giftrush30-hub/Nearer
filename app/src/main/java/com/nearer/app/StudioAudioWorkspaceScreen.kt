@@ -203,12 +203,12 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
         Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("TRIM YOUR AUDIO", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Text("PLAYHEAD  ·  ${formatStudioTime(playhead)} / ${formatStudioTime(durationMs)}", color = Muted, fontSize = 10.sp)
+                Text("PLAYHEAD  ·  ${formatStudioAudioTime(playhead)} / ${formatStudioAudioTime(durationMs)}", color = Muted, fontSize = 10.sp)
                 Slider(value = playhead.toFloat().coerceIn(0f, durationMs.toFloat().coerceAtLeast(1f)), onValueChange = { player.seekTo(it.toLong()); playhead = it.toLong() }, valueRange = 0f..durationMs.toFloat().coerceAtLeast(1f), enabled = durationMs > 0L)
-                Text("IN  ·  ${formatStudioTime(startMs)}", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("IN  ·  ${formatStudioAudioTime(startMs)}", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Slider(value = startSeconds, onValueChange = { startMs = (it * 1000f).toLong().coerceAtMost((endMs - 250L).coerceAtLeast(0L)); exportedFile = null },
                     valueRange = 0f..(durationSeconds - 0.25f).coerceAtLeast(0f), enabled = durationMs > 0L)
-                Text("OUT  ·  ${formatStudioTime(endMs)}", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("OUT  ·  ${formatStudioAudioTime(endMs)}", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Slider(value = endSeconds, onValueChange = { endMs = (it * 1000f).toLong().coerceAtLeast(startMs + 250L).coerceAtMost(durationMs); exportedFile = null },
                     valueRange = (startSeconds + 0.25f).coerceAtMost(durationSeconds)..durationSeconds, enabled = durationMs > 0L)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -263,4 +263,10 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
             }
         }
     }
+}
+
+
+private fun formatStudioAudioTime(milliseconds: Long): String {
+    val seconds = (milliseconds / 1000L).coerceAtLeast(0L)
+    return String.format("%d:%02d", seconds / 60L, seconds % 60L)
 }
