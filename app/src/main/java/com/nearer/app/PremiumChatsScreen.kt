@@ -249,7 +249,7 @@ internal fun PremiumChatsScreen(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Read receipts", color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    Text(if (readReceiptsEnabled) "People can see when you read their messages." else "Your read status stays private.", color = Muted, fontSize = 10.sp)
+                    Text(if (readReceiptsEnabled) "People can see when you read their messages." else "No new receipts will be sent; already queued receipts may still arrive.", color = Muted, fontSize = 10.sp)
                 }
                 Switch(checked = readReceiptsEnabled, onCheckedChange = onReadReceiptsEnabledChange)
             }
