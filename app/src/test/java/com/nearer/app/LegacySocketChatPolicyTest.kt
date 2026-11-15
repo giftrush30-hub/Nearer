@@ -11,4 +11,9 @@ class LegacySocketChatPolicyTest {
     @Test fun legacySocketCannotAuthenticateIncomingMessagesOrReceipts() {
         assertFalse(LegacySocketChatPolicy.mayAcceptSocketChatFrame())
     }
+
+    @Test fun legacySocketCannotSendOrAcceptCommunityAndGamePackets() {
+        assertFalse(LegacySocketChatPolicy.maySendCommunityOrGameOverSocket())
+        assertFalse(LegacySocketChatPolicy.mayAcceptCommunityOrGameSocketFrame())
+    }
 }
