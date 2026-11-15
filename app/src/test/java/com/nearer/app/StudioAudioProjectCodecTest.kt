@@ -12,6 +12,7 @@ class StudioAudioProjectCodecTest {
             durationMs = 125_000L,
             muted = true,
             gain = 0.72f,
+            pan = -0.35f,
             fadeInMs = 1_500L,
             fadeOutMs = 2_000L
         ))
@@ -25,6 +26,13 @@ class StudioAudioProjectCodecTest {
         assertEquals(1, restored.size)
         assertEquals(1f, restored.single().gain, 0f)
         assertEquals(0L, restored.single().durationMs)
+        assertEquals(0f, restored.single().pan, 0f)
+    }
+
+    @Test fun migratesVersionOneProjectsWithCentredPan() {
+        val raw = """{"version":1,"tracks":[{"uri":"content://audio/legacy","name":"Legacy","gain":0.8}]}"""
+        val restored = StudioAudioProjectCodec.decode(raw)
+        assertEquals(0f, restored.single().pan, 0f)
     }
 
     @Test fun ignoresUnknownProjectVersions() {
