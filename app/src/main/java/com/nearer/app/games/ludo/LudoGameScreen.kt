@@ -477,7 +477,7 @@ fun LudoGameScreen(
                             computerOpponents = true
                             doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = true))
                         }) {
-                        Text("VS COMPUTER", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 9.sp,
+                        Text("VS COMPUTER", color = if (computerOpponents) NeaRerPalette.Midnight else White, fontWeight = FontWeight.ExtraBold, fontSize = 9.sp,
                             modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp))
                     }
                     Surface(color = if (!computerOpponents) Mint else Panel, shape = RoundedCornerShape(11.dp),
@@ -486,7 +486,7 @@ fun LudoGameScreen(
                             computerOpponents = false
                             doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, playerCount, computerOpponents = false))
                         }) {
-                        Text("PASS & PLAY", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 9.sp,
+                        Text("PASS & PLAY", color = if (!computerOpponents) NeaRerPalette.Midnight else White, fontWeight = FontWeight.ExtraBold, fontSize = 9.sp,
                             modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp))
                     }
                 }
@@ -501,7 +501,7 @@ fun LudoGameScreen(
                             Surface(color = if (aiDifficulty == level) Mint else Panel, shape = RoundedCornerShape(10.dp),
                                 border = BorderStroke(1.dp, if (aiDifficulty == level) Gold else NeaRerPalette.Border),
                                 modifier = Modifier.clickable { aiDifficulty = level }) {
-                                Text(level.label, color = White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold,
+                                Text(level.label, color = if (aiDifficulty == level) NeaRerPalette.Midnight else White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp))
                             }
                         }
@@ -538,7 +538,7 @@ fun LudoGameScreen(
                     } else if (roomPeerName == null) {
                         Button(onClick = onInvitePeer, enabled = connectedPeerName != null,
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = White)) {
+                            colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = NeaRerPalette.Midnight)) {
                             Text(if (connectedPeerName != null) "INVITE $connectedPeerName" else "CONNECT A NEARBY PLAYER FIRST",
                                 fontWeight = FontWeight.Black, fontSize = 11.sp)
                         }
@@ -591,7 +591,7 @@ fun LudoGameScreen(
                                 doubleGame = LudoDoubleDiceState(LudoEngine.newGame(playerName, count, computerOpponents = computerOpponents))
                                 rolling = false
                             }) {
-                            Text(count.toString(), color = White, fontWeight = FontWeight.ExtraBold,
+                            Text(count.toString(), color = if (playerCount == count) NeaRerPalette.Midnight else White, fontWeight = FontWeight.ExtraBold,
                                 modifier = Modifier.padding(horizontal = 17.dp, vertical = 10.dp))
                         }
                     }
