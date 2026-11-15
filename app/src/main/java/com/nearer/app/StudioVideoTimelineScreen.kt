@@ -188,11 +188,11 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                     ).build()
                     EditedMediaItem.Builder(item).build()
                 }
-                val videoSequence = EditedMediaItemSequence.Builder(videoItems).build()
+                val videoSequence = EditedMediaItemSequence.withAudioAndVideoFrom(videoItems)
                 val sequences = mutableListOf(videoSequence)
                 if (backgroundAudio != null) {
                     val musicItem = EditedMediaItem.Builder(MediaItem.fromUri(backgroundAudio!!)).build()
-                    sequences.add(EditedMediaItemSequence.Builder(listOf(musicItem)).setIsLooping(true).build())
+                    sequences.add(EditedMediaItemSequence.withAudioFrom(listOf(musicItem)).buildUpon().setIsLooping(true).build())
                 }
                 val composition = Composition.Builder(sequences).build()
                 val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Film_${System.currentTimeMillis()}.mp4")
