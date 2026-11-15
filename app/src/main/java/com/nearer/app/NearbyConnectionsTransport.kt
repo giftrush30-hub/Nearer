@@ -2398,34 +2398,6 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
-    fun sendToPeerIds(body: String, targetPeerIds: Set<String>): Boolean {
-        if (body.isBlank() || targetPeerIds.isEmpty()) return false
-        val targets = synchronized(activeEndpoints) {
-            activeEndpoints.filter { endpoint ->
-                authenticatedEndpoints.contains(endpoint) &&
-                    synchronized(names) { stableIds[endpoint]?.let { it in targetPeerIds } == true }
-            }
-        }
-        if (targets.isEmpty()) return false
-        val messageId = UUID.randomUUID().toString()
-        val envelope = JSONObject().put("kind", "message").put("version", 1)
-            .put("id", messageId).put("body", body).put("ttl", 0).put("hops", 0)
-            .put("origin", localName).put("createdAt", System.currentTimeMillis())
-            .toString().toByteArray(Charsets.UTF_8)
-        targets.forEach { endpoint ->
-            val peerId = synchronized(names) { stableIds[endpoint].orEmpty() }
-            val session = messageSessions[endpoint] ?: return@forEach
-            try {
-                val packet = NearbyMessageCrypto.encrypt(session, localStableId, peerId, messageId, envelope)
-                client.sendPayload(endpoint, Payload.fromBytes(packet))
-                    .addOnFailureListener { listener.onStatus("A Ludo update could not be sent to one verified player.") }
-            } catch (_: Exception) {
-                listener.onStatus("A Ludo update could not be encrypted for one verified player.")
-            }
-        }
-        return true
-    }
-
     fun sendToNames(body: String, targetNames: Set<String>): Boolean {
         if (body.isBlank() || targetNames.isEmpty()) return false
         val targets = synchronized(activeEndpoints) {
