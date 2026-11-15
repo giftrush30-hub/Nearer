@@ -1,6 +1,6 @@
 package com.nearer.app
 
-/** Pure sample-frame envelope used by both the offline mixer and its unit tests. */
+/** Pure sample-frame envelope used by the offline mixer and its unit tests. */
 internal fun studioAudioGainAtFrame(
     frame: Long,
     totalFrames: Long,
@@ -24,4 +24,10 @@ internal fun studioAudioGainAtFrame(
         }
     }
     return envelope
+}
+
+/** Stereo balance: the opposite channel is attenuated while the selected side stays full. */
+internal fun studioAudioPanFactors(pan: Float): Pair<Float, Float> {
+    val balanced = pan.coerceIn(-1f, 1f)
+    return if (balanced < 0f) 1f to (1f + balanced) else (1f - balanced) to 1f
 }
