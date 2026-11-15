@@ -38,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -189,11 +188,11 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                     ).build()
                     EditedMediaItem.Builder(item).build()
                 }
-                val videoSequence = EditedMediaItemSequence.Builder(videoItems).experimentalSetForceAudioTrack(true).experimentalSetForceVideoTrack(true).build()
+                val videoSequence = EditedMediaItemSequence.Builder(videoItems).build()
                 val sequences = mutableListOf(videoSequence)
                 if (backgroundAudio != null) {
                     val musicItem = EditedMediaItem.Builder(MediaItem.fromUri(backgroundAudio!!)).build()
-                    sequences.add(EditedMediaItemSequence.Builder(listOf(musicItem)).experimentalSetForceAudioTrack(true).experimentalSetForceVideoTrack(false).setIsLooping(true).build())
+                    sequences.add(EditedMediaItemSequence.Builder(listOf(musicItem)).setIsLooping(true).build())
                 }
                 val composition = Composition.Builder(sequences).build()
                 val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Film_${System.currentTimeMillis()}.mp4")
