@@ -3808,13 +3808,14 @@ private fun NeaRerHome(
     }
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
+    var shareSection by remember { mutableStateOf("Files") }
     var selectedConversationKey by remember { mutableStateOf<String?>(null) }
     var showRoyalLudo by remember { mutableStateOf(false) }
     BackHandler(enabled = showRoyalLudo) { showRoyalLudo = false }
     val chatAttachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) onSendFiles(uris)
     }
-    LaunchedEffect(externalShareUris) { if (externalShareUris.isNotEmpty()) selectedTab = "Share" }
+    LaunchedEffect(externalShareUris) { if (externalShareUris.isNotEmpty()) { selectedTab = "Share"; shareSection = "Files" } }
     var showWifiDirectFallback by remember { mutableStateOf(false) }
     var nameDraft by remember(displayName) { mutableStateOf(displayName) }
     var showProfileEditor by remember { mutableStateOf(false) }
@@ -4315,7 +4316,25 @@ private fun NeaRerHome(
             }
 
             if (selectedTab == "Share") {
-                FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, externalShareUris = externalShareUris, onExternalShareConsumed = onExternalShareConsumed, modifier = Modifier.weight(1f))
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Panel) {
+                    Row(modifier = Modifier.padding(5.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Files" to "Phone files", "Hub" to "Share Hub").forEach { option ->
+                            val active = shareSection == option.first
+                            Surface(
+                                modifier = Modifier.weight(1f).clip(RoundedCornerShape(13.dp)).clickable { shareSection = option.first },
+                                color = if (active) Mint.copy(alpha = 0.18f) else Panel,
+                                shape = RoundedCornerShape(13.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(vertical = 11.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(option.second, color = if (active) White else Muted, fontSize = 12.sp, fontWeight = if (active) FontWeight.Bold else FontWeight.Medium)
+                                }
+                            }
+                        }
+                    }
+                }
+                if (shareSection == "Files") {
+                    FileCentreScreen(connected = chatReady || usingNearbyConnections, onSendFiles = onSendFiles, externalShareUris = externalShareUris, onExternalShareConsumed = onExternalShareConsumed, modifier = Modifier.weight(1f))
+                }
             }
 
             if (selectedTab == "Nearby") {
@@ -4420,7 +4439,7 @@ private fun NeaRerHome(
                 )
             }
 
-            if (selectedTab == "Share Hub") {
+            if (selectedTab == "Share" && shareSection == "Hub") {
                 NeaRerShareHub(
                     apps = shareableApps,
                     appsLoading = appsLoading,
@@ -4599,6 +4618,39 @@ private fun NeaRerHome(
             }
 
             if (selectedTab == "More") {
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
+                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("YOUR NEARER OVERVIEW", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("One place to stay connected, create and share.", color = White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                        Text("Messaging stays at the heart of NeaRer. These extra spaces will grow around it without changing your chats.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { selectedTab = "Chats" }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("Open chats") }
+                            Button(onClick = { selectedTab = "People"; onFindNearby() }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)) { Text("Find people") }
+                        }
+                    }
+                }
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
+                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("NEARER SPACES", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("More ways to use NeaRer", color = White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        listOf(
+                            "Studio" to "Coming soon · create and share",
+                            "Academy" to "Coming soon · learn together",
+                            "Library" to "Coming soon · save useful resources",
+                            "Movies" to "Coming soon · watch and discover",
+                            "Business Center" to "Coming soon · tools for work",
+                            "File Hub" to "Ready · open sharing tools"
+                        ).forEach { space ->
+                            Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Midnight).clickable { if (space.first == "File Hub") { selectedTab = "Share"; shareSection = "Hub" } }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(space.first, color = White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(space.second, color = Muted, fontSize = 11.sp)
+                                }
+                                Text(if (space.first == "File Hub") "OPEN" else "SOON", color = if (space.first == "File Hub") Mint else Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
                 val profilePhoto = remember(profilePhotoPath) {
                     profilePhotoPath?.let { path -> BitmapFactory.decodeFile(path)?.asImageBitmap() }
                 }
@@ -4710,12 +4762,12 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Chats" to "▤", "People" to "♙", "Share" to "⇧", "Share Hub" to "⌁", "Games" to "♟").forEach { item ->
+                    listOf("Chats" to "▤", "People" to "♙", "Share" to "⇧", "Games" to "♟", "More" to "⋯").forEach { item ->
                         val selected = selectedTab == item.first
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
                             shape = RoundedCornerShape(13.dp),
-                            color = if (selected) BrandBlue.copy(alpha = 0.42f) else Panel
+                            color = if (selected) Mint.copy(alpha = 0.18f) else Panel
                         ) {
                             Column(
                                 modifier = Modifier.clickable { selectedTab = item.first }.padding(vertical = 8.dp),
