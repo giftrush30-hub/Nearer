@@ -6,12 +6,9 @@ package com.nearer.app
  */
 internal object ChatReadReceiptPolicy {
     const val MAX_MESSAGE_IDS = 80
-    private const val MAX_FUTURE_SKEW_MS = 5 * 60 * 1000L
-
-    fun isValidPacket(version: Int, messageIds: List<String>, readAt: Long, now: Long): Boolean =
+    fun isValidPacket(version: Int, messageIds: List<String>, readAt: Long, @Suppress("UNUSED_PARAMETER") now: Long): Boolean =
         version == 1 &&
             readAt > 0L &&
-            readAt <= now + MAX_FUTURE_SKEW_MS &&
             messageIds.isNotEmpty() &&
             messageIds.size <= MAX_MESSAGE_IDS &&
             messageIds.all { it.isNotBlank() && it.length <= 80 } &&
