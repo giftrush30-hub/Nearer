@@ -4822,20 +4822,20 @@ private fun NeaRerHome(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Chats" to "▤", "People" to "♙", "Share" to "⇧", "Games" to "♟", "More" to "⋯").forEach { item ->
-                        val selected = selectedTab == item.first
+                    NeaRerNavigation.destinations.forEach { item ->
+                        val selected = selectedTab == item.label
                         Surface(
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
                             shape = RoundedCornerShape(13.dp),
                             color = if (selected) Mint.copy(alpha = 0.18f) else Panel
                         ) {
                             Column(
-                                modifier = Modifier.clickable { selectedTab = item.first }.padding(vertical = 8.dp),
+                                modifier = Modifier.clickable { selectedTab = item.label }.padding(vertical = 8.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
-                                Text(item.second, color = if (selected) Gold else Muted, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                                Text(item.first, color = if (selected) White else Muted, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                Text(item.glyph, color = if (selected) Gold else Muted, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                                Text(item.label, color = if (selected) White else Muted, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
                                 Surface(
                                     modifier = Modifier.width(16.dp).height(2.dp),
                                     shape = RoundedCornerShape(2.dp),
