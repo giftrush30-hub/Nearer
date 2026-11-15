@@ -37,9 +37,9 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val LudoGold = Color(0xFFFFD15A)
-private val LudoNavy = Color(0xFF0B1728)
-private val LudoSurface = Color(0xFF14263B)
+private val LudoGold = NeaRerPalette.Gold
+private val LudoNavy = NeaRerPalette.Midnight
+private val LudoSurface = NeaRerPalette.Panel
 private val LudoIvory = Color(0xFFF1EBDD)
 private val LudoTrackLine = Color(0xFFB9AD96)
 private fun LudoColor.paint(): Color = when (this) {
@@ -227,16 +227,16 @@ fun LudoGamePanel(
                 Column {
                     Text("NEARER • GAME ZONE", color = LudoGold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp)
                     Text("LUDO CLASSIC", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black)
-                    Text(if (networkMode) "NEARBY MULTIPLAYER • ${game.players.size}/4" else if (localHumanPlayers == 1) "SOLO • THREE COMPUTER OPPONENTS" else "LOCAL PASS-AND-PLAY • " + localHumanPlayers + " PLAYERS", color = Color(0xFFAFC1D4), fontSize = 10.sp)
+                    Text(if (networkMode) "NEARBY MULTIPLAYER • ${game.players.size}/4" else if (localHumanPlayers == 1) "SOLO • THREE COMPUTER OPPONENTS" else "LOCAL PASS-AND-PLAY • " + localHumanPlayers + " PLAYERS", color = NeaRerPalette.TextMuted, fontSize = 10.sp)
                 }
-                Surface(color = Color(0xFF234463), shape = RoundedCornerShape(30.dp)) {
-                    Text(if (networkMode) "BLUETOOTH / WI-FI" else if (localHumanPlayers == 1) "OFFLINE VS BOTS" else "ONE PHONE • LOCAL", color = Color(0xFF9FE6CD), fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp))
+                Surface(color = NeaRerPalette.RaisedPanel, shape = RoundedCornerShape(30.dp)) {
+                    Text(if (networkMode) "BLUETOOTH / WI-FI" else if (localHumanPlayers == 1) "OFFLINE VS BOTS" else "ONE PHONE • LOCAL", color = NeaRerPalette.Mint, fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp))
                 }
             }
 
             if (networkMode && networkMatch!!.isHost && game.players.size < 4 &&
                 game.turnNumber == 1L && game.diceValue == null && !game.isFinished) {
-                Surface(color = Color(0xFF244B43), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                Surface(color = NeaRerPalette.RaisedPanel, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Column(Modifier.weight(1f)) {
                             Text("NEARBY TABLE • ${game.players.size}/4 PLAYERS", color = LudoGold, fontWeight = FontWeight.Black, fontSize = 10.sp)
@@ -250,12 +250,12 @@ fun LudoGamePanel(
             }
 
             if (incomingInvite != null && networkMatch == null) {
-                Surface(color = Color(0xFF244B43), shape = RoundedCornerShape(15.dp), modifier = Modifier.fillMaxWidth()) {
+                Surface(color = NeaRerPalette.RaisedPanel, shape = RoundedCornerShape(15.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("${incomingInvite.sender} invited you to a Ludo match.", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = onAcceptInvite, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = LudoGold, contentColor = LudoNavy)) { Text("ACCEPT") }
-                            Button(onClick = onRejectInvite, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF38536A))) { Text("DECLINE") }
+                            Button(onClick = onRejectInvite, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.Border)) { Text("DECLINE") }
                         }
                     }
                 }
@@ -283,7 +283,7 @@ fun LudoGamePanel(
                         networkActionPending -> "Sending your move securely to the other phone…"
                         networkMode && !myTurn -> "Waiting for ${current.name} to play…"
                         else -> message
-                    }, color = Color(0xFFD2DFEA), fontSize = 10.sp, lineHeight = 14.sp)
+                    }, color = NeaRerPalette.TextPrimary, fontSize = 10.sp, lineHeight = 14.sp)
                 }
                 DiceFace(value = game.diceValue ?: if (rolling) rollingFace else 0, rotation = diceRotation)
             }
@@ -311,7 +311,7 @@ fun LudoGamePanel(
                     Text(if (game.consecutiveSixes >= 3) "Three sixes in a row — your turn ends." else "No legal move for this roll.", color = LudoGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Button(onClick = {
                         if (networkMode) requestNetworkAction("pass", -1) else localGame = LudoEngine.passTurn(localGame)
-                    }, enabled = !networkActionPending, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF31516F))) { Text("CONTINUE") }
+                    }, enabled = !networkActionPending, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.RaisedPanel)) { Text("CONTINUE") }
                 } else {
                     Text("Tap one of the glowing tokens on the board to move it.", color = LudoGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
@@ -320,7 +320,7 @@ fun LudoGamePanel(
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
                 game.players.forEach { player ->
                     val active = player.color == current.color && !game.isFinished
-                    Surface(color = if (active) Color(0xFF294967) else Color(0xFF1A3048), shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f)) {
+                    Surface(color = if (active) NeaRerPalette.RaisedPanel else NeaRerPalette.Panel, shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f)) {
                         Column(Modifier.padding(vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                                 if (player.color == (networkMatch?.localColor ?: LudoColor.RED)) {
@@ -330,7 +330,7 @@ fun LudoGamePanel(
                                 }
                                 Text(player.name, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
-                            Text("${player.finishedTokens}/4 HOME", color = if (player.finishedTokens == 4) LudoGold else Color(0xFFAFC1D4), fontSize = 8.sp)
+                            Text("${player.finishedTokens}/4 HOME", color = if (player.finishedTokens == 4) LudoGold else NeaRerPalette.TextMuted, fontSize = 8.sp)
                         }
                     }
                 }
@@ -348,7 +348,7 @@ fun LudoGamePanel(
                             },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (localHumanPlayers == count) LudoGold else Color(0xFF294967),
+                                containerColor = if (localHumanPlayers == count) LudoGold else NeaRerPalette.RaisedPanel,
                                 contentColor = if (localHumanPlayers == count) LudoNavy else Color.White
                             ), shape = RoundedCornerShape(11.dp)
                         ) {
@@ -362,7 +362,7 @@ fun LudoGamePanel(
                         LudoDifficulty.entries.forEach { level ->
                             Button(onClick = { difficulty = level }, modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (difficulty == level) LudoGold else Color(0xFF294967),
+                                    containerColor = if (difficulty == level) LudoGold else NeaRerPalette.RaisedPanel,
                                     contentColor = if (difficulty == level) LudoNavy else Color.White
                                 ), shape = RoundedCornerShape(11.dp)) {
                                 Text(level.name, fontSize = 9.sp, fontWeight = FontWeight.Black)
@@ -370,7 +370,7 @@ fun LudoGamePanel(
                         }
                     }
                 } else {
-                    Text("Pass the phone to the next player after each turn. No internet or second phone is needed.", color = Color(0xFFAFC1D4), fontSize = 9.sp)
+                    Text("Pass the phone to the next player after each turn. No internet or second phone is needed.", color = NeaRerPalette.TextMuted, fontSize = 9.sp)
                 }
             }
 
@@ -379,7 +379,7 @@ fun LudoGamePanel(
                 LudoMoveSpeed.entries.forEach { speed ->
                     Button(onClick = { movementSpeed = speed }, modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (movementSpeed == speed) LudoGold else Color(0xFF294967),
+                            containerColor = if (movementSpeed == speed) LudoGold else NeaRerPalette.RaisedPanel,
                             contentColor = if (movementSpeed == speed) LudoNavy else Color.White
                         ), shape = RoundedCornerShape(11.dp)) {
                         Text(speed.name, fontSize = 9.sp, fontWeight = FontWeight.Black)
@@ -389,16 +389,16 @@ fun LudoGamePanel(
 
             if (networkMode) {
                 Text("MATCH CHAT", color = LudoGold, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                Column(Modifier.fillMaxWidth().height(70.dp).background(Color(0xFF142A40), RoundedCornerShape(12.dp)).padding(8.dp)) {
+                Column(Modifier.fillMaxWidth().height(70.dp).background(NeaRerPalette.Panel, RoundedCornerShape(12.dp)).padding(8.dp)) {
                     gameChat.takeLast(8).forEach { Text(it, color = Color.White, fontSize = 10.sp) }
-                    if (gameChat.isEmpty()) Text("Say hello while you play.", color = Color(0xFF91A9BE), fontSize = 10.sp)
+                    if (gameChat.isEmpty()) Text("Say hello while you play.", color = NeaRerPalette.TextMuted, fontSize = 10.sp)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     androidx.compose.material3.OutlinedTextField(gameText, { gameText = it.take(300) }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Message your opponent") })
                     Button(onClick = { onGameChat(gameText); gameText = "" }, enabled = gameText.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = LudoGold, contentColor = LudoNavy)) { Text("SEND") }
                 }
                 if (game.isFinished) {
-                    Surface(color = Color(0xFF284C45), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                    Surface(color = NeaRerPalette.RaisedPanel, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("THE MATCH IS COMPLETE", color = LudoGold, fontWeight = FontWeight.Black, fontSize = 12.sp)
                             Text("Celebrate the winner, then challenge each other again.", color = Color.White, fontSize = 10.sp)
@@ -414,17 +414,17 @@ fun LudoGamePanel(
                     Button(onClick = { resetLocalGame() }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = LudoGold, contentColor = LudoNavy)) { Text("PLAY AGAIN", fontWeight = FontWeight.Black) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(onClick = { resetLocalGame() }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF31516F))) {
+                    Button(onClick = { resetLocalGame() }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp), colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.RaisedPanel)) {
                         Text("NEW GAME", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                     Button(onClick = onInviteNearby, enabled = nearbyConnected && incomingInvite == null, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF244B43))) {
-                        Text(if (nearbyConnected) "INVITE NEARBY" else "CONNECT FIRST", color = Color(0xFF9FE6CD), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.RaisedPanel)) {
+                        Text(if (nearbyConnected) "INVITE NEARBY" else "CONNECT FIRST", color = NeaRerPalette.Mint, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                     }
                 }
-                if (!nearbyConnected) Text("Connect to another NeaRer phone above to invite them to a private no-data match.", color = Color(0xFF91A9BE), fontSize = 9.sp)
+                if (!nearbyConnected) Text("Connect to another NeaRer phone above to invite them to a private no-data match.", color = NeaRerPalette.TextMuted, fontSize = 9.sp)
             }
-            Text("CLASSIC RULES  •  SIX TO EXIT  •  SAFE STARS  •  CAPTURES  •  EXACT HOME FINISH", color = Color(0xFF8FA7BD), fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = .35.sp)
+            Text("CLASSIC RULES  •  SIX TO EXIT  •  SAFE STARS  •  CAPTURES  •  EXACT HOME FINISH", color = NeaRerPalette.TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = .35.sp)
         }
     }
 }
@@ -434,7 +434,7 @@ private fun DiceFace(value: Int, rotation: Float) {
     Canvas(Modifier.size(58.dp)) {
         rotate(rotation) {
             val corner = androidx.compose.ui.geometry.CornerRadius(size.width * .2f)
-            drawRoundRect(Color(0xFF050D18).copy(alpha = .58f), topLeft = Offset(size.width * .04f, size.height * .07f), size = Size(size.width * .94f, size.height * .94f), cornerRadius = corner)
+            drawRoundRect(NeaRerPalette.Midnight.copy(alpha = .58f), topLeft = Offset(size.width * .04f, size.height * .07f), size = Size(size.width * .94f, size.height * .94f), cornerRadius = corner)
             drawRoundRect(Brush.linearGradient(listOf(Color(0xFFFFFDF6), Color(0xFFE2D8C5))), cornerRadius = corner)
             drawRoundRect(LudoGold.copy(alpha = .9f), cornerRadius = corner, style = Stroke(size.width * .045f))
             drawRoundRect(Color(0xFF9A8C72), topLeft = Offset(size.width * .035f, size.height * .035f), size = Size(size.width * .93f, size.height * .93f), cornerRadius = corner, style = Stroke(size.width * .012f))
@@ -476,11 +476,11 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, stepDurationMs
         val unit = size.width / 15f
         val palette = LudoColor.entries.associateWith { it.paint() }
         val boardCorner = androidx.compose.ui.geometry.CornerRadius(unit * .34f)
-        drawRoundRect(Color(0xFF050D18).copy(alpha = .72f), topLeft = Offset(0f, unit * .08f), size = Size(size.width, size.height), cornerRadius = boardCorner)
-        drawRoundRect(Brush.linearGradient(listOf(Color(0xFF203A55), Color(0xFF0B1728))), cornerRadius = boardCorner)
+        drawRoundRect(NeaRerPalette.Midnight.copy(alpha = .72f), topLeft = Offset(0f, unit * .08f), size = Size(size.width, size.height), cornerRadius = boardCorner)
+        drawRoundRect(Brush.linearGradient(listOf(NeaRerPalette.RaisedPanel, Color(0xFF0B1728))), cornerRadius = boardCorner)
         drawRoundRect(LudoGold.copy(alpha = .9f), topLeft = Offset(unit * .07f, unit * .07f), size = Size(size.width - unit * .14f, size.height - unit * .14f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(unit * .3f), style = Stroke(unit * .055f))
-        drawRoundRect(Color(0xFF071321), Offset(unit * .22f, unit * .22f), Size(unit * 14.56f, unit * 14.56f), androidx.compose.ui.geometry.CornerRadius(unit * .18f))
-        drawRoundRect(Brush.linearGradient(listOf(Color(0xFF1A2E44), Color(0xFF101F32))), Offset(unit * .3f, unit * .3f), Size(unit * 14.4f, unit * 14.4f), androidx.compose.ui.geometry.CornerRadius(unit * .12f))
+        drawRoundRect(NeaRerPalette.Midnight, Offset(unit * .22f, unit * .22f), Size(unit * 14.56f, unit * 14.56f), androidx.compose.ui.geometry.CornerRadius(unit * .18f))
+        drawRoundRect(Brush.linearGradient(listOf(NeaRerPalette.Panel, NeaRerPalette.Midnight)), Offset(unit * .3f, unit * .3f), Size(unit * 14.4f, unit * 14.4f), androidx.compose.ui.geometry.CornerRadius(unit * .12f))
 
         // Four raised home quarters.
         val quarters = listOf(
@@ -492,7 +492,7 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, stepDurationMs
             drawRoundRect(Color.Black.copy(alpha = .34f), Offset((x + .12f) * unit, (y + .2f) * unit), Size(5.76f * unit, 5.76f * unit), androidx.compose.ui.geometry.CornerRadius(unit * .45f))
             drawRoundRect(Brush.linearGradient(listOf(jewel, jewel.copy(alpha = .72f))), Offset((x + .12f) * unit, (y + .12f) * unit), Size(5.76f * unit, 5.76f), androidx.compose.ui.geometry.CornerRadius(unit * .45f))
             drawRoundRect(LudoGold.copy(alpha = .78f), Offset((x + .12f) * unit, (y + .12f) * unit), Size(5.76f * unit, 5.76f), androidx.compose.ui.geometry.CornerRadius(unit * .45f), style = Stroke(unit * .045f))
-            drawRoundRect(Color(0xFF102238), Offset((x + .9f) * unit, (y + .9f) * unit), Size(4.2f * unit, 4.2f * unit), androidx.compose.ui.geometry.CornerRadius(unit * .35f))
+            drawRoundRect(NeaRerPalette.Midnight, Offset((x + .9f) * unit, (y + .9f) * unit), Size(4.2f * unit, 4.2f * unit), androidx.compose.ui.geometry.CornerRadius(unit * .35f))
             drawRoundRect(Brush.linearGradient(listOf(LudoIvory, Color(0xFFDCD0B9))), Offset((x + 1.05f) * unit, (y + 1.05f) * unit), Size(3.9f * unit, 3.9f), androidx.compose.ui.geometry.CornerRadius(unit * .3f))
             drawRoundRect(Color(0xFF9F9279), Offset((x + 1.05f) * unit, (y + 1.05f) * unit), Size(3.9f * unit, 3.9f), androidx.compose.ui.geometry.CornerRadius(unit * .3f), style = Stroke(unit * .035f))
         }
@@ -510,7 +510,7 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, stepDurationMs
             val cellTopLeft = Offset(x * unit + unit * .035f, y * unit + unit * .035f)
             val cellSize = Size(unit * .93f, unit * .93f)
             val cellCorner = androidx.compose.ui.geometry.CornerRadius(unit * .12f)
-            drawRoundRect(Color(0xFF06111E).copy(alpha = .5f), Offset(cellTopLeft.x, cellTopLeft.y + unit * .035f), cellSize, cellCorner)
+            drawRoundRect(NeaRerPalette.Midnight.copy(alpha = .5f), Offset(cellTopLeft.x, cellTopLeft.y + unit * .035f), cellSize, cellCorner)
             drawRoundRect(fill, cellTopLeft, cellSize, cellCorner)
             drawRoundRect(if (color == null) LudoTrackLine else Color.White.copy(alpha = .48f), cellTopLeft, cellSize, cellCorner, style = Stroke(unit * .028f))
             if (index in setOf(0, 13, 26, 39)) {
@@ -595,7 +595,7 @@ private fun LudoBoard(game: LudoGameState, legalMoves: List<Int>, stepDurationMs
                     drawCircle(LudoGold, unit * .48f, stackedPoint, style = Stroke(unit * .07f))
                 }
                 drawCircle(Color(0x99030A12), unit * .37f, stackedPoint + Offset(unit * .045f, unit * .095f))
-                drawCircle(Color(0xFF081525), unit * .34f, stackedPoint + Offset(0f, unit * .025f))
+                drawCircle(NeaRerPalette.Midnight, unit * .34f, stackedPoint + Offset(0f, unit * .025f))
                 drawCircle(Brush.linearGradient(listOf(player.color.paint(), player.color.paint().copy(alpha = .68f))), unit * .31f, stackedPoint)
                 drawCircle(LudoGold.copy(alpha = .95f), unit * .245f, stackedPoint, style = Stroke(unit * .025f))
                 drawCircle(Color.White.copy(alpha = .9f), unit * .075f, stackedPoint + Offset(-unit * .09f, -unit * .1f))
