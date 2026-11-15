@@ -1891,11 +1891,8 @@ class MainActivity : ComponentActivity() {
             .put("deletedAt", now)
             .toString()
         val eventId = UUID.randomUUID().toString()
-        val recipient = meshRecipients[peerId]
-        var sent = recipient != null && nearbyTransport?.sendMeshMessage(peerId, packet, eventId) == true
-        if (!sent && peerId == hybridConnectedStableId && !hybridConnectedEndpoint.isNullOrBlank()) {
-            sent = nearbyTransport?.send(packet, eventId, hybridConnectedEndpoint!!) == true
-        }
+        // Queue to the pinned identity, even if the peer is offline now.
+        val sent = nearbyTransport?.sendDurableToPeerIds(packet, setOf(peerId)) == true
         if (!sent) {
             chatMessages.clear()
             chatMessages.addAll(previousMessages)
@@ -2050,11 +2047,9 @@ class MainActivity : ComponentActivity() {
                 .put("readAt", now)
                 .toString()
             val eventId = UUID.randomUUID().toString()
-            val recipient = meshRecipients[peerId]
-            var queued = recipient != null && nearbyTransport?.sendMeshMessage(peerId, packet, eventId) == true
-            if (!queued && peerId == hybridConnectedStableId && !hybridConnectedEndpoint.isNullOrBlank()) {
-                queued = nearbyTransport?.send(packet, eventId, hybridConnectedEndpoint!!) == true
-            }
+            // The durable outbox is keyed by the pinned stable identity, so a
+            // receipt can wait safely when the peer is temporarily offline.
+            val queued = nearbyTransport?.sendDurableToPeerIds(packet, setOf(peerId)) == true
             if (!queued) {
                 chatNotice = "Your read state is saved. NeaRer will try the receipt again when this person reconnects."
                 return
