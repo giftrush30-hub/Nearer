@@ -1,5 +1,6 @@
 package com.nearer.app
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -272,7 +273,17 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                                     append("\nShared via NeaRer Business")
                                 }
                                 runCatching {
-                                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, shareText), "Share business listing"))
+                                    val photo = draft.imageUri.takeIf { it.isNotBlank() }?.let(Uri::parse)
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = if (photo != null) "image/*" else "text/plain"
+                                        putExtra(Intent.EXTRA_TEXT, shareText)
+                                        if (photo != null) {
+                                            putExtra(Intent.EXTRA_STREAM, photo)
+                                            clipData = ClipData.newUri(context.contentResolver, draft.title, photo)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share business listing"))
                                 }
                             }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                                 Text("Share listing", fontWeight = FontWeight.Bold)
