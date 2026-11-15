@@ -71,9 +71,14 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
     val player = remember(context) { ExoPlayer.Builder(context).build() }
 
     DisposableEffect(player) { onDispose { player.release() } }
-    LaunchedEffect(clips.map { it.uri }) {
+    LaunchedEffect(clips.toList()) {
         if (clips.isNotEmpty()) {
-            player.setMediaItems(clips.map { MediaItem.fromUri(it.uri) })
+            val previewItems = clips.map { clip ->
+                MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
+                    MediaItem.ClippingConfiguration.Builder().setStartPositionMs(clip.inMs).setEndPositionMs(clip.outMs).build()
+                ).build()
+            }
+            player.setMediaItems(previewItems)
             player.prepare()
             player.playWhenReady = false
         } else player.clearMediaItems()
