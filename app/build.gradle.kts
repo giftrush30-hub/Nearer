@@ -48,6 +48,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("com.google.android.gms:play-services-nearby:19.5.1")
     implementation("com.google.zxing:core:3.5.3")
+    // Media3 powers reliable local playback in NeaRer Movies.
+    implementation("androidx.media3:media3-exoplayer:1.5.1")
+    implementation("androidx.media3:media3-ui:1.5.1")
 
     testImplementation("junit:junit:4.13.2")
     // JVM tests exercise Android-compatible JSON codecs without android.jar stubs.
