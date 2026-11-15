@@ -44,6 +44,7 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
     var editingAsset by remember { mutableStateOf<StudioAsset?>(null) }
     var recordingAudio by remember { mutableStateOf(false) }
     var mixingAudio by remember { mutableStateOf(false) }
+    var videoTimeline by remember { mutableStateOf(false) }
     val preferences = remember(context) {
         context.getSharedPreferences("nearer_studio_workspace", android.content.Context.MODE_PRIVATE)
     }
@@ -92,7 +93,9 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
         persistAssets()
     }
 
-    if (mixingAudio) {
+    if (videoTimeline) {
+        StudioVideoTimelineScreen(onBack = { videoTimeline = false })
+    } else if (mixingAudio) {
         StudioAudioMixerScreen(onBack = { mixingAudio = false })
     } else if (recordingAudio) {
         StudioAudioRecorderScreen(onBack = { recordingAudio = false }, onRecorded = { uri, name ->
@@ -130,6 +133,9 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                 }
                 Button(onClick = { mixingAudio = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
                     Text("＋  Open multitrack mixer", fontWeight = FontWeight.Bold)
+                }
+                Button(onClick = { videoTimeline = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
+                    Text("▤  Open multi-clip video timeline", fontWeight = FontWeight.Bold)
                 }
             }
         }
