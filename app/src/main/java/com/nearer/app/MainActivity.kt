@@ -2270,16 +2270,30 @@ class MainActivity : ComponentActivity() {
             return
         }
         val targetPeerIds = group.memberPeerIds.filter { it != localPeerId }.toSet()
-        val receipts = transport.sendDurableToPeerIdsWithReceipts("NR_COMMUNITY:$packet", targetPeerIds)
-        val deliveryByPeerId = CommunityDeliveryPolicy.initialStatuses(targetPeerIds, receipts.values.toSet())
         val localIndex = communityMessages.indexOfFirst { it.id == id }
-        if (localIndex >= 0) {
-            communityMessages[localIndex] = communityMessages[localIndex].copy(deliveryByPeerId = deliveryByPeerId)
+        val previousDeliveryByPeerId = communityMessages.getOrNull(localIndex)?.deliveryByPeerId.orEmpty()
+        val receipts = transport.sendDurableToPeerIdsWithReceipts("NR_COMMUNITY:$packet", targetPeerIds) { queuedCopies ->
+            val deliveryByPeerId = CommunityDeliveryPolicy.initialStatuses(targetPeerIds, queuedCopies.values.toSet())
+            val currentIndex = communityMessages.indexOfFirst { it.id == id }
+            if (currentIndex >= 0) {
+                communityMessages[currentIndex] = communityMessages[currentIndex].copy(deliveryByPeerId = deliveryByPeerId)
+            }
+            queuedCopies.forEach { (transportId, peerId) ->
+                communityDeliveryRefs[transportId] = CommunityDeliveryRef(id, peerId)
+            }
+            if (persistCommunityData()) {
+                true
+            } else {
+                queuedCopies.keys.forEach { communityDeliveryRefs.remove(it) }
+                val rollbackIndex = communityMessages.indexOfFirst { it.id == id }
+                if (rollbackIndex >= 0) {
+                    communityMessages[rollbackIndex] = communityMessages[rollbackIndex].copy(
+                        deliveryByPeerId = previousDeliveryByPeerId
+                    )
+                }
+                false
+            }
         }
-        receipts.forEach { (transportId, peerId) ->
-            communityDeliveryRefs[transportId] = CommunityDeliveryRef(id, peerId)
-        }
-        persistCommunityData()
         val queued = receipts.isNotEmpty()
         communityNotice = if (queued) {
             "Group message saved. " + receipts.size + " verified recipient copy/copies queued; delivery receipts update separately."
