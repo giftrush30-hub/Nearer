@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -41,6 +42,7 @@ private data class StudioAsset(val uri: Uri, val name: String, val kind: String)
 internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     var editingAsset by remember { mutableStateOf<StudioAsset?>(null) }
+    var recordingAudio by remember { mutableStateOf(false) }
     val preferences = remember(context) {
         context.getSharedPreferences("nearer_studio_workspace", android.content.Context.MODE_PRIVATE)
     }
@@ -54,7 +56,8 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                     val hasGrant = context.contentResolver.persistedUriPermissions.any {
                         it.uri == uri && it.isReadPermission
                     }
-                    if (hasGrant) add(StudioAsset(uri, item.optString("name", "Media asset"), item.optString("kind", "Media")))
+                    val isLocalRecording = uri.scheme == "file" && runCatching { File(uri.path.orEmpty()).isFile }.getOrDefault(false)
+                    if (hasGrant || isLocalRecording) add(StudioAsset(uri, item.optString("name", "Media asset"), item.optString("kind", "Media")))
                 }
             }
         }
@@ -88,12 +91,20 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
         persistAssets()
     }
 
-    if (editingAsset != null) {
+    if (recordingAudio) {
+        StudioAudioRecorderScreen(onBack = { recordingAudio = false }, onRecorded = { uri, name ->
+            if (assets.none { it.uri == uri }) assets.add(0, StudioAsset(uri, name, "AUDIO"))
+            persistAssets()
+            recordingAudio = false
+            editingAsset = StudioAsset(uri, name, "AUDIO")
+        })
+    } else if (editingAsset != null) {
         val asset = editingAsset!!
-        if (asset.kind == "VIDEO") {
-            StudioVideoEditorScreen(uri = asset.uri, title = asset.name, onBack = { editingAsset = null })
-        } else {
-            StudioPhotoEditorScreen(uri = asset.uri, title = asset.name, onBack = { editingAsset = null })
+        when (asset.kind) {
+            "VIDEO" -> StudioVideoEditorScreen(uri = asset.uri, title = asset.name, onBack = { editingAsset = null })
+            "PHOTO" -> StudioPhotoEditorScreen(uri = asset.uri, title = asset.name, onBack = { editingAsset = null })
+            "AUDIO" -> StudioAudioEditorScreen(uri = asset.uri, title = asset.name, onBack = { editingAsset = null })
+            else -> StudioAudioEditorScreen(uri = asset.uri, title = asset.name, onBack = { editingAsset = null })
         }
     } else Column(
         modifier = Modifier.fillMaxSize().background(Midnight).verticalScroll(rememberScrollState()).padding(20.dp),
@@ -110,6 +121,9 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                 Text("Bring photos, videos and audio from your phone into one local workspace. Your files stay on this device; NeaRer stores access to the items you choose.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
                 Button(onClick = { picker.launch(arrayOf("image/*", "video/*", "audio/*")) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                     Text("＋  Add media to Studio", fontWeight = FontWeight.Bold)
+                }
+                Button(onClick = { recordingAudio = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
+                    Text("●  Record audio offline", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -149,6 +163,6 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
             }
         }
         Text("NEXT IN STUDIO", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-        Text("More Studio tools are coming in stages: multi-clip timelines, captions, transitions, audio mixing, photo layers, selective masks and motion graphics. Video trimming and photo light/tone adjustments are the first real editors.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+        Text("Audio recording and trimming, video trimming and photo light/tone adjustments are now part of the offline editing foundation. Next: multitrack audio mixing, fades, equalizer, captions, transitions, photo layers, selective masks and motion graphics.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
     }
 }
