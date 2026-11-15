@@ -490,6 +490,10 @@ class MainActivity : ComponentActivity() {
                         val communityBody = body.removePrefix("NR_COMMUNITY:")
                         val packet = try { JSONObject(communityBody) } catch (_: Exception) { JSONObject() }
                         val type = packet.optString("type")
+                        if (!CommunityIngressPolicy.isValid(communityBody, senderPeerId)) {
+                            communityNotice = "An invalid or unauthenticated community packet was rejected before processing."
+                        } else {
+                        // Never mutate group/game state until packet shape and transport identity pass.
                         handleCommunityPacket(senderName, senderPeerId, communityBody)
                         val code = packet.optString("code")
                         val group = communityGroups.firstOrNull { it.code == code }
@@ -520,6 +524,7 @@ class MainActivity : ComponentActivity() {
                             else -> false
                         }
                         safelyStored = accepted && persistCommunityData()
+                        }
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
@@ -3621,9 +3626,14 @@ class MainActivity : ComponentActivity() {
                             try {
                                 val body = String(Base64.getDecoder().decode(encoded), Charsets.UTF_8)
                                 if (body.startsWith("NR_COMMUNITY:") && body.length <= 24 * 1024) {
-                                    runOnUiThread {
-                                        handleCommunityPacket(connectedDeviceName ?: "Nearby member", "", body.removePrefix("NR_COMMUNITY:"))
-                                        persistCommunityData()
+                                    val communityBody = body.removePrefix("NR_COMMUNITY:")
+                                    if (CommunityIngressPolicy.isValid(communityBody, "", allowLegacySocketLudo = true)) {
+                                        runOnUiThread {
+                                            handleCommunityPacket(connectedDeviceName ?: "Nearby member", "", communityBody)
+                                            persistCommunityData()
+                                        }
+                                    } else {
+                                        runOnUiThread { communityNotice = "An invalid or unsupported community packet was rejected." }
                                     }
                                 }
                             } catch (_: Exception) {
