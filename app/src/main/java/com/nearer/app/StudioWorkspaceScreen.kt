@@ -21,8 +21,11 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -37,6 +40,7 @@ private data class StudioAsset(val uri: Uri, val name: String, val kind: String)
 @Composable
 internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    var editingAsset by remember { mutableStateOf<StudioAsset?>(null) }
     val preferences = remember(context) {
         context.getSharedPreferences("nearer_studio_workspace", android.content.Context.MODE_PRIVATE)
     }
@@ -84,7 +88,10 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
         persistAssets()
     }
 
-    Column(
+    if (editingAsset != null) {
+        val asset = editingAsset!!
+        StudioVideoEditorScreen(uri = asset.uri, title = asset.name, onBack = { editingAsset = null })
+    } else Column(
         modifier = Modifier.fillMaxSize().background(Midnight).verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -121,6 +128,7 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                             Text(asset.name, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
                             Text(asset.kind, color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
+                        if (asset.kind == "VIDEO") Text("EDIT", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editingAsset = asset }.padding(7.dp))
                         Text("OPEN", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                             runCatching {
                                 val mime = context.contentResolver.getType(asset.uri) ?: "*/*"
