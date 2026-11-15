@@ -230,7 +230,7 @@ fun LudoGamePanel(
                     Text(if (networkMode) "NEARBY MULTIPLAYER • ${game.players.size}/4" else if (localHumanPlayers == 1) "SOLO • THREE COMPUTER OPPONENTS" else "LOCAL PASS-AND-PLAY • " + localHumanPlayers + " PLAYERS", color = Color(0xFFAFC1D4), fontSize = 10.sp)
                 }
                 Surface(color = Color(0xFF234463), shape = RoundedCornerShape(30.dp)) {
-                    Text(if (networkMode) "BLUETOOTH / WI-FI" else if (localHumanPlayers == 1) "OFFLINE VS BOTS" else "ONE PHONE • LOCAL", color = Color(0xFF9FE6CD), fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp))
+                    Text(if (networkMode) "BLUETOOTH / WI-FI" else if (localHumanPlayers == 1) "OFFLINE VS BOTS" else "ONE PHONE • LOCAL", color = LudoGold, fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp))
                 }
             }
 
@@ -419,7 +419,7 @@ fun LudoGamePanel(
                     }
                     Button(onClick = onInviteNearby, enabled = nearbyConnected && incomingInvite == null, modifier = Modifier.weight(1f), shape = RoundedCornerShape(13.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF244B43))) {
-                        Text(if (nearbyConnected) "INVITE NEARBY" else "CONNECT FIRST", color = Color(0xFF9FE6CD), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        Text(if (nearbyConnected) "INVITE NEARBY" else "CONNECT FIRST", color = LudoGold, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                     }
                 }
                 if (!nearbyConnected) Text("Connect to another NeaRer phone above to invite them to a private no-data match.", color = Color(0xFF91A9BE), fontSize = 9.sp)
