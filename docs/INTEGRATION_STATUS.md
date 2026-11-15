@@ -482,3 +482,18 @@ Remaining security work:
 2. Reconcile or retire the older unused `CommunityPacketPolicy` so there is one clear source of truth for community packet validation.
 3. Add stateful receive-path tests for roster authorization, duplicate message idempotency, persistence failure and same-display-name Ludo participants.
 4. Keep mesh relay paused until routing, identity and privacy gates are complete. CI success is not physical-device or security certification.
+
+
+### Messaging-first navigation consolidation — 15 November 2026
+
+Implemented on main in commit `f06e83fad22c4418a5e995f09ee930077e38de34`.
+
+- Replaced the five-item navigation that separately exposed Share and Share Hub with five clear destinations: Chats, People, Share, Games and More. Chats remains the initial/default destination.
+- Combined File Centre and Share Hub under Share with a small two-option switch (Phone files / Share Hub). Both existing screens and their callbacks remain in place; neither feature was deleted.
+- External Android share intents continue to open the Phone files section so the existing URI intake path remains intact.
+- Exposed the existing More screen in the bottom navigation, preserving profile editing, identity display, app sharing and connection/privacy information.
+- Added a compact More overview with direct routes back to Chats and People, plus a NeaRer Spaces list for Studio, Academy, Library, Movies, Business Center and File Hub. Future spaces are explicitly marked Coming soon; File Hub opens the existing Share Hub tools.
+- Replaced the bottom-nav selected background with the existing Mint palette token. No palette values, logo assets, chat flows, nearby transport, transfer protocol, game logic, permission behavior or data stores were intentionally changed.
+- The old Home branch remains in source but is not a top-level destination; its useful overview actions are represented compactly in More. This avoids creating a second competing landing screen.
+
+Validation is pending for the exact post-navigation main head. The next Android Actions run must pass JVM unit tests and debug APK assembly before this change is considered build-verified. No emulator or physical-device UI test is claimed.
