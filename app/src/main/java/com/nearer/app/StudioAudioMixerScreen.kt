@@ -1,6 +1,7 @@
 package com.nearer.app
 
 import android.content.Intent
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -34,24 +36,30 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.audio.ToInt16PcmAudioProcessor
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
+import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import kotlinx.coroutines.delay
 import java.io.File
+import java.util.Locale
 
 private data class StudioMixTrack(
     val uri: Uri,
     val name: String,
-    val muted: Boolean = false
+    val durationMs: Long,
+    val muted: Boolean = false,
+    val gain: Float = 1f,
+    val fadeInMs: Long = 0L,
+    val fadeOutMs: Long = 0L
 )
 
 @OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -62,12 +70,10 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     var exporting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Build a layered mix from voice, music and sound effects stored on your phone.") }
     var exported by remember { mutableStateOf<File?>(null) }
-    var previewName by remember { mutableStateOf("") }
+    var previewUri by remember { mutableStateOf<Uri?>(null) }
     val previewPlayer = remember(context) { ExoPlayer.Builder(context).build() }
 
-    DisposableEffect(previewPlayer) {
-        onDispose { previewPlayer.release() }
-    }
+    DisposableEffect(previewPlayer) { onDispose { previewPlayer.release() } }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { selected ->
         selected.forEach { uri ->
@@ -77,11 +83,12 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                     val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
                         if (cursor.moveToFirst()) cursor.getString(0) else null
                     } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "Audio track"
-                    tracks.add(StudioMixTrack(uri, name))
+                    val duration = readStudioAudioDuration(context, uri)
+                    tracks.add(StudioMixTrack(uri, name, duration))
                 }
             }.onFailure { message = "Could not add one of the selected files: ${it.message ?: "access unavailable"}" }
         }
-        if (tracks.size >= 8) message = "Eight tracks added. This first mixer keeps projects phone-friendly."
+        if (tracks.size >= 8) message = "Eight tracks added. Each track now has its own mix controls."
         exported = null
     }
 
@@ -91,67 +98,93 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("‹  STUDIO", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 8.dp))
-            Text("MULTITRACK MIX", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text("NEARER SOUND DESK", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         }
-        Text("Build your sound.", color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
-        Text("Layer up to eight local audio tracks. Layer local audio files together, mute tracks you don't want, and export one combined mix.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+        Text("Mix every layer.", color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
+        Text("A phone-friendly multitrack desk. Balance each layer, shape its entrance and ending, reorder the arrangement, then render one local mix.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
         Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
-            Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("YOUR TRACKS", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text("PROJECT TRACKS", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Text("${tracks.size}/8", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
                 if (tracks.isEmpty()) {
-                    Text("No tracks yet. Add a voice recording, background music or sound effect.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                    Text("Start with a vocal take, beat, instrument, ambience or sound effect.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                 } else tracks.forEachIndexed { index, track ->
-                    Surface(color = Midnight, shape = RoundedCornerShape(14.dp)) {
-                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(color = Midnight, shape = RoundedCornerShape(15.dp)) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                 Column(Modifier.weight(1f)) {
                                     Text(track.name, color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
-                                    Text("TRACK ${index + 1}  ·  STARTS WITH THE MIX", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text("TRACK ${index + 1}  ·  ${if (track.durationMs > 0) formatMixTime(track.durationMs) else "DURATION UNKNOWN"}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 }
-                                Text(if (previewName == track.name && previewPlayer.isPlaying) "PAUSE" else "PREVIEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
-                                    if (previewName == track.name && previewPlayer.isPlaying) previewPlayer.pause()
+                                Text(if (previewUri == track.uri && previewPlayer.isPlaying) "PAUSE" else "PREVIEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
+                                    if (previewUri == track.uri && previewPlayer.isPlaying) previewPlayer.pause()
                                     else {
-                                        previewName = track.name
+                                        previewUri = track.uri
                                         previewPlayer.setMediaItem(MediaItem.fromUri(track.uri))
+                                        previewPlayer.volume = track.gain.coerceIn(0f, 1f)
                                         previewPlayer.prepare()
                                         previewPlayer.play()
                                     }
-                                }.padding(6.dp))
+                                }.padding(5.dp))
+                                Text("↑", color = if (index > 0) Mint else Muted, modifier = Modifier.clickable(enabled = index > 0) {
+                                    val item = tracks.removeAt(index); tracks.add(index - 1, item); exported = null
+                                }.padding(4.dp))
+                                Text("↓", color = if (index < tracks.lastIndex) Mint else Muted, modifier = Modifier.clickable(enabled = index < tracks.lastIndex) {
+                                    val item = tracks.removeAt(index); tracks.add(index + 1, item); exported = null
+                                }.padding(4.dp))
                                 Text("×", color = Muted, fontSize = 18.sp, modifier = Modifier.clickable {
                                     tracks.removeAt(index)
-                                    if (previewName == track.name) previewPlayer.stop()
+                                    if (previewUri == track.uri) { previewPlayer.stop(); previewUri = null }
                                     exported = null
-                                }.padding(5.dp))
+                                }.padding(4.dp))
                             }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Mute this track", color = Muted, fontSize = 11.sp)
+                                Text("Mute layer", color = Muted, fontSize = 11.sp)
                                 Switch(checked = track.muted, onCheckedChange = {
-                                    tracks[index] = track.copy(muted = it)
-                                    exported = null
+                                    tracks[index] = track.copy(muted = it); exported = null
                                 })
                             }
+                            Text("VOLUME  ·  ${(track.gain * 100).toInt()}%", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Slider(value = track.gain, onValueChange = {
+                                tracks[index] = track.copy(gain = it); exported = null
+                                if (previewUri == track.uri) previewPlayer.volume = it
+                            }, valueRange = 0f..1f)
+                            val maxFade = (track.durationMs / 1000f).coerceAtMost(8f)
+                            Text("FADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Slider(value = (track.fadeInMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
+                                tracks[index] = track.copy(fadeInMs = (it * 1000f).toLong()); exported = null
+                            }, valueRange = 0f..maxFade.coerceAtLeast(0.1f), enabled = track.durationMs > 0L)
+                            Text("FADE OUT  ·  ${String.format(Locale.US, "%.1f", track.fadeOutMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Slider(value = (track.fadeOutMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
+                                tracks[index] = track.copy(fadeOutMs = (it * 1000f).toLong()); exported = null
+                            }, valueRange = 0f..maxFade.coerceAtLeast(0.1f), enabled = track.durationMs > 0L)
+                            if (track.durationMs <= 0L) Text("Fade controls need readable duration metadata for this file.", color = Muted, fontSize = 9.sp)
                         }
                     }
                 }
-                Button(onClick = { picker.launch(arrayOf("audio/*")) }, enabled = tracks.size < 8, modifier = Modifier.fillMaxWidth(),
+                Button(onClick = { picker.launch(arrayOf("audio/*")) }, enabled = tracks.size < 8 && !exporting, modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight), shape = RoundedCornerShape(13.dp)) {
-                    Text("＋  ADD AUDIO TRACK", fontWeight = FontWeight.Bold)
+                    Text("＋  ADD AUDIO LAYER", fontWeight = FontWeight.Bold)
                 }
             }
         }
         Button(onClick = {
-            val activeTracks = tracks.filterNot { it.muted }
-            if (activeTracks.isEmpty()) {
-                message = "Unmute at least one track before exporting."
-            } else {
-                exporting = true
-                exported = null
-                message = "Mixing ${activeTracks.size} track(s)… Keep NeaRer open until export finishes."
+            val activeTracks = tracks.toList().filterNot { it.muted }
+            if (activeTracks.isEmpty()) message = "Unmute at least one track before exporting."
+            else {
+                exporting = true; exported = null
+                message = "Rendering ${activeTracks.size} track(s) with their own volume and fade envelopes…"
                 val sequences = activeTracks.map { track ->
-                    val item = EditedMediaItem.Builder(MediaItem.fromUri(track.uri)).build()
+                    val effects = Effects(
+                        listOf(
+                            ToInt16PcmAudioProcessor(),
+                            StudioTrackGainProcessor(track.gain, track.durationMs, track.fadeInMs, track.fadeOutMs)
+                        ),
+                        emptyList()
+                    )
+                    val item = EditedMediaItem.Builder(MediaItem.fromUri(track.uri)).setEffects(effects).build()
                     EditedMediaItemSequence.Builder(listOf(item)).build()
                 }
                 val composition = Composition.Builder(sequences).build()
@@ -160,22 +193,24 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                     .addListener(object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                             exporting = false
-                            exported = output
-                            message = "Mix exported · ${output.length() / 1024L} KB. Your source tracks are unchanged."
+                            exported = output.takeIf { it.exists() && it.length() > 0L }
+                            message = if (exported != null) "Mix rendered · ${output.length() / 1024L} KB. Original recordings and source tracks remain untouched."
+                                else "The render finished but no output file was found. Please try again."
                         }
                         override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
                             exporting = false
-                            message = "This mix could not be exported on this device: ${exportException.message ?: "encoder or source format not supported"}"
+                            output.delete()
+                            message = "This mix could not be rendered on this device: ${exportException.message ?: "encoder or source format not supported"}"
                         }
                     }).build()
                 runCatching { transformer.start(composition, output.absolutePath) }.onFailure {
-                    exporting = false
+                    exporting = false; output.delete()
                     message = "Could not start the mix: ${it.message ?: "unknown error"}"
                 }
             }
         }, enabled = !exporting && tracks.any { !it.muted }, modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight), shape = RoundedCornerShape(14.dp)) {
-            Text(if (exporting) "MIXING…" else "EXPORT COMBINED MIX", fontWeight = FontWeight.ExtraBold)
+            Text(if (exporting) "RENDERING MIX…" else "RENDER FINAL MIX", fontWeight = FontWeight.ExtraBold)
         }
         Text(message, color = Muted, fontSize = 11.sp, lineHeight = 17.sp)
         exported?.let { file ->
@@ -189,6 +224,23 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 Text("SHARE FINISHED MIX")
             }
         }
-        Text("This first mixer supports layered start positions and mute/enable. Individual track gain, fades, panning, waveform editing and live multitrack playback are the next audio-engine steps.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
+        Text("Track volume, mute, reorder, and non-destructive fade-in/fade-out are applied during the offline render. Live simultaneous monitoring, stereo pan, EQ, reverb, tempo automation and project save/load are planned for the next audio-engine milestone.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
+}
+
+private fun readStudioAudioDuration(context: android.content.Context, uri: Uri): Long {
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(context, uri)
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+    } catch (_: Exception) {
+        0L
+    } finally {
+        runCatching { retriever.release() }
+    }
+}
+
+private fun formatMixTime(milliseconds: Long): String {
+    val seconds = (milliseconds / 1000L).coerceAtLeast(0L)
+    return String.format(Locale.US, "%d:%02d", seconds / 60L, seconds % 60L)
 }
