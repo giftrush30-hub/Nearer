@@ -127,6 +127,7 @@ class MainActivity : ComponentActivity() {
     private var wifiManager: WifiP2pManager? = null
     private var channel: WifiP2pManager.Channel? = null
     private var receiverRegistered = false
+    @Volatile private var activityResumed = false
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
     private var ultraSpeedMode by mutableStateOf(false)
@@ -481,6 +482,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 runOnUiThread {
                     var safelyStored = false
+                    var newlyReceivedChatMessage = false
                     if (body.startsWith("NR_DELETE:")) {
                         val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
                         safelyStored = applyIncomingChatDelete(body.removePrefix("NR_DELETE:"), actorPeerId)
@@ -558,7 +560,10 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    if (safelyStored) acknowledge()
+                    if (safelyStored) {
+                        if (newlyReceivedChatMessage) showIncomingMessageNotification(messageId)
+                        acknowledge()
+                    }
                 }
             }
             override fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
@@ -571,6 +576,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 runOnUiThread {
                     var safelyStored = false
+                    var newlyReceivedChatMessage = false
                     if (body.startsWith("NR_DELETE:")) {
                         safelyStored = applyIncomingChatDelete(body.removePrefix("NR_DELETE:"), originPeerId)
                     } else if (body.startsWith("NR_READ_RECEIPT:")) {
@@ -602,7 +608,10 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    if (safelyStored) acknowledge()
+                    if (safelyStored) {
+                        if (newlyReceivedChatMessage) showIncomingMessageNotification(messageId)
+                        acknowledge()
+                    }
                 }
             }
             override fun onMessageStatus(messageId: String, status: String) {
@@ -936,8 +945,48 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun showIncomingMessageNotification(messageId: String) {
+        if (activityResumed) return
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val channelId = "nearer_private_messages"
+        if (Build.VERSION.SDK_INT >= 26) {
+            manager.createNotificationChannel(
+                android.app.NotificationChannel(
+                    channelId,
+                    "NeaRer messages",
+                    android.app.NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "Alerts when a new nearby NeaRer message is received."
+                    lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
+                }
+            )
+        }
+        val openApp = PendingIntent.getActivity(
+            this,
+            messageId.hashCode(),
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = android.app.Notification.Builder(this, channelId)
+            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setContentTitle("New message on NeaRer")
+            .setContentText("Open NeaRer to read your message")
+            .setCategory(android.app.Notification.CATEGORY_MESSAGE)
+            .setVisibility(android.app.Notification.VISIBILITY_PRIVATE)
+            .setAutoCancel(true)
+            .setContentIntent(openApp)
+            .build()
+        manager.notify(messageId.hashCode().coerceAtLeast(1), notification)
+    }
+
     override fun onResume() {
         super.onResume()
+        activityResumed = true
         val filter = IntentFilter().apply {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
@@ -977,6 +1026,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        activityResumed = false
         if (communityDataDirty) persistCommunityData()
         if (receiverRegistered) {
             runCatching { unregisterReceiver(receiver) }
