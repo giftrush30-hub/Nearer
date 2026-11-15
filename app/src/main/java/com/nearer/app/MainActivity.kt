@@ -1362,10 +1362,10 @@ class MainActivity : ComponentActivity() {
                         if (directFileQueue.hasPending) startNextDirectQueuedFile()
                         resumeLudoAfterReconnect(name)
                         incomingRequesterName = null
-                        approvalMessage = "Connection approved. Private chat can now be opened."
+                        approvalMessage = "Wi-Fi Direct link approved. Private chat requires encrypted Nearby Connections."
                         connectionMessage = "NeaRer connection approved"
-                        chatNotice = "Connected directly to $name. Say hello."
-                        statusMessage = "You approved $name. Private chat is ready."
+                        chatNotice = "Wi-Fi Direct link ready for compatible transfers. Private chat uses encrypted Nearby Connections."
+                        statusMessage = "You approved $name. Reconnect through encrypted Nearby Connections for private chat."
                     }
                     startMessageReader(socket)
                 } else {
@@ -1426,10 +1426,10 @@ class MainActivity : ComponentActivity() {
                             chatReady = true
                             if (directFileQueue.hasPending) startNextDirectQueuedFile()
                             resumeLudoAfterReconnect(connectedDeviceName ?: "Nearby device")
-                            approvalMessage = "Your connection request was approved."
+                            approvalMessage = "Wi-Fi Direct link approved. Private chat requires encrypted Nearby Connections."
                             connectionMessage = "NeaRer connection approved"
-                            chatNotice = "Connected directly to the other phone. Say hello."
-                            statusMessage = "Connection approved. Private chat is ready."
+                            chatNotice = "Wi-Fi Direct link ready for compatible transfers. Private chat uses encrypted Nearby Connections."
+                            statusMessage = "Connection approved. Reconnect through encrypted Nearby Connections for private chat."
                         }
                         startMessageReader(socket)
                     }
@@ -1983,6 +1983,10 @@ class MainActivity : ComponentActivity() {
                 return
             }
             chatNotice = "Sent over the offline link • waiting for the recipient's NeaRer app to acknowledge it."
+            return
+        }
+        if (!LegacySocketChatPolicy.mayUseSocketChat()) {
+            chatNotice = "This older Wi-Fi Direct link is not encrypted for chat. Your message was kept private. Reconnect through NeaRer Nearby Connections to send it securely."
             return
         }
         if (replyQuote != null) {
@@ -3486,47 +3490,17 @@ class MainActivity : ComponentActivity() {
                     if (line.length > 24 * 1024) throw IllegalStateException("NeaRer message frame exceeded the allowed size")
                     when {
                         line.startsWith("MSG|") -> {
-                            val parts = line.split("|", limit = 3)
-                            if (parts.size == 3) {
-                                val id = parts[1]
-                                val body = try {
-                                    String(Base64.getDecoder().decode(parts[2]), Charsets.UTF_8)
-                                } catch (_: Exception) { "" }
-                                if (id.isNotBlank() && id.length <= 80 && body.isNotBlank() && body.length <= 4000) {
-                                    runOnUiThread {
-                                        val alreadySaved = chatMessages.any { it.id == id }
-                                        if (alreadySaved) {
-                                            receivedMessageIds.add(id)
-                                            synchronized(writerLock) { peerWriter?.println("ACK|$id") }
-                                        } else {
-                                            chatMessages.add(ChatMessage(
-                                                id, body, outgoing = false, delivery = "Received",
-                                                conversationId = connectedDeviceName?.let { "direct:$it" }.orEmpty(),
-                                                conversationName = connectedDeviceName.orEmpty()
-                                            ))
-                                            if (persistMessages()) {
-                                                trimChatMessages()
-                                                receivedMessageIds.add(id)
-                                                chatNotice = "New message received and saved directly."
-                                                // Confirm only after the message is durably saved.
-                                                synchronized(writerLock) { peerWriter?.println("ACK|$id") }
-                                            } else {
-                                                chatMessages.removeAll { it.id == id }
-                                                receivedMessageIds.remove(id)
-                                                chatNotice = "Message could not be saved. The sender has not been told it was delivered."
-                                            }
-                                        }
-                                    }
+                            if (!LegacySocketChatPolicy.mayAcceptSocketChatFrame()) {
+                                runOnUiThread {
+                                    chatNotice = "An unencrypted legacy chat packet was ignored. Reconnect through NeaRer Nearby Connections for private messaging."
                                 }
                             }
                         }
                         line.startsWith("ACK|") -> {
-                            val id = line.substringAfter("ACK|")
-                            runOnUiThread {
-                                val index = chatMessages.indexOfFirst { it.id == id && it.outgoing }
-                                if (index >= 0) {
-                                    chatMessages[index] = chatMessages[index].copy(delivery = "Delivered")
-                                    persistMessages()
+                            // An unauthenticated socket ACK must never mark a message as delivered.
+                            if (!LegacySocketChatPolicy.mayAcceptSocketChatFrame()) {
+                                runOnUiThread {
+                                    chatNotice = "An unverified legacy delivery receipt was ignored. Secure Nearby messaging is required."
                                 }
                             }
                         }
