@@ -43,6 +43,7 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     var editingAsset by remember { mutableStateOf<StudioAsset?>(null) }
     var recordingAudio by remember { mutableStateOf(false) }
+    var mixingAudio by remember { mutableStateOf(false) }
     var videoTimeline by remember { mutableStateOf(false) }
     val preferences = remember(context) {
         context.getSharedPreferences("nearer_studio_workspace", android.content.Context.MODE_PRIVATE)
@@ -94,6 +95,8 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
 
     if (videoTimeline) {
         StudioVideoTimelineScreen(onBack = { videoTimeline = false })
+    } else if (mixingAudio) {
+        StudioAudioMixerScreen(onBack = { mixingAudio = false })
     } else if (recordingAudio) {
         StudioAudioRecorderScreen(onBack = { recordingAudio = false }, onRecorded = { uri, name ->
             if (assets.none { it.uri == uri }) assets.add(0, StudioAsset(uri, name, "AUDIO"))
@@ -128,6 +131,9 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                 Button(onClick = { recordingAudio = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
                     Text("●  Record audio offline", fontWeight = FontWeight.Bold)
                 }
+                Button(onClick = { mixingAudio = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
+                    Text("＋  Open multitrack mixer", fontWeight = FontWeight.Bold)
+                }
                 Button(onClick = { videoTimeline = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
                     Text("▤  Open multi-clip video timeline", fontWeight = FontWeight.Bold)
                 }
@@ -152,7 +158,7 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                             Text(asset.name, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
                             Text(asset.kind, color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
-                        if (asset.kind == "VIDEO" || asset.kind == "PHOTO") Text("EDIT", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editingAsset = asset }.padding(7.dp))
+                        if (asset.kind == "VIDEO" || asset.kind == "PHOTO" || asset.kind == "AUDIO") Text("EDIT", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editingAsset = asset }.padding(7.dp))
                         Text("OPEN", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                             runCatching {
                                 val localFile = if (asset.uri.scheme == "file") File(asset.uri.path.orEmpty()) else null
@@ -171,6 +177,6 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
             }
         }
         Text("NEXT IN STUDIO", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-        Text("Audio recording and trimming, video trimming and photo light/tone adjustments are now part of the offline editing foundation. Studio now includes offline audio recording and trimming, multitrack audio composition, and a multi-clip video timeline with optional music bed. Next: fades, track gain, captions, transitions, photo layers and motion graphics.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+        Text("Audio recording and trimming, video trimming and photo light/tone adjustments are now part of the offline editing foundation. The multitrack composition mixer now joins audio recording and trimming. Next: track gain, fades, panning, waveforms, live mix playback, captions, transitions, photo layers and motion graphics.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
     }
 }
