@@ -10,7 +10,7 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - Kotlin + Jetpack Compose Android app.
 - Nearby Connections discovery, connection requests and approval.
 - Direct one-to-one chat with encrypted message packets and encrypted delivery acknowledgements after the authenticated key exchange.
-- Group and nearby broadcast messages are encrypted separately for each connected peer. Group fan-out currently uses best-effort sends; the durable per-recipient retry/acknowledgement queue is implemented for direct one-to-one chat, not yet for group fan-out.
+- Direct one-to-one chat uses an encrypted durable outbox with stable message IDs, reconnect retry and authenticated delivery acknowledgements. Verified community-group fan-out also queues encrypted per-recipient copies durably and records delivery receipts. Nearby broadcast messages remain best-effort to currently connected peers.
 - Local recent-message history and an encrypted-at-rest pending-message queue.
 - Nearby Connections file transfer, progress, cancellation and integrity checks.
 - Share Hub / OpenSend foundations for local file and app sharing.
