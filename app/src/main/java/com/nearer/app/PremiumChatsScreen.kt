@@ -160,7 +160,8 @@ internal fun PremiumChatsScreen(
                     onSendVoiceNote(uri)
                     voiceNoteNotice = "Voice note handed to NeaRer. Watch the transfer status below."
                 } else {
-                    voiceNoteNotice = "The recording was saved, but NeaRer could not prepare it for sharing."
+                    file.delete()
+                    voiceNoteNotice = "NeaRer could not prepare the recording for sharing."
                 }
             } else {
                 file?.delete()
@@ -181,7 +182,7 @@ internal fun PremiumChatsScreen(
     val latestVoiceRecorder = rememberUpdatedState(voiceRecorder)
     val latestVoiceRecording = rememberUpdatedState(voiceRecording)
     val latestVoiceFile = rememberUpdatedState(voiceNoteFile)
-    DisposableEffect(Unit) {
+    DisposableEffect(selectedMeshRecipientId) {
         onDispose {
             val active = latestVoiceRecorder.value
             if (latestVoiceRecording.value) runCatching { active?.stop() }
