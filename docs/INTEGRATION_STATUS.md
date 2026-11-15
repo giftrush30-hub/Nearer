@@ -382,3 +382,31 @@ The Ludo screen's `NeaRerPalette` import and palette-token conversion from PR #1
 ### Phone-folder connection-path correction — 14 November 2026
 
 A follow-up integration check found that the folder browser's pre-send guard checked only `connectedPeerStableId`. That was narrower than the existing `sendFiles` pipeline, which supports both the Nearby Connections path and the Wi-Fi Direct fallback. The guard now allows either `chatReady` or `usingNearbyConnections` to proceed to the existing send callback. The callback/queue remains authoritative for transfer admission, active-transfer conflicts and missing identity errors; the folder browser does not bypass those checks or create a separate transfer path.
+
+
+### Exact-main-head Android validation — 15 November 2026
+
+The push-triggered GitHub Actions run for the exact current main head completed successfully:
+
+- Commit: `4e5b8f0b07b11eb8bfd1bc4dfb367553c2ff9797`
+- Workflow run: [Android validation and APK #2450](https://github.com/giftrush30-hub/Nearer/actions/runs/43649216885)
+- JVM unit tests: passed.
+- Debug APK assembly: passed.
+- Debug APK artifact upload: passed.
+- Artifact: `NeaRer-debug-apk`, 11,659,659 bytes (about 11.1 MiB), retained until 28 November 2026.
+- The previous two push runs in this integration batch were cancelled by the workflow concurrency rule when newer commits arrived; run #2450 is the completed successful validation of the final exact head.
+
+This confirms the current main source compiles, the configured JVM unit-test task passes, and a debug APK was produced. It does not certify emulator behavior, physical-device discovery/chat/file transfers, multi-hop relay, or release signing. The artifact is a debug APK.
+
+
+### Additional parallel-branch review — 15 November 2026
+
+- `feature/fast-share-live-multi-transfer-progress` was compared against main. Its active-transfer ledger and ledger tests are already present on main with identical source blobs. The branch's controller snapshot is older than main and lacks later upload progress/history direction handling and current lifecycle protections; do not merge its controller over main.
+- `feature/community-stable-member-identities` contains a useful standalone identity policy and tests, but its transport and MainActivity changes are deeply divergent (20 commits ahead, 81 behind) and tightly coupled to community roster synchronization. The helper alone is not wired into the current main community flow, so copying it as dead code would not close the known offline-member delivery gap. Defer integration until the current roster wire format and live transport path are reviewed together.
+- `feature/durable-community-fanout` is likewise deeply divergent (6 ahead, 81 behind) and changes the live MainActivity/transport fan-out path. Do not merge wholesale; review its protocol and stable-member-ID assumptions against current main before any selective port.
+- `feat/chat-stable-peer-threads` and its v2 branch are very old snapshots relative to main (2 commits ahead, over 580 behind) and touch the live chat/transport files. No wholesale merge.
+- `fix/folder-archive-lifecycle` and `feat/offline-folder-sharing` are old MainActivity snapshots. Their changes require a current-main lifecycle/security comparison before any selective port.
+- The file-centre bulk-selection/polish candidates are single-commit changes on branches more than 680 commits behind main; inspect their actual UI behavior against current File Centre before deciding whether a tiny interaction improvement is still missing.
+- `feature/android-share-sheet-intake` is an older multi-file intake implementation touching the manifest, File Centre and MainActivity. It is not safe to merge wholesale without checking current Android Sharesheet intents and URI permission handling.
+
+These are focused candidate checks, not an exhaustive audit of every branch. Current main remains the integration source of truth; avoid replacing current transport, UI or lifecycle code with stale snapshots.
