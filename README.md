@@ -108,4 +108,5 @@ This notification is not a guarantee of delivery after Android kills the app: th
 - Notification text deliberately does not expose message content on the lock screen; the public notification version only says that NeaRer has a new message.
 - Duplicate deliveries, local persistence failures, edits, reactions and community control packets do not trigger a new-message alert.
 - Notification eligibility and stable notification IDs have JVM unit tests.
-- The alert is conditional on Android notification permission and channel settings. It does not keep Nearby Connections alive after the Activity/process is stopped; a dedicated connected-device service remains future messaging work.
+- On Android 13 and later, users can explicitly opt in through the Home screen's message-notification prompt; the app does not request notification permission silently. Android notification channel settings remain user-controlled.
+- The alert does not keep Nearby Connections alive after the Activity/process is stopped; a dedicated connected-device service remains future messaging work.
