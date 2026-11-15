@@ -4861,7 +4861,7 @@ private fun NeaRerHome(
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
                 onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame, profileAvatarId,
                 onOpenRoyalLudo = { showRoyalLudo = true },
-                onMarkGroupRead = ::sendGroupReadReceipts)
+                onMarkGroupRead = onMarkGroupRead)
 
             }
 
