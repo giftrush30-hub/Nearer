@@ -85,7 +85,7 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
 
     Column(Modifier.fillMaxSize().background(Midnight).padding(20.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("‹  STUDIO", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 8.dp))
+            Text(if (recording) "● RECORDING" else "‹  STUDIO", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(enabled = !recording, onClick = onBack).padding(vertical = 8.dp))
             Text("VOICE RECORDER", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         }
         Text("Capture the moment.", color = White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
@@ -103,6 +103,7 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
                             runCatching {
                                 @Suppress("DEPRECATION")
                                 val next = MediaRecorder()
+                                recorder = next
                                 next.setAudioSource(MediaRecorder.AudioSource.MIC)
                                 next.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                                 next.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
