@@ -1,5 +1,16 @@
 package com.nearer.app
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.media.MediaRecorder
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import java.io.File
+import kotlinx.coroutines.delay
+
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -28,9 +39,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +83,7 @@ internal fun PremiumChatsScreen(
     onFindNearby: () -> Unit,
     onBackToInbox: () -> Unit,
     onChooseFiles: () -> Unit,
+    onSendVoiceNote: (Uri) -> Unit,
     receivedFiles: List<ReceivedFile>,
     onOpenFile: (ReceivedFile) -> Unit,
     transferHistory: List<NearbyTransferRecord>,
@@ -96,7 +110,87 @@ internal fun PremiumChatsScreen(
     var reactingToMessageId by remember { mutableStateOf<String?>(null) }
     var pendingDeleteMessage by remember { mutableStateOf<ChatMessage?>(null) }
     val context = LocalContext.current
+    var voiceRecorder by remember { mutableStateOf<MediaRecorder?>(null) }
+    var voiceRecording by remember { mutableStateOf(false) }
+    var voiceElapsedSeconds by remember { mutableStateOf(0) }
+    var voiceNoteFile by remember { mutableStateOf<File?>(null) }
+    var voiceNoteNotice by remember { mutableStateOf("") }
+    var microphoneGranted by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) }
+    val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        microphoneGranted = granted
+        if (!granted) voiceNoteNotice = "Microphone access is needed to record a voice note."
+    }
+    fun startVoiceRecording() {
+        val folder = File(context.filesDir, "voice-notes").apply { mkdirs() }
+        val file = File(folder, "NeaRer_Voice_${System.currentTimeMillis()}.m4a")
+        runCatching {
+            @Suppress("DEPRECATION")
+            val next = MediaRecorder()
+            next.setAudioSource(MediaRecorder.AudioSource.MIC)
+            next.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            next.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            next.setAudioEncodingBitRate(96_000)
+            next.setAudioSamplingRate(44_100)
+            next.setOutputFile(file.absolutePath)
+            next.prepare()
+            next.start()
+            voiceRecorder = next
+            voiceNoteFile = file
+            voiceElapsedSeconds = 0
+            voiceRecording = true
+            voiceNoteNotice = "Recording voice note… tap Stop & send when finished."
+        }.onFailure { error ->
+            runCatching { voiceRecorder?.release() }
+            voiceRecorder = null
+            file.delete()
+            voiceNoteNotice = "Could not start recording: ${error.message ?: "microphone unavailable"}"
+        }
+    }
+    fun stopVoiceRecording() {
+        val active = voiceRecorder
+        val file = voiceNoteFile
+        runCatching { active?.stop() }.onSuccess {
+            runCatching { active?.release() }
+            voiceRecorder = null
+            voiceNoteFile = null
+            voiceRecording = false
+            if (file != null && file.exists() && file.length() > 1_024L) {
+                val uri = runCatching { FileProvider.getUriForFile(context, "${context.packageName}.files", file) }.getOrNull()
+                if (uri != null) {
+                    onSendVoiceNote(uri)
+                    voiceNoteNotice = "Voice note handed to NeaRer. Watch the transfer status below."
+                } else {
+                    voiceNoteNotice = "The recording was saved, but NeaRer could not prepare it for sharing."
+                }
+            } else {
+                file?.delete()
+                voiceNoteNotice = "That recording was too short or empty. Please try again."
+            }
+        }.onFailure {
+            runCatching { active?.release() }
+            voiceRecorder = null
+            voiceNoteFile = null
+            voiceRecording = false
+            file?.delete()
+            voiceNoteNotice = "The recording could not be finalised. Please try again."
+        }
+    }
+    LaunchedEffect(voiceRecording) {
+        while (voiceRecording) { delay(1_000); voiceElapsedSeconds++ }
+    }
+    val latestVoiceRecorder = rememberUpdatedState(voiceRecorder)
+    val latestVoiceRecording = rememberUpdatedState(voiceRecording)
+    val latestVoiceFile = rememberUpdatedState(voiceNoteFile)
+    DisposableEffect(Unit) {
+        onDispose {
+            val active = latestVoiceRecorder.value
+            if (latestVoiceRecording.value) runCatching { active?.stop() }
+            runCatching { active?.release() }
+            if (latestVoiceRecording.value) latestVoiceFile.value?.delete()
+        }
+    }
     pendingDeleteMessage?.let { target ->
+
         AlertDialog(
             onDismissRequest = { pendingDeleteMessage = null },
             title = { Text("Delete this message?") },
@@ -536,8 +630,28 @@ internal fun PremiumChatsScreen(
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.RaisedPanel, contentColor = White)
                             ) { Text("＋  Share files", fontSize = 12.sp) }
+                            Button(
+                                onClick = {
+                                    if (voiceRecording) stopVoiceRecording()
+                                    else if (microphoneGranted) startVoiceRecording()
+                                    else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (voiceRecording) Gold else NeaRerPalette.AccentBlue,
+                                    contentColor = if (voiceRecording) Midnight else White
+                                )
+                            ) {
+                                Text(
+                                    if (voiceRecording) "■ Stop & send · ${voiceElapsedSeconds / 60}:${(voiceElapsedSeconds % 60).toString().padStart(2, '0')}"
+                                    else "● Voice note",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         } else {
-                            Text("File sharing needs a direct nearby connection.", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                            Text("File and voice-note sharing need a direct nearby connection.", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
                         }
                         Text(
                             if (selectedRecipient?.isDirect == false) "Via nearby helpers" else if (usingNearbyConnections) "Nearby link" else "Wi-Fi Direct link",
@@ -545,6 +659,9 @@ internal fun PremiumChatsScreen(
                             fontSize = 10.sp,
                             modifier = Modifier.align(Alignment.CenterVertically)
                         )
+                    }
+                    if (voiceNoteNotice.isNotBlank()) {
+                        Text(voiceNoteNotice, color = if (voiceRecording) Gold else Muted, fontSize = 10.sp, lineHeight = 14.sp)
                     }
 
                     if (chatReady && directConversation) incomingTransferName?.let { incomingName ->
@@ -583,9 +700,10 @@ internal fun PremiumChatsScreen(
                             color = NeaRerPalette.Panel
                         ) {
                             Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("↓", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text(fileItem.displayName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 9.dp))
-                                Text("Open", color = NeaRerPalette.Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                val audioNote = fileItem.displayName.endsWith(".m4a", true) || fileItem.displayName.endsWith(".aac", true) || fileItem.displayName.endsWith(".mp3", true) || fileItem.displayName.endsWith(".wav", true)
+                                Text(if (audioNote) "♫" else "↓", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Text(if (audioNote) "Voice note · ${fileItem.displayName}" else fileItem.displayName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 9.dp))
+                                Text(if (audioNote) "Play" else "Open", color = NeaRerPalette.Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
