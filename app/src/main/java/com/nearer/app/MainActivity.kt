@@ -2531,6 +2531,11 @@ class MainActivity : ComponentActivity() {
             else -> false
         }
         val stored = accepted && persistCommunityData()
+        if (!stored && accepted && type == "group_message" && !alreadyStored) {
+            // handleCommunityPacket adds the message before persistence. Roll it back
+            // when storage fails so a retransmitted packet can be retried and notified.
+            communityMessages.removeAll { it.id == groupMessageId && it.groupCode == code }
+        }
         val isNewGroupMessage = stored && type == "group_message" && !alreadyStored
         return stored to isNewGroupMessage
     }
