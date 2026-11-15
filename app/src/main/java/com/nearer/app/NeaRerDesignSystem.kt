@@ -45,12 +45,13 @@ internal data class NeaRerDestination(
 )
 
 internal object NeaRerNavigation {
+    /** Single source of truth for the five destinations actually shown by MainActivity. */
     val destinations = listOf(
-        NeaRerDestination("home", "Home", "⌂"),
-        NeaRerDestination("nearby", "Nearby", "◎"),
-        NeaRerDestination("chats", "Chats", "✉"),
-        NeaRerDestination("community", "Groups", "♧"),
-        NeaRerDestination("more", "More", "•••")
+        NeaRerDestination("chats", "Chats", "▤"),
+        NeaRerDestination("people", "People", "♙"),
+        NeaRerDestination("share", "Share", "⇧"),
+        NeaRerDestination("games", "Games", "♟"),
+        NeaRerDestination("more", "More", "⋯")
     )
 }
 
