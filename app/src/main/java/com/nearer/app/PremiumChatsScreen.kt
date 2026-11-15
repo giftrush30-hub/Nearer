@@ -182,7 +182,7 @@ internal fun PremiumChatsScreen(
     val latestVoiceRecorder = rememberUpdatedState(voiceRecorder)
     val latestVoiceRecording = rememberUpdatedState(voiceRecording)
     val latestVoiceFile = rememberUpdatedState(voiceNoteFile)
-    DisposableEffect(selectedMeshRecipientId) {
+    DisposableEffect(selectedMeshRecipientId, connectedPeerStableId) {
         onDispose {
             val active = latestVoiceRecorder.value
             if (latestVoiceRecording.value) runCatching { active?.stop() }
