@@ -10,7 +10,7 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - Kotlin + Jetpack Compose Android app.
 - Nearby Connections discovery, connection requests and approval.
 - Direct one-to-one chat with encrypted message packets and encrypted delivery acknowledgements after the authenticated key exchange.
-- Group and nearby broadcast messages are encrypted separately for each connected peer. Group fan-out currently uses best-effort sends; the durable per-recipient retry/acknowledgement queue is implemented for direct one-to-one chat, not yet for group fan-out.
+- Direct one-to-one chat uses an encrypted durable outbox with stable message IDs, reconnect retry and authenticated delivery acknowledgements. Verified community-group fan-out also queues encrypted per-recipient copies durably and records delivery receipts. Nearby broadcast messages remain best-effort to currently connected peers.
 - Local recent-message history and an encrypted-at-rest pending-message queue.
 - Nearby Connections file transfer, progress, cancellation and integrity checks.
 - Share Hub / OpenSend foundations for local file and app sharing.
@@ -28,6 +28,8 @@ The recipient-encrypted mesh and Dead Drop foundations have been integrated into
 Batch Two adds signed, hash-linked per-hop acceptance proofs, compact packet/proof framing and atomic encrypted Dead Drop persistence for packet plus proof chain. The transport code is now integrated into `main` (coordinated merge commit `16a6a51a6cf11480a80f9536a0a9ec97f9098f37`). Exact-head JVM tests and debug APK assembly passed on the PR head before merge; the post-merge `main` workflow is running separately. The relay remains **disabled** pending security review, trust/key-rotation and recovery checks, and physical A → B → C → D validation. Do not treat a hop proof as proof of honest forwarding or a destination delivery receipt.
 
 ## Security boundaries and current limitations
+
+- The older Wi-Fi Direct line-protocol fallback is **not an authenticated, encrypted app-message transport**. Pairing-code approval alone does not provide application-layer confidentiality or authenticated delivery receipts. NeaRer therefore ignores legacy `MSG`, `ACK` and `COMMUNITY` frames and does not send private chat, community or game packets over that socket. Its separate compatible file-transfer path remains available; private chat and app messages require the authenticated, encrypted Nearby Connections session.
 
 - The current Nearby handshake uses each phone's long-term P-256 signing identity to authenticate a fresh ephemeral P-256 ECDH exchange. HKDF-SHA256 derives directional AES-256-GCM session keys.
 - Chat bodies and delivery acknowledgements are encrypted and authenticated at the application layer. The message ID is authenticated as associated data; the receiver's durable deduplication prevents a replayed message from being stored twice.

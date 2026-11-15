@@ -1362,10 +1362,10 @@ class MainActivity : ComponentActivity() {
                         if (directFileQueue.hasPending) startNextDirectQueuedFile()
                         resumeLudoAfterReconnect(name)
                         incomingRequesterName = null
-                        approvalMessage = "Connection approved. Private chat can now be opened."
+                        approvalMessage = "Wi-Fi Direct link approved. Private chat requires encrypted Nearby Connections."
                         connectionMessage = "NeaRer connection approved"
-                        chatNotice = "Connected directly to $name. Say hello."
-                        statusMessage = "You approved $name. Private chat is ready."
+                        chatNotice = "Wi-Fi Direct link ready for compatible transfers. Chat, community and game messages require encrypted Nearby Connections."
+                        statusMessage = "You approved $name. Reconnect through encrypted Nearby Connections for private chat."
                     }
                     startMessageReader(socket)
                 } else {
@@ -1426,10 +1426,10 @@ class MainActivity : ComponentActivity() {
                             chatReady = true
                             if (directFileQueue.hasPending) startNextDirectQueuedFile()
                             resumeLudoAfterReconnect(connectedDeviceName ?: "Nearby device")
-                            approvalMessage = "Your connection request was approved."
+                            approvalMessage = "Wi-Fi Direct link approved. Private chat requires encrypted Nearby Connections."
                             connectionMessage = "NeaRer connection approved"
-                            chatNotice = "Connected directly to the other phone. Say hello."
-                            statusMessage = "Connection approved. Private chat is ready."
+                            chatNotice = "Wi-Fi Direct link ready for compatible transfers. Private chat uses encrypted Nearby Connections."
+                            statusMessage = "Connection approved. Reconnect through encrypted Nearby Connections for private chat."
                         }
                         startMessageReader(socket)
                     }
@@ -1985,30 +1985,13 @@ class MainActivity : ComponentActivity() {
             chatNotice = "Sent over the offline link • waiting for the recipient's NeaRer app to acknowledge it."
             return
         }
-        if (replyQuote != null) {
-            chatNotice = "Replies need the updated secure nearby connection. Reconnect before sending this reply."
+        if (!LegacySocketChatPolicy.mayUseSocketChat()) {
+            chatNotice = "This older Wi-Fi Direct link is not encrypted for chat. Your message was kept private. Reconnect through NeaRer Nearby Connections to send it securely."
             return
         }
-        val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
-        chatMessages.add(ChatMessage(
-            id, body, outgoing = true, delivery = "Sending…",
-            conversationId = connectedDeviceName?.let { "direct:$it" }.orEmpty(),
-            conversationName = connectedDeviceName.orEmpty()
-        ))
-        if (!persistMessages()) {
-            chatMessages.removeAll { it.id == id }
-            chatNotice = "NeaRer could not save this message on your phone. It was not sent."
-            return
-        }
-        trimChatMessages()
-        if (!sendWireLine("MSG|$id|$encoded")) {
-            val index = chatMessages.indexOfFirst { it.id == id }
-            if (index >= 0) chatMessages[index] = chatMessages[index].copy(delivery = "Failed")
-            persistMessages()
-            chatNotice = "Message could not be sent. Check the nearby connection."
-            return
-        }
-        chatNotice = "Sent directly • waiting for the recipient app to save and acknowledge it."
+        // Deliberately no plaintext socket-chat implementation remains here.
+        chatNotice = "Private chat requires an authenticated, encrypted Nearby Connections session."
+
     }
 
 
@@ -2124,11 +2107,7 @@ class MainActivity : ComponentActivity() {
     private fun sendCommunityPacket(packet: JSONObject): Boolean {
         val body = "NR_COMMUNITY:$packet"
         if (nearbyTransport?.send(body) == true) return true
-        if (chatReady && connectedDeviceName != null) {
-            val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
-            return sendWireLine("COMMUNITY|$encoded")
-        }
-        communityNotice = "Connect to a nearby NeaRer phone first."
+        communityNotice = "Community and game messages require an authenticated, encrypted Nearby Connections session."
         return false
     }
 
@@ -2137,17 +2116,11 @@ class MainActivity : ComponentActivity() {
 
     private fun sendCommunityToNames(body: String, targetNames: Set<String>): Boolean {
         if (nearbyTransport?.sendToNames(body, targetNames) == true) return true
-        val peerName = connectedDeviceName
-        if (chatReady && peerName != null && peerName in targetNames) {
-            val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
-            return sendWireLine("COMMUNITY|$encoded")
-        }
         return false
     }
 
     private fun sendLudoPacket(packet: JSONObject, targetNames: Set<String>, targetPeerIds: Set<String> = emptySet()): Boolean {
-        // Wi-Fi Direct remains a single-peer fallback; Nearby Connections uses authenticated IDs.
-        if (!hybridConnected && chatReady) return sendCommunityPacket(packet)
+        // Community and game packets are never sent over the legacy unauthenticated socket.
         return if (targetPeerIds.isNotEmpty()) sendCommunityToPeerIds("NR_COMMUNITY:$packet", targetPeerIds)
         else sendCommunityToNames("NR_COMMUNITY:$packet", targetNames)
     }
@@ -3486,47 +3459,17 @@ class MainActivity : ComponentActivity() {
                     if (line.length > 24 * 1024) throw IllegalStateException("NeaRer message frame exceeded the allowed size")
                     when {
                         line.startsWith("MSG|") -> {
-                            val parts = line.split("|", limit = 3)
-                            if (parts.size == 3) {
-                                val id = parts[1]
-                                val body = try {
-                                    String(Base64.getDecoder().decode(parts[2]), Charsets.UTF_8)
-                                } catch (_: Exception) { "" }
-                                if (id.isNotBlank() && id.length <= 80 && body.isNotBlank() && body.length <= 4000) {
-                                    runOnUiThread {
-                                        val alreadySaved = chatMessages.any { it.id == id }
-                                        if (alreadySaved) {
-                                            receivedMessageIds.add(id)
-                                            synchronized(writerLock) { peerWriter?.println("ACK|$id") }
-                                        } else {
-                                            chatMessages.add(ChatMessage(
-                                                id, body, outgoing = false, delivery = "Received",
-                                                conversationId = connectedDeviceName?.let { "direct:$it" }.orEmpty(),
-                                                conversationName = connectedDeviceName.orEmpty()
-                                            ))
-                                            if (persistMessages()) {
-                                                trimChatMessages()
-                                                receivedMessageIds.add(id)
-                                                chatNotice = "New message received and saved directly."
-                                                // Confirm only after the message is durably saved.
-                                                synchronized(writerLock) { peerWriter?.println("ACK|$id") }
-                                            } else {
-                                                chatMessages.removeAll { it.id == id }
-                                                receivedMessageIds.remove(id)
-                                                chatNotice = "Message could not be saved. The sender has not been told it was delivered."
-                                            }
-                                        }
-                                    }
+                            if (!LegacySocketChatPolicy.mayAcceptSocketChatFrame()) {
+                                runOnUiThread {
+                                    chatNotice = "An unencrypted legacy chat packet was ignored. Reconnect through NeaRer Nearby Connections for private messaging."
                                 }
                             }
                         }
                         line.startsWith("ACK|") -> {
-                            val id = line.substringAfter("ACK|")
-                            runOnUiThread {
-                                val index = chatMessages.indexOfFirst { it.id == id && it.outgoing }
-                                if (index >= 0) {
-                                    chatMessages[index] = chatMessages[index].copy(delivery = "Delivered")
-                                    persistMessages()
+                            // An unauthenticated socket ACK must never mark a message as delivered.
+                            if (!LegacySocketChatPolicy.mayAcceptSocketChatFrame()) {
+                                runOnUiThread {
+                                    chatNotice = "An unverified legacy delivery receipt was ignored. Secure Nearby messaging is required."
                                 }
                             }
                         }
@@ -3687,22 +3630,9 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         line.startsWith("COMMUNITY|") -> {
-                            val encoded = line.substringAfter("COMMUNITY|")
-                            try {
-                                val body = String(Base64.getDecoder().decode(encoded), Charsets.UTF_8)
-                                if (body.startsWith("NR_COMMUNITY:") && body.length <= 24 * 1024) {
-                                    val communityBody = body.removePrefix("NR_COMMUNITY:")
-                                    if (CommunityIngressPolicy.isValid(communityBody, "", allowLegacySocketLudo = true)) {
-                                        runOnUiThread {
-                                            handleCommunityPacket(connectedDeviceName ?: "Nearby member", "", communityBody)
-                                            persistCommunityData()
-                                        }
-                                    } else {
-                                        runOnUiThread { communityNotice = "An invalid or unsupported community packet was rejected." }
-                                    }
-                                }
-                            } catch (_: Exception) {
-                                runOnUiThread { communityNotice = "A nearby game or community packet could not be read." }
+                            // Legacy Wi-Fi Direct community/game packets are unauthenticated.
+                            runOnUiThread {
+                                communityNotice = "An unverified legacy community/game packet was ignored. Reconnect through encrypted Nearby Connections."
                             }
                         }
                         line == "PING" -> synchronized(writerLock) { peerWriter?.println("PONG") }
