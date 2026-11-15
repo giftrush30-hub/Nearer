@@ -11,4 +11,6 @@ package com.nearer.app
 internal object LegacySocketChatPolicy {
     fun mayUseSocketChat(): Boolean = false
     fun mayAcceptSocketChatFrame(): Boolean = false
+    fun maySendCommunityOrGameOverSocket(): Boolean = false
+    fun mayAcceptCommunityOrGameSocketFrame(): Boolean = false
 }
