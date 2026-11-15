@@ -89,10 +89,23 @@ Phase 1 SmartConnect is integrated into `main`. The coordinated Phase 2 branch c
 
 The live direct one-to-one path has these integrated foundations: signed fresh ECDH handshake, directional AES-GCM session keys, encrypted message packets and acknowledgements, persist-before-send encrypted outbox, duplicate suppression committed before ACK, bounded retry attempts, and retry on a later authenticated reconnect. The acknowledgement means the recipient committed the message locally; it is not a read receipt. First-contact trust remains trust-on-first-use and depends on users comparing the in-person security code.
 
-### Group fan-out reliability gap
+### Group fan-out reliability — source-integrated
 
-The current group/broadcast methods encrypt a separate packet for each connected peer, but do not put each recipient's copy into the durable outbox or map its acknowledgement to a pending delivery. They are best-effort while peers are connected. This is a known Phase 2 gap, not a completed reliable group-messaging feature. The next implementation must track delivery independently per recipient, persist each recipient's queue entry before send, retry after reconnect, and clear only that recipient's copy after its authenticated ACK.
+The current group-message path now creates a separately encrypted durable outbox copy for each identity-verified recipient. It commits the complete outbox before the first send, commits the transport-ID → group-message/recipient receipt mapping before dispatch, retries a queued copy when that same pinned peer authenticates again, and retires only the copy acknowledged by that peer. Unverified roster members are not silently included. This is stronger than best-effort broadcast, but physical multi-phone and process-restart verification remain release gates.
 
-### Process lifecycle boundary
+Nearby broadcasts are still best-effort to currently connected peers; they do not yet use the durable per-recipient group-message queue.
 
-The direct outbox is restored when the transport is recreated and retries when the matching trusted peer authenticates again. This is reconnect-driven recovery, not a guarantee of background delivery while the app is stopped or the phone is in Doze. Android background execution and a durable scheduled retry mechanism remain separate work.
+### Process lifecycle and notification boundary
+
+Direct and group outbox entries survive process recreation and retry when the matching trusted peer authenticates again. The app now also creates a private, content-hidden Android notification for a newly received direct message when its Activity is backgrounded, provided Android notification permission/channel settings allow it. Edits, reactions, duplicate packets and messages that fail local persistence do not create new-message alerts.
+
+This notification is not a guarantee of delivery after Android kills the app: the Nearby transport is still owned by the Activity, and NeaRer does not yet keep a dedicated connected-device foreground service running for messaging. Doze, force-stop, app-process death and long periods in the background still require a dedicated service/lifecycle design and physical-device verification. A local delivery ACK means the message was committed on the recipient phone; it is not a read receipt.
+
+
+## Messaging background-alert slice — 15 November 2026
+
+- Added a private Android notification for newly persisted incoming direct messages while the app Activity is backgrounded.
+- Notification text deliberately does not expose message content on the lock screen; the public notification version only says that NeaRer has a new message.
+- Duplicate deliveries, local persistence failures, edits, reactions and community control packets do not trigger a new-message alert.
+- Notification eligibility and stable notification IDs have JVM unit tests.
+- The alert is conditional on Android notification permission and channel settings. It does not keep Nearby Connections alive after the Activity/process is stopped; a dedicated connected-device service remains future messaging work.
