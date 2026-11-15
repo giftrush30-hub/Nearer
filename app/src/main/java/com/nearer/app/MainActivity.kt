@@ -1886,8 +1886,10 @@ class MainActivity : ComponentActivity() {
         if (!ChatReactionPolicy.isValidActor(actorPeerId)) return false
         val idsArray = packet.optJSONArray("messageIds") ?: return false
         val ids = (0 until idsArray.length()).map { idsArray.optString(it) }
-        val readAt = packet.optLong("readAt", 0L)
-        if (!ChatReadReceiptPolicy.isValidPacket(packet.optInt("version", 0), ids, readAt, System.currentTimeMillis())) return false
+        val packetReadAt = packet.optLong("readAt", 0L)
+        if (!ChatReadReceiptPolicy.isValidPacket(packet.optInt("version", 0), ids, packetReadAt, System.currentTimeMillis())) return false
+        // Phone clocks are not a trusted time source in offline mode; clamp the remote timestamp locally.
+        val readAt = packetReadAt.coerceAtMost(System.currentTimeMillis())
         val idSet = ids.toSet()
         val changed = mutableListOf<Pair<Int, ChatMessage>>()
         chatMessages.forEachIndexed { index, message ->
