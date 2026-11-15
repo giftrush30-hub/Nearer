@@ -190,7 +190,7 @@ internal fun FileHubWorkspaceScreen(onBack: () -> Unit) {
         )
     }
 
-    if (pendingAction != null) {
+    if (pendingAction?.action == "menu") {
         val file = pendingAction!!.file
         AlertDialog(onDismissRequest = { pendingAction = null },
             title = { Text(file.name ?: "File options", color = White) },
@@ -199,10 +199,21 @@ internal fun FileHubWorkspaceScreen(onBack: () -> Unit) {
                 Row {
                     TextButton(onClick = { shareFile(file); pendingAction = null }) { Text("SHARE", color = Mint) }
                     TextButton(onClick = { renameValue = file.name.orEmpty(); pendingAction = HubFileAction(file, "rename") }) { Text("RENAME", color = Gold) }
-                    TextButton(onClick = { file.delete(); pendingAction = null; refreshKey++ }) { Text("DELETE", color = Gold) }
+                    TextButton(onClick = { pendingAction = HubFileAction(file, "delete-confirm") }) { Text("DELETE", color = Gold) }
                 }
             },
             dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("CLOSE", color = Muted) } },
+            containerColor = Panel
+        )
+    }
+
+    if (pendingAction?.action == "delete-confirm") {
+        val file = pendingAction!!.file
+        AlertDialog(onDismissRequest = { pendingAction = null },
+            title = { Text("Delete this item?", color = White) },
+            text = { Text("This removes the selected item from the folder. This action may not be reversible.", color = Muted) },
+            confirmButton = { TextButton(onClick = { file.delete(); pendingAction = null; refreshKey++ }) { Text("DELETE", color = Gold) } },
+            dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("CANCEL", color = Muted) } },
             containerColor = Panel
         )
     }
