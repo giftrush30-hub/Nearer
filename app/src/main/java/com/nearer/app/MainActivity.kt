@@ -205,6 +205,8 @@ class MainActivity : ComponentActivity() {
     private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var readReceiptsEnabled by mutableStateOf(true)
+    private var typingPeerId by mutableStateOf<String?>(null)
+    private var typingExpiresAt by mutableStateOf(0L)
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
 
@@ -483,7 +485,10 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     var safelyStored = false
                     var newlyReceivedChatMessage = false
-                    if (body.startsWith("NR_DELETE:")) {
+                    if (body.startsWith("NR_TYPING:")) {
+                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        safelyStored = applyIncomingTyping(body.removePrefix("NR_TYPING:"), actorPeerId)
+                    } else if (body.startsWith("NR_DELETE:")) {
                         val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
                         safelyStored = applyIncomingChatDelete(body.removePrefix("NR_DELETE:"), actorPeerId)
                     } else if (body.startsWith("NR_READ_RECEIPT:")) {
@@ -591,7 +596,9 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     var safelyStored = false
                     var newlyReceivedChatMessage = false
-                    if (body.startsWith("NR_DELETE:")) {
+                    if (body.startsWith("NR_TYPING:")) {
+                        safelyStored = applyIncomingTyping(body.removePrefix("NR_TYPING:"), originPeerId)
+                    } else if (body.startsWith("NR_DELETE:")) {
                         safelyStored = applyIncomingChatDelete(body.removePrefix("NR_DELETE:"), originPeerId)
                     } else if (body.startsWith("NR_READ_RECEIPT:")) {
                         safelyStored = applyIncomingChatReadReceipt(body.removePrefix("NR_READ_RECEIPT:"), originPeerId)
@@ -857,6 +864,9 @@ class MainActivity : ComponentActivity() {
                     readReceiptsEnabled = readReceiptsEnabled,
                     onReadReceiptsEnabledChange = ::setReadReceiptsEnabled,
                     onRequestNotifications = ::requestChatNotifications,
+                    typingIndicator = typingPeerId == (selectedMeshRecipientId ?: hybridConnectedStableId) &&
+                        typingExpiresAt > System.currentTimeMillis(),
+                    onTyping = { typing -> sendTypingIndicator(selectedMeshRecipientId ?: hybridConnectedStableId, typing) },
                     onDeleteMessage = ::deleteChatMessage,
                     onDeleteMessageForEveryone = ::deleteChatMessageForEveryone,
                     onEditMessage = ::editChatMessage,
@@ -970,6 +980,42 @@ class MainActivity : ComponentActivity() {
                 statusMessage = "Nearby access was not granted. You can enable it in Android app settings or tap Find nearby later."
             }
         }
+    }
+
+    private fun sendTypingIndicator(peerId: String?, typing: Boolean) {
+        val target = peerId?.takeIf { ChatReactionPolicy.isValidActor(it) } ?: return
+        val packet = JSONObject()
+            .put("version", 1)
+            .put("typing", typing)
+            .put("expiresAt", if (typing) System.currentTimeMillis() + 2_000L else System.currentTimeMillis())
+        // sendToPeerIds is intentionally transient: typing must never enter the durable message outbox.
+        nearbyTransport?.sendToPeerIds("NR_TYPING:$packet", setOf(target))
+    }
+
+    private fun applyIncomingTyping(raw: String, actorPeerId: String): Boolean {
+        val packet = try { JSONObject(raw) } catch (_: Exception) { return false }
+        val typing = packet.optBoolean("typing", false)
+        val expiresAt = packet.optLong("expiresAt", 0L)
+        val now = System.currentTimeMillis()
+        if (!ChatTypingPolicy.isValid(packet.optInt("version", 0), typing, expiresAt, now) ||
+            !ChatReactionPolicy.isValidActor(actorPeerId)
+        ) return false
+        if (!typing) {
+            if (typingPeerId == actorPeerId) {
+                typingPeerId = null
+                typingExpiresAt = 0L
+            }
+            return true
+        }
+        typingPeerId = actorPeerId
+        typingExpiresAt = expiresAt
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (typingPeerId == actorPeerId && typingExpiresAt <= System.currentTimeMillis()) {
+                typingPeerId = null
+                typingExpiresAt = 0L
+            }
+        }, (expiresAt - now).coerceAtLeast(0L))
+        return true
     }
 
     private fun requestChatNotifications() {
@@ -4052,6 +4098,8 @@ private fun NeaRerHome(
     readReceiptsEnabled: Boolean,
     onReadReceiptsEnabledChange: (Boolean) -> Unit,
     onRequestNotifications: () -> Unit,
+    typingIndicator: Boolean,
+    onTyping: (Boolean) -> Unit,
     onDeleteMessage: (String) -> Boolean,
     onDeleteMessageForEveryone: (String) -> Boolean,
     onEditMessage: (String, String) -> Boolean,
@@ -4797,6 +4845,8 @@ private fun NeaRerHome(
                     readReceiptsEnabled = readReceiptsEnabled,
                     onReadReceiptsEnabledChange = onReadReceiptsEnabledChange,
                     onRequestNotifications = onRequestNotifications,
+                    typingIndicator = typingIndicator,
+                    onTyping = onTyping,
                     onDeleteMessage = onDeleteMessage,
                     onDeleteMessageForEveryone = onDeleteMessageForEveryone,
                     onEditMessage = onEditMessage,
