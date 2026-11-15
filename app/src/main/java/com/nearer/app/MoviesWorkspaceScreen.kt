@@ -141,7 +141,7 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
         if (selected != null) {
             Text(selected!!.title, color = White, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2)
             AndroidView(
-                factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true; setShowBuffering(PlayerView.SHOW_WHEN_PLAYING) } },
+                factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true; setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING) } },
                 update = { it.player = player },
                 modifier = Modifier.fillMaxWidth().height(245.dp)
             )
