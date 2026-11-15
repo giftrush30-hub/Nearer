@@ -145,6 +145,6 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
             }
         }
         Text("NEXT IN STUDIO", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-        Text("Timeline editing, trimming, audio tools and export presets are planned next. They will appear here when each tool is ready to use.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+        Text("More Studio tools are coming in stages: multi-clip timelines, captions, transitions, audio mixing, photo layers and motion graphics. The video trim tool is the first real editor.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
     }
 }
