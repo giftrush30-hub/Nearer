@@ -2130,6 +2130,9 @@ class MainActivity : ComponentActivity() {
         return false
     }
 
+    private fun sendCommunityToPeerIds(body: String, targetPeerIds: Set<String>): Boolean =
+        nearbyTransport?.sendToPeerIds(body, targetPeerIds) == true
+
     private fun sendCommunityToNames(body: String, targetNames: Set<String>): Boolean {
         if (nearbyTransport?.sendToNames(body, targetNames) == true) return true
         val peerName = connectedDeviceName
@@ -2140,10 +2143,10 @@ class MainActivity : ComponentActivity() {
         return false
     }
 
-    private fun sendLudoPacket(packet: JSONObject, targetNames: Set<String>): Boolean {
-        // The Wi-Fi Direct fallback has exactly one connected peer, but its Android
-        // device label may not match the NeaRer profile name used by the game room.
-        return if (!hybridConnected && chatReady) sendCommunityPacket(packet)
+    private fun sendLudoPacket(packet: JSONObject, targetNames: Set<String>, targetPeerIds: Set<String> = emptySet()): Boolean {
+        // Wi-Fi Direct remains a single-peer fallback; Nearby Connections uses authenticated IDs.
+        if (!hybridConnected && chatReady) return sendCommunityPacket(packet)
+        return if (targetPeerIds.isNotEmpty()) sendCommunityToPeerIds("NR_COMMUNITY:$packet", targetPeerIds)
         else sendCommunityToNames("NR_COMMUNITY:$packet", targetNames)
     }
     private fun createCommunityGroup(raw: String) {
@@ -2621,7 +2624,7 @@ class MainActivity : ComponentActivity() {
         val invite = incomingGameInvite ?: return
         sendLudoPacket(
             JSONObject().put("type", "ludo_reject").put("matchId", invite.matchId).put("sender", displayName),
-            setOf(invite.sender)
+            setOf(invite.sender), invite.senderPeerId.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty()
         )
         incomingGameInvite = null
     }
@@ -2637,7 +2640,7 @@ class MainActivity : ComponentActivity() {
         gameChatMessages.clear()
         val sent = sendLudoPacket(
             JSONObject().put("type", "ludo_accept").put("matchId", invite.matchId).put("sender", displayName),
-            setOf(invite.sender)
+            setOf(invite.sender), invite.senderPeerId.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty()
         )
         if (!sent) {
             activeGame = null
@@ -2667,13 +2670,14 @@ class MainActivity : ComponentActivity() {
         recipients.forEach { (name, color) ->
             val packet = JSONObject().put("type", "ludo_state").put("matchId", match.matchId)
                 .put("revision", match.revision).put("localColor", color.name).put("state", snapshot)
-            // Wi-Fi Direct fallback is a single-peer socket and may expose the Android
-            // device name rather than the NeaRer profile name. The match ID and sender
-            // checks still authenticate the room at the application layer.
+            // The single-peer Wi-Fi Direct fallback has no authenticated Nearby endpoint ID.
+            val peerId = if (match.isHost) match.remotePeerIds[color].orEmpty() else match.hostPeerId
             val sent = if (!hybridConnected && chatReady && match.isHost && match.remotePlayers.size == 1) {
                 sendCommunityPacket(packet)
+            } else if (peerId.isNotBlank()) {
+                sendCommunityToPeerIds("NR_COMMUNITY:$packet", setOf(peerId))
             } else {
-                sendCommunityToNames("NR_COMMUNITY:$packet", setOf(name)) == true
+                sendCommunityToNames("NR_COMMUNITY:$packet", setOf(name))
             }
             if (sent) sentAny = true
         }
@@ -2731,7 +2735,7 @@ class MainActivity : ComponentActivity() {
             val sent = sendLudoPacket(
                 JSONObject().put("type", "ludo_action").put("matchId", game.matchId)
                     .put("action", action).put("token", token).put("revision", game.revision).put("sender", displayName),
-                setOf(game.opponentName)
+                setOf(game.opponentName), game.hostPeerId.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty()
             )
             if (!sent) communityNotice = "Your move could not reach the host. Check the nearby connection."
         }
@@ -2757,7 +2761,9 @@ class MainActivity : ComponentActivity() {
             activeGame = game.copy(ready = false)
             val syncPacket = JSONObject().put("type", "ludo_sync")
                 .put("matchId", game.matchId).put("revision", game.revision).put("sender", displayName)
-            val sent = if (hybridConnected) {
+            val sent = if (hybridConnected && game.hostPeerId.isNotBlank()) {
+                sendCommunityToPeerIds("NR_COMMUNITY:$syncPacket", setOf(game.hostPeerId))
+            } else if (hybridConnected) {
                 nearbyTransport?.sendToNames("NR_COMMUNITY:$syncPacket", setOf(game.opponentName)) == true
             } else {
                 sendCommunityPacket(syncPacket)
@@ -2787,7 +2793,7 @@ class MainActivity : ComponentActivity() {
             val sent = sendLudoPacket(
                 JSONObject().put("type", "ludo_rematch")
                     .put("matchId", game.matchId).put("revision", game.revision).put("sender", displayName),
-                setOf(game.opponentName)
+                setOf(game.opponentName), game.hostPeerId.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty()
             )
             communityNotice = if (sent) "Rematch request sent to ${game.opponentName}."
                 else "Could not request a rematch. Check the nearby connection."
