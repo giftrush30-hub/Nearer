@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -124,8 +125,12 @@ internal fun PremiumChatsScreen(
         val folder = File(context.filesDir, "voice-notes").apply { mkdirs() }
         val file = File(folder, "NeaRer_Voice_${System.currentTimeMillis()}.m4a")
         runCatching {
-            @Suppress("DEPRECATION")
-            val next = MediaRecorder()
+            val next = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(context)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
             next.setAudioSource(MediaRecorder.AudioSource.MIC)
             next.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             next.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
