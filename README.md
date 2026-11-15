@@ -102,7 +102,9 @@ The direct outbox is restored when the transport is recreated and retries when t
 
 - Direct-chat read state is stored separately from receipt delivery state. Opening a conversation marks its incoming messages locally read.
 - Read receipts are authenticated against the original conversation peer and are sent through the encrypted durable outbox, so a trusted peer can receive the receipt after reconnecting.
-- Users can disable read receipts in the chat screen. When disabled, NeaRer keeps local read state but does not send a receipt.
+- Users can disable read receipts in the chat screen. When disabled, NeaRer keeps local read state but does not send direct or group receipts.
+- Group messages store the authenticated sender identity. When a member opens a group, bounded read receipts are durably queued to each original author; the author records which verified group members have read the message.
+- Group read receipts are accepted only from an authenticated identity in the group's verified member roster, and their message IDs and timestamps are validated.
 - A sender can delete a message for everyone only after delivery has been confirmed (or a valid read receipt has arrived). The deletion is queued to the pinned recipient identity.
 - The receiving phone accepts a delete event only from the original sender for that conversation. Deletion is idempotent, removes message content and reactions, and clears quoted previews that referenced the deleted message.
 - Local "Delete for me" remains separate from remote deletion.
@@ -117,3 +119,19 @@ Automated policy tests cover packet bounds, identity authorization, delivery eli
 - Direct voice notes are recorded as AAC in an MPEG-4 container and sent through the existing nearby file-transfer path. Recording is cancelled and the partial file discarded when the app backgrounds or the user switches conversations.
 - Received `.m4a`, `.mp3`, and `.aac` files can be played inline in the chat's received-file area. These remain file attachments rather than fully integrated audio-message bubbles.
 - Voice notes currently require a direct nearby connection; remote multi-hop voice-note attachments are not advertised as supported.
+
+
+## A messaging acceptance checks
+
+Before treating the messaging work as release-ready, validate it on two and then three physical Android phones:
+
+1. Connect two phones, verify the trust code, and send messages in both directions.
+2. Open a conversation on the receiver and confirm the sender sees Read; turn the read-receipt switch off and confirm no new receipt is sent.
+3. Send a delivered message, delete it for everyone, and confirm the receiving phone shows the deletion placeholder and clears quoted previews.
+4. Record and send a voice note; play the received audio inline. Background the app during a second recording and confirm it is stopped and discarded.
+5. Create a group with two phones, then add a third. Send group messages, open them on each receiver, and confirm the original author sees the verified read count.
+6. Background both apps and send messages. Confirm only generic private notifications appear when Android notification permission and channel settings allow them.
+7. Disconnect and reconnect; confirm durable messages and control packets retry to the same pinned identities without duplicate message bubbles.
+8. Repeat after swiping NeaRer away and after a device restart. Record the result; a dedicated service-owned Nearby transport and verified process-restart recovery are still required before promising continuous background availability.
+
+Automated CI and JVM policy tests do not replace these device-level acceptance checks.
