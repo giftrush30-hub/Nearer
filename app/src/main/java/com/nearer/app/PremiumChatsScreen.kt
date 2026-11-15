@@ -86,6 +86,8 @@ internal fun PremiumChatsScreen(
     readReceiptsEnabled: Boolean,
     onReadReceiptsEnabledChange: (Boolean) -> Unit,
     onRequestNotifications: () -> Unit,
+    typingIndicator: Boolean,
+    onTyping: (Boolean) -> Unit,
     onDeleteMessage: (String) -> Boolean,
     onDeleteMessageForEveryone: (String) -> Boolean,
     onEditMessage: (String, String) -> Boolean,
@@ -115,6 +117,19 @@ internal fun PremiumChatsScreen(
 
     LaunchedEffect(selectedMeshRecipientId, chatReady, messages.size) {
         if (chatReady || selectedMeshRecipientId != null) onMarkConversationRead(selectedMeshRecipientId)
+    }
+    LaunchedEffect(draft, selectedMeshRecipientId, chatReady) {
+        if (draft.isBlank() || !chatReady) {
+            onTyping(false)
+        } else {
+            delay(300)
+            onTyping(true)
+            delay(1_800)
+            onTyping(false)
+        }
+    }
+    DisposableEffect(selectedMeshRecipientId) {
+        onDispose { onTyping(false) }
     }
 
     var recipientMenuExpanded by remember { mutableStateOf(false) }
@@ -574,6 +589,9 @@ internal fun PremiumChatsScreen(
                         }
                     }
 
+                    if (typingIndicator) {
+                        Text("Typing…", color = NeaRerPalette.Mint, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    }
                     if (chatNotice.isNotBlank()) {
                         Text(chatNotice, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                     }
