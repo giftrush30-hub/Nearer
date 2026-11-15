@@ -11,6 +11,15 @@ class ChatReadReceiptPolicyTest {
         assertFalse(ChatReadReceiptPolicy.shouldMarkRead(false, "PEER_B", "PEER_A", 0L))
         assertFalse(ChatReadReceiptPolicy.shouldMarkRead(false, "PEER_A", "PEER_A", 100L))
         assertFalse(ChatReadReceiptPolicy.shouldMarkRead(false, "", "", 0L))
+        assertFalse(ChatReadReceiptPolicy.shouldMarkRead(false, "PEER_A", "PEER_A", 0L, 100L))
+    }
+
+    @Test fun savedLocalReadStateCanRetryReceiptAfterReconnect() {
+        assertTrue(ChatReadReceiptPolicy.shouldSendReceipt(false, "PEER_A", "PEER_A", 100L, 0L))
+        assertFalse(ChatReadReceiptPolicy.shouldSendReceipt(false, "PEER_A", "PEER_A", 0L, 0L))
+        assertFalse(ChatReadReceiptPolicy.shouldSendReceipt(false, "PEER_A", "PEER_A", 100L, 200L))
+        assertFalse(ChatReadReceiptPolicy.shouldSendReceipt(true, "PEER_A", "PEER_A", 100L, 0L))
+        assertFalse(ChatReadReceiptPolicy.shouldSendReceipt(false, "PEER_B", "PEER_A", 100L, 0L))
     }
 
     @Test fun onlyOriginalRecipientCanMarkItsOutgoingMessagesRead() {
