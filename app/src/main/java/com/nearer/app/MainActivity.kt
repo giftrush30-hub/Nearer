@@ -3871,7 +3871,7 @@ private fun NeaRerHome(
     var draft by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Chats") }
     var shareSection by remember { mutableStateOf("Files") }
-    BackHandler(enabled = selectedTab == "Studio" || selectedTab == "Academy") { selectedTab = "More" }
+    BackHandler(enabled = selectedTab == "Studio" || selectedTab == "Academy" || selectedTab == "Library") { selectedTab = "More" }
     var selectedConversationKey by remember { mutableStateOf<String?>(null) }
     var showRoyalLudo by remember { mutableStateOf(false) }
     BackHandler(enabled = showRoyalLudo) { showRoyalLudo = false }
@@ -4144,7 +4144,7 @@ private fun NeaRerHome(
     Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share" || selectedTab == "Share Hub" || selectedTab == "Studio" || selectedTab == "Academy") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 20.dp, vertical = 18.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().then(if (selectedTab == "Share" || selectedTab == "Share Hub" || selectedTab == "Studio" || selectedTab == "Academy" || selectedTab == "Library") Modifier else Modifier.verticalScroll(rememberScrollState())).padding(horizontal = 20.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
             Row(
@@ -4689,6 +4689,9 @@ private fun NeaRerHome(
                     onOpenStudio = { selectedTab = "Studio" }
                 )
             }
+            if (selectedTab == "Library") {
+                LibraryWorkspaceScreen(onBack = { selectedTab = "More" })
+            }
 
             if (selectedTab == "More") {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
@@ -4709,7 +4712,7 @@ private fun NeaRerHome(
                         listOf(
                             "Studio" to "Coming soon · create and share",
                             "Academy" to "Ready · learn and practise offline",
-                            "Library" to "Coming soon · save useful resources",
+                            "Library" to "Ready · your offline knowledge space",
                             "Movies" to "Coming soon · watch and discover",
                             "Business Center" to "Coming soon · tools for work",
                             "File Hub" to "Ready · open sharing tools"
@@ -4718,6 +4721,7 @@ private fun NeaRerHome(
                                 when (space.first) {
                                     "Studio" -> selectedTab = "Studio"
                                     "Academy" -> selectedTab = "Academy"
+                                    "Library" -> selectedTab = "Library"
                                     "File Hub" -> { selectedTab = "Share"; shareSection = "Hub" }
                                 }
                             }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
