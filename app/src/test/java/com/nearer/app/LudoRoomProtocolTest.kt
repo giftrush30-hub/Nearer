@@ -28,11 +28,17 @@ class LudoRoomProtocolTest {
         assertEquals("snapshot", packet?.body)
         assertEquals(7L, packet?.sequence)
     }
+    @Test fun encodedPacketsStayWithinNearbyTransportLimit() {
+        val chat = LudoRoomProtocol.encode("chat", "room-123", "x".repeat(300))
+        assertEquals(true, chat != null && chat.length <= LudoRoomProtocol.MAX_TRANSPORT_PACKET_LENGTH)
+        assertNull(LudoRoomProtocol.encode("state", "room-123", "x".repeat(3_501)))
+    }
+
     @Test fun rejectsUnknownTypesAndOversizedPayloads() {
         assertNull(LudoRoomProtocol.parse("""{"type":"admin","roomId":"x"}"""))
         val tooLong = "x".repeat(301)
         assertNull(LudoRoomProtocol.parse("""{"type":"chat","roomId":"x","body":"$tooLong"}"""))
         assertNull(LudoRoomProtocol.parse("{"))
-        assertNull(LudoRoomProtocol.parse("x".repeat(4097)))
+        assertNull(LudoRoomProtocol.parse("x".repeat(LudoRoomProtocol.MAX_TRANSPORT_PACKET_LENGTH + 1)))
     }
 }
