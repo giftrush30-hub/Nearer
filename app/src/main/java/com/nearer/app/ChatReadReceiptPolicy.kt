@@ -18,11 +18,26 @@ internal object ChatReadReceiptPolicy {
         outgoing: Boolean,
         messageConversationId: String,
         selectedConversationId: String,
-        readReceiptSentAt: Long
+        readReceiptSentAt: Long,
+        locallyReadAt: Long = 0L
     ): Boolean =
         !outgoing &&
             selectedConversationId.isNotBlank() &&
             messageConversationId == selectedConversationId &&
+            readReceiptSentAt <= 0L &&
+            locallyReadAt <= 0L
+
+    fun shouldSendReceipt(
+        outgoing: Boolean,
+        messageConversationId: String,
+        recipientPeerId: String,
+        locallyReadAt: Long,
+        readReceiptSentAt: Long
+    ): Boolean =
+        !outgoing &&
+            recipientPeerId.isNotBlank() &&
+            messageConversationId == recipientPeerId &&
+            locallyReadAt > 0L &&
             readReceiptSentAt <= 0L
 
     fun canApplyReceipt(
