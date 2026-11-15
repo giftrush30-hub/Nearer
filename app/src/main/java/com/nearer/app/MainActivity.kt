@@ -2508,8 +2508,8 @@ class MainActivity : ComponentActivity() {
                                 game.remotePeerIds, game.remotePlayers, senderPeerId, sender,
                                 allowLegacyNameFallback = senderPeerId.isBlank()
                             )
-                            val otherIds = (game.remotePeerIds - senderColor).values.toSet()
-                            val otherNames = (game.remotePlayers - senderColor).values.toSet()
+                            val otherIds = game.remotePeerIds.filterKeys { it != senderColor }.values.toSet()
+                            val otherNames = game.remotePlayers.filterKeys { it != senderColor }.values.toSet()
                             val forwarded = "NR_COMMUNITY:" + JSONObject().put("type", "ludo_chat")
                                 .put("matchId", game.matchId).put("sender", chatSender).put("body", body)
                             if (otherIds.isNotEmpty()) sendCommunityToPeerIds(forwarded, otherIds)
