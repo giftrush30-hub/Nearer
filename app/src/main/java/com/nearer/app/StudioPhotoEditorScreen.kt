@@ -183,10 +183,11 @@ private fun photoColourMatrix(brightness: Float, contrast: Float, saturation: Fl
     val red = 0.213f * inverse
     val green = 0.715f * inverse
     val blue = 0.072f * inverse
+    val contrastOffset = 128f * (1f - contrast) + brightness
     return floatArrayOf(
-        (red + saturation) * contrast, green * contrast, blue * contrast, 0f, brightness + warmth,
-        red * contrast, (green + saturation) * contrast, blue * contrast, 0f, brightness,
-        red * contrast, green * contrast, (blue + saturation) * contrast, 0f, brightness - warmth,
+        (red + saturation) * contrast, green * contrast, blue * contrast, 0f, contrastOffset + warmth,
+        red * contrast, (green + saturation) * contrast, blue * contrast, 0f, contrastOffset,
+        red * contrast, green * contrast, (blue + saturation) * contrast, 0f, contrastOffset - warmth,
         0f, 0f, 0f, 1f, 0f
     )
 }
