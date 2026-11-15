@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.sp
 private val ShareMidnight = Color(0xFF101A2B)
 private val SharePanel = Color(0xFF1A2940)
 private val ShareGold = Color(0xFFFFD12D)
-private val ShareMint = Color(0xFF69E0C0)
+private val ShareMint = NeaRerPalette.AccentBlue // Shared royal-blue brand accent
 private val ShareWhite = Color(0xFFF6F8FC)
 private val ShareMuted = Color(0xFFA8B6C9)
 
