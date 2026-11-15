@@ -410,3 +410,25 @@ This confirms the current main source compiles, the configured JVM unit-test tas
 - `feature/android-share-sheet-intake` is an older multi-file intake implementation touching the manifest, File Centre and MainActivity. It is not safe to merge wholesale without checking current Android Sharesheet intents and URI permission handling.
 
 These are focused candidate checks, not an exhaustive audit of every branch. Current main remains the integration source of truth; avoid replacing current transport, UI or lifecycle code with stale snapshots.
+
+
+## Community messaging live-path audit — 15 November 2026
+
+A focused review of the current `MainActivity` receive and send paths found a protocol integration gap that must be resolved before community messaging is called complete:
+
+- The live receive callback handles `NR_COMMUNITY:` packets by parsing JSON and calling `handleCommunityPacket` before the callback computes its final `accepted` result and persists/ACKs the packet.
+- `CommunityPacketPolicy` and its tests exist in main, but a source search of `MainActivity.kt` found no use of `CommunityPacketPolicy` or `CommunityPacketDescriptor`. The tested packet-bounds/sender-validation policy is therefore not enforced at this live ingress point.
+- The policy's declared protocol vocabulary (`group_join_request`, `game_invite`, `game_move`, etc.) differs from the current live handler vocabulary (`group_join`, `ludo_invite`, `ludo_action`, etc.). This is protocol drift, not a safe opportunity to simply insert the policy call: doing so without reconciling the packet schemas would reject legitimate existing messages.
+- The current live group-message path does use stable peer IDs for roster membership and durable per-recipient sends. However, roster synchronization and group creation announcements still use separate send paths, and offline members can only be queued when their verified stable IDs are already in the saved roster.
+- The current live Ludo handler identifies remote participants largely by display name. A later security pass should bind room participants and actions to authenticated stable peer IDs, so two peers with the same display name cannot be confused.
+
+### Required next implementation batch
+
+1. Define one canonical community packet schema/version and reconcile the policy and live handler packet names/fields. Preserve backward compatibility only where it is explicitly safe and tested.
+2. Validate packet size, type, sender binding, field lengths, group code, stable IDs and per-type bounds before any state mutation.
+3. Make state mutation return an explicit accepted/stored result; ACK only after the exact packet is validated and its durable state is committed. Invalid packets must not partially mutate state before rejection.
+4. Bind Ludo room membership, actions, chat and departure to authenticated stable peer IDs, not display names alone.
+5. Add receive-path tests covering malformed JSON, oversized packets, unsupported types, sender spoofing, duplicate group messages, invalid roster updates, failed persistence and same-display-name peers.
+6. Run the exact-head JVM test and debug APK workflow after implementation. Relay remains disabled; no physical-device or security certification is implied by this source audit.
+
+This is a source-level finding and an implementation plan, not a claim that the current app is already exploitable in every transport configuration. Avoid merging older community branches wholesale; port only after their wire format has been reconciled with this canonical protocol.
