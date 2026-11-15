@@ -29,6 +29,8 @@ Batch Two adds signed, hash-linked per-hop acceptance proofs, compact packet/pro
 
 ## Security boundaries and current limitations
 
+- The older Wi-Fi Direct line-protocol fallback is **not an encrypted chat transport**. Pairing-code approval alone does not provide application-layer confidentiality or authenticated delivery receipts. NeaRer therefore ignores legacy `MSG` and `ACK` frames and does not send private chat over that socket. Its separate compatible file-transfer path remains available; private chat requires the authenticated, encrypted Nearby Connections session.
+
 - The current Nearby handshake uses each phone's long-term P-256 signing identity to authenticate a fresh ephemeral P-256 ECDH exchange. HKDF-SHA256 derives directional AES-256-GCM session keys.
 - Chat bodies and delivery acknowledgements are encrypted and authenticated at the application layer. The message ID is authenticated as associated data; the receiver's durable deduplication prevents a replayed message from being stored twice.
 - First-contact trust uses trust-on-first-use key pinning. This detects a changed key on later connections, but it does **not** prove a real-world person's identity or prevent a first-contact man-in-the-middle attack.
