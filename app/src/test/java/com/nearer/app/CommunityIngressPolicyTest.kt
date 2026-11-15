@@ -49,6 +49,44 @@ class CommunityIngressPolicyTest {
         ))
     }
 
+    @Test fun acceptsGroupReadReceiptOnlyForItsClaimedAuthenticatedReader() {
+        val valid = packet("group_read_receipt") {
+            put("code", "123456")
+            put("readerPeerId", sender)
+            put("messageIds", JSONArray(listOf("message-1", "message-2")))
+            put("readAt", 100L)
+        }
+        assertTrue(CommunityIngressPolicy.isValid(valid, sender))
+
+        val spoofedReader = packet("group_read_receipt") {
+            put("code", "123456")
+            put("readerPeerId", "ABCDEF")
+            put("messageIds", JSONArray(listOf("message-1")))
+            put("readAt", 100L)
+        }
+        assertFalse(CommunityIngressPolicy.isValid(spoofedReader, sender))
+    }
+
+    @Test fun rejectsEmptyDuplicateAndOversizedGroupReadReceipts() {
+        val empty = packet("group_read_receipt") {
+            put("code", "123456").put("readerPeerId", sender)
+            put("messageIds", JSONArray()).put("readAt", 100L)
+        }
+        assertFalse(CommunityIngressPolicy.isValid(empty, sender))
+
+        val duplicate = packet("group_read_receipt") {
+            put("code", "123456").put("readerPeerId", sender)
+            put("messageIds", JSONArray(listOf("m1", "m1"))).put("readAt", 100L)
+        }
+        assertFalse(CommunityIngressPolicy.isValid(duplicate, sender))
+
+        val oversized = packet("group_read_receipt") {
+            put("code", "123456").put("readerPeerId", sender)
+            put("messageIds", JSONArray((1..41).map { "m$it" })).put("readAt", 100L)
+        }
+        assertFalse(CommunityIngressPolicy.isValid(oversized, sender))
+    }
+
     @Test fun rejectsUnknownAndOversizedPackets() {
         assertFalse(CommunityIngressPolicy.isValid(packet("admin_override"), sender))
         assertFalse(CommunityIngressPolicy.isValid("x".repeat(24 * 1024 + 1), sender))
