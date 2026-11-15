@@ -224,6 +224,19 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
             }
         }
 
+        if (drafts.isNotEmpty()) {
+            TextField(value = searchQuery, onValueChange = { searchQuery = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                placeholder = { Text("Search your listings") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                listOf("ALL", "PRODUCT", "SERVICE").forEach { filter ->
+                    Surface(color = if (catalogueFilter == filter) Mint.copy(alpha = 0.18f) else Panel, shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.clickable { catalogueFilter = filter }) {
+                        Text(filter, color = if (catalogueFilter == filter) Mint else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
+                    }
+                }
+            }
+        }
         if (drafts.isEmpty()) {
             Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
                 Column(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -231,8 +244,10 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                     Text("Create your first product or service listing. You can prepare it now and share it when you are ready.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                 }
             }
+        } else if (visibleDrafts.isEmpty()) {
+            Text("No listings match this search or filter.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(12.dp))
         } else {
-            drafts.forEach { draft ->
+            visibleDrafts.forEach { draft ->
                 Surface(color = Panel, shape = RoundedCornerShape(17.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
@@ -262,10 +277,11 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                             }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                                 Text("Share listing", fontWeight = FontWeight.Bold)
                             }
+                            Text("EDIT", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editDraft(draft) }.padding(10.dp))
                             Text("DELETE", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                                 drafts.remove(draft); saveDrafts()
                                 if (draft.imageUri.isNotBlank()) runCatching { context.contentResolver.releasePersistableUriPermission(Uri.parse(draft.imageUri), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                            }.padding(12.dp))
+                            }.padding(10.dp))
                         }
                     }
                 }
