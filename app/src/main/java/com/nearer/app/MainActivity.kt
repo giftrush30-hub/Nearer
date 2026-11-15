@@ -2709,7 +2709,12 @@ class MainActivity : ComponentActivity() {
                         CommunityRosterPolicy.mayAcceptGroupMessage(senderId, group.memberPeerIds)) {
                         val id = packet.optString("id")
                         if (id.isNotBlank() && communityMessages.none { it.id == id }) {
-                            communityMessages.add(CommunityChatMessage(id, code, sender, packet.optString("body").take(1500), System.currentTimeMillis()))
+                            communityMessages.add(
+                                CommunityChatMessage(
+                                    id, code, sender, packet.optString("body").take(1500),
+                                    System.currentTimeMillis(), senderPeerId = senderPeerId
+                                )
+                            )
                             persistCommunityData()
                         }
                     } else if (group != null) {
