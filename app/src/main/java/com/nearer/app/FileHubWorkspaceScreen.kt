@@ -38,6 +38,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private data class HubFileAction(val file: DocumentFile, val action: String)
 
@@ -52,6 +55,8 @@ internal fun FileHubWorkspaceScreen(onBack: () -> Unit) {
     var renameValue by remember { mutableStateOf("") }
     var showCreateFolder by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableStateOf(0) }
+    var transferStatus by remember { mutableStateOf("") }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     fun openTree(uri: Uri) {
         val root = DocumentFile.fromTreeUri(context, uri) ?: return
@@ -73,6 +78,56 @@ internal fun FileHubWorkspaceScreen(onBack: () -> Unit) {
         if (uri != null) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
             openTree(uri)
+        }
+    }
+    val destinationPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        val action = pendingAction
+        if (uri != null && action != null && action.action in listOf("copy", "move")) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+            val destination = DocumentFile.fromTreeUri(context, uri)
+            if (destination == null || !destination.isDirectory) {
+                transferStatus = "That destination folder could not be opened."
+            } else if (destination.uri == action.file.uri) {
+                transferStatus = "Choose a different folder."
+            } else {
+                val move = action.action == "move"
+                val source = action.file
+                pendingAction = null
+                transferStatus = if (move) "Moving ${source.name}…" else "Copying ${source.name}…"
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        runCatching {
+                            require(!source.isDirectory) { "Folder copy/move is not enabled yet. Choose an individual file." }
+                            val sourceName = source.name ?: "File"
+                            var targetName = sourceName
+                            var suffix = 1
+                            while (destination.findFile(targetName)?.exists() == true) {
+                                val dot = sourceName.lastIndexOf('.').takeIf { it > 0 } ?: sourceName.length
+                                targetName = sourceName.substring(0, dot) + " ($suffix)" + sourceName.substring(dot)
+                                suffix++
+                            }
+                            val output = destination.createFile(source.type ?: "application/octet-stream", targetName)
+                                ?: error("The destination provider could not create the file.")
+                            try {
+                                val inputStream = context.contentResolver.openInputStream(source.uri)
+                                    ?: error("The source file could not be read.")
+                                val outputStream = context.contentResolver.openOutputStream(output.uri, "w")
+                                    ?: error("The destination file could not be written.")
+                                inputStream.use { input -> outputStream.use { target -> input.copyTo(target) } }
+                            } catch (failure: Throwable) {
+                                output.delete()
+                                throw failure
+                            }
+                            if (move && !source.delete()) error("The copy succeeded, but Android could not remove the original. Both files are kept.")
+                            targetName
+                        }
+                    }
+                    result.onSuccess { name ->
+                        transferStatus = if (move) "Moved $name successfully." else "Copied $name successfully."
+                        refreshKey++
+                    }.onFailure { transferStatus = it.message ?: "File operation failed." }
+                }
+            }
         }
     }
 
@@ -173,6 +228,7 @@ internal fun FileHubWorkspaceScreen(onBack: () -> Unit) {
                 Text("Select internal storage, an SD card or another folder provider. NeaRer won't scan storage without your permission.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
             }
         }
+        if (transferStatus.isNotBlank()) Text(transferStatus, color = Mint, fontSize = 11.sp, lineHeight = 16.sp)
         Text("Share Hub remains your nearby transfer tool. File Hub is for browsing and organising local files.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
     }
 
@@ -196,10 +252,22 @@ internal fun FileHubWorkspaceScreen(onBack: () -> Unit) {
             title = { Text(file.name ?: "File options", color = White) },
             text = { Text(if (file.isDirectory) "Folder · last changed ${file.lastModified()}" else "${file.type ?: "File"} · ${formatHubBytes(file.length())} · modified ${file.lastModified()}", color = Muted) },
             confirmButton = {
-                Row {
-                    TextButton(onClick = { shareFile(file); pendingAction = null }) { Text("SHARE", color = Mint) }
-                    TextButton(onClick = { renameValue = file.name.orEmpty(); pendingAction = HubFileAction(file, "rename") }) { Text("RENAME", color = Gold) }
-                    TextButton(onClick = { pendingAction = HubFileAction(file, "delete-confirm") }) { Text("DELETE", color = Gold) }
+                Column(horizontalAlignment = Alignment.End) {
+                    Row {
+                        TextButton(onClick = { shareFile(file); pendingAction = null }) { Text("SHARE", color = Mint) }
+                        TextButton(onClick = { renameValue = file.name.orEmpty(); pendingAction = HubFileAction(file, "rename") }) { Text("RENAME", color = Gold) }
+                        TextButton(onClick = { pendingAction = HubFileAction(file, "delete-confirm") }) { Text("DELETE", color = Gold) }
+                    }
+                    Row {
+                        TextButton(onClick = {
+                            if (file.isDirectory) transferStatus = "Folder copy is not enabled yet; choose an individual file."
+                            else { pendingAction = HubFileAction(file, "copy"); destinationPicker.launch(null) }
+                        }) { Text("COPY TO…", color = Mint) }
+                        TextButton(onClick = {
+                            if (file.isDirectory) transferStatus = "Folder move is not enabled yet; choose an individual file."
+                            else { pendingAction = HubFileAction(file, "move"); destinationPicker.launch(null) }
+                        }) { Text("MOVE TO…", color = Gold) }
+                    }
                 }
             },
             dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("CLOSE", color = Muted) } },
