@@ -504,8 +504,10 @@ class MainActivity : ComponentActivity() {
                             communityNotice = "An invalid or unauthenticated community packet was rejected before processing."
                         } else {
                         // Never mutate group/game state until packet shape and transport identity pass.
-                        handleCommunityPacket(senderName, senderPeerId, communityBody)
                         val code = packet.optString("code")
+                        val wasGroupMessageStored = type == "group_message" &&
+                            communityMessages.any { it.id == packet.optString("id") && it.groupCode == code }
+                        handleCommunityPacket(senderName, senderPeerId, communityBody)
                         val group = communityGroups.firstOrNull { it.code == code }
                         val accepted = when (type) {
                             "group_created" -> group != null && group.ownerPeerId == senderPeerId &&
@@ -538,6 +540,14 @@ class MainActivity : ComponentActivity() {
                             else -> false
                         }
                         safelyStored = accepted && persistCommunityData()
+                        if (!safelyStored && accepted && type == "group_message" && !wasGroupMessageStored) {
+                            communityMessages.removeAll {
+                                it.id == packet.optString("id") && it.groupCode == code
+                            }
+                        }
+                        if (safelyStored && type == "group_message" && !wasGroupMessageStored) {
+                            newlyReceivedChatMessage = true
+                        }
                         }
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
