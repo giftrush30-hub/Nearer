@@ -42,11 +42,13 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.audio.ToInt16PcmAudioProcessor
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.Effects
 import androidx.media3.transformer.Transformer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
@@ -163,6 +165,11 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
     var message by remember { mutableStateOf("Preview your recording, set the cut points and export a new audio file.") }
     var exportedFile by remember { mutableStateOf<File?>(null) }
     var playhead by remember { mutableStateOf(0L) }
+    val vocalPreferences = remember(context) { context.getSharedPreferences("nearer_studio_vocal_profile", android.content.Context.MODE_PRIVATE) }
+    var selectedVocalProfile by remember(context) {
+        mutableStateOf(StudioVocalProfile.values().firstOrNull { it.name == vocalPreferences.getString("profile", StudioVocalProfile.WARM_CONDENSER.name) } ?: StudioVocalProfile.WARM_CONDENSER)
+    }
+    LaunchedEffect(selectedVocalProfile) { vocalPreferences.edit().putString("profile", selectedVocalProfile.name).apply() }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -220,6 +227,28 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                 }
             }
         }
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("CONDENSER STUDIO  ·  VOCAL POLISH", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("Choose a vocal finish for the exported copy. The original take stays untouched.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                StudioVocalProfile.values().toList().chunked(2).forEach { rowProfiles ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        rowProfiles.forEach { profile ->
+                            Button(onClick = { selectedVocalProfile = profile; exportedFile = null }, modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (selectedVocalProfile == profile) Mint else Midnight,
+                                    contentColor = if (selectedVocalProfile == profile) Midnight else White
+                                )) {
+                                Text(profile.title, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        if (rowProfiles.size == 1) androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                    }
+                }
+                Text("This offline chain adds a controlled low cut, presence, de-essing, gentle noise gate, compression, soft saturation and subtle room ambience. The live preview above remains the untouched source; the selected polish is applied during export.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Text("PITCH CORRECTION / AUTO-TUNE IS A SEPARATE ENGINE MILESTONE — NOT SIMULATED BY THIS PRESET.", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            }
+        }
         Button(onClick = {
             if (durationMs <= 0L || endMs <= startMs) message = "Wait for the audio to load and choose a valid range."
             else {
@@ -230,7 +259,11 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                 val clip = MediaItem.Builder().setUri(uri).setClippingConfiguration(
                     MediaItem.ClippingConfiguration.Builder().setStartPositionMs(startMs).setEndPositionMs(endMs).build()
                 ).build()
-                val edited = EditedMediaItem.Builder(clip).build()
+                val vocalEffects = Effects(
+                    listOf(ToInt16PcmAudioProcessor(), StudioVocalPolishProcessor(selectedVocalProfile)),
+                    emptyList()
+                )
+                val edited = EditedMediaItem.Builder(clip).setEffects(vocalEffects).build()
                 val transformer = Transformer.Builder(context).addListener(object : Transformer.Listener {
                     override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                         exportBusy = false
