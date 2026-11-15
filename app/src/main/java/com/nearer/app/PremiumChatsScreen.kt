@@ -158,8 +158,9 @@ internal fun PremiumChatsScreen(
     LaunchedEffect(voiceRecording) {
         while (voiceRecording) { delay(1_000); voiceElapsedSeconds++ }
     }
-    LaunchedEffect(selectedMeshRecipientId) {
-        if (voiceRecording) stopVoiceNote(send = false)
+    LaunchedEffect(selectedMeshRecipientId, chatReady) {
+        if (voiceRecording && !chatReady) stopVoiceNote(send = false)
+        else if (voiceRecording) stopVoiceNote(send = false)
     }
     val latestRecorder = rememberUpdatedState(voiceRecorder)
     val latestRecording = rememberUpdatedState(voiceRecording)
@@ -805,8 +806,9 @@ private fun startVoiceNoteRecording(
 ) {
     val folder = File(context.filesDir, "voice-notes").apply { mkdirs() }
     val file = File(folder, "NeaRer_Voice_${System.currentTimeMillis()}.m4a")
+    var recorder: MediaRecorder? = null
     try {
-        val recorder = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(context) else @Suppress("DEPRECATION") MediaRecorder()
+        recorder = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(context) else @Suppress("DEPRECATION") MediaRecorder()
         recorder.apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
@@ -823,7 +825,11 @@ private fun startVoiceNoteRecording(
         setRecording(true)
         setNotice("Recording… tap Stop & send when finished.")
     } catch (error: Exception) {
+        runCatching { recorder?.release() }
         runCatching { file.delete() }
+        setRecorder(null)
+        setFile(null)
+        setRecording(false)
         setNotice("Could not start recording: ${error.localizedMessage ?: "microphone unavailable"}")
     }
 }
