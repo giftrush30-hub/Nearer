@@ -524,6 +524,10 @@ class MainActivity : ComponentActivity() {
                                     group.ownerPeerId, group.memberPeerIds
                                 )
                             }
+                            "group_read_receipt" -> {
+                                group != null && senderPeerId == packet.optString("readerPeerId") &&
+                                    senderPeerId in group.memberPeerIds
+                            }
                             "group_message" -> {
                                 val id = packet.optString("id")
                                 group != null && CommunityRosterPolicy.mayAcceptGroupMessage(senderPeerId, group.memberPeerIds) &&
@@ -2277,6 +2281,9 @@ class MainActivity : ComponentActivity() {
                         .put("body", message.body)
                         .put("time", message.time)
                         .put("deliveryByPeerId", delivery)
+                        .put("senderPeerId", message.senderPeerId)
+                        .put("readByPeerId", JSONObject(message.readByPeerId))
+                        .put("readReceiptSentAt", message.readReceiptSentAt)
                 )
             }
             val deliveryRefs = JSONArray()
@@ -2323,10 +2330,15 @@ class MainActivity : ComponentActivity() {
                 val item = messages.getJSONObject(i)
                 val deliveryJson = item.optJSONObject("deliveryByPeerId") ?: JSONObject()
                 val delivery = deliveryJson.keys().asSequence().associateWith { deliveryJson.optString(it) }
+                val readJson = item.optJSONObject("readByPeerId") ?: JSONObject()
+                val readBy = readJson.keys().asSequence().associateWith { readJson.optLong(it) }
                 communityMessages.add(
                     CommunityChatMessage(
                         item.getString("id"), item.getString("code"), item.optString("sender"),
-                        item.getString("body"), item.optLong("time"), delivery
+                        item.getString("body"), item.optLong("time"), delivery,
+                        item.optString("senderPeerId"),
+                        readBy,
+                        item.optLong("readReceiptSentAt", 0L)
                     )
                 )
             }
@@ -2483,8 +2495,12 @@ class MainActivity : ComponentActivity() {
         val body = raw.trim().take(1500)
         if (body.isBlank()) return
         val id = UUID.randomUUID().toString()
+        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
         val packet = JSONObject().put("type", "group_message").put("code", code).put("sender", displayName).put("body", body).put("id", id)
-        val localMessage = CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis())
+        val localMessage = CommunityChatMessage(
+            id, code, displayName, body, System.currentTimeMillis(),
+            senderPeerId = localPeerId
+        )
 
         // Commit the sender's local copy before any recipient can receive and ACK it.
         communityMessages.add(localMessage)
@@ -2530,6 +2546,39 @@ class MainActivity : ComponentActivity() {
             "Group message saved. " + receipts.size + " verified recipient copy/copies queued; delivery receipts update separately."
         } else {
             "Message saved locally, but no verified group member could be queued. Connect to members once and sync the identity roster."
+        }
+    }
+
+    private fun sendGroupReadReceipts(code: String) {
+        if (!readReceiptsEnabled) return
+        val transport = nearbyTransport ?: return
+        val localPeerId = transport.localIdentityId().takeIf { it.isNotBlank() } ?: return
+        val group = communityGroups.firstOrNull { it.code == code } ?: return
+        if (localPeerId !in group.memberPeerIds) return
+        val pending = communityMessages.filter {
+            it.groupCode == code && it.senderPeerId.isNotBlank() &&
+                it.senderPeerId != localPeerId && it.readReceiptSentAt <= 0L
+        }.groupBy { it.senderPeerId }
+        pending.forEach { (authorPeerId, authorMessages) ->
+            authorMessages.chunked(ChatReadReceiptPolicy.MAX_MESSAGE_IDS).forEach { batch ->
+                val packet = JSONObject()
+                    .put("type", "group_read_receipt")
+                    .put("code", code)
+                    .put("readerPeerId", localPeerId)
+                    .put("messageIds", JSONArray(batch.map { it.id }))
+                    .put("readAt", System.currentTimeMillis())
+                val queued = transport.sendDurableToPeerIds("NR_COMMUNITY:$packet", setOf(authorPeerId))
+                if (queued) {
+                    val sentAt = System.currentTimeMillis()
+                    batch.forEach { original ->
+                        val index = communityMessages.indexOfFirst { it.id == original.id && it.groupCode == code }
+                        if (index >= 0) communityMessages[index] = communityMessages[index].copy(readReceiptSentAt = sentAt)
+                    }
+                    if (!persistCommunityData()) {
+                        communityNotice = "Group read receipts were queued, but their local sent state could not be saved."
+                    }
+                }
+            }
         }
     }
 
@@ -2611,6 +2660,33 @@ class MainActivity : ComponentActivity() {
                                 communityNotice = "Group identity roster anchored to $sender. Confirm this is the trusted person who shared the group code before sending private group messages."
                             }
                         }
+                    }
+                }
+                "group_read_receipt" -> {
+                    val group = communityGroups.firstOrNull { it.code == code }
+                    val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+                    val readerPeerId = packet.optString("readerPeerId")
+                    val idsJson = packet.optJSONArray("messageIds") ?: JSONArray()
+                    val ids = (0 until idsJson.length()).map { idsJson.optString(it) }
+                    val readAt = packet.optLong("readAt", 0L).coerceAtMost(System.currentTimeMillis())
+                    if (group != null && readerPeerId == senderPeerId &&
+                        senderPeerId in group.memberPeerIds && localPeerId in group.memberPeerIds &&
+                        CommunityReadReceiptPolicy.isValid(ids, packet.optLong("readAt", 0L), System.currentTimeMillis())
+                    ) {
+                        ids.forEach { id ->
+                            val index = communityMessages.indexOfFirst {
+                                it.id == id && it.groupCode == code && it.senderPeerId == localPeerId
+                            }
+                            if (index >= 0) {
+                                val message = communityMessages[index]
+                                communityMessages[index] = message.copy(
+                                    readByPeerId = CommunityReadReceiptPolicy.apply(
+                                        message.readByPeerId, senderPeerId, readAt
+                                    )
+                                )
+                            }
+                        }
+                        persistCommunityData()
                     }
                 }
                 "group_message" -> {
@@ -4754,7 +4830,8 @@ private fun NeaRerHome(
                 activeGame, gameChatMessages, (usingNearbyConnections || chatReady), onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
                 onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame, profileAvatarId,
-                onOpenRoyalLudo = { showRoyalLudo = true })
+                onOpenRoyalLudo = { showRoyalLudo = true },
+                onMarkGroupRead = ::sendGroupReadReceipts)
 
             }
 
@@ -5144,7 +5221,8 @@ private fun CommunityHub(
     onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
     onAccept: () -> Unit, onReject: () -> Unit, onMove: (String, Int) -> Unit, onGameChat: (String) -> Unit, onGameRematch: () -> Unit, onEndGame: () -> Unit,
     localAvatarId: String,
-    onOpenRoyalLudo: () -> Unit
+    onOpenRoyalLudo: () -> Unit,
+    onMarkGroupRead: (String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
@@ -5231,7 +5309,10 @@ private data class CommunityChatMessage(
     val sender: String,
     val body: String,
     val time: Long,
-    val deliveryByPeerId: Map<String, String> = emptyMap()
+    val deliveryByPeerId: Map<String, String> = emptyMap(),
+    val senderPeerId: String = "",
+    val readByPeerId: Map<String, Long> = emptyMap(),
+    val readReceiptSentAt: Long = 0L
 )
 private data class CommunityDeliveryRef(val communityMessageId: String, val peerId: String)
 data class GameInvite(val matchId: String, val sender: String, val senderPeerId: String = "")
