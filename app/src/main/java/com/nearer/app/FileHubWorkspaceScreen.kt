@@ -114,12 +114,12 @@ internal fun FileHubWorkspaceScreen(onBack: () -> Unit) {
                                 val outputStream = context.contentResolver.openOutputStream(output.uri, "w")
                                     ?: error("The destination file could not be written.")
                                 inputStream.use { input -> outputStream.use { target -> input.copyTo(target) } }
-                                if (move && !source.delete()) error("The copy succeeded, but Android could not remove the original. Both files are kept.")
-                                targetName
                             } catch (failure: Throwable) {
                                 output.delete()
                                 throw failure
                             }
+                            if (move && !source.delete()) error("The copy succeeded, but Android could not remove the original. Both files are kept.")
+                            targetName
                         }
                     }
                     result.onSuccess { name ->
