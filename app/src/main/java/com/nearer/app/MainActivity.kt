@@ -557,7 +557,9 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     if (safelyStored) {
-                        if (notifyForNewMessage && !activityResumed) showIncomingMessageNotification(senderName, messageId)
+                        if (ChatNotificationPolicy.shouldNotify(activityResumed, notifyForNewMessage, safelyStored)) {
+                            showIncomingMessageNotification(senderName, messageId)
+                        }
                         acknowledge()
                     }
                 }
@@ -602,7 +604,9 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     if (safelyStored) {
-                        if (notifyForNewMessage && !activityResumed) showIncomingMessageNotification(senderName, messageId)
+                        if (ChatNotificationPolicy.shouldNotify(activityResumed, notifyForNewMessage, safelyStored)) {
+                            showIncomingMessageNotification(senderName, messageId)
+                        }
                         acknowledge()
                     }
                 }
