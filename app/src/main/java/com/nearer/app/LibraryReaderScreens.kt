@@ -40,13 +40,18 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun LibraryPdfReaderScreen(uri: Uri, title: String, onBack: () -> Unit) {
     val context = LocalContext.current
-    var pageIndex by remember(uri) { mutableStateOf(0) }
+    val readingPrefs = remember(context) { context.getSharedPreferences("nearer_library_reading", android.content.Context.MODE_PRIVATE) }
+    val lastPageKey = "last-page:$uri"
+    val bookmarkKey = "bookmark-page:$uri"
+    var pageIndex by remember(uri) { mutableStateOf(readingPrefs.getInt(lastPageKey, 0).coerceAtLeast(0)) }
+    var bookmarkedPage by remember(uri) { mutableStateOf(readingPrefs.getInt(bookmarkKey, -1)) }
     var pageCount by remember(uri) { mutableStateOf(0) }
     var bitmap by remember(uri) { mutableStateOf<Bitmap?>(null) }
     var loading by remember(uri) { mutableStateOf(true) }
     var error by remember(uri) { mutableStateOf("") }
 
     LaunchedEffect(uri, pageIndex) {
+        readingPrefs.edit().putInt(lastPageKey, pageIndex).apply()
         loading = true
         error = ""
         val rendered = withContext(Dispatchers.IO) {
@@ -103,7 +108,21 @@ internal fun LibraryPdfReaderScreen(uri: Uri, title: String, onBack: () -> Unit)
             Button(onClick = { pageIndex = (pageIndex + 1).coerceAtMost(pageCount - 1) }, enabled = pageCount > 0 && pageIndex < pageCount - 1 && !loading, modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("NEXT") }
         }
-        Text("Pages are rendered locally on your phone. No PDF upload or internet connection is required.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = {
+                bookmarkedPage = pageIndex
+                readingPrefs.edit().putInt(bookmarkKey, pageIndex).apply()
+            }, enabled = pageCount > 0 && !loading, modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Gold)) {
+                Text(if (bookmarkedPage == pageIndex) "BOOKMARKED" else "BOOKMARK PAGE")
+            }
+            Button(onClick = { pageIndex = bookmarkedPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0)) },
+                enabled = bookmarkedPage >= 0 && pageCount > 0 && !loading, modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)) {
+                Text(if (bookmarkedPage >= 0) "GO TO PAGE ${bookmarkedPage + 1}" else "NO BOOKMARK")
+            }
+        }
+        Text("Your last page and one bookmark are saved on this phone. Pages are rendered locally; no PDF upload or internet connection is required.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
     }
 }
 
