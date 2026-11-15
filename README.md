@@ -108,3 +108,12 @@ The direct outbox is restored when the transport is recreated and retries when t
 - Local "Delete for me" remains separate from remote deletion.
 
 Automated policy tests cover packet bounds, identity authorization, delivery eligibility and receipt retry. These tests do not replace physical two-phone testing.
+
+
+## Direct messaging: notifications and voice notes
+
+- Background incoming direct and group messages can create a private notification after the message has been saved locally. Notification text is generic and does not expose message contents on the lock screen.
+- On Android 13 and newer, notification permission must be explicitly granted. The Chats screen provides an enable-alerts action; Android notification-channel settings can still suppress alerts.
+- Direct voice notes are recorded as AAC in an MPEG-4 container and sent through the existing nearby file-transfer path. Recording is cancelled and the partial file discarded when the app backgrounds or the user switches conversations.
+- Received `.m4a`, `.mp3`, and `.aac` files can be played inline in the chat's received-file area. These remain file attachments rather than fully integrated audio-message bubbles.
+- Voice notes currently require a direct nearby connection; remote multi-hop voice-note attachments are not advertised as supported.
