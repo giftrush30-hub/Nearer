@@ -517,3 +517,34 @@ Ludo identity hardening is also now wired further into the live room flow:
 - Added focused tests for same-display-name peers, mismatched identities, ambiguous duplicate IDs, whitespace-normalized IDs and legacy fallback restrictions.
 
 The legacy single-peer Wi-Fi Direct route remains intentionally compatible because it does not expose the same Nearby stable peer identity. This is a bounded fallback, not equivalent identity assurance; full real-device multi-transport testing remains outstanding. Mesh relay stays disabled pending the wider routing, identity and privacy gates.
+
+
+## Community delivery and receive-path follow-up audit — 15 November 2026
+
+A focused follow-up review was completed against `main` at `e732eedc308e7702dbe9bba1624ced7418cd1e81`. This was a source audit; no live-device delivery claim is made.
+
+### Confirmed working foundations
+
+- Community group sends persist the local group bubble before fan-out.
+- `sendDurableToPeerIdsWithReceipts` creates a separate encrypted-at-rest outbox copy per verified stable recipient ID, including known offline recipients. It commits the transport outbox before scheduling first transmission.
+- Retry targets remain bound to the same stable peer ID; display names are not recipient authority.
+- The transport keeps a bounded completed-message-ID history and exposes `completedMessageIds()`.
+- MainActivity restores community delivery references and reconciles them against completed transport IDs during startup. This closes the normal process-death window where the transport has durably recorded an ACK but the UI receipt was not yet saved.
+- Group receive checks membership against stable peer IDs before adding a new group message. Roster updates are pinned to the coordinator identity and bounded by the roster policy.
+- Ludo state-changing handlers generally check match ID, participant identity, room role, revision and/or turn ownership before applying changes.
+
+### Remaining correctness gaps
+
+1. **Community fan-out receipt-map commit is not fail-closed.** After the transport has committed per-recipient outbox entries and returns their transport-ID-to-recipient mapping, MainActivity stores the mapping in `communityDeliveryRefs` and calls `persistCommunityData()`, but currently ignores a false result and the transport has already scheduled delivery. If the local community-data commit fails, a recipient copy may be delivered while the sender has no durable mapping from its ACK back to the group bubble. The existing completed-ID history cannot repair this case because the mapping itself was never durably recorded. The safe follow-up is a two-phase enqueue contract: persist caller-owned receipt references before dispatch, then commit the transport queue and release dispatch only after both sides are durable; alternatively introduce an explicit prepared/commit/cancel queue API with crash-safe rollback semantics. Do not paper over this by marking the message delivered.
+2. **Receive callback acknowledgement is broader than stateful acceptance for Ludo.** The callback invokes `handleCommunityPacket` before its final `accepted` calculation. For the Ludo packet family, the current outer calculation returns true for every packet that passes the structural ingress policy, even where the stateful handler declines it because there is no matching room or the sender is not an authorised participant. This does not mean those packets necessarily mutate game state—the handler contains its own guards—but the transport ACK can still overstate acceptance. The next refactor should make the stateful handler return an explicit result (accepted and safely persisted/applied, duplicate-safe, or rejected) and acknowledge only on that result. Preserve valid broadcast semantics separately.
+3. **Group-message duplicate acceptance should remain sender-aware.** The post-handler duplicate check currently tests message ID and group code, not the original sender identity. It does not by itself authorise a new mutation, because the handler separately checks roster membership, but it can classify a colliding ID from another member as accepted. Store/compare the authenticated sender ID with the group message record before treating a duplicate as safely accepted.
+4. **Background recovery remains limited.** Durable community copies retry when the same authenticated peer reconnects and the app process is active. This audit did not find a WorkManager/boot/Doze-safe delivery scheduler. Do not promise delivery while NeaRer is force-stopped or suspended by Android.
+
+### Next implementation gate
+
+- Introduce a tested two-phase durable fan-out/receipt-reference contract and failure-injection tests for each persistence boundary.
+- Refactor community packet handling to return explicit acceptance, with tests for unauthorised Ludo actions, wrong-room packets, duplicate group IDs from different senders, roster rejection, and valid duplicate retransmission.
+- Keep the legacy Wi-Fi Direct Ludo compatibility path separate from authenticated Nearby identity rules.
+- Continue to keep mesh relay disabled until the identity, routing, privacy and physical multi-hop gates are independently satisfied.
+
+The previous exact-head CI run for this baseline is successful: workflow run `43750353756`, commit `e732eedc308e7702dbe9bba1624ced7418cd1e81`. The debug APK artifact is 11,677,919 bytes and expires 29 November 2026. This validation applies to the baseline commit only, not to any later edits.
