@@ -29,7 +29,7 @@ Batch Two adds signed, hash-linked per-hop acceptance proofs, compact packet/pro
 
 ## Security boundaries and current limitations
 
-- The older Wi-Fi Direct line-protocol fallback is **not an encrypted chat transport**. Pairing-code approval alone does not provide application-layer confidentiality or authenticated delivery receipts. NeaRer therefore ignores legacy `MSG` and `ACK` frames and does not send private chat over that socket. Its separate compatible file-transfer path remains available; private chat requires the authenticated, encrypted Nearby Connections session.
+- The older Wi-Fi Direct line-protocol fallback is **not an authenticated, encrypted app-message transport**. Pairing-code approval alone does not provide application-layer confidentiality or authenticated delivery receipts. NeaRer therefore ignores legacy `MSG`, `ACK` and `COMMUNITY` frames and does not send private chat, community or game packets over that socket. Its separate compatible file-transfer path remains available; private chat and app messages require the authenticated, encrypted Nearby Connections session.
 
 - The current Nearby handshake uses each phone's long-term P-256 signing identity to authenticate a fresh ephemeral P-256 ECDH exchange. HKDF-SHA256 derives directional AES-256-GCM session keys.
 - Chat bodies and delivery acknowledgements are encrypted and authenticated at the application layer. The message ID is authenticated as associated data; the receiver's durable deduplication prevents a replayed message from being stored twice.
