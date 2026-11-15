@@ -159,8 +159,7 @@ internal fun PremiumChatsScreen(
         while (voiceRecording) { delay(1_000); voiceElapsedSeconds++ }
     }
     LaunchedEffect(selectedMeshRecipientId, chatReady) {
-        if (voiceRecording && !chatReady) stopVoiceNote(send = false)
-        else if (voiceRecording) stopVoiceNote(send = false)
+        if (voiceRecording) stopVoiceNote(send = false)
     }
     val latestRecorder = rememberUpdatedState(voiceRecorder)
     val latestRecording = rememberUpdatedState(voiceRecording)
@@ -808,8 +807,9 @@ private fun startVoiceNoteRecording(
     val file = File(folder, "NeaRer_Voice_${System.currentTimeMillis()}.m4a")
     var recorder: MediaRecorder? = null
     try {
-        recorder = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(context) else @Suppress("DEPRECATION") MediaRecorder()
-        recorder.apply {
+        val activeRecorder = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(context) else @Suppress("DEPRECATION") MediaRecorder()
+        recorder = activeRecorder
+        activeRecorder.apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -819,7 +819,7 @@ private fun startVoiceNoteRecording(
             prepare()
             start()
         }
-        setRecorder(recorder)
+        setRecorder(activeRecorder)
         setFile(file)
         setElapsed(0)
         setRecording(true)
