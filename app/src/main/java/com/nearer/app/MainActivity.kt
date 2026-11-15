@@ -554,7 +554,7 @@ class MainActivity : ComponentActivity() {
                         safelyStored = applyIncomingChatReadReceipt(body.removePrefix("NR_READ_RECEIPT:"), originPeerId)
                     } else if (body.startsWith("NR_DELETE:")) {
                         safelyStored = applyIncomingChatDelete(body.removePrefix("NR_DELETE:"), originPeerId)
-                    } else if (body.startsWith("NR_COMMUNITY:"))
+                    } else if (body.startsWith("NR_COMMUNITY:")) {
                         val result = handleIncomingCommunityPacket(senderName, originPeerId, body.removePrefix("NR_COMMUNITY:"))
                         safelyStored = result.first
                         notifyForNewMessage = result.second
@@ -815,6 +815,7 @@ class MainActivity : ComponentActivity() {
                     transferHistory = nearbyTransferHistory.toList(),
                     onSendMessage = ::sendChatMessage,
                     onDeleteMessage = ::deleteChatMessage,
+                    onDeleteForEveryone = ::deleteChatMessageForEveryone,
                     onEditMessage = ::editChatMessage,
                     onReactToMessage = ::sendChatReaction,
                     onMarkConversationRead = ::markConversationRead,
@@ -3931,6 +3932,7 @@ private fun NeaRerHome(
     transferHistory: List<NearbyTransferRecord>,
     onSendMessage: (String, ChatMessage?) -> Unit,
     onDeleteMessage: (String) -> Boolean,
+    onDeleteForEveryone: (String) -> Boolean,
     onEditMessage: (String, String) -> Boolean,
     onReactToMessage: (String, String) -> Unit,
     onMarkConversationRead: (String) -> Unit,
@@ -4686,6 +4688,7 @@ private fun NeaRerHome(
                     onDraftChange = { draft = it.take(ChatEditPolicy.MAX_BODY_LENGTH) },
                     onSendMessage = { text, reply -> onSendMessage(text, reply); draft = "" },
                     onDeleteMessage = onDeleteMessage,
+                    onDeleteForEveryone = onDeleteForEveryone,
                     onEditMessage = onEditMessage,
                     onReactToMessage = onReactToMessage,
                     onMarkConversationRead = onMarkConversationRead,
