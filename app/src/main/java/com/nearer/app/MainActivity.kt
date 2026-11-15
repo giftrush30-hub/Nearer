@@ -203,6 +203,7 @@ class MainActivity : ComponentActivity() {
     private var incomingRateBytesPerSecond = 0L
     private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
+    private var readReceiptsEnabled by mutableStateOf(true)
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
 
@@ -767,6 +768,7 @@ class MainActivity : ComponentActivity() {
         }
         runCatching { restoreCommunityData() }
         runCatching { reconcileCommunityDeliveryReceipts(deliveredAfterRestart) }
+        readReceiptsEnabled = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).getBoolean("read_receipts_enabled", true)
         displayName = runCatching {
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
@@ -1910,6 +1912,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun setReadReceiptsEnabled(enabled: Boolean) {
+        readReceiptsEnabled = enabled
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("read_receipts_enabled", enabled).apply()
+        if (enabled) (selectedMeshRecipientId ?: hybridConnectedStableId)?.let(::sendPendingReadReceipts)
+    }
+
     private fun markConversationRead(conversationId: String?) {
         val peerId = conversationId?.takeIf { ChatReactionPolicy.isValidActor(it) } ?: return
         val newlyRead = chatMessages.indices.filter { index ->
@@ -1930,6 +1938,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun sendPendingReadReceipts(peerId: String) {
+        if (!readReceiptsEnabled) return
         val pending = chatMessages.filter { message ->
             ChatReadReceiptPolicy.shouldSendReceipt(message.outgoing, message.conversationId, peerId, message.readAt, message.readReceiptSentAt)
         }
@@ -4519,6 +4528,8 @@ private fun NeaRerHome(
                     onDraftChange = { draft = it.take(ChatEditPolicy.MAX_BODY_LENGTH) },
                     onSendMessage = { text, reply -> onSendMessage(text, reply); draft = "" },
                     onMarkConversationRead = { peerId -> markConversationRead(peerId ?: hybridConnectedStableId) },
+                    readReceiptsEnabled = readReceiptsEnabled,
+                    onReadReceiptsEnabledChange = ::setReadReceiptsEnabled,
                     onDeleteMessage = onDeleteMessage,
                     onEditMessage = onEditMessage,
                     onReactToMessage = onReactToMessage,
