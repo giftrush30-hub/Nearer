@@ -1364,7 +1364,7 @@ class MainActivity : ComponentActivity() {
                         incomingRequesterName = null
                         approvalMessage = "Wi-Fi Direct link approved. Private chat requires encrypted Nearby Connections."
                         connectionMessage = "NeaRer connection approved"
-                        chatNotice = "Wi-Fi Direct link ready for compatible transfers. Private chat uses encrypted Nearby Connections."
+                        chatNotice = "Wi-Fi Direct link ready for compatible transfers. Chat, community and game messages require encrypted Nearby Connections."
                         statusMessage = "You approved $name. Reconnect through encrypted Nearby Connections for private chat."
                     }
                     startMessageReader(socket)
@@ -2107,11 +2107,7 @@ class MainActivity : ComponentActivity() {
     private fun sendCommunityPacket(packet: JSONObject): Boolean {
         val body = "NR_COMMUNITY:$packet"
         if (nearbyTransport?.send(body) == true) return true
-        if (chatReady && connectedDeviceName != null) {
-            val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
-            return sendWireLine("COMMUNITY|$encoded")
-        }
-        communityNotice = "Connect to a nearby NeaRer phone first."
+        communityNotice = "Community and game messages require an authenticated, encrypted Nearby Connections session."
         return false
     }
 
@@ -2120,17 +2116,11 @@ class MainActivity : ComponentActivity() {
 
     private fun sendCommunityToNames(body: String, targetNames: Set<String>): Boolean {
         if (nearbyTransport?.sendToNames(body, targetNames) == true) return true
-        val peerName = connectedDeviceName
-        if (chatReady && peerName != null && peerName in targetNames) {
-            val encoded = Base64.getEncoder().encodeToString(body.toByteArray(Charsets.UTF_8))
-            return sendWireLine("COMMUNITY|$encoded")
-        }
         return false
     }
 
     private fun sendLudoPacket(packet: JSONObject, targetNames: Set<String>, targetPeerIds: Set<String> = emptySet()): Boolean {
-        // Wi-Fi Direct remains a single-peer fallback; Nearby Connections uses authenticated IDs.
-        if (!hybridConnected && chatReady) return sendCommunityPacket(packet)
+        // Community and game packets are never sent over the legacy unauthenticated socket.
         return if (targetPeerIds.isNotEmpty()) sendCommunityToPeerIds("NR_COMMUNITY:$packet", targetPeerIds)
         else sendCommunityToNames("NR_COMMUNITY:$packet", targetNames)
     }
@@ -3640,22 +3630,9 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         line.startsWith("COMMUNITY|") -> {
-                            val encoded = line.substringAfter("COMMUNITY|")
-                            try {
-                                val body = String(Base64.getDecoder().decode(encoded), Charsets.UTF_8)
-                                if (body.startsWith("NR_COMMUNITY:") && body.length <= 24 * 1024) {
-                                    val communityBody = body.removePrefix("NR_COMMUNITY:")
-                                    if (CommunityIngressPolicy.isValid(communityBody, "", allowLegacySocketLudo = true)) {
-                                        runOnUiThread {
-                                            handleCommunityPacket(connectedDeviceName ?: "Nearby member", "", communityBody)
-                                            persistCommunityData()
-                                        }
-                                    } else {
-                                        runOnUiThread { communityNotice = "An invalid or unsupported community packet was rejected." }
-                                    }
-                                }
-                            } catch (_: Exception) {
-                                runOnUiThread { communityNotice = "A nearby game or community packet could not be read." }
+                            // Legacy Wi-Fi Direct community/game packets are unauthenticated.
+                            runOnUiThread {
+                                communityNotice = "An unverified legacy community/game packet was ignored. Reconnect through encrypted Nearby Connections."
                             }
                         }
                         line == "PING" -> synchronized(writerLock) { peerWriter?.println("PONG") }
