@@ -2447,9 +2447,13 @@ internal object IncomingFilePayloadPolicy {
      * to the outbox. Callers can persist this mapping to display independent delivery
      * receipts even after the app process restarts.
      */
-    fun sendDurableToPeerIdsWithReceipts(body: String, targetPeerIds: Set<String>): Map<String, String> {
+    fun sendDurableToPeerIdsWithReceipts(
+        body: String,
+        targetPeerIds: Set<String>,
+        onReceiptMappingCommitted: ((Map<String, String>) -> Boolean)? = null
+    ): Map<String, String> {
         if (body.isBlank() || body.length > 4000 || targetPeerIds.isEmpty()) return emptyMap()
-        return queueDurableFanout(body, targetPeerIds)
+        return queueDurableFanout(body, targetPeerIds, onReceiptMappingCommitted)
     }
 
     /**
@@ -2458,7 +2462,11 @@ internal object IncomingFilePayloadPolicy {
      * waits for the same pinned peer identity to authenticate again.
      */
     @Synchronized
-    private fun queueDurableFanout(body: String, peerIds: Set<String>): Map<String, String> {
+    private fun queueDurableFanout(
+        body: String,
+        peerIds: Set<String>,
+        onReceiptMappingCommitted: ((Map<String, String>) -> Boolean)? = null
+    ): Map<String, String> {
         if (peerIds.isEmpty()) return emptyMap()
         if (peerIds.size > 100) {
             listener.onStatus("A community roster exceeds the supported 100-member delivery batch.")
@@ -2515,8 +2523,22 @@ internal object IncomingFilePayloadPolicy {
             return emptyMap()
         }
 
-        // Defer first transmission until the caller has had a chance to persist
-        // the transport-ID -> community-message receipt mapping returned below.
+        // Commit the caller's durable receipt mapping before any packet can leave.
+        // If that mapping cannot be saved, retire these just-created unsent copies.
+        if (onReceiptMappingCommitted != null) {
+            val mappingSaved = runCatching { onReceiptMappingCommitted(queuedRecipients.toMap()) }.getOrDefault(false)
+            if (!mappingSaved) {
+                queuedIds.forEach { id ->
+                    pendingOutgoingMessages.remove(id)
+                    outgoingMessageTargets.remove(id)
+                }
+                if (!persistPendingOutbox()) {
+                    listener.onStatus("A group message receipt mapping could not be saved and its unsent queue rollback needs repair.")
+                }
+                return emptyMap()
+            }
+        }
+
         queuedIds.forEach { id -> deliveryHandler.post { attemptOutgoingMessage(id) } }
         return queuedRecipients
     }
