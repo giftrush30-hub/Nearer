@@ -28,6 +28,18 @@ class LudoPeerAuthorizationTest {
         assertEquals(null, LudoPeerAuthorization.findRemoteColor(emptyMap(), names, "", "Alex", true))
     }
 
+    @Test fun duplicateStablePeerIdsAreRejectedAsAmbiguous() {
+        val names = mapOf(LudoColor.RED to "Alex", LudoColor.BLUE to "Alex")
+        val ids = mapOf(LudoColor.RED to "peer-a", LudoColor.BLUE to " peer-a ")
+        assertEquals(null, LudoPeerAuthorization.findRemoteColor(ids, names, "peer-a", "Alex", true))
+    }
+
+    @Test fun stablePeerIdLookupTrimsTransportWhitespace() {
+        val names = mapOf(LudoColor.RED to "Alex", LudoColor.BLUE to "Alex")
+        val ids = mapOf(LudoColor.RED to "peer-a", LudoColor.BLUE to "peer-b")
+        assertEquals(LudoColor.BLUE, LudoPeerAuthorization.findRemoteColor(ids, names, " peer-b ", "Alex", false))
+    }
+
     @Test fun legacyNameLookupRejectsAmbiguousDuplicateNames() {
         val names = mapOf(LudoColor.RED to "Alex", LudoColor.BLUE to "Alex")
         assertEquals(null, LudoPeerAuthorization.findRemoteColor(emptyMap(), names, "", "Alex", true))
