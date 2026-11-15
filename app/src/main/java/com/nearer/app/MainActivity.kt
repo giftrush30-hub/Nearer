@@ -4630,6 +4630,7 @@ private fun NeaRerHome(
                     onFindNearby = { selectedTab = "Nearby"; onFindNearby() },
                     onBackToInbox = { onSelectMeshRecipient(null) },
                     onChooseFiles = { chatAttachmentPicker.launch(arrayOf("*/*")) },
+                    onSendVoiceNote = { uri -> sendFiles(listOf(uri)) },
                     receivedFiles = receivedFiles,
                     onOpenFile = onOpenFile,
                     transferHistory = transferHistory,
