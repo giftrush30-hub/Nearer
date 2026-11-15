@@ -94,6 +94,7 @@ internal fun LibraryWorkspaceScreen(onBack: () -> Unit) {
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf("ALL") }
     var showFavourites by remember { mutableStateOf(false) }
+    var readingEntry by remember { mutableStateOf<LibraryEntry?>(null) }
 
     fun saveCollection() {
         val json = JSONArray()
@@ -132,7 +133,11 @@ internal fun LibraryWorkspaceScreen(onBack: () -> Unit) {
             (query.isBlank() || entry.name.contains(query.trim(), ignoreCase = true))
     }
 
-    Column(
+    if (readingEntry != null) {
+        val entry = readingEntry!!
+        if (entry.kind == "PDF") LibraryPdfReaderScreen(uri = entry.uri, title = entry.name, onBack = { readingEntry = null })
+        else LibraryTextReaderScreen(uri = entry.uri, title = entry.name, onBack = { readingEntry = null })
+    } else Column(
         modifier = Modifier.fillMaxSize().background(Midnight).verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -231,8 +236,10 @@ internal fun LibraryWorkspaceScreen(onBack: () -> Unit) {
                                 saveCollection()
                             }
                         }.padding(5.dp))
-                        Text("OPEN", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
-                            runCatching {
+                        Text(if (entry.kind == "PDF" || (entry.kind == "TEXT" && (entry.name.endsWith(".txt", true) || entry.mime == "text/plain"))) "READ" else "OPEN", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
+                            if (entry.kind == "PDF") readingEntry = entry
+                            else if (entry.kind == "TEXT" && (entry.name.endsWith(".txt", true) || entry.mime == "text/plain")) readingEntry = entry
+                            else runCatching {
                                 context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(entry.uri, entry.mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                             }
                         }.padding(5.dp))
