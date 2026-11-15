@@ -495,44 +495,9 @@ class MainActivity : ComponentActivity() {
                         safelyStored = applyIncomingChatReadReceipt(body.removePrefix("NR_READ_RECEIPT:"), actorPeerId)
                     } else if (body.startsWith("NR_COMMUNITY:")) {
                         val senderPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
-                        val communityBody = body.removePrefix("NR_COMMUNITY:")
-                        val packet = try { JSONObject(communityBody) } catch (_: Exception) { JSONObject() }
-                        val type = packet.optString("type")
-                        if (!CommunityIngressPolicy.isValid(communityBody, senderPeerId)) {
-                            communityNotice = "An invalid or unauthenticated community packet was rejected before processing."
-                        } else {
-                        // Never mutate group/game state until packet shape and transport identity pass.
-                        handleCommunityPacket(senderName, senderPeerId, communityBody)
-                        val code = packet.optString("code")
-                        val group = communityGroups.firstOrNull { it.code == code }
-                        val accepted = when (type) {
-                            "group_created" -> group != null && group.ownerPeerId == senderPeerId &&
-                                NeaRerIdentity.normalize(senderPeerId) == senderPeerId
-                            "group_join" -> group != null && group.ownerPeerId == nearbyTransport?.localIdentityId() &&
-                                senderPeerId in group.memberPeerIds
-                            "group_members" -> {
-                                val packetOwnerId = packet.optString("ownerPeerId")
-                                val packetIds = packet.optJSONArray("memberPeerIds")
-                                val incomingPeerIds = packetIds?.let { array ->
-                                    (0 until array.length()).map { array.optString(it) }
-                                }.orEmpty()
-                                val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
-                                group != null && CommunityRosterPolicy.mayAcknowledgeRosterUpdate(
-                                    packetOwnerId, senderPeerId, incomingPeerIds, localPeerId,
-                                    group.ownerPeerId, group.memberPeerIds
-                                )
-                            }
-                            "group_message" -> {
-                                val id = packet.optString("id")
-                                group != null && CommunityRosterPolicy.mayAcceptGroupMessage(senderPeerId, group.memberPeerIds) &&
-                                    id.isNotBlank() && communityMessages.any { it.id == id && it.groupCode == code }
-                            }
-                            "broadcast", "ludo_invite", "ludo_accept", "ludo_reject", "ludo_action",
-                            "ludo_chat", "ludo_end", "ludo_rematch", "ludo_state", "ludo_sync" -> true
-                            else -> false
-                        }
-                        safelyStored = accepted && persistCommunityData()
-                        }
+                        val result = handleIncomingCommunityPacket(senderName, senderPeerId, body.removePrefix("NR_COMMUNITY:"))
+                        safelyStored = result.first
+                        notifyForNewMessage = result.second
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
@@ -584,6 +549,10 @@ class MainActivity : ComponentActivity() {
                         safelyStored = applyIncomingChatEdit(body.removePrefix("NR_EDIT:"), originPeerId)
                     } else if (body.startsWith("NR_READ_RECEIPT:")) {
                         safelyStored = applyIncomingChatReadReceipt(body.removePrefix("NR_READ_RECEIPT:"), originPeerId)
+                    } else if (body.startsWith("NR_COMMUNITY:")) {
+                        val result = handleIncomingCommunityPacket(senderName, originPeerId, body.removePrefix("NR_COMMUNITY:"))
+                        safelyStored = result.first
+                        notifyForNewMessage = result.second
                     } else if (chatMessages.any { it.id == messageId }) {
                         safelyStored = true
                     } else {
@@ -2445,6 +2414,47 @@ class MainActivity : ComponentActivity() {
             communityNotice = "No connected nearby phone is available for this broadcast."
         }
     }
+    private fun handleIncomingCommunityPacket(senderName: String, senderPeerId: String, communityBody: String): Pair<Boolean, Boolean> {
+        val packet = try { JSONObject(communityBody) } catch (_: Exception) {
+            communityNotice = "An invalid community packet was rejected."
+            return false to false
+        }
+        if (!CommunityIngressPolicy.isValid(communityBody, senderPeerId)) {
+            communityNotice = "An invalid or unauthenticated community packet was rejected before processing."
+            return false to false
+        }
+        val type = packet.optString("type")
+        val code = packet.optString("code")
+        val groupMessageId = packet.optString("id")
+        val alreadyStored = type == "group_message" && communityMessages.any { it.id == groupMessageId && it.groupCode == code }
+        // Never mutate group/game state until packet shape and transport identity pass.
+        handleCommunityPacket(senderName, senderPeerId, communityBody)
+        val group = communityGroups.firstOrNull { it.code == code }
+        val accepted = when (type) {
+            "group_created" -> group != null && group.ownerPeerId == senderPeerId &&
+                NeaRerIdentity.normalize(senderPeerId) == senderPeerId
+            "group_join" -> group != null && group.ownerPeerId == nearbyTransport?.localIdentityId() &&
+                senderPeerId in group.memberPeerIds
+            "group_members" -> {
+                val packetOwnerId = packet.optString("ownerPeerId")
+                val packetIds = packet.optJSONArray("memberPeerIds")
+                val incomingPeerIds = packetIds?.let { array -> (0 until array.length()).map { array.optString(it) } }.orEmpty()
+                val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+                group != null && CommunityRosterPolicy.mayAcknowledgeRosterUpdate(
+                    packetOwnerId, senderPeerId, incomingPeerIds, localPeerId, group.ownerPeerId, group.memberPeerIds
+                )
+            }
+            "group_message" -> group != null && CommunityRosterPolicy.mayAcceptGroupMessage(senderPeerId, group.memberPeerIds) &&
+                groupMessageId.isNotBlank() && communityMessages.any { it.id == groupMessageId && it.groupCode == code }
+            "broadcast", "ludo_invite", "ludo_accept", "ludo_reject", "ludo_action",
+            "ludo_chat", "ludo_end", "ludo_rematch", "ludo_state", "ludo_sync" -> true
+            else -> false
+        }
+        val stored = accepted && persistCommunityData()
+        val isNewGroupMessage = stored && type == "group_message" && !alreadyStored
+        return stored to isNewGroupMessage
+    }
+
     private fun handleCommunityPacket(sender: String, senderPeerId: String, raw: String) {
         try {
             val packet = JSONObject(raw)
