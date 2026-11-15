@@ -481,7 +481,10 @@ class MainActivity : ComponentActivity() {
             ) {
                 runOnUiThread {
                     var safelyStored = false
-                    if (body.startsWith("NR_READ_RECEIPT:")) {
+                    if (body.startsWith("NR_DELETE:")) {
+                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        safelyStored = applyIncomingChatDelete(body.removePrefix("NR_DELETE:"), actorPeerId)
+                    } else if (body.startsWith("NR_READ_RECEIPT:")) {
                         val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
                         safelyStored = applyIncomingChatReadReceipt(body.removePrefix("NR_READ_RECEIPT:"), actorPeerId)
                     } else if (body.startsWith("NR_REACTION:")) {
@@ -568,7 +571,9 @@ class MainActivity : ComponentActivity() {
             ) {
                 runOnUiThread {
                     var safelyStored = false
-                    if (body.startsWith("NR_READ_RECEIPT:")) {
+                    if (body.startsWith("NR_DELETE:")) {
+                        safelyStored = applyIncomingChatDelete(body.removePrefix("NR_DELETE:"), originPeerId)
+                    } else if (body.startsWith("NR_READ_RECEIPT:")) {
                         safelyStored = applyIncomingChatReadReceipt(body.removePrefix("NR_READ_RECEIPT:"), originPeerId)
                     } else if (body.startsWith("NR_REACTION:")) {
                         safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), originPeerId)
@@ -1568,6 +1573,8 @@ class MainActivity : ComponentActivity() {
                         editedAt = item.optLong("editedAt", 0L).coerceAtLeast(0L),
                         readAt = item.optLong("readAt", 0L).coerceAtLeast(0L),
                         readReceiptSentAt = item.optLong("readReceiptSentAt", 0L).coerceAtLeast(0L),
+                        deletedForEveryone = item.optBoolean("deletedForEveryone", false),
+                        deletedAt = item.optLong("deletedAt", 0L).coerceAtLeast(0L),
                         reactions = item.optJSONObject("reactions")?.let { reactionObject ->
                             buildMap {
                                 val keys = reactionObject.keys()
@@ -1850,6 +1857,78 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun deleteChatMessageForEveryone(messageId: String): Boolean {
+        val index = chatMessages.indexOfFirst { it.id == messageId }
+        if (index < 0) return false
+        val message = chatMessages[index]
+        if (!ChatDeletePolicy.canDeleteForEveryone(message.outgoing, message.delivery, message.readAt, message.deletedForEveryone)) {
+            chatNotice = "You can delete for everyone only after this message has been delivered."
+            return false
+        }
+        val peerId = message.conversationId
+        val now = System.currentTimeMillis()
+        val deleted = message.copy(
+            body = "This message was deleted",
+            deletedForEveryone = true,
+            deletedAt = now,
+            reactions = emptyMap(),
+            replyToMessageId = null,
+            replyToPreview = null,
+            replyToSender = null
+        )
+        chatMessages[index] = deleted
+        if (!persistMessages()) {
+            chatMessages[index] = message
+            chatNotice = "Couldn't save the deletion. The message was kept."
+            return false
+        }
+        val packet = "NR_DELETE:" + JSONObject()
+            .put("version", 1)
+            .put("messageId", messageId)
+            .put("deletedAt", now)
+            .toString()
+        val eventId = UUID.randomUUID().toString()
+        val recipient = meshRecipients[peerId]
+        var sent = recipient != null && nearbyTransport?.sendMeshMessage(peerId, packet, eventId) == true
+        if (!sent && peerId == hybridConnectedStableId && !hybridConnectedEndpoint.isNullOrBlank()) {
+            sent = nearbyTransport?.send(packet, eventId, hybridConnectedEndpoint!!) == true
+        }
+        if (!sent) {
+            chatMessages[index] = message
+            persistMessages()
+            chatNotice = "Deletion could not be queued. The original message was restored on this phone."
+            return false
+        }
+        chatNotice = "Message deleted for everyone."
+        return true
+    }
+
+    private fun applyIncomingChatDelete(raw: String, actorPeerId: String): Boolean {
+        val packet = try { JSONObject(raw) } catch (_: Exception) { return false }
+        val messageId = packet.optString("messageId")
+        val deletedAt = packet.optLong("deletedAt", 0L)
+        if (!ChatDeletePolicy.isValidPacket(packet.optInt("version", 0), messageId, deletedAt)) return false
+        val index = chatMessages.indexOfFirst { it.id == messageId }
+        if (index < 0) return true // Stale delete for a message no longer retained.
+        val message = chatMessages[index]
+        if (message.deletedForEveryone) return true
+        if (!ChatDeletePolicy.canApplyIncoming(message.outgoing, message.conversationId, actorPeerId, message.deletedForEveryone)) return false
+        val previous = message
+        chatMessages[index] = message.copy(
+            body = "This message was deleted",
+            deletedForEveryone = true,
+            deletedAt = minOf(deletedAt, System.currentTimeMillis()),
+            reactions = emptyMap(),
+            replyToMessageId = null,
+            replyToPreview = null,
+            replyToSender = null
+        )
+        if (persistMessages()) return true
+        chatMessages[index] = previous
+        chatNotice = "A deletion arrived but could not be saved. Delivery was not confirmed."
+        return false
+    }
+
     private fun deleteChatMessage(messageId: String): Boolean {
         val index = chatMessages.indexOfFirst { it.id == messageId }
         if (index < 0) return false
@@ -1882,6 +1961,8 @@ class MainActivity : ComponentActivity() {
                     .put("editedAt", message.editedAt)
                     .put("readAt", message.readAt)
                     .put("readReceiptSentAt", message.readReceiptSentAt)
+                    .put("deletedForEveryone", message.deletedForEveryone)
+                    .put("deletedAt", message.deletedAt)
                     .put("reactions", JSONObject(message.reactions)))
             }
             // commit() is intentional here: a delivery receipt must follow the disk write,
@@ -4531,6 +4612,7 @@ private fun NeaRerHome(
                     readReceiptsEnabled = readReceiptsEnabled,
                     onReadReceiptsEnabledChange = ::setReadReceiptsEnabled,
                     onDeleteMessage = onDeleteMessage,
+                    onDeleteMessageForEveryone = ::deleteChatMessageForEveryone,
                     onEditMessage = onEditMessage,
                     onReactToMessage = onReactToMessage,
                     onFindNearby = { selectedTab = "Nearby"; onFindNearby() },
@@ -5100,7 +5182,9 @@ internal data class ChatMessage(
     val editVersion: Int = 0,
     val editedAt: Long = 0L,
     val readAt: Long = 0L,
-    val readReceiptSentAt: Long = 0L
+    val readReceiptSentAt: Long = 0L,
+    val deletedForEveryone: Boolean = false,
+    val deletedAt: Long = 0L
 )
 
 private fun isNeaRerAppBundle(file: File): Boolean {
