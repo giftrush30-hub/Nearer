@@ -93,7 +93,7 @@ internal fun PremiumChatsScreen(
     }
 
     var recipientMenuExpanded by remember { mutableStateOf(false) }
-    var xenderReferenceMibps by remember { mutableStateOf("") }
+    var xenderReferenceMibps by remember(connectedPeerStableId) { mutableStateOf("") }
     var replyingTo by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
     var editingMessage by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
     var expandedMessageActions by remember { mutableStateOf<String?>(null) }
