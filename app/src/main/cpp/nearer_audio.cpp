@@ -76,6 +76,7 @@ public:
         analysisRing_.reset();
         disconnected_.store(false, std::memory_order_relaxed);
         outputUnderruns_.store(0, std::memory_order_relaxed);
+        lastXrunCount_.store(-1, std::memory_order_relaxed);
         droppedCaptureFrames_.store(0, std::memory_order_relaxed);
         droppedPlaybackFrames_.store(0, std::memory_order_relaxed);
         droppedAnalysisFrames_.store(0, std::memory_order_relaxed);
@@ -205,6 +206,26 @@ public:
         return oboe::DataCallbackResult::Continue;
     }
 
+    void onErrorBeforeClose(oboe::AudioStream* stream, oboe::Result) override {
+        // This callback runs before Oboe closes the disconnected stream. Serialize
+        // diagnostic access with stats(), and cache the last valid xrun count now;
+        // getXRunCount() must not be called from onErrorAfterClose().
+        std::lock_guard<std::mutex> lock(streamMutex_);
+        if (output_ && (stream == output_.get())) {
+            const auto result = output_->getXRunCount();
+            if (result == oboe::Result::OK) {
+                lastXrunCount_.store(result.value(), std::memory_order_relaxed);
+            }
+        } else if (output_) {
+            const auto result = output_->getXRunCount();
+            if (result == oboe::Result::OK) {
+                lastXrunCount_.store(result.value(), std::memory_order_relaxed);
+            }
+        }
+        disconnected_.store(true, std::memory_order_release);
+        running_.store(false, std::memory_order_release);
+    }
+
     void onErrorAfterClose(oboe::AudioStream*, oboe::Result) override {
         disconnected_.store(true, std::memory_order_release);
         running_.store(false, std::memory_order_release);
@@ -221,10 +242,13 @@ public:
 
     jlongArray stats(JNIEnv* env) const {
         std::lock_guard<std::mutex> lock(streamMutex_);
-        int32_t xrunCount = -1;
+        int32_t xrunCount = lastXrunCount_.load(std::memory_order_relaxed);
         if (output_ && !disconnected_.load(std::memory_order_acquire)) {
             const auto xrunResult = output_->getXRunCount();
-            if (xrunResult == oboe::Result::OK) xrunCount = xrunResult.value();
+            if (xrunResult == oboe::Result::OK) {
+                xrunCount = xrunResult.value();
+                lastXrunCount_.store(xrunCount, std::memory_order_relaxed);
+            }
         }
         jlong values[13] = {
             output_ ? output_->getSampleRate() : 0,
@@ -282,6 +306,7 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> disconnected_{false};
     std::atomic<uint32_t> outputUnderruns_{0};
+    std::atomic<int32_t> lastXrunCount_{-1};
     std::atomic<uint32_t> droppedCaptureFrames_{0};
     std::atomic<uint32_t> droppedPlaybackFrames_{0};
     std::atomic<uint32_t> droppedAnalysisFrames_{0};
