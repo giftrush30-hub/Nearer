@@ -1317,6 +1317,11 @@ class MainActivity : ComponentActivity() {
             statusMessage = "Turn Bluetooth or Wi-Fi ON on both phones. NeaRer does not need mobile data or an internet connection for nearby play."
             return
         }
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R && !isLocationEnabled()) {
+            finishDiscovery()
+            statusMessage = "Nearby discovery is paused. On Android 8–11, turn Location on before searching for nearby phones."
+            return
+        }
         // Start Nearby Connections whenever at least one suitable radio is already enabled.
         // Android no longer silently enables radios for apps; the user stays in control.
         nearbyTransport?.start()
@@ -1333,11 +1338,7 @@ class MainActivity : ComponentActivity() {
         }
         val manager = wifiManager ?: run { finishDiscovery(); statusMessage = "This phone does not provide Wi-Fi Direct."; return }
         val activeChannel = channel ?: run { finishDiscovery(); statusMessage = "Bluetooth discovery is active, but Wi-Fi Direct is unavailable."; return }
-        if (!isLocationEnabled()) {
-            finishDiscovery()
-            statusMessage = "Bluetooth discovery is active. Turn Location ON if you also want Wi-Fi Direct discovery on this Android version."
-            return
-        }
+
         finishDiscovery()
         val generation = discoveryGeneration
         scanning = true
