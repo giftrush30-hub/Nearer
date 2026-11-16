@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedButton
@@ -297,6 +299,19 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                 Text("No Bible translation installed yet",color=Color.White,fontSize=17.sp,fontWeight=FontWeight.Bold)
                 Text("Choose a Bible pack supplied by its publisher or a trusted distributor. NeaRer verifies its checksum, declared canon and verse counts before saving it. Packs remain separate from the APK so the app stays lightweight.",
                     color=Color(0xFFA8B6C9),fontSize=12.sp,lineHeight=18.sp)
+                Text("NIGERIAN LANGUAGE EDITIONS TO PURSUE",color=Color(0xFFFFD12D),fontSize=10.sp,fontWeight=FontWeight.Bold)
+                Text("BSN reports 27 complete Nigerian-language Bibles. These public catalogue leads are not yet NeaRer downloads; each edition needs direct rights clearance.",
+                    color=Color(0xFFA8B6C9),fontSize=11.sp,lineHeight=16.sp)
+                LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                    items(BibleLanguageCatalogue.nigeriaLeads,key={it.languageName}) { lead ->
+                        androidx.compose.material3.Surface(color=Color(0xFF1A2940),modifier=Modifier.fillMaxWidth()) {
+                            Row(Modifier.padding(10.dp),horizontalArrangement=Arrangement.SpaceBetween) {
+                                Text(lead.languageName,color=Color.White,fontSize=12.sp)
+                                Text("RIGHTS TO CONFIRM",color=Color(0xFFFFD12D),fontSize=9.sp,fontWeight=FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
             }
         }
         Text(notice,color=Color(0xFFA8B6C9),fontSize=10.sp,lineHeight=15.sp)
