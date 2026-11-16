@@ -17,7 +17,7 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 
 ### HyperTransfer — offline file transfer reliability
 
-- Multi-file offers use a bounded, versioned manifest with safe relative-path validation; file bytes are streamed separately.
+- Multiple selected files are currently queued as separate verified transfers; selected folders are staged as ZIP archives using streaming I/O so their directory structure is preserved without loading the archive into memory. A bounded, versioned manifest validator exists, but end-to-end manifest-driven multi-file bundle transfer and folder reconstruction are still pending.
 - Stream-capable peers use Nearby STREAM with authenticated capability negotiation. Older peers retain the compatible FILE payload path.
 - Interrupted STREAM transfers can recover a receiver-side partial after app restart. Resume candidates are re-hashed, bound to the same authenticated stable sender, and accepted only after the sender validates the selected source's prefix.
 - The receiver syncs durable checkpoints, verifies the completed whole-file SHA-256, and publishes without overwriting an existing destination. A recipient receipt tells the sender whether the file was actually verified and saved.
