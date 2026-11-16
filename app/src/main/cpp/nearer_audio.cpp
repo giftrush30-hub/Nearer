@@ -5,6 +5,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -75,6 +76,11 @@ public:
         playbackRing_.reset();
         analysisRing_.reset();
         disconnected_.store(false, std::memory_order_relaxed);
+        inputDisconnected_.store(false, std::memory_order_relaxed);
+        outputDisconnected_.store(false, std::memory_order_relaxed);
+        inputRaw_.store(nullptr, std::memory_order_relaxed);
+        outputRaw_.store(nullptr, std::memory_order_relaxed);
+        errorCallbacksInFlight_.store(0, std::memory_order_relaxed);
         outputUnderruns_.store(0, std::memory_order_relaxed);
         lastXrunCount_.store(-1, std::memory_order_relaxed);
         droppedCaptureFrames_.store(0, std::memory_order_relaxed);
@@ -112,6 +118,7 @@ public:
             closeStreams();
             return false;
         }
+        outputRaw_.store(output_.get(), std::memory_order_release);
 
         auto openInput = [&](oboe::SharingMode sharing) {
             oboe::AudioStreamBuilder builder;
@@ -140,6 +147,7 @@ public:
             closeStreams();
             return false;
         }
+        inputRaw_.store(input_.get(), std::memory_order_release);
         // Android may substitute a different device even when a device ID was requested.
         // Never silently claim that the chosen USB microphone is active.
         if (inputDeviceId >= 0 && input_->getDeviceId() != inputDeviceId) {
@@ -207,10 +215,13 @@ public:
     }
 
     void onErrorBeforeClose(oboe::AudioStream* stream, oboe::Result) override {
-        // Oboe invokes this before closing the disconnected stream. Read only
-        // from the callback's still-open stream; never take streamMutex_ here,
-        // because closeStreams() may be waiting for this callback to return.
-        if (stream != nullptr && stream->getDirection() == oboe::Direction::Output) {
+        // The error callback must never take streamMutex_: closeStreams() may be
+        // waiting for Oboe to finish this callback while holding that mutex.
+        errorCallbacksInFlight_.fetch_add(1, std::memory_order_acq_rel);
+        if (stream == inputRaw_.load(std::memory_order_acquire)) {
+            inputDisconnected_.store(true, std::memory_order_release);
+        } else if (stream == outputRaw_.load(std::memory_order_acquire)) {
+            outputDisconnected_.store(true, std::memory_order_release);
             const auto result = stream->getXRunCount();
             if (result == oboe::Result::OK) {
                 lastXrunCount_.store(result.value(), std::memory_order_relaxed);
@@ -222,7 +233,8 @@ public:
 
     void onErrorAfterClose(oboe::AudioStream*, oboe::Result) override {
         disconnected_.store(true, std::memory_order_release);
-        running_.store(false, std::memory_order_release);
+        errorCallbacksInFlight_.fetch_sub(1, std::memory_order_acq_rel);
+        errorWaitCondition_.notify_all();
     }
 
     uint32_t readAnalysis(float* destination, uint32_t count) noexcept {
@@ -273,24 +285,40 @@ private:
     // onErrorAfterClose(). Calling requestStop() on that stream is invalid.
     // For streams stopped by our own lifecycle, requestStop() is appropriate;
     // for already-closed/disconnected streams, only release our shared_ptr.
-    static void stopAndCloseIfOpen(std::shared_ptr<oboe::AudioStream>& stream) {
-        if (!stream) return;
-        const oboe::StreamState state = stream->getState();
-        if (state != oboe::StreamState::Closed &&
-            state != oboe::StreamState::Disconnected) {
-            stream->requestStop();
-            stream->close();
-        }
-        stream.reset();
-    }
-
     void closeStreams() {
         std::lock_guard<std::mutex> lock(streamMutex_);
-        stopAndCloseIfOpen(input_);
-        stopAndCloseIfOpen(output_);
+        {
+            std::unique_lock<std::mutex> waitLock(errorWaitMutex_);
+            errorWaitCondition_.wait(waitLock, [this] {
+                return errorCallbacksInFlight_.load(std::memory_order_acquire) == 0;
+            });
+        }
+        if (input_) {
+            if (!inputDisconnected_.load(std::memory_order_acquire)) {
+                input_->requestStop();
+                input_->close();
+            }
+            input_.reset();
+        }
+        inputRaw_.store(nullptr, std::memory_order_release);
+        if (output_) {
+            if (!outputDisconnected_.load(std::memory_order_acquire)) {
+                output_->requestStop();
+                output_->close();
+            }
+            output_.reset();
+        }
+        outputRaw_.store(nullptr, std::memory_order_release);
     }
 
     mutable std::mutex streamMutex_;
+    std::mutex errorWaitMutex_;
+    std::condition_variable errorWaitCondition_;
+    std::atomic<uint32_t> errorCallbacksInFlight_{0};
+    std::atomic<oboe::AudioStream*> inputRaw_{nullptr};
+    std::atomic<oboe::AudioStream*> outputRaw_{nullptr};
+    std::atomic<bool> inputDisconnected_{false};
+    std::atomic<bool> outputDisconnected_{false};
     std::shared_ptr<oboe::AudioStream> input_;
     std::shared_ptr<oboe::AudioStream> output_;
     FloatRing playbackRing_;
