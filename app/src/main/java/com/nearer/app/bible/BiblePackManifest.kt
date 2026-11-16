@@ -6,7 +6,10 @@ data class BiblePackManifest(
     val packId:String,
     val version:Int,
     val translationId:String,
+    val translationName:String,
     val languageTag:String,
+    val languageName:String,
+    val abbreviation:String,
     val canonId:String,
     val sourceId:String,
     val licenseId:String,
@@ -35,6 +38,8 @@ object BiblePackManifestValidator {
         if(!safeId.matches(manifest.translationId)) errors += "Invalid translation ID."
         if(manifest.languageTag.isBlank() || !manifest.languageTag.contains("-") && manifest.languageTag.length !in 2..3)
             errors += "Language tag is missing or malformed."
+        if(manifest.translationName.isBlank() || manifest.languageName.isBlank() || manifest.abbreviation.isBlank())
+            errors += "Translation display name, language name and abbreviation are required."
         if(manifest.canonId.isBlank() || manifest.sourceId.isBlank() || manifest.licenseId.isBlank())
             errors += "Canon, source and licence identifiers are required."
         if(manifest.bookCount !in 1..100) errors += "Book count is outside the supported range."
@@ -46,8 +51,8 @@ object BiblePackManifestValidator {
             errors += "Unsafe pack filename."
         if(manifest.licenseId.startsWith("copyright",ignoreCase=true) && manifest.copyrightNotice.isNullOrBlank())
             errors += "Copyrighted translations require a copyright notice."
-        if(manifest.coverage==BibleCoverage.COMPLETE_BIBLE && manifest.bookCount<66)
-            errors += "A complete Protestant Bible pack must declare at least 66 books."
+        if(manifest.coverage==BibleCoverage.COMPLETE_BIBLE && manifest.bookCount<24)
+            errors += "A complete Bible pack must contain at least 24 books."
         return BiblePackValidation(errors.isEmpty(),errors)
     }
 }
