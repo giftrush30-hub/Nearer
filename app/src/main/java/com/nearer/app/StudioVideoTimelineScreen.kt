@@ -54,6 +54,7 @@ import androidx.media3.effect.HslAdjustment
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.OverlaySettings
 import androidx.media3.effect.TextOverlay
+import androidx.media3.effect.TimestampWrapper
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
@@ -112,6 +113,16 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
     LaunchedEffect(captionLayers.toList()) {
         captionPreferences.edit().putString("captions_v1", StudioVideoCaptionCodec.encode(captionLayers.toList())).apply()
     }
+    val transitionPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_transitions", android.content.Context.MODE_PRIVATE) }
+    var transitionStyle by remember(context) {
+        mutableStateOf(runCatching {
+            StudioVideoTransitionStyle.valueOf(transitionPreferences.getString("style", StudioVideoTransitionStyle.CUT.name)!!)
+        }.getOrDefault(StudioVideoTransitionStyle.CUT))
+    }
+    var transitionDurationMs by remember(context) { mutableStateOf(transitionPreferences.getInt("duration_ms", 350).coerceIn(200, 1_000)) }
+    LaunchedEffect(transitionStyle, transitionDurationMs) {
+        transitionPreferences.edit().putString("style", transitionStyle.name).putInt("duration_ms", transitionDurationMs).apply()
+    }
     fun videoEffects(clipIndex: Int = 0) = buildList<androidx.media3.common.Effect> {
         if (brightness != 0f) add(Brightness(brightness))
         if (contrast != 0f) add(Contrast(contrast))
@@ -131,6 +142,19 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
         }
         val timedLayers = captionLayers.filter { it.clipIndex == clipIndex && it.text.isNotBlank() }
         if (timedLayers.isNotEmpty()) add(OverlayEffect(timedLayers.map { StudioTimedTextOverlay(it) }))
+        if (transitionStyle == StudioVideoTransitionStyle.FADE_TO_BLACK && clips.size > 1) {
+            val clip = clips.getOrNull(clipIndex)
+            if (clip != null) {
+                StudioVideoTransitionPlanner.plan(
+                    clipDurationMs = (clip.outMs - clip.inMs).coerceAtLeast(0L),
+                    transitionDurationMs = transitionDurationMs,
+                    includeFadeIn = clipIndex > 0,
+                    includeFadeOut = clipIndex < clips.lastIndex
+                ).forEach { segment ->
+                    add(TimestampWrapper(Brightness(segment.brightness), segment.startUs, segment.endUs))
+                }
+            }
+        }
     }
     LaunchedEffect(brightness, contrast, saturation) {
         gradePreferences.edit().putString("grade_v1", StudioVideoGradeCodec.encode(StudioVideoGrade(brightness, contrast, saturation))).apply()
@@ -356,6 +380,29 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
             Text("Your preview will appear here after you add video clips.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(18.dp))
         }
         Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("CLIP TRANSITIONS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Choose a clean cut or a fade through black between clips. Fade-through-black dims the end of one clip and brings in the next; it does not overlap the clips.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(StudioVideoTransitionStyle.CUT, StudioVideoTransitionStyle.FADE_TO_BLACK).forEach { style ->
+                        Button(onClick = { transitionStyle = style; exported = null }, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (transitionStyle == style) Mint else Midnight,
+                                contentColor = if (transitionStyle == style) Midnight else White
+                            )) {
+                            Text(if (style == StudioVideoTransitionStyle.CUT) "CLEAN CUT" else "FADE TO BLACK", fontSize = 9.sp)
+                        }
+                    }
+                }
+                if (transitionStyle == StudioVideoTransitionStyle.FADE_TO_BLACK) {
+                    Text("TRANSITION LENGTH · ${transitionDurationMs} ms", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Slider(value = transitionDurationMs.toFloat(), onValueChange = { transitionDurationMs = it.toInt(); exported = null }, valueRange = 200f..1_000f, steps = 7)
+                    Text("The fade is applied to the outgoing and incoming edges of each middle clip. Very short clips automatically shorten the fade to fit.", color = Muted, fontSize = 9.sp, lineHeight = 14.sp)
+                }
+            }
+        }
+
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("EDIT SEQUENCE", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -459,7 +506,7 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                 Text("SHARE EXPORTED VIDEO")
             }
         }
-        Text("The timeline, trims, colour grade, title and timed caption layers are saved locally. Timed captions are attached to individual clips. Crossfades and animated text transitions remain future editor milestones.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
+        Text("The timeline, trims, colour grade, title and timed caption layers are saved locally. Timed captions are attached to individual clips. Crossfades remain unsupported by the current Media3 composition pipeline; fade-through-black and timed caption layers are now available in the editor.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
 }
 
