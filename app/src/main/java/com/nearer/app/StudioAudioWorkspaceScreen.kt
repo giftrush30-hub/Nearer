@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -182,6 +184,13 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
         mutableStateOf(StudioVocalProfile.values().firstOrNull { it.name == vocalPreferences.getString("profile", StudioVocalProfile.WARM_CONDENSER.name) } ?: StudioVocalProfile.WARM_CONDENSER)
     }
     LaunchedEffect(selectedVocalProfile) { vocalPreferences.edit().putString("profile", selectedVocalProfile.name).apply() }
+    val vocalControlPreferences = remember(context) { context.getSharedPreferences("nearer_studio_vocal_controls", android.content.Context.MODE_PRIVATE) }
+    var vocalControls by remember(context) {
+        mutableStateOf(StudioVocalControlsCodec.decode(vocalControlPreferences.getString("controls_v1", null)))
+    }
+    LaunchedEffect(vocalControls) {
+        vocalControlPreferences.edit().putString("controls_v1", StudioVocalControlsCodec.encode(vocalControls)).apply()
+    }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -212,7 +221,7 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
     val startSeconds = (startMs / 1000L).toFloat().coerceIn(0f, durationSeconds)
     val endSeconds = (endMs / 1000L).toFloat().coerceIn(startSeconds + 0.25f, durationSeconds.coerceAtLeast(startSeconds + 0.25f))
 
-    Column(Modifier.fillMaxSize().background(Midnight).padding(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+    Column(Modifier.fillMaxSize().background(Midnight).verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text("‹  STUDIO", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 8.dp))
             Text("AUDIO EDIT", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -237,6 +246,26 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                     Button(onClick = { endMs = player.currentPosition.coerceAtLeast(startMs + 250L).coerceAtMost(durationMs) }, modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("SET OUT") }
                 }
+            }
+        }
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("VOCAL PRO  ·  MANUAL STUDIO CONTROLS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Fine-tune the selected vocal profile. These settings are applied to the rendered copy; the original take stays untouched.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Text("WARMTH  ·  " + "${(vocalControls.warmth * 100).toInt()}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.warmth, onValueChange = { vocalControls = vocalControls.copy(warmth = it); exportedFile = null }, valueRange = -1f..1f)
+                Text("PRESENCE  ·  " + "${(vocalControls.presence * 100).toInt()}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.presence, onValueChange = { vocalControls = vocalControls.copy(presence = it); exportedFile = null }, valueRange = -0.2f..0.25f)
+                Text("DE-ESSER  ·  " + "${(vocalControls.deEss * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.deEss, onValueChange = { vocalControls = vocalControls.copy(deEss = it); exportedFile = null }, valueRange = 0f..0.5f)
+                Text("COMPRESSION  ·  " + "${vocalControls.compression.toInt()}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.compression, onValueChange = { vocalControls = vocalControls.copy(compression = it); exportedFile = null }, valueRange = 0f..4f)
+                Text("ROOM AMBIENCE  ·  " + "${(vocalControls.ambience * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.ambience, onValueChange = { vocalControls = vocalControls.copy(ambience = it); exportedFile = null }, valueRange = 0f..0.15f)
+                Text("OUTPUT LEVEL  ·  " + "${(vocalControls.outputGain * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.outputGain, onValueChange = { vocalControls = vocalControls.copy(outputGain = it); exportedFile = null }, valueRange = 0.6f..1.4f)
+                Button(onClick = { vocalControls = StudioVocalControls(); exportedFile = null }, modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("RESET MANUAL CONTROLS") }
             }
         }
         Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
@@ -272,7 +301,7 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                     MediaItem.ClippingConfiguration.Builder().setStartPositionMs(startMs).setEndPositionMs(endMs).build()
                 ).build()
                 val vocalEffects = Effects(
-                    listOf(ToInt16PcmAudioProcessor(), StudioVocalPolishProcessor(selectedVocalProfile)),
+                    listOf(ToInt16PcmAudioProcessor(), StudioVocalPolishProcessor(selectedVocalProfile, vocalControls)),
                     emptyList()
                 )
                 val edited = EditedMediaItem.Builder(clip).setEffects(vocalEffects).build()
