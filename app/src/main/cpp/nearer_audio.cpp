@@ -56,7 +56,7 @@ class DuplexEngine final : public oboe::AudioStreamDataCallback,
                            public oboe::AudioStreamErrorCallback,
                            public std::enable_shared_from_this<DuplexEngine> {
 public:
-    bool start(int32_t inputDeviceId) {
+    bool start(int32_t inputDeviceId, bool preferUnprocessedInput) {
         playbackRing_.reset();
         analysisRing_.reset();
         disconnected_.store(false, std::memory_order_relaxed);
@@ -104,7 +104,7 @@ public:
                 ->setSampleRate(output_->getSampleRate())
                 ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
                 ->setSharingMode(sharing)
-                ->setInputPreset(oboe::InputPreset::VoiceRecognition)
+                ->setInputPreset(preferUnprocessedInput ? oboe::InputPreset::Unprocessed : oboe::InputPreset::VoiceRecognition)
                 ->setDataCallback(dataCallback)
                 ->setErrorCallback(errorCallback);
             if (inputDeviceId >= 0) builder.setDeviceId(inputDeviceId);
@@ -237,11 +237,11 @@ std::shared_ptr<DuplexEngine> gEngine;
 } // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_nearer_app_StudioOboeEngine_nativeStart(JNIEnv*, jobject, jint inputDeviceId) {
+Java_com_nearer_app_StudioOboeEngine_nativeStart(JNIEnv*, jobject, jint inputDeviceId, jboolean preferUnprocessedInput) {
     std::lock_guard<std::mutex> lock(gEngineMutex);
     if (gEngine) gEngine->stop();
     auto engine = std::make_shared<DuplexEngine>();
-    if (!engine->start(inputDeviceId)) {
+    if (!engine->start(inputDeviceId, preferUnprocessedInput == JNI_TRUE)) {
         gEngine.reset();
         return JNI_FALSE;
     }
