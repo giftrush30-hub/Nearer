@@ -1,8 +1,6 @@
 name: NeaRer Word validation
 
 on:
-  push:
-    branches: ["feature/nearer-word-main-sync-*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -81,7 +79,7 @@ jobs:
           retention-days: 30
 
   bsb-word-alignment:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || contains(github.event.head_commit.message, '[rebuild-bsb-pack]')
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
