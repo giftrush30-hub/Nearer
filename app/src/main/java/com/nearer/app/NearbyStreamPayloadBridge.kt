@@ -100,6 +100,7 @@ internal class NearbyStreamPayloadBridge(
         decision: TransferResumeNegotiation.Decision,
         destination: java.io.File,
         isCancelled: () -> Boolean = { false },
+        receiveBufferBytes: Int = HyperTransferModePolicy.receiveBufferBytes(HyperTransferModePolicy.Mode.FAST),
         onComplete: (Result<TransferResumeCoordinator.ReceiveResult>) -> Unit
     ): Boolean {
         val metadataValid = runCatching { TransferResumeStreamMetadataCodec.validate(metadata) }.isSuccess
@@ -137,7 +138,8 @@ internal class NearbyStreamPayloadBridge(
                         input = stream,
                         destination = destination,
                         expectedWholeFileSha256 = metadata.wholeFileSha256,
-                        isCancelled = isCancelled
+                        isCancelled = isCancelled,
+                        receiveBufferBytes = receiveBufferBytes
                     )
                     deliver(Result.success(result))
                 } catch (error: Exception) {
