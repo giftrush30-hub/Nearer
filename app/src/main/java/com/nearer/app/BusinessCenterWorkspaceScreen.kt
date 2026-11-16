@@ -420,12 +420,54 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                 }
             }
         }
+        if (statusMessage.isNotBlank()) Text(statusMessage, color = Mint, fontSize = 11.sp, lineHeight = 16.sp)
         Surface(color = Panel, shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("LOCAL NOW. CONNECTED WHEN READY.", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                Text("Your profile and catalogue drafts are stored on this device. Sharing uses Android's share sheet. Public storefronts, online orders, payments and discovery are later phases—not silently simulated here.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                Text("Your profile and catalogue are stored on this phone. Share a business card, one listing or your text catalogue through Android's share sheet; choose Bluetooth, Quick Share or another available app. Public storefronts, online orders and payments are not simulated here.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
     }
+}
+
+
+@Composable
+private fun BusinessDraftPhoto(uri: Uri, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val bitmap by produceState<Bitmap?>(initialValue = null, uri, context) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream, null, bounds)
+                }
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                    null
+                } else {
+                    var sampleSize = 1
+                    while (bounds.outWidth / sampleSize > 1_280 || bounds.outHeight / sampleSize > 960) {
+                        sampleSize *= 2
+                    }
+                    val options = BitmapFactory.Options().apply {
+                        inSampleSize = sampleSize
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        BitmapFactory.decodeStream(stream, null, options)
+                    }
+                }
+            }.getOrNull()
+        }
+    }
+    AndroidView(
+        factory = { viewContext ->
+            ImageView(viewContext).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(android.graphics.Color.DKGRAY)
+            }
+        },
+        update = { it.setImageBitmap(bitmap) },
+        modifier = modifier
+    )
 }
