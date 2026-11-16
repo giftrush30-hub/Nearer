@@ -249,6 +249,26 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
             }
         }
         Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("VOCAL PRO  ·  MANUAL STUDIO CONTROLS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Fine-tune the selected vocal profile. These settings are applied to the rendered copy; the original take stays untouched.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Text("WARMTH  ·  " + "${(vocalControls.warmth * 100).toInt()}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.warmth, onValueChange = { vocalControls = vocalControls.copy(warmth = it); exportedFile = null }, valueRange = -1f..1f)
+                Text("PRESENCE  ·  " + "${(vocalControls.presence * 100).toInt()}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.presence, onValueChange = { vocalControls = vocalControls.copy(presence = it); exportedFile = null }, valueRange = -0.2f..0.25f)
+                Text("DE-ESSER  ·  " + "${(vocalControls.deEss * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.deEss, onValueChange = { vocalControls = vocalControls.copy(deEss = it); exportedFile = null }, valueRange = 0f..0.5f)
+                Text("COMPRESSION  ·  " + "${vocalControls.compression.toInt()}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.compression, onValueChange = { vocalControls = vocalControls.copy(compression = it); exportedFile = null }, valueRange = 0f..4f)
+                Text("ROOM AMBIENCE  ·  " + "${(vocalControls.ambience * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.ambience, onValueChange = { vocalControls = vocalControls.copy(ambience = it); exportedFile = null }, valueRange = 0f..0.15f)
+                Text("OUTPUT LEVEL  ·  " + "${(vocalControls.outputGain * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.outputGain, onValueChange = { vocalControls = vocalControls.copy(outputGain = it); exportedFile = null }, valueRange = 0.6f..1.4f)
+                Button(onClick = { vocalControls = StudioVocalControls(); exportedFile = null }, modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("RESET MANUAL CONTROLS") }
+            }
+        }
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("CONDENSER STUDIO  ·  VOCAL POLISH", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Text("Choose a vocal finish for the exported copy. The original take stays untouched.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
