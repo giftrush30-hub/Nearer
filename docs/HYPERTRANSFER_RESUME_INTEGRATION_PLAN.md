@@ -1,3 +1,45 @@
+> - Multi-select nearby file sharing now uses the same bundle API, so selected files are transferred as one logical archive rather than a sequence of unrelated payloads. The folder picker also routes document-tree files through this API. Peers that do not advertise STREAM support retain compatibility through a standard ZIP file payload; that fallback preserves the archive contents but does not provide HyperTransfer resume semantics.
+>
+> - A sender transfer restored from disk is marked as durable-recovery work. Repeated timeout/reconnect attempts keep its staged source and retry with a newly allocated Nearby payload ID rather than silently downgrading to a non-resumable legacy send. The retry backs off after repeated failures and can resume when the same authenticated peer returns.
+>
+> - A receiver-side verified-completion journal now records the authenticated source peer, transfer/item identity, digest, size and app-private published file. If the sender restarts after the receiver saved the file but before the sender received the ACK, the receiver can answer the retried metadata with the saved receipt instead of publishing a duplicate. The sender accepts a matching authenticated saved receipt even if Nearby's payload-completion callback arrives later.
+>
+> **Implementation status update — 16 November 2026 (expanded recovery and bundle integration)**
+>
+> The single-file Nearby HyperTransfer STREAM path remains the common transport and now has a durable sender recovery layer:
+>
+> - Sender source files and transfer metadata are stored under app-private `filesDir/hypertransfer-outgoing`, not the evictable cache directory.
+> - The record is atomically committed only after the source exists at the declared size and its SHA-256 matches.
+> - After process restart, the store revalidates the saved source (size and full SHA-256), filters by the authenticated stable recipient identity, and reconstructs a new Nearby payload ID when that same peer advertises STREAM support.
+> - User cancellation, successful receiver confirmation, fallback ownership transfer and retention expiry clean up the record/source according to who owns the file. Transport shutdown deliberately preserves pending durable records.
+>
+> Folder/multi-file transfer is now connected to the nearby folder picker:
+>
+> - The picker enumerates the selected document tree and supplies each file URI plus its relative path to `sendBundle`.
+> - NeaRer stages files without loading whole files into memory, builds a manifest-backed ZIP archive, and sends that archive as one resumable HyperTransfer STREAM.
+> - The receiver first verifies the outer transfer digest, validates that archive entries exactly match the manifest, bounds manifest decompression, rejects traversal/duplicate/unlisted entries, and extracts to an app-private received folder.
+> - The verified ZIP is also retained in the received-files list so Android archive applications can open or extract it. Folder contents are therefore available both in NeaRer's private received tree and as a portable ZIP.
+> - Empty directories with no files are not currently represented; file-containing directory structure is preserved.
+>
+> Reliability coverage now includes durable sender-store restore/filter/tamper/cancel tests, bundle pack/extract/path-traversal/extra-entry tests, and the existing resume writer interruption, cancellation, truncation, oversize, zero-progress, prefix-corruption, concurrent-receive and callback-order suites.
+>
+> **Still not proven:** forced process-death recovery on two physical phones; all SAF provider edge cases; Android low-storage/permission revocation races; or radio reconnection behaviour across OEM power-management policies. The sender record is app-private and does not survive app data clearing/uninstall. Physical-device acceptance testing remains required.
+>
+> **Implementation status update — 16 November 2026**
+>
+> The single-file Nearby HyperTransfer STREAM path is now wired in `NearbyConnectionsTransport`; the earlier "not wired" statements below describe the pre-integration boundary and should be read as historical design context, not the current state. The active path:
+>
+> - Advertises version-1 STREAM capability after the authenticated Nearby handshake and retains the existing FILE path for peers that do not advertise it.
+> - Stages the selected source, calculates its SHA-256, and derives stable transfer/item identities before sending.
+> - Exchanges encrypted metadata and resume proposal/decision records, correlating BYTES and STREAM callbacks by payload ID and authenticated stable peer identity.
+> - Receives STREAM data on a bounded I/O executor, writes peer-bound durable checkpoints, verifies the full-file SHA-256, and publishes only after verification.
+> - Sends a completion receipt so the sender can retire its temporary retry copy only after the receiver confirms the verified save.
+> - Reconnects and retries within the live process from the last verified checkpoint. Receiver-side journal discovery supports revalidating partials after receiver process death when the sender starts the same logical transfer again.
+>
+> **Still not complete / not proven:** automatic restoration of the sender's temporary staged copy after sender process death; native folder/bundle transfer through this HyperTransfer STREAM path; exhaustive end-to-end fault injection for every callback ordering and shutdown edge; and two-physical-device acceptance testing. The sender staging copy currently lives under the app cache, so process-death recovery on the sender is not guaranteed. Do not advertise folder resume or fully automatic sender-process recovery until those are implemented and tested.
+>
+> The receive writer now selects its buffer from the device's available-memory, low-RAM, and Android thermal state at transport initialization. This tunes local disk I/O only; it does not change the radio transport or guarantee higher wireless throughput.
+>
 # HyperTransfer: live resume integration blueprint
 
 Status: engineering plan grounded in the current transport and Google Nearby Connections API. Resume remains experimental until the end-to-end acceptance tests below pass on two physical Android devices.

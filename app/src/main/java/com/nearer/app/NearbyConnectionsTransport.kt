@@ -25,6 +25,13 @@ data class MeshRecipient(
     val isDirect: Boolean
 )
 
+/** One file within a folder or multi-file transfer. Paths are relative to the bundle root. */
+data class NearbyBundleSource(
+    val uri: Uri,
+    val relativePath: String,
+    val mimeType: String? = null
+)
+
 class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = false, private val listener: Listener) {
     interface Listener {
         fun onStatus(message: String)
@@ -152,36 +159,8 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     }
 
     private fun encodedName(): String = "${localName.take(23)}|$localStableId"
-    private fun decodeName(value: String): Pair<String, String> {
-        val split = value.lastIndexOf('|')
-        if (split in 1 until value.lastIndex) {
-            val identity = NeaRerIdentity.normalize(value.substring(split + 1))
-            if (identity != null) return value.substring(0, split).take(23) to identity
-        }
-        return value.take(23) to ""
-    }
-
-internal object IncomingFilePayloadPolicy {
-    /**
-     * A file payload must come from the peer that supplied its metadata (or the
-     * peer that first supplied the payload). Stable identities survive reconnects;
-     * legacy peers are restricted to the original endpoint.
-     */
-    fun canAccept(
-        expectedEndpointId: String?,
-        expectedPeerId: String?,
-        incomingEndpointId: String,
-        incomingPeerId: String
-    ): Boolean {
-        if (incomingEndpointId.isBlank()) return false
-        // Once metadata establishes a stable sender, an empty identity is not
-        // a legacy fallback: it is an unidentified sender and must be rejected.
-        if (!expectedPeerId.isNullOrBlank()) {
-            return incomingPeerId.isNotBlank() && expectedPeerId == incomingPeerId
-        }
-        return expectedEndpointId == null || expectedEndpointId == incomingEndpointId
-    }
-}
+    private fun decodeName(value: String): Pair<String, String> =
+        NearbyEndpointNameCodec.decode(value)
 
     private data class FileMeta(val endpointId: String, val name: String, val size: Long, val sha256: String = "")
     private data class OutgoingFile(
@@ -216,9 +195,11 @@ internal object IncomingFilePayloadPolicy {
         @Volatile var resumedFromBytes: Long = 0L,
         @Volatile var awaitingReceipt: Boolean = false,
         @Volatile var receiptTimeout: Runnable? = null,
-        @Volatile var retentionTimeout: Runnable? = null
+        @Volatile var retentionTimeout: Runnable? = null,
+        val durableRecovery: Boolean = false
     )
     private val outgoingHyperStreams = ConcurrentHashMap<Long, OutgoingHyperStream>()
+    private val restoringHyperTransfers = ConcurrentHashMap.newKeySet<String>()
     private val preparingHyperStreams = ConcurrentHashMap.newKeySet<Long>()
     private val cancelledOutgoingPreparations = ConcurrentHashMap.newKeySet<Long>()
     private val incomingHyperMetadata = ConcurrentHashMap<Long, TransferResumeStreamMetadataCodec.Metadata>()
@@ -240,8 +221,18 @@ internal object IncomingFilePayloadPolicy {
         File(resumeDirectory, "partials"),
         TransferResumeJournal(File(resumeDirectory, "journal"))
     )
-    private val resumeCoordinator = TransferResumeCoordinator(resumeStore, TransferResumeStreamWriter(resumeStore))
+    // Select the durable receive buffer from this phone's current memory/thermal state.
+    // This tunes local disk I/O only; it does not claim to increase radio throughput.
+    private val resumeCoordinator = TransferResumeCoordinator(
+        resumeStore,
+        TransferResumeStreamWriter(resumeStore, HyperTransferTuning.receiveBufferBytes(appContext))
+    )
     private val streamPayloadBridge = NearbyStreamPayloadBridge(resumeCoordinator, fileIo)
+    private val outgoingHyperDirectory = File(appContext.filesDir, "hypertransfer-outgoing")
+    private val outgoingHyperStore = OutgoingHyperTransferStore(outgoingHyperDirectory)
+    private val verifiedTransferStore = VerifiedTransferReceiptStore(
+        File(appContext.filesDir, "hypertransfer-completed")
+    )
     // Hash large files away from the UI thread before the receiver is given the payload.
     private val transferPreparation = Executors.newFixedThreadPool(2)
     private val seenMessageIdsLock = Any()
@@ -274,7 +265,10 @@ internal object IncomingFilePayloadPolicy {
     private val completedOutgoingMessageIds = LinkedHashSet<String>()
     private val deliveryHandler = Handler(Looper.getMainLooper())
     private val maxMessageAttempts = MessageRetryPolicy.MAX_ATTEMPTS
-    private companion object { const val RECEIPT_RETRY_MS = 15_000L }
+    private companion object {
+        const val RECEIPT_RETRY_MS = 15_000L
+        const val BUNDLE_MIME_TYPE = "application/vnd.nearer.bundle"
+    }
     init {
         restorePendingOutbox()
         // Restore replay protection before any cached route can become usable.
@@ -727,7 +721,7 @@ internal object IncomingFilePayloadPolicy {
                                     pending.value.receiptTimeout = null
                                     pending.value.retentionTimeout = null
                                     pending.value.prepared.close()
-                                    pending.value.sourceFile.delete()
+                                    outgoingHyperStore.remove(pending.value.transferId)
                                     transferSpeedMeters.remove(pending.key)
                                     listener.onFileStatus(
                                         "The recipient did not confirm the save in time. The temporary retry copy was cleared; please send the file again."
@@ -1784,7 +1778,8 @@ internal object IncomingFilePayloadPolicy {
         if (NeaRerIdentity.normalize(peerId) == null) return
         val receipt = runCatching { HyperTransferCompletionReceiptCodec.decode(raw) }.getOrNull() ?: return
         val state = outgoingHyperStreams[receipt.payloadId] ?: return
-        if (state.stablePeerId != peerId || !state.awaitingReceipt ||
+        if (state.stablePeerId != peerId ||
+            (!receipt.saved && !state.awaitingReceipt) ||
             state.transferId != receipt.transferId || state.item.id != receipt.itemId ||
             !state.sha256.equals(receipt.sha256, ignoreCase = true)) return
         state.receiptTimeout?.let(deliveryHandler::removeCallbacks)
@@ -1795,9 +1790,11 @@ internal object IncomingFilePayloadPolicy {
             state.retentionTimeout = null
             if (outgoingHyperStreams.remove(receipt.payloadId, state)) {
                 state.prepared.close()
-                state.sourceFile.delete()
+                outgoingHyperStore.remove(state.transferId)
                 transferSpeedMeters.remove(receipt.payloadId)
-                listener.onFileStatus("Verified and saved on the recipient's phone: " + state.name)
+                // MainActivity uses this stable success prefix to retire the active
+                // transfer job and advance any queued follow-up work.
+                listener.onFileStatus("File sent to the nearby phone and verified: " + state.name)
             }
         } else {
             listener.onFileStatus("The recipient could not verify the file. NeaRer is retrying safely…")
@@ -1818,13 +1815,19 @@ internal object IncomingFilePayloadPolicy {
 
     private fun handleHyperStreamMetadata(endpointId: String, raw: ByteArray) {
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        val metadata = runCatching { TransferResumeStreamMetadataCodec.decode(raw) }.getOrNull() ?: return
+        // If the receiver committed the file but the sender died before seeing its
+        // receipt, answer the retried metadata without creating a duplicate file.
+        if (verifiedTransferStore.containsVerified(peerId, metadata)) {
+            sendHyperTransferCompletionReceipt(endpointId, metadata.payloadId, metadata, saved = true)
+            return
+        }
         val result = streamController.recordMetadata(endpointId, peerId, raw)
         if (result == NearbyStreamExchangeController.InputResult.DUPLICATE) return
         if (result != NearbyStreamExchangeController.InputResult.STORED) {
             listener.onFileStatus("A nearby stream transfer had invalid details and was rejected.")
             return
         }
-        val metadata = TransferResumeStreamMetadataCodec.decode(raw)
         incomingHyperMetadata[metadata.payloadId] = metadata
         incomingHyperEndpoints[metadata.payloadId] = endpointId
         schedulePendingHyperStreamExpiry(metadata.payloadId)
@@ -1973,48 +1976,79 @@ internal object IncomingFilePayloadPolicy {
             activeIncomingHyperPayloads.remove(payloadId)
             cancelledStreamPayloads.remove(payloadId)
             transferSpeedMeters.remove(payloadId)
-            result.onSuccess { completed ->
-                runCatching {
-                    sendHyperTransferControl(
-                        endpointId,
-                        HyperTransferCompletionReceiptCodec.encode(
-                            HyperTransferCompletionReceiptCodec.Receipt(
-                                payloadId = payloadId,
-                                transferId = metadata.transferId,
-                                itemId = metadata.item.id,
-                                sha256 = metadata.wholeFileSha256,
-                                saved = true
+            result.fold(
+                onSuccess = { completed ->
+                    try {
+                        val meter = TransferSpeedMeter()
+                        listener.onFileTransferUpdate(endpointId, payloadId, metadata.item.displayName,
+                            completed.totalBytes, completed.totalBytes, true,
+                            meter.record(completed.totalBytes, completed.totalBytes))
+                        if (metadata.item.mimeType == BUNDLE_MIME_TYPE) {
+                            val folderName = metadata.item.displayName.removeSuffix(".zip")
+                            val bundleDirectory = File(
+                                File(appContext.filesDir, "received"),
+                                System.currentTimeMillis().toString() + "-" +
+                                    TransferFileNamePolicy.safeName(folderName)
                             )
+                            try {
+                                TransferBundleArchive.extract(completed.completedFile, bundleDirectory)
+                            } catch (error: Exception) {
+                                completed.completedFile.delete()
+                                throw error
+                            }
+                            // Keep the verified ZIP visible in the received-files list so
+                            // Android's archive apps can open/extract it. The validated
+                            // folder tree is also retained in NeaRer's private received area.
+                            listener.onFileReceived(endpointId, metadata.item.displayName, completed.completedFile)
+                            listener.onFileStatus("Verified folder bundle received: " + folderName)
+                        } else {
+                            listener.onFileReceived(endpointId, metadata.item.displayName, completed.completedFile)
+                            listener.onFileStatus("Verified transfer complete: " + metadata.item.displayName)
+                        }
+                        verifiedTransferStore.record(
+                            ready.authenticatedPeerId, metadata, completed.completedFile, completed.sha256
                         )
+                        sendHyperTransferCompletionReceipt(endpointId, payloadId, metadata, saved = true)
+                    } catch (error: Exception) {
+                        sendHyperTransferCompletionReceipt(endpointId, payloadId, metadata, saved = false)
+                        listener.onFileStatus(
+                            if (error.message.orEmpty().contains("Not enough free storage", ignoreCase = true))
+                                error.message.orEmpty()
+                            else "The received file or folder could not be safely published."
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    sendHyperTransferCompletionReceipt(endpointId, payloadId, metadata, saved = false)
+                    val reason = error.message.orEmpty()
+                    listener.onFileStatus(
+                        if (reason.contains("Not enough free storage", ignoreCase = true)) reason
+                        else "The received file was not published because verification failed."
                     )
                 }
-                val meter = TransferSpeedMeter()
-                listener.onFileTransferUpdate(endpointId, payloadId, metadata.item.displayName,
-                    completed.totalBytes, completed.totalBytes, true,
-                    meter.record(completed.totalBytes, completed.totalBytes))
-                listener.onFileReceived(endpointId, metadata.item.displayName, completed.completedFile)
-                listener.onFileStatus("Verified transfer complete: " + metadata.item.displayName)
-            }.onFailure { error ->
-                runCatching {
-                    sendHyperTransferControl(
-                        endpointId,
-                        HyperTransferCompletionReceiptCodec.encode(
-                            HyperTransferCompletionReceiptCodec.Receipt(
-                                payloadId = payloadId,
-                                transferId = metadata.transferId,
-                                itemId = metadata.item.id,
-                                sha256 = metadata.wholeFileSha256,
-                                saved = false
-                            )
-                        )
+            )
+        }
+    }
+
+    private fun sendHyperTransferCompletionReceipt(
+        endpointId: String,
+        payloadId: Long,
+        metadata: TransferResumeStreamMetadataCodec.Metadata,
+        saved: Boolean
+    ) {
+        runCatching {
+            sendHyperTransferControl(
+                endpointId,
+                HyperTransferCompletionReceiptCodec.encode(
+                    HyperTransferCompletionReceiptCodec.Receipt(
+                        payloadId = payloadId,
+                        transferId = metadata.transferId,
+                        itemId = metadata.item.id,
+                        sha256 = metadata.wholeFileSha256,
+                        saved = saved
                     )
-                }
-                val reason = error.message.orEmpty()
-                listener.onFileStatus(
-                    if (reason.contains("Not enough free storage", ignoreCase = true)) reason
-                    else "The received file was not published because verification failed."
                 )
-            }
+            )
         }
     }
 
@@ -2602,7 +2636,14 @@ internal object IncomingFilePayloadPolicy {
         return sent
     }
 
-    private fun sendHyperTransferStream(endpointId: String, uri: Uri, displayName: String): Long? {
+    private fun sendHyperTransferStream(
+        endpointId: String,
+        uri: Uri,
+        displayName: String,
+        mimeType: String? = null,
+        deleteSourceAfterStaging: Boolean = false,
+        allowLegacyFallback: Boolean = true
+    ): Long? {
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (NeaRerIdentity.normalize(peerId) == null) return null
         val prepared = try { streamPayloadBridge.prepareOutgoingPayload() } catch (_: Exception) {
@@ -2621,8 +2662,10 @@ internal object IncomingFilePayloadPolicy {
                     prepared.close()
                     return@execute
                 }
-                val staging = File(appContext.cacheDir, "nearer-transfer-staging").apply { mkdirs() }
-                staged = File.createTempFile("nearer-hyper-", ".bin", staging)
+                if (!outgoingHyperDirectory.exists() && !outgoingHyperDirectory.mkdirs()) {
+                    throw IllegalStateException("Could not create durable transfer storage")
+                }
+                staged = File.createTempFile("nearer-hyper-", ".bin", outgoingHyperDirectory)
                 val input = appContext.contentResolver.openInputStream(uri)
                     ?: throw IllegalStateException("The selected file could not be opened")
                 val copied = input.use { source ->
@@ -2650,7 +2693,7 @@ internal object IncomingFilePayloadPolicy {
                 }
                 val name = safeFileName(displayName)
                 val item = TransferBundleItem(
-                    copied.sha256.take(32), name, name, copied.bytesCopied, null
+                    copied.sha256.take(32), name, name, copied.bytesCopied, mimeType
                 )
                 val transferId = HyperTransferIdentity.createTransferId(
                     localStableId, peerId, item, copied.sha256
@@ -2661,6 +2704,8 @@ internal object IncomingFilePayloadPolicy {
                     staged!!.delete()
                     return@execute
                 }
+                if (deleteSourceAfterStaging) runCatching { File(uri.path.orEmpty()).delete() }
+                outgoingHyperStore.persist(transferId, peerId, item, copied.sha256, staged!!)
                 val state = OutgoingHyperStream(
                     endpointId, peerId, name, staged!!, item, transferId, copied.sha256, prepared
                 )
@@ -2668,6 +2713,7 @@ internal object IncomingFilePayloadPolicy {
                 preparingHyperStreams.remove(payloadId)
                 if (cancelledOutgoingPreparations.remove(payloadId) || outgoingHyperStreams[payloadId] !== state) {
                     outgoingHyperStreams.remove(payloadId, state)
+                    outgoingHyperStore.remove(transferId)
                     prepared.close()
                     staged!!.delete()
                     return@execute
@@ -2685,14 +2731,40 @@ internal object IncomingFilePayloadPolicy {
                 )
                 armHyperStreamTimeout(state)
             } catch (error: Exception) {
-                outgoingHyperStreams.remove(payloadId)
                 preparingHyperStreams.remove(payloadId)
                 val wasCancelled = cancelledOutgoingPreparations.remove(payloadId)
+                val existingState = outgoingHyperStreams[payloadId]
+                if (existingState != null) {
+                    if (wasCancelled) {
+                        outgoingHyperStreams.remove(payloadId, existingState)
+                        outgoingHyperStore.remove(existingState.transferId)
+                        existingState.prepared.close()
+                        existingState.sourceFile.delete()
+                        return@execute
+                    }
+                    if (allowLegacyFallback) {
+                        fallbackHyperStreamToFile(existingState)
+                    } else {
+                        // A transient control/session error must not destroy the
+                        // durable source or its record. Retry this same transfer.
+                        existingState.endpointId = ""
+                        existingState.awaitingDecision = true
+                        existingState.prepared.close()
+                        scheduleHyperStreamRetry(existingState)
+                        listener.onFileStatus("The folder bundle is safely staged. NeaRer will retry when the nearby connection is ready.")
+                    }
+                    return@execute
+                }
                 prepared.close()
                 staged?.delete()
+                if (deleteSourceAfterStaging) runCatching { File(uri.path.orEmpty()).delete() }
                 if (wasCancelled) return@execute
-                listener.onFileStatus("The fast resumable stream could not be prepared. Using standard file transfer instead.")
-                sendFileLegacy(endpointId, uri, displayName)
+                if (allowLegacyFallback) {
+                    listener.onFileStatus("The fast resumable stream could not be prepared. Using standard file transfer instead.")
+                    sendFileLegacy(endpointId, uri, displayName)
+                } else {
+                    listener.onFileStatus("The folder bundle could not be staged for a verified resumable transfer.")
+                }
             }
         }
         return payloadId
@@ -2708,8 +2780,9 @@ internal object IncomingFilePayloadPolicy {
         state.retentionTimeout = null
         transferSpeedMeters.remove(payloadId)
         state.prepared.close()
+        outgoingHyperStore.removeRecordOnly(state.transferId)
         val filePayload = try { Payload.fromFile(state.sourceFile) } catch (_: Exception) {
-            state.sourceFile.delete()
+            outgoingHyperStore.remove(state.transferId)
             listener.onFileStatus("The stream could not start and the standard file fallback was unavailable.")
             return
         }
@@ -2730,7 +2803,9 @@ internal object IncomingFilePayloadPolicy {
             if (!state.awaitingDecision || outgoingHyperStreams[state.prepared.payloadId] !== state) return@Runnable
             val connected = authenticatedEndpoints.contains(state.endpointId) &&
                 synchronized(activeEndpoints) { activeEndpoints.contains(state.endpointId) }
-            if (connected) fallbackHyperStreamToFile(state)
+            if (state.durableRecovery) {
+                scheduleHyperStreamRetry(state)
+            } else if (connected) fallbackHyperStreamToFile(state)
             else {
                 state.endpointId = ""
                 state.prepared.close()
@@ -2746,6 +2821,7 @@ internal object IncomingFilePayloadPolicy {
         state.endpointId = ""
         state.awaitingDecision = true
         state.prepared.close()
+        val retryDelay = if (state.durableRecovery && state.retryCount >= 3) 15_000L else 1_500L
         deliveryHandler.postDelayed({
             val endpoint = synchronized(activeEndpoints) {
                 activeEndpoints.firstOrNull { candidate ->
@@ -2754,7 +2830,7 @@ internal object IncomingFilePayloadPolicy {
                 }
             }
             if (endpoint != null) resumeHyperStreamsForPeer(state.stablePeerId, endpoint)
-        }, 1500L)
+        }, retryDelay)
     }
 
     private fun resumeHyperStreamsForPeer(peerId: String, endpointId: String) {
@@ -2763,9 +2839,15 @@ internal object IncomingFilePayloadPolicy {
             it.stablePeerId == peerId && it.endpointId.isBlank() && !it.awaitingReceipt
         }.forEach { previous ->
             if (previous.retryCount >= 3) {
-                previous.endpointId = endpointId
-                fallbackHyperStreamToFile(previous)
-                return@forEach
+                if (previous.durableRecovery) {
+                    // Keep app-private durable sources queued instead of silently
+                    // downgrading and losing resumability after repeated reconnects.
+                    previous.retryCount = 0
+                } else {
+                    previous.endpointId = endpointId
+                    fallbackHyperStreamToFile(previous)
+                    return@forEach
+                }
             }
             if (!outgoingHyperStreams.remove(previous.prepared.payloadId, previous)) return@forEach
             val prepared = runCatching { streamPayloadBridge.prepareOutgoingPayload() }.getOrNull()
@@ -2818,7 +2900,62 @@ internal object IncomingFilePayloadPolicy {
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (authenticatedEndpoints.contains(endpointId) && NeaRerIdentity.normalize(peerId) != null) {
             streamCapablePeers.add(peerId)
+            restoreOutgoingHyperTransfers(peerId, endpointId)
             resumeHyperStreamsForPeer(peerId, endpointId)
+        }
+    }
+
+    /**
+     * Rehydrates sender-side transfers after process death. The durable store
+     * re-hashes each staged source before exposing it; restored payload IDs are
+     * newly allocated because Nearby payload IDs are process/session scoped.
+     */
+    private fun restoreOutgoingHyperTransfers(peerId: String, endpointId: String) {
+        if (!authenticatedEndpoints.contains(endpointId) ||
+            !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) return
+        if (!restoringHyperTransfers.add(peerId)) return
+        try {
+            transferPreparation.execute {
+                try {
+                    outgoingHyperStore.restoreForPeer(peerId).forEach { record ->
+                        if (!authenticatedEndpoints.contains(endpointId) ||
+                            synchronized(names) { stableIds[endpointId] } != peerId) return@forEach
+                        if (outgoingHyperStreams.values.any { it.transferId == record.transferId }) return@forEach
+                        val item = TransferBundleItem(
+                            record.itemId, record.relativePath, record.displayName,
+                            record.sizeBytes, record.mimeType
+                        )
+                        val prepared = runCatching { streamPayloadBridge.prepareOutgoingPayload() }.getOrNull()
+                            ?: return@forEach
+                        prepared.payload.setSensitive(true)
+                        val state = OutgoingHyperStream(
+                            endpointId, record.peerId, record.displayName, record.sourceFile,
+                            item, record.transferId, record.sha256, prepared,
+                            durableRecovery = true
+                        )
+                        outgoingHyperStreams[prepared.payloadId] = state
+                        val metadata = TransferResumeStreamMetadataCodec.Metadata(
+                            prepared.payloadId, state.transferId, state.item, null, state.sha256
+                        )
+                        try {
+                            sendHyperTransferControl(
+                                endpointId,
+                                TransferResumeStreamMetadataCodec.encode(metadata),
+                                onFailure = { fallbackHyperStreamToFile(state) }
+                            )
+                            armHyperStreamTimeout(state)
+                            listener.onFileStatus("Restored a pending transfer to " + state.name + ". Reconnecting safely…")
+                        } catch (_: Exception) {
+                            state.endpointId = ""
+                            state.prepared.close()
+                        }
+                    }
+                } finally {
+                    restoringHyperTransfers.remove(peerId)
+                }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            restoringHyperTransfers.remove(peerId)
         }
     }
 
@@ -2837,6 +2974,89 @@ internal object IncomingFilePayloadPolicy {
             if (streamId != null) return streamId
         }
         return sendFileLegacy(endpointId, uri, displayName)
+    }
+
+    /**
+     * Queues a folder/multi-file transfer as one resumable archive stream.
+     * The caller supplies every file and its safe path relative to the bundle root;
+     * parent folders are reconstructed from those paths on the receiving phone.
+     */
+    fun sendBundle(endpointId: String, bundleName: String, sources: List<NearbyBundleSource>): Boolean {
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (!authenticatedEndpoints.contains(endpointId) ||
+            !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) } ||
+            NeaRerIdentity.normalize(peerId) == null) {
+            listener.onFileStatus("Folder transfers require a securely connected nearby phone.")
+            return false
+        }
+        if (sources.isEmpty() || sources.size > TransferBundleManifest.MAX_ITEMS) {
+            listener.onFileStatus("Choose a valid set of files for the folder transfer.")
+            return false
+        }
+        val safeBundleName = safeFileName(bundleName).removeSuffix(".nearerbundle").ifBlank { "NeaRer bundle" }
+        try {
+            transferPreparation.execute {
+                val stagedInputs = mutableListOf<File>()
+                var archive: File? = null
+                try {
+                    if (!outgoingHyperDirectory.exists() && !outgoingHyperDirectory.mkdirs()) {
+                        throw IllegalStateException("Could not create durable bundle staging storage")
+                    }
+                    val bundleSources = sources.map { source ->
+                        val stagedInput = File.createTempFile("nearer-bundle-item-", ".bin", outgoingHyperDirectory)
+                        stagedInputs += stagedInput
+                        val input = appContext.contentResolver.openInputStream(source.uri)
+                            ?: throw IllegalStateException("A selected folder item could not be opened")
+                        input.use { stream ->
+                            FileOutputStream(stagedInput).use { output ->
+                                val buffer = ByteArray(256 * 1024)
+                                while (true) {
+                                    if (!authenticatedEndpoints.contains(endpointId) ||
+                                        !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) } ||
+                                        synchronized(names) { stableIds[endpointId] } != peerId) {
+                                        throw java.io.InterruptedIOException("Nearby connection ended while preparing the bundle")
+                                    }
+                                    val count = stream.read(buffer)
+                                    if (count < 0) break
+                                    if (count > 0) output.write(buffer, 0, count)
+                                }
+                                output.fd.sync()
+                            }
+                        }
+                        TransferBundleArchive.Source(stagedInput, source.relativePath, source.mimeType)
+                    }
+                    archive = File.createTempFile("nearer-bundle-", ".nearerbundle", outgoingHyperDirectory)
+                    val bundleId = UUID.randomUUID().toString()
+                    TransferBundleArchive.pack(bundleId, bundleSources, archive!!)
+                    stagedInputs.forEach { it.delete() }
+                    stagedInputs.clear()
+                    val uri = Uri.fromFile(archive!!)
+                    if (!streamCapablePeers.contains(peerId)) {
+                        val legacyId = sendFileLegacy(endpointId, uri, "$safeBundleName.zip")
+                        archive?.delete()
+                        if (legacyId == null) throw IllegalStateException("The folder archive could not be sent to this older nearby phone")
+                        listener.onFileStatus("Folder archive sent using standard file transfer. Its ZIP keeps the folder structure.")
+                        return@execute
+                    }
+                    val payloadId = sendHyperTransferStream(
+                        endpointId, uri, "$safeBundleName.zip",
+                        BUNDLE_MIME_TYPE, deleteSourceAfterStaging = true,
+                        allowLegacyFallback = false
+                    )
+                    if (payloadId == null) throw IllegalStateException("The bundle could not be queued for transfer")
+                    listener.onFileStatus("Folder bundle prepared. Sending ${sources.size} files as one resumable transfer…")
+                } catch (error: Exception) {
+                    stagedInputs.forEach { it.delete() }
+                    archive?.delete()
+                    listener.onFileStatus("Folder transfer could not be prepared: " +
+                        (error.localizedMessage ?: "please try again"))
+                }
+            }
+            return true
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            listener.onFileStatus("NeaRer is busy preparing another transfer. Please try again shortly.")
+            return false
+        }
     }
 
     private fun sendFileLegacy(endpointId: String, uri: Uri, displayName: String): Long? {
@@ -3019,13 +3239,22 @@ internal object IncomingFilePayloadPolicy {
     }
 
     fun cancelFile(payloadId: Long) {
-        if (preparingHyperStreams.remove(payloadId)) cancelledOutgoingPreparations.add(payloadId)
-        outgoingHyperStreams.remove(payloadId)?.let { state ->
+        val wasPreparingHyperStream = preparingHyperStreams.remove(payloadId)
+        val outgoingHyperState = outgoingHyperStreams.remove(payloadId)
+        if (wasPreparingHyperStream || outgoingHyperState != null) {
+            // Also covers the narrow race where cancellation lands just after
+            // preparation leaves its set but before its final control send returns.
+            cancelledOutgoingPreparations.add(payloadId)
+            deliveryHandler.postDelayed(
+                { cancelledOutgoingPreparations.remove(payloadId) }, 60_000L
+            )
+        }
+        outgoingHyperState?.let { state ->
             state.timeout?.let(deliveryHandler::removeCallbacks)
             state.receiptTimeout?.let(deliveryHandler::removeCallbacks)
             state.retentionTimeout?.let(deliveryHandler::removeCallbacks)
             state.prepared.close()
-            state.sourceFile.delete()
+            outgoingHyperStore.remove(state.transferId)
         }
         pendingIncomingHyperPayloads.remove(payloadId)?.let { runCatching { it.close() } }
         val activeIncoming = activeIncomingHyperPayloads.remove(payloadId)
@@ -3094,8 +3323,9 @@ internal object IncomingFilePayloadPolicy {
             it.timeout?.let(deliveryHandler::removeCallbacks)
             it.receiptTimeout?.let(deliveryHandler::removeCallbacks)
             it.retentionTimeout?.let(deliveryHandler::removeCallbacks)
+            // stop() is a lifecycle/process shutdown, not user cancellation.
+            // Keep the durable source and journal so a new transport can recover it.
             it.prepared.close()
-            it.sourceFile.delete()
         }
         outgoingHyperStreams.clear()
         pendingIncomingHyperPayloads.values.forEach { runCatching { it.close() } }

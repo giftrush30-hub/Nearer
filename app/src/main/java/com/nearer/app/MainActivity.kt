@@ -716,9 +716,14 @@ class MainActivity : ComponentActivity() {
                             activeOutgoingFileName = "shared-file"
                             activeOutgoingFileBytes = 0L
                             currentNearbyQueuedFile = null
-                            nearbyQueueCompleted += 1
-                            persistNearbyFileQueue()
-                            if (nearbyQueueTotal > 0) startNextNearbyQueuedFile()
+                            if (nearbyQueueTotal > 0) {
+                                nearbyQueueCompleted += 1
+                                persistNearbyFileQueue()
+                                startNextNearbyQueuedFile()
+                            } else {
+                                nearbyQueueCompleted = 0
+                                persistNearbyFileQueue()
+                            }
                         } else if (nearbyQueueTotal > 0) {
                             // Keep the active file and remaining queue for retry after reconnect.
                             persistNearbyFileQueue()
@@ -3053,6 +3058,77 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {
             // Some document providers grant access only for the current app session.
         }
+        if (hybridConnected) {
+            val endpoint = hybridConnectedEndpoint
+            if (endpoint == null) {
+                chatNotice = "Reconnect to the nearby phone before sending this folder."
+                return
+            }
+            chatNotice = "Scanning the selected folder and preparing a resumable bundle…"
+            io.execute {
+                try {
+                    val rootId = DocumentsContract.getTreeDocumentId(treeUri)
+                    val rootUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId)
+                    var rootName = "Shared folder"
+                    contentResolver.query(rootUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) rootName = cursor.getString(0)?.takeIf { it.isNotBlank() } ?: rootName
+                    }
+                    fun safeSegment(value: String): String {
+                        val cleaned = value.replace("/", "_").replace("\\", "_").trim().trim('.')
+                        return cleaned.ifBlank { "folder-item" }
+                    }
+                    val visited = HashSet<String>()
+                    val bundleSources = mutableListOf<NearbyBundleSource>()
+                    fun addChildren(parentId: String, parentPath: String) {
+                        if (!visited.add(parentId)) return
+                        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
+                        val projection = arrayOf(
+                            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                            DocumentsContract.Document.COLUMN_MIME_TYPE
+                        )
+                        contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                            val idColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                            val nameColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                            val mimeColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                            while (cursor.moveToNext()) {
+                                val childId = cursor.getString(idColumn) ?: continue
+                                val childName = safeSegment(cursor.getString(nameColumn).orEmpty())
+                                val childPath = parentPath + childName
+                                val childMime = cursor.getString(mimeColumn)
+                                if (childMime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                                    addChildren(childId, childPath + "/")
+                                } else {
+                                    val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
+                                    bundleSources += NearbyBundleSource(childUri, childPath, childMime)
+                                    if (bundleSources.size > TransferBundleManifest.MAX_ITEMS) {
+                                        throw IllegalStateException("This folder contains too many files for one transfer")
+                                    }
+                                }
+                            }
+                        } ?: throw IllegalStateException("The selected folder could not be listed")
+                    }
+                    addChildren(rootId, safeSegment(rootName) + "/")
+                    if (bundleSources.isEmpty()) {
+                        throw IllegalStateException("The selected folder is empty or contains no readable files")
+                    }
+                    runOnUiThread {
+                        if (nearbyTransport?.sendBundle(endpoint, rootName, bundleSources) != true) {
+                            chatNotice = "The folder bundle could not be queued. Keep both phones connected and try again."
+                        } else {
+                            chatNotice = "Preparing a resumable folder transfer with " +
+                                bundleSources.size + " files…"
+                        }
+                    }
+                } catch (error: Exception) {
+                    runOnUiThread {
+                        chatNotice = "Could not prepare this folder: " +
+                            (error.localizedMessage ?: "check folder access and try again")
+                    }
+                }
+            }
+            return
+        }
         chatNotice = "Preparing the folder archive. Large folders are streamed to storage; they are not loaded into memory."
         io.execute {
             var archive: File? = null
@@ -3188,6 +3264,41 @@ class MainActivity : ComponentActivity() {
         if (readable.isEmpty()) {
             chatNotice = "NeaRer could not access the selected file(s). Choose them again from a location that allows sharing."
             return
+        }
+        if (readable.size > 1) {
+            val endpoint = hybridConnectedEndpoint
+            if (endpoint != null) {
+                val usedNames = HashSet<String>()
+                val bundleSources = readable.mapIndexed { index, uri ->
+                    var originalName = "shared-file-" + (index + 1)
+                    runCatching {
+                        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) originalName = cursor.getString(0) ?: originalName
+                        }
+                    }
+                    val safeName = TransferFileNamePolicy.safeName(originalName)
+                    var relativePath = safeName
+                    var suffix = 2
+                    while (!usedNames.add(relativePath)) {
+                        val dot = safeName.lastIndexOf('.')
+                        relativePath = if (dot > 0) {
+                            safeName.substring(0, dot) + " (" + suffix + ")" + safeName.substring(dot)
+                        } else safeName + " (" + suffix + ")"
+                        suffix++
+                    }
+                    NearbyBundleSource(uri, relativePath, contentResolver.getType(uri))
+                }
+                if (nearbyTransport?.sendBundle(endpoint, "Shared files", bundleSources) == true) {
+                    nearbyQueueTotal = 0
+                    nearbyQueueCompleted = 0
+                    currentNearbyQueuedFile = null
+                    nearbyQueuePeerStableId = null
+                    pendingNearbyFileQueue.clear()
+                    persistNearbyFileQueue()
+                    chatNotice = "Preparing one resumable bundle with " + bundleSources.size + " files…"
+                    return
+                }
+            }
         }
         readable.forEach { pendingNearbyFileQueue.addLast(it) }
         currentNearbyQueuedFile = null
@@ -4972,18 +5083,6 @@ private data class CommunityChatMessage(
 private data class CommunityDeliveryRef(val communityMessageId: String, val peerId: String)
 data class GameInvite(val matchId: String, val sender: String, val senderPeerId: String = "")
 
-private data class NearbyPerson(val name: String, val lastSeenAt: Long)
-
-private fun seenAgo(timestamp: Long): String {
-    val seconds = (System.currentTimeMillis() - timestamp).coerceAtLeast(0L) / 1000L
-    return when {
-        seconds < 60 -> "Seen just now"
-        seconds < 3600 -> "Seen ${seconds / 60}m ago"
-        seconds < 86400 -> "Seen ${seconds / 3600}h ago"
-        else -> "Seen ${seconds / 86400}d ago"
-    }
-}
-
 internal data class ChatMessage(
     val id: String,
     val body: String,
@@ -4999,16 +5098,6 @@ internal data class ChatMessage(
     val editVersion: Int = 0,
     val editedAt: Long = 0L
 )
-
-private fun isNeaRerAppBundle(file: File): Boolean {
-    if (!file.isFile || !(file.extension.equals("zip", ignoreCase = true) ||
-            file.extension.equals("nearerapp", ignoreCase = true))) return false
-    return runCatching {
-        ZipFile(file).use { archive ->
-            archive.getEntry("INSTALLATION.txt") != null && archive.getEntry("base.apk") != null
-        }
-    }.getOrDefault(false)
-}
 
 internal data class ReceivedFile(val displayName: String, val file: File, val isAppBundle: Boolean = false)
 
@@ -5033,16 +5122,6 @@ internal data class NearbyTransferRecord(
     val timeLabel: String get() = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
 }
 
-private fun formatChatTime(timestamp: Long): String =
-    java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
-
-internal fun formatTransferBytes(bytes: Long): String = when {
-    bytes >= 1024L * 1024L * 1024L -> String.format(java.util.Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
-    bytes >= 1024L * 1024L -> String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
-    bytes >= 1024L -> String.format(java.util.Locale.US, "%.0f KB", bytes / 1024.0)
-    else -> "$bytes B"
-}
-
 private data class IncomingTransfer(
     val name: String,
     val expectedBytes: Long,
@@ -5053,44 +5132,4 @@ private data class IncomingTransfer(
     fun close() {
         try { output.flush(); output.close() } catch (_: Exception) { }
     }
-}
-
-internal class AppInstallResultActivity : android.app.Activity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
-        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-            val confirmation = if (Build.VERSION.SDK_INT >= 33) {
-                intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                intent.getParcelableExtra(Intent.EXTRA_INTENT) as? Intent
-            }
-            if (confirmation != null) startActivity(confirmation)
-            finish()
-            return
-        }
-        val success = status == PackageInstaller.STATUS_SUCCESS
-        val detail = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE).orEmpty()
-        val message = if (success) {
-            "Android reports that the app was installed successfully."
-        } else {
-            "Android did not complete the installation." + if (detail.isBlank()) "" else "\n\n" + detail
-        }
-        AlertDialog.Builder(this)
-            .setTitle(if (success) "App installed" else "Installation not completed")
-            .setMessage(message)
-            .setPositiveButton("OK") { _, _ -> finish() }
-            .setOnCancelListener { finish() }
-            .show()
-    }
-}
-
-private fun deviceStatus(status: Int): String = when (status) {
-    WifiP2pDevice.AVAILABLE -> "Available"
-    WifiP2pDevice.INVITED -> "Invitation pending"
-    WifiP2pDevice.CONNECTED -> "Connected"
-    WifiP2pDevice.FAILED -> "Connection failed"
-    WifiP2pDevice.UNAVAILABLE -> "Temporarily unavailable"
-    else -> "Nearby Wi-Fi Direct device"
 }
