@@ -207,17 +207,11 @@ public:
     }
 
     void onErrorBeforeClose(oboe::AudioStream* stream, oboe::Result) override {
-        // This callback runs before Oboe closes the disconnected stream. Serialize
-        // diagnostic access with stats(), and cache the last valid xrun count now;
-        // getXRunCount() must not be called from onErrorAfterClose().
-        std::lock_guard<std::mutex> lock(streamMutex_);
-        if (output_ && (stream == output_.get())) {
-            const auto result = output_->getXRunCount();
-            if (result == oboe::Result::OK) {
-                lastXrunCount_.store(result.value(), std::memory_order_relaxed);
-            }
-        } else if (output_) {
-            const auto result = output_->getXRunCount();
+        // Oboe invokes this before closing the disconnected stream. Read only
+        // from the callback's still-open stream; never take streamMutex_ here,
+        // because closeStreams() may be waiting for this callback to return.
+        if (stream != nullptr && stream->getDirection() == oboe::Direction::Output) {
+            const auto result = stream->getXRunCount();
             if (result == oboe::Result::OK) {
                 lastXrunCount_.store(result.value(), std::memory_order_relaxed);
             }
