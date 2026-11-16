@@ -78,6 +78,27 @@ translations, books, verses, verse_search (FTS4), lexical_entries, word_occurren
 - Validate the generated WEBP pack through the Android importer on a physical device and conduct airplane-mode and low-end-device tests.
 - Confirm per-translation distribution, offline caching and monetization rights in writing before publishing any pack.
 
+## D — Guided reading and audio (new extension)
+- Added four original seven-day reading plans: Beginning with God, Learning to Pray, Wisdom for Daily Life, and Hope in Difficult Seasons.
+- Day completion is stored in private app SharedPreferences on this device. Plans are prompts with Scripture references and reflection questions; they do not copy or redistribute a Bible translation.
+- Added an audio import/player screen using the existing Media3 ExoPlayer dependency. A user-selected audio file is copied into the app's private files directory and can be played offline after import. The selected filename and day completion set are persisted locally.
+- This is a local-file playback foundation, not a hosted streaming service, automatic chapter-to-audio synchronizer, background playback service, or bundled audio pack. The user must have rights to the recording.
+- eBible.org identifies the Michael Paul Johnson World English Bible recordings as public domain and says they may be copied and shared. Winfred W. Henson's WEB audio is also described as freely downloadable/listenable. NeaRer does not automatically fetch these files yet; source selection, chapter segmentation, metadata, and download packaging require a separate verified content pipeline.
+- Audio source references: https://ebible.org/webaudio/ and https://ebible.org/eng-web/audio/
+
+## E — Languages, lexicons and canon gates
+- STEPBible-Data is a strong candidate for the Hebrew and Greek lexical/morphology catalogue. Its current repository describes CC BY 4.0, permits reuse/adaptation, asks for attribution to STEP Bible, and requires changes to be recorded and made available. Dataset-specific provenance still needs review.
+- Existing importer accepts NeaRer JSONL lexical entries and exact translation-token alignments. STEPBible TSV formats are not yet converted automatically. Do not claim every English/Yoruba/Igbo word has an original-language mapping; mappings must be exact and source-backed.
+- Nigerian catalogue remains a rights-clearance lead list only. BSN's reported 27 full Nigerian-language Bibles are not 27 NeaRer-cleared downloadable packs.
+- Complete canon validation remains Protestant 66 only. Catholic, Orthodox and Ethiopian canon metadata must be independently sourced and tested before any pack can be called complete.
+- A true paper-curl page turn remains unfinished. The current reader is a directional 3D hinge/rotation animation with shadow; do not describe it as a physical page curl.
+
+## Synchronisation and verification
+- PR #222 is currently 14 commits behind main and diverged at the last comparison. Keep this Bible branch isolated until the shared navigation and messaging changes are reconciled. Do not overwrite MainActivity or messaging files from this branch.
+- The new study extension adds no new Gradle dependency: Media3 ExoPlayer was already declared in app/build.gradle.kts.
+- Required validation for this extension: Android compile, install/run on a device, import a permitted WEB audio file, force-close/reopen and confirm the selected audio remains available, play/pause/stop, and verify reading-plan completion survives restart.
+- No physical-device or airplane-mode validation is claimed.
+
 ## Acceptance gates
 1. JVM tests and debug APK build pass on exact branch head.
 2. Import one legally reusable sample pack; verify book/chapter/verse counts.
@@ -104,3 +125,7 @@ translations, books, verses, verse_search (FTS4), lexical_entries, word_occurren
 - API.Bible catalogue: https://www.api.bible/bibles
 - STEPBible data: https://github.com/STEPBible/STEPBible-Data
 - Android SQLiteOpenHelper: https://developer.android.com/reference/android/database/sqlite/SQLiteOpenHelper
+
+## Additional references
+- STEPBible-Data licence and dataset catalogue: https://github.com/STEPBible/STEPBible-Data
+- STEPBible-Data documentation mirror: https://stepbible.github.io/STEPBible-Data/
