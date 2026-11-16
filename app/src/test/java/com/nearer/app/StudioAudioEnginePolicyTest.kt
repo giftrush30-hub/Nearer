@@ -22,4 +22,15 @@ class StudioAudioEnginePolicyTest {
         assertTrue(StudioAudioEnginePolicy.useOboe(27, 12))
         assertTrue(StudioAudioEnginePolicy.useOboe(28, 12))
     }
+
+    @Test fun unprocessedPresetIsOnlyRequestedFromApi28() {
+        assertFalse(StudioAudioEnginePolicy.useUnprocessedInput(27, true))
+        assertTrue(StudioAudioEnginePolicy.useUnprocessedInput(28, true))
+        assertTrue(StudioAudioEnginePolicy.useUnprocessedInput(35, true))
+    }
+
+    @Test fun standardCaptureRemainsStandardWhenUnprocessedWasNotRequested() {
+        assertFalse(StudioAudioEnginePolicy.useUnprocessedInput(35, false))
+        assertFalse(StudioAudioEnginePolicy.useUnprocessedInput(26, false))
+    }
 }
