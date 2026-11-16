@@ -38,13 +38,13 @@ class BiblePackManifestTest {
         assertFalse(result.valid)
     }
 
-    @Test fun acceptsCatholicCanonOnlyAtSeventyThreeBooks() {
-        val result=BiblePackManifestValidator.validate(valid().copy(canonId="catholic-73",bookCount=73),1)
+    @Test fun acceptsChapterValidatedProtestantCanon() {
+        val result=BiblePackManifestValidator.validate(valid().copy(canonId="protestant-66",bookCount=66),1)
         assertTrue(result.valid)
     }
 
-    @Test fun rejectsIncorrectCatholicBookCount() {
-        val result=BiblePackManifestValidator.validate(valid().copy(canonId="catholic-73",bookCount=66),1)
+    @Test fun defersCompleteCatholicCanonUntilChapterMetadataExists() {
+        val result=BiblePackManifestValidator.validate(valid().copy(canonId="catholic-73",bookCount=73),1)
         assertFalse(result.valid)
     }
 }
