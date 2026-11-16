@@ -103,6 +103,7 @@ Current branch adds `NearbyServiceStartPolicy` and JVM tests for the readiness g
 - PR #258, “Make nearby messaging service-owned with durable incoming recovery”, was merged to `main` on 2026-11-17 as `02a7a2be138d4c8c06ea5ae4395482e94e9a2921`.
 - The merged module includes service-owned Nearby transport, encrypted durable incoming inbox, peer-scoped dedupe, mesh final-receipt recovery, lifecycle readiness gates and no-APK CI validation.
 - PR checks passed: JVM tests, manifest processing and diagnostic Android lint. APK build/upload steps were skipped.
+- The diagnostic lint report recorded 110 project-wide errors and 64 warnings, with the first blocking issues in existing MainActivity permission calls, OpenSendHotspot, FlashActivity, StudioAudioWorkspaceScreen and manifest location declarations. The new inbox/service contributed two `ApplySharedPref` warnings because synchronous commits are required before ACK/service activation; those two intentional commits are now explicitly documented and suppressed in the outgoing-recovery branch.
 - The original service branch was reset to the merged `main` commit; the next work branch is based on that same commit.
 
 ## Next integration sequence
