@@ -26,7 +26,7 @@ Deleting a listing or cancelling an unsaved edit removes an imported business ph
 
 - Share a business profile card as text.
 - Share one listing with its photo and descriptive text.
-- Share the complete catalogue as bounded text.
+- Share a bounded text summary of the catalogue; product photos are shared with individual listings.
 - Android's Sharesheet lets the user choose an available destination, which may include Bluetooth, Quick Share or another installed app.
 
 This is not yet direct NeaRer Nearby business discovery or a dedicated encrypted catalogue-transfer protocol. The app does not silently upload business data.
