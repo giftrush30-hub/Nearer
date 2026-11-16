@@ -31,6 +31,8 @@ class VerifiedTransferReceiptStoreTest {
             assertFalse(restored.containsVerified("BCDEFG234567", metadata))
             val changed = metadata.copy(wholeFileSha256 = "a".repeat(64))
             assertFalse(restored.containsVerified(peer, changed))
+            val changedPath = metadata.copy(item = metadata.item.copy(relativePath = "different/clip.bin"))
+            assertFalse(restored.containsVerified(peer, changedPath))
         } finally {
             root.deleteRecursively()
         }
