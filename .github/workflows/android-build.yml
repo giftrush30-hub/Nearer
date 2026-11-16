@@ -55,3 +55,39 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+
+  bible-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Download official public-domain WEBP USFM source
+        run: curl --fail --location --retry 3 https://ebible.org/Scriptures/engwebp_usfm.zip --output /tmp/engwebp_usfm.zip
+
+      - name: Build installable NeaRer Word WEBP pack
+        run: |
+          python tools/build_nearer_bible_pack_from_usfm.py /tmp/engwebp_usfm.zip build/nearer-word-webp.zip \
+            --pack-id webp-eng-2026 \
+            --translation-id WEBP \
+            --translation-name "World English Bible" \
+            --language-tag en \
+            --language-name English \
+            --abbreviation WEBP \
+            --canon-id protestant-66 \
+            --source-id ebible.org \
+            --license-id public-domain \
+            --attribution "World English Bible text from eBible.org; public domain; preserve the text faithfully and observe trademark conditions."
+
+      - name: Upload installable Bible pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: nearer-word-webp-bible-pack
+          path: build/nearer-word-webp.zip
+          if-no-files-found: error
+          retention-days: 14
