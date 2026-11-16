@@ -221,7 +221,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         }
         val frameSize = 2_048
         val pitchFrames = StudioPcmFrameAccumulator(frameSize)
-        val nativePreferUnprocessed = preferUnprocessedInput && android.os.Build.VERSION.SDK_INT >= 28
+        val nativePreferUnprocessed = StudioAudioEnginePolicy.useUnprocessedInput(android.os.Build.VERSION.SDK_INT, preferUnprocessedInput)
         if (StudioAudioEnginePolicy.useOboe(android.os.Build.VERSION.SDK_INT, preferredInputId)) {
             var nativeStarted = withContext(Dispatchers.IO) {
                 StudioOboeEngine.start(preferredInputId, nativePreferUnprocessed)
