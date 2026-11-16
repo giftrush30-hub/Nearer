@@ -1778,7 +1778,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         val receipt = runCatching { HyperTransferCompletionReceiptCodec.decode(raw) }.getOrNull() ?: return
         val state = outgoingHyperStreams[receipt.payloadId] ?: return
         if (state.stablePeerId != peerId ||
-            (!state.awaitingReceipt && !(receipt.saved && state.awaitingDecision)) ||
+            (!receipt.saved && !state.awaitingReceipt) ||
             state.transferId != receipt.transferId || state.item.id != receipt.itemId ||
             !state.sha256.equals(receipt.sha256, ignoreCase = true)) return
         state.receiptTimeout?.let(deliveryHandler::removeCallbacks)
