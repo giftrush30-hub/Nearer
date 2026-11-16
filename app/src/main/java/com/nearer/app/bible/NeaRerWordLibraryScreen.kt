@@ -68,6 +68,11 @@ fun NeaRerWordLibraryScreen(
                         item.translation.copyrightNotice?.let {
                             Text(it,color=Color(0xFFA8B6C9),fontSize=9.sp)
                         }
+                        Text("Licence: "+item.translation.licenseId+" · Source: "+item.translation.sourceId,
+                            color=Color(0xFFA8B6C9),fontSize=9.sp)
+                        item.translation.attribution?.let {
+                            Text(it,color=Color(0xFFA8B6C9),fontSize=9.sp)
+                        }
                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             if(item.availableOffline) Button(onClick={onOpen(item.translation)}) { Text("Read offline") }
                             else Button(onClick={onDownload(item.translation)}) {
