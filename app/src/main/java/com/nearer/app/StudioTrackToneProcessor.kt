@@ -63,9 +63,14 @@ internal class StudioTrackToneProcessor(
 
     override fun onQueueEndOfStream() {
         if (wetMix <= 0f) return
+        // Preserve any final queued PCM while appending the decaying reverb tail.
+        val pending = getOutput()
+        val pendingBytes = ByteArray(pending.remaining())
+        pending.get(pendingBytes)
         // Let the short feedback delays decay instead of cutting the reverb at the source boundary.
         val tailFrames = maxOf(delayA[0].size, delayB[0].size) * 4
-        val output = replaceOutputBuffer(tailFrames * 4)
+        val output = replaceOutputBuffer(pendingBytes.size + tailFrames * 4)
+        output.put(pendingBytes)
         repeat(tailFrames) { processFrame(0f, 0f, output) }
         output.flip()
     }
