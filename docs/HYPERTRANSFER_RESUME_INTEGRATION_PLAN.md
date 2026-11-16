@@ -1,3 +1,24 @@
+> **Implementation status update — 16 November 2026 (expanded recovery and bundle integration)**
+>
+> The single-file Nearby HyperTransfer STREAM path remains the common transport and now has a durable sender recovery layer:
+>
+> - Sender source files and transfer metadata are stored under app-private `filesDir/hypertransfer-outgoing`, not the evictable cache directory.
+> - The record is atomically committed only after the source exists at the declared size and its SHA-256 matches.
+> - After process restart, the store revalidates the saved source (size and full SHA-256), filters by the authenticated stable recipient identity, and reconstructs a new Nearby payload ID when that same peer advertises STREAM support.
+> - User cancellation, successful receiver confirmation, fallback ownership transfer and retention expiry clean up the record/source according to who owns the file. Transport shutdown deliberately preserves pending durable records.
+>
+> Folder/multi-file transfer is now connected to the nearby folder picker:
+>
+> - The picker enumerates the selected document tree and supplies each file URI plus its relative path to `sendBundle`.
+> - NeaRer stages files without loading whole files into memory, builds a manifest-backed ZIP archive, and sends that archive as one resumable HyperTransfer STREAM.
+> - The receiver first verifies the outer transfer digest, validates that archive entries exactly match the manifest, bounds manifest decompression, rejects traversal/duplicate/unlisted entries, and extracts to an app-private received folder.
+> - The verified ZIP is also retained in the received-files list so Android archive applications can open or extract it. Folder contents are therefore available both in NeaRer's private received tree and as a portable ZIP.
+> - Empty directories with no files are not currently represented; file-containing directory structure is preserved.
+>
+> Reliability coverage now includes durable sender-store restore/filter/tamper/cancel tests, bundle pack/extract/path-traversal/extra-entry tests, and the existing resume writer interruption, cancellation, truncation, oversize, zero-progress, prefix-corruption, concurrent-receive and callback-order suites.
+>
+> **Still not proven:** forced process-death recovery on two physical phones; all SAF provider edge cases; Android low-storage/permission revocation races; or radio reconnection behaviour across OEM power-management policies. The sender record is app-private and does not survive app data clearing/uninstall. Physical-device acceptance testing remains required.
+>
 > **Implementation status update — 16 November 2026**
 >
 > The single-file Nearby HyperTransfer STREAM path is now wired in `NearbyConnectionsTransport`; the earlier "not wired" statements below describe the pre-integration boundary and should be read as historical design context, not the current state. The active path:
