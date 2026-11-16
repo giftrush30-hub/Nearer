@@ -2,6 +2,7 @@ package com.nearer.app
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 internal data class BusinessDraft(
     val id: Long,
@@ -30,7 +31,7 @@ internal object BusinessDraftCodec {
 
     fun normalize(draft: BusinessDraft): BusinessDraft {
         val title = draft.title.trim().take(MAX_TITLE_LENGTH)
-        val kind = draft.kind.uppercase().takeIf { it in validKinds } ?: "PRODUCT"
+        val kind = draft.kind.uppercase(Locale.ROOT).takeIf { it in validKinds } ?: "PRODUCT"
         val image = draft.imageUri.trim().take(MAX_IMAGE_URI_LENGTH)
             .takeIf { it.isEmpty() || it.startsWith("content://", ignoreCase = true) }.orEmpty()
         return BusinessDraft(
@@ -41,7 +42,7 @@ internal object BusinessDraftCodec {
             itemCategory = draft.itemCategory.trim().take(MAX_CATEGORY_LENGTH),
             description = draft.description.trim().take(MAX_DESCRIPTION_LENGTH),
             imageUri = image,
-            availability = draft.availability.uppercase().takeIf { it in validAvailability } ?: "AVAILABLE"
+            availability = draft.availability.uppercase(Locale.ROOT).takeIf { it in validAvailability } ?: "AVAILABLE"
         )
     }
 
