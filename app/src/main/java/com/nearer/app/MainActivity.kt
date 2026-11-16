@@ -4972,19 +4972,7 @@ private data class CommunityChatMessage(
 private data class CommunityDeliveryRef(val communityMessageId: String, val peerId: String)
 data class GameInvite(val matchId: String, val sender: String, val senderPeerId: String = "")
 
-private data class NearbyPerson(val name: String, val lastSeenAt: Long)
-
-private fun seenAgo(timestamp: Long): String {
-    val seconds = (System.currentTimeMillis() - timestamp).coerceAtLeast(0L) / 1000L
-    return when {
-        seconds < 60 -> "Seen just now"
-        seconds < 3600 -> "Seen ${seconds / 60}m ago"
-        seconds < 86400 -> "Seen ${seconds / 3600}h ago"
-        else -> "Seen ${seconds / 86400}d ago"
-    }
-}
-
-internal data class ChatMessage(
+private internal data class ChatMessage(
     val id: String,
     val body: String,
     val outgoing: Boolean,
@@ -5031,16 +5019,6 @@ internal data class NearbyTransferRecord(
     val status: String
 ) {
     val timeLabel: String get() = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
-}
-
-private fun formatChatTime(timestamp: Long): String =
-    java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
-
-internal fun formatTransferBytes(bytes: Long): String = when {
-    bytes >= 1024L * 1024L * 1024L -> String.format(java.util.Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
-    bytes >= 1024L * 1024L -> String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
-    bytes >= 1024L -> String.format(java.util.Locale.US, "%.0f KB", bytes / 1024.0)
-    else -> "$bytes B"
 }
 
 private data class IncomingTransfer(
