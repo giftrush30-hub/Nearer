@@ -1022,13 +1022,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun ensureNearbyServiceBound(startForeground: Boolean = true) {
-        if (nearbyServiceBound || nearbyServiceBinding) return
-        nearbyServiceBinding = true
+        val actions = NearbyServiceBindingPolicy.actions(
+            requestForeground = startForeground,
+            serviceStarted = nearbyServiceStarted,
+            serviceBound = nearbyServiceBound,
+            serviceBinding = nearbyServiceBinding
+        )
         try {
-            if (startForeground && !nearbyServiceStarted) {
+            // Promotion must happen even when an earlier non-foreground bind is
+            // already pending or has completed. Otherwise the service dies when
+            // the Activity unbinds after permissions/radios become available.
+            if (actions.startForegroundService) {
                 NearbyTransportService.start(this)
                 nearbyServiceStarted = true
             }
+            if (!actions.bindService) return
+            nearbyServiceBinding = true
             val bound = bindService(
                 Intent(this, NearbyTransportService::class.java),
                 nearbyServiceConnection,
