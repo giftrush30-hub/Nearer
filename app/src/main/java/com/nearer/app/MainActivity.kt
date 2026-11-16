@@ -702,7 +702,7 @@ class MainActivity : ComponentActivity() {
             override fun onFileStatus(message: String) {
                 runOnUiThread {
                     chatNotice = message
-                    if (message.startsWith("File sent to the nearby phone") ||
+                    if (NearbyTransferStatusPolicy.isVerifiedOutgoingCompletion(message) ||
                         message.startsWith("Nearby file transfer failed") ||
                         message.startsWith("Nearby file transfer paused") ||
                         message.startsWith("Could not start file transfer") ||
@@ -710,7 +710,7 @@ class MainActivity : ComponentActivity() {
                         message.startsWith("File could not be prepared")) {
                         outgoingTransferId = null
                         outgoingProgress = 0f
-                        if (message.startsWith("File sent to the nearby phone")) {
+                        if (NearbyTransferStatusPolicy.isVerifiedOutgoingCompletion(message)) {
                             recordNearbyTransfer("Sent", activeOutgoingFileName, activeOutgoingFileBytes, "Complete")
                             deleteGeneratedFolderArchive(currentNearbyQueuedFile)
                             activeOutgoingFileName = "shared-file"
