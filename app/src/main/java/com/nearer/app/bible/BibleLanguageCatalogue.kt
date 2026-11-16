@@ -1,6 +1,9 @@
 package com.nearer.app.bible
 
-enum class BiblePackRightsStatus { NOT_REVIEWED, PERMISSION_REQUIRED, APPROVED_FOR_DISTRIBUTION }
+enum class BiblePackRightsStatus {
+    NOT_REVIEWED, PERMISSION_REQUIRED, APPROVED_FOR_DISTRIBUTION,
+    PUBLIC_DOMAIN_TEXT_WITH_NAME_AND_ATTRIBUTION_CONDITIONS
+}
 
 data class BibleLanguageCatalogueLead(
     val languageName:String,
@@ -19,6 +22,14 @@ data class BibleLanguageCatalogueLead(
 object BibleLanguageCatalogue {
     const val bsnReportedCompleteNigerianLanguageCount=27
     const val bsnReportedOngoingOrRevisionProjectCount=10
+
+    val globalPublicDomainLeads=listOf(
+        BibleLanguageCatalogueLead(
+            "World English Bible (WEBP)","Global",
+            "eBible.org identifies the text as public domain; preserve the text faithfully and observe the World English Bible trademark conditions.",
+            BiblePackRightsStatus.PUBLIC_DOMAIN_TEXT_WITH_NAME_AND_ATTRIBUTION_CONDITIONS
+        )
+    )
 
     val nigeriaLeads=listOf(
         BibleLanguageCatalogueLead("Efik","Nigeria","BSN/YouVersion guide"),
