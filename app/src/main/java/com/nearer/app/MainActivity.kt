@@ -4972,7 +4972,7 @@ private data class CommunityChatMessage(
 private data class CommunityDeliveryRef(val communityMessageId: String, val peerId: String)
 data class GameInvite(val matchId: String, val sender: String, val senderPeerId: String = "")
 
-private internal data class ChatMessage(
+internal data class ChatMessage(
     val id: String,
     val body: String,
     val outgoing: Boolean,
