@@ -43,6 +43,24 @@ class HyperTransferModePolicyTest {
         )
     }
 
+    @Test fun moderateThermalPressureCapsAtFastButLightPressureDoesNot() {
+        assertEquals(
+            HyperTransferModePolicy.Mode.TURBO,
+            HyperTransferModePolicy.negotiate(profile(), profile(thermal = 1))
+        )
+        assertEquals(
+            HyperTransferModePolicy.Mode.FAST,
+            HyperTransferModePolicy.negotiate(profile(), profile(thermal = 2))
+        )
+    }
+
+    @Test fun lowMemorySignalCapsModeEvenWhenRawAvailableMemoryLooksHigh() {
+        assertEquals(
+            HyperTransferModePolicy.Mode.FAST,
+            HyperTransferModePolicy.negotiate(profile(), profile(lowMemory = true, memory = 512L * MB))
+        )
+    }
+
     @Test fun lowAvailableMemoryForcesLite() {
         assertEquals(
             HyperTransferModePolicy.Mode.LITE,
