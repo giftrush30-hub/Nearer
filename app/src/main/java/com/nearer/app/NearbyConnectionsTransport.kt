@@ -1792,7 +1792,9 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                 state.prepared.close()
                 outgoingHyperStore.remove(state.transferId)
                 transferSpeedMeters.remove(receipt.payloadId)
-                listener.onFileStatus("Verified and saved on the recipient's phone: " + state.name)
+                // MainActivity uses this stable success prefix to retire the active
+                // transfer job and advance any queued follow-up work.
+                listener.onFileStatus("File sent to the nearby phone and verified: " + state.name)
             }
         } else {
             listener.onFileStatus("The recipient could not verify the file. NeaRer is retrying safely…")
