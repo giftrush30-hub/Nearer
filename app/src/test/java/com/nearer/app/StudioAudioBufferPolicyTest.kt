@@ -18,5 +18,6 @@ class StudioAudioBufferPolicyTest {
     }
     @Test fun bufferIsBoundedForMisreportedDeviceValues() {
         assertEquals(32_768, StudioAudioBufferPolicy.bufferFrames(Int.MAX_VALUE, 512, 256))
+        assertEquals(32_768, StudioAudioBufferPolicy.bufferFrames(512, Int.MAX_VALUE, 256))
     }
 }
