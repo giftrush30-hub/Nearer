@@ -18,6 +18,12 @@ class OutgoingAckPolicyTest {
         assertFalse(OutgoingAckPolicy.matchesExpectedRecipient("endpoint-1", "endpoint-2", "ABCDEF234567", "ABCDEF234567"))
     }
 
+    @Test fun stablePeerComparisonNormalizesBeforeReconnectBinding() {
+        assertTrue(OutgoingAckPolicy.sameStablePeer("abcdef234567", " ABCDEF234567 "))
+        assertFalse(OutgoingAckPolicy.sameStablePeer("ABCDEF234567", "BCDEFG345678"))
+        assertFalse(OutgoingAckPolicy.sameStablePeer(null, "ABCDEF234567"))
+    }
+
     @Test fun rejectsMissingOrMalformedRecipientIdentity() {
         assertFalse(OutgoingAckPolicy.matchesExpectedRecipient(null, "endpoint-1", "ABCDEF234567", "ABCDEF234567"))
         assertFalse(OutgoingAckPolicy.matchesExpectedRecipient("endpoint-1", "endpoint-1", null, "ABCDEF234567"))
