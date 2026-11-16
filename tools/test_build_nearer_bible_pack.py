@@ -25,6 +25,13 @@ class UsfmParserTests(unittest.TestCase):
         self.assertNotIn("A note", verses[(1, 2)])
         self.assertEqual(verses[(2, 1)], "The heavens and the earth were finished.")
 
+    def test_preserves_punctuation_around_inline_usfm_markers(self):
+        source = r"In the \\add beginning\\add*, God \\w made|lemma=G123\\w* the earth."
+        self.assertEqual(
+            BUILDER.clean_inline(source),
+            "In the beginning, God made the earth."
+        )
+
     def test_merges_subverse_letters_without_duplicate_verse_numbers(self):
         source = "\\id GEN\n\\c 1\n\\v 1a First part\n\\v 1b second part\n"
         _, verses = BUILDER.parse_usfm(source, "GEN")
