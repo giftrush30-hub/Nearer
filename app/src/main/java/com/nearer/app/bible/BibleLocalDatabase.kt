@@ -49,6 +49,9 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
             id TEXT PRIMARY KEY NOT NULL, translation_id TEXT, book_id TEXT, chapter INTEGER,
             verse INTEGER, title TEXT NOT NULL, body TEXT NOT NULL, color_argb INTEGER NOT NULL,
             updated_at INTEGER NOT NULL)""")
+        db.execSQL("CREATE TABLE installed_packs(pack_id TEXT PRIMARY KEY NOT NULL, translation_id TEXT NOT NULL, version INTEGER NOT NULL, installed_at INTEGER NOT NULL, verse_count INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX bookmarks_ref_idx ON bookmarks(translation_id,book_id,chapter,verse)")
+        db.execSQL("CREATE INDEX notes_ref_idx ON study_notes(translation_id,book_id,chapter,verse)")
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
@@ -111,6 +114,7 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
     fun deleteNote(id:String) { writableDatabase.delete("study_notes","id=?",arrayOf(id)) }
 
     fun installTranslation(t: BibleTranslation) {
+        writableDatabase.delete("verse_search","translation_id=?",arrayOf(t.id))
         writableDatabase.insertWithOnConflict("translations", null, ContentValues().apply {
             put("id",t.id); put("name",t.name); put("language_tag",t.languageTag)
             put("language_name",t.languageName); put("abbreviation",t.abbreviation)
@@ -125,21 +129,20 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
         },SQLiteDatabase.CONFLICT_REPLACE)
     }
     fun insertVerse(v: BibleVerse) {
-        val db=writableDatabase; db.beginTransaction()
+        val db=writableDatabase
+        val ownTransaction=!db.inTransaction()
+        if(ownTransaction) db.beginTransaction()
         try {
             val values=ContentValues().apply {
                 put("translation_id",v.translationId); put("book_id",v.bookId)
                 put("chapter",v.chapter); put("verse",v.verse); put("text",v.text)
             }
             db.insertWithOnConflict("verses",null,values,SQLiteDatabase.CONFLICT_REPLACE)
-            // FTS4 has no composite uniqueness constraint: delete the old indexed row
-            // before inserting, otherwise a pack refresh would create duplicate hits.
-            db.delete("verse_search",
-                "translation_id=? AND book_id=? AND chapter=? AND verse=?",
+            db.delete("verse_search","translation_id=? AND book_id=? AND chapter=? AND verse=?",
                 arrayOf(v.translationId,v.bookId,v.chapter.toString(),v.verse.toString()))
             db.insert("verse_search",null,values)
-            db.setTransactionSuccessful()
-        } finally { db.endTransaction() }
+            if(ownTransaction) db.setTransactionSuccessful()
+        } finally { if(ownTransaction) db.endTransaction() }
     }
     fun listBooks(translationId:String):List<BibleBook> {
         val out=mutableListOf<BibleBook>()
@@ -167,7 +170,9 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
         return out
     }
     fun searchVerses(translationId:String,query:String,limit:Int=100):List<BibleVerse> {
-        val q=query.trim().replace(""",""""); if(q.isBlank()) return emptyList()
+        val tokens=query.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        if(tokens.isEmpty()) return emptyList()
+        val q=tokens.joinToString(" AND ") { "\"" + it.replace("\"","") + "\"" }
         val out=mutableListOf<BibleVerse>()
         readableDatabase.rawQuery("""SELECT s.translation_id,s.book_id,b.name,s.chapter,s.verse,s.text
             FROM verse_search s JOIN books b ON b.id=s.book_id AND b.translation_id=s.translation_id
