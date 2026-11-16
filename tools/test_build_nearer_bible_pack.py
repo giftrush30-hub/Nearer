@@ -26,7 +26,7 @@ class UsfmParserTests(unittest.TestCase):
         self.assertEqual(verses[(2, 1)], "The heavens and the earth were finished.")
 
     def test_preserves_punctuation_around_inline_usfm_markers(self):
-        source = r"In the \\add beginning\\add*, God \\w made|lemma=G123\\w* the earth."
+        source = r"In the \add beginning\add*, God \w made|lemma=G123\w* the earth."
         self.assertEqual(
             BUILDER.clean_inline(source),
             "In the beginning, God made the earth."
