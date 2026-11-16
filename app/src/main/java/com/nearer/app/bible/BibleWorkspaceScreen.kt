@@ -186,6 +186,8 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                 translations.forEach { translation ->
                     OutlinedButton(onClick={
                         selectedTranslation=translation
+                        compareTranslation=translations.firstOrNull{it.id!=translation.id}
+                        showComparison=false
                         books=database.listBooks(translation.id)
                         selectedBook=books.firstOrNull()
                         chapter=1
