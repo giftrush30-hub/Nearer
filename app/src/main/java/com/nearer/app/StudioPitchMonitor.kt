@@ -26,7 +26,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.onDispose
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -275,6 +274,9 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             .build()
                     )
                     .setBufferSizeInBytes(inputBufferFrames * 2)
+                    .apply {
+                        if (android.os.Build.VERSION.SDK_INT >= 30) setPrivacySensitive(true)
+                    }
                     .build()
                     .also { audioRecord ->
                         if (preferredInputId != null) {
