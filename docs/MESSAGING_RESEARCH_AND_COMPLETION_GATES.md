@@ -1,8 +1,9 @@
 # NeaRer Messaging: research, architecture decisions and completion gates
 
 Status: active development workstream
-Working branch: `work/messaging-service-owned-nearby`
-Main remains unchanged. Do not merge this work until the gates below pass.
+Current integration: service-owned transport merged to `main` by PR #258 (`02a7a2be138d4c8c06ea5ae4395482e94e9a2921`).
+Current work branch: `work/messaging-outgoing-recovery`.
+The next outgoing-delivery hardening batch is under development and must pass its own tests and review before merging.
 
 ## 1. Product research and lessons
 
