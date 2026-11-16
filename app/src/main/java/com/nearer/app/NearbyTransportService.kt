@@ -268,7 +268,7 @@ class NearbyTransportService : Service() {
         pending.forEach { inFlightMessageIds.remove(inboxKey(it.peerId, it.messageId)) }
         pending.forEach { entry ->
             val dedupeCommitted = if (entry.mesh) {
-                nearbyTransport.persistIncomingMessageDedupe(entry.peerId, entry.messageId)
+                nearbyTransport.persistMeshDeliveryAndReceipt(entry.peerId, entry.messageId)
             } else {
                 nearbyTransport.acknowledgePersistedIncomingMessage(entry.peerId, entry.messageId)
             }
