@@ -67,6 +67,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
     var selectedLexicalEntry by remember { mutableStateOf<BibleWordStudyEntry?>(null) }
     var showJournal by remember { mutableStateOf(false) }
     var selectedVerseNumber by remember { mutableStateOf<Int?>(null) }
+    var selectedVerseAction by remember { mutableStateOf<BibleVerse?>(null) }
 
     LaunchedEffect(selectedTranslation?.id,selectedBook?.id,chapter) {
         selectedTranslation?.let{readingPrefs.edit().putString("translation_id",it.id).apply()}
@@ -152,6 +153,40 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                 onClose={selectedLexicalEntry=null}
             )
         }
+    }
+
+    if(selectedVerseAction!=null) {
+        val verse=selectedVerseAction!!
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest={selectedVerseAction=null},
+            title={Text(verse.reference)},
+            text={Text(verse.text)},
+            confirmButton={
+                Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick={
+                        database.saveBookmark(BibleBookmark(java.util.UUID.randomUUID().toString(),
+                            verse.translationId,verse.bookId,verse.chapter,verse.verse,System.currentTimeMillis()))
+                        notice="Bookmarked "+verse.reference
+                        selectedVerseAction=null
+                    }) { Text("BOOKMARK") }
+                    TextButton(onClick={
+                        database.saveHighlight(BibleVerseHighlight(java.util.UUID.randomUUID().toString(),
+                            verse.translationId,verse.bookId,verse.chapter,verse.verse,0xFFFFD12D,
+                            System.currentTimeMillis()))
+                        notice="Highlighted "+verse.reference
+                        selectedVerseAction=null
+                    }) { Text("HIGHLIGHT") }
+                    TextButton(onClick={
+                        selectedVerseNumber=verse.verse
+                        selectedVerseAction=null
+                        showJournal=true
+                    }) { Text("ADD NOTE") }
+                }
+            },
+            dismissButton={
+                TextButton(onClick={selectedVerseAction=null}) { Text("CLOSE") }
+            }
+        )
     }
 
     if(selectedWord!=null) {
@@ -287,10 +322,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                     onWordSelected={verse,word,tokenIndex->selectedWord=Triple(verse,word,tokenIndex)},
                     onVerseSelected={verse->
                         selectedVerseNumber=verse.verse
-                        database.saveBookmark(BibleBookmark(
-                            java.util.UUID.randomUUID().toString(),verse.translationId,verse.bookId,
-                            verse.chapter,verse.verse,System.currentTimeMillis()))
-                        notice="Bookmarked "+verse.reference
+                        selectedVerseAction=verse
                     },
                     modifier=Modifier.weight(1f)
                 )
