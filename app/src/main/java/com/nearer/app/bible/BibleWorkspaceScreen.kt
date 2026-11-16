@@ -277,10 +277,12 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                 enabled=!busy) { Text("＋ Install Bible pack") }
             OutlinedButton(onClick={wordStudyImporterPicker.launch(arrayOf("application/zip","application/x-zip-compressed"))},enabled=!busy) { Text("Word-study data") }
         }
-        Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick={showJournal=true}) { Text("My notes") }
             OutlinedButton(onClick={showExtras=true}) { Text("Plans & audio") }
-            OutlinedButton(onClick={showCatalogue=true}) { Text("Languages") }
+        }
+        OutlinedButton(onClick={showCatalogue=true},modifier=Modifier.fillMaxWidth()) {
+            Text("Explore Bible languages")
         }
         Text("Original-language meanings appear only where a verified word-alignment pack is installed.",color=Color(0xFFA8B6C9),fontSize=10.sp)
         if(busy) CircularProgressIndicator(color=Color(0xFF69E0C0))
