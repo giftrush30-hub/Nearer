@@ -221,9 +221,10 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         }
         val frameSize = 2_048
         val pitchFrames = StudioPcmFrameAccumulator(frameSize)
+        val nativePreferUnprocessed = preferUnprocessedInput && android.os.Build.VERSION.SDK_INT >= 28
         if (StudioAudioEnginePolicy.useOboe(android.os.Build.VERSION.SDK_INT, preferredInputId)) {
             var nativeStarted = withContext(Dispatchers.IO) {
-                StudioOboeEngine.start(preferredInputId, preferUnprocessedInput && android.os.Build.VERSION.SDK_INT >= 28)
+                StudioOboeEngine.start(preferredInputId, nativePreferUnprocessed)
             }
             var reconnectAttempts = 0
             while (nativeStarted && isActive) {
@@ -285,7 +286,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                 reading = null
                 delay(350)
                 nativeStarted = withContext(Dispatchers.IO) {
-                    StudioOboeEngine.start(preferredInputId, preferUnprocessedInput)
+                    StudioOboeEngine.start(preferredInputId, nativePreferUnprocessed)
                 }
             }
             if (isActive && nativeStarted) return@LaunchedEffect
