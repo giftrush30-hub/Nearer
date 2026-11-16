@@ -6,6 +6,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaRecorder
 import android.media.AudioManager
+import android.media.AudioDeviceInfo
+import android.media.AudioDeviceCallback
+import android.os.Handler
+import android.os.Looper
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -62,6 +66,28 @@ import java.io.File
 @Composable
 internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, String) -> Unit) {
     val context = LocalContext.current
+    val audioManager = remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
+    var availableUsbInputs by remember { mutableStateOf(emptyList<AudioDeviceInfo>()) }
+    var selectedUsbInputId by remember { mutableStateOf<Int?>(null) }
+    fun refreshUsbInputs() {
+        availableUsbInputs = audioManager?.getDevices(AudioManager.GET_DEVICES_INPUTS)
+            ?.filter { it.isSource && (it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET) }
+            ?.sortedBy { it.productName.toString().lowercase() }
+            ?: emptyList()
+        if (selectedUsbInputId != null && availableUsbInputs.none { it.id == selectedUsbInputId }) {
+            selectedUsbInputId = null
+        }
+    }
+    DisposableEffect(audioManager) {
+        refreshUsbInputs()
+        val callback = object : AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) { refreshUsbInputs() }
+            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) { refreshUsbInputs() }
+        }
+        audioManager?.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
+        onDispose { audioManager?.unregisterAudioDeviceCallback(callback) }
+    }
+    val selectedUsbInput = availableUsbInputs.firstOrNull { it.id == selectedUsbInputId }
     val supportsUnprocessedInput = remember(context) {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         audioManager?.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED)?.equals("true", ignoreCase = true) == true
@@ -104,6 +130,32 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
         }
         Text("Capture the moment.", color = White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Text("Offline recording · AAC audio · Original take preserved", color = Mint, fontSize = 12.sp)
+
+        Surface(color = Panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("MICROPHONE INPUT", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(selectedUsbInput?.productName?.toString() ?: "Phone / Android default microphone", color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Button(onClick = { selectedUsbInputId = null }, enabled = !recording && selectedUsbInputId != null, modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (selectedUsbInputId == null) Mint else Midnight, contentColor = if (selectedUsbInputId == null) Midnight else White)) {
+                        Text("PHONE DEFAULT", fontSize = 9.sp)
+                    }
+                    Button(onClick = { refreshUsbInputs() }, enabled = !recording, modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("RESCAN USB", fontSize = 9.sp) }
+                }
+                if (availableUsbInputs.isEmpty()) {
+                    Text("Connect a USB microphone or USB-C audio interface. Compatible input devices will appear here.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                } else {
+                    availableUsbInputs.forEach { device ->
+                        Button(onClick = { selectedUsbInputId = device.id }, enabled = !recording, modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = if (selectedUsbInputId == device.id) Mint else Midnight, contentColor = if (selectedUsbInputId == device.id) Midnight else White)) {
+                            Text((if (selectedUsbInputId == device.id) "✓  " else "") + device.productName.toString(), fontSize = 10.sp)
+                        }
+                    }
+                }
+                Text("USB routing is selected before recording starts. If Android or the adapter does not expose a usable USB input, choose Phone Default.", color = Muted, fontSize = 9.sp, lineHeight = 14.sp)
+            }
+        }
         Text(
             if (supportsUnprocessedInput) "STUDIO INPUT  ·  UNPROCESSED MIC" else "STUDIO INPUT  ·  VOICE-RECOGNITION FALLBACK",
             color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp
@@ -130,6 +182,9 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
                                 val next = MediaRecorder()
                                 recorder = next
                                 next.setAudioSource(if (supportsUnprocessedInput) MediaRecorder.AudioSource.UNPROCESSED else MediaRecorder.AudioSource.VOICE_RECOGNITION)
+                                selectedUsbInput?.let { device ->
+                                    check(next.setPreferredDevice(device)) { "Android could not route recording to the selected USB microphone. Reconnect it or choose Phone Default." }
+                                }
                                 next.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                                 next.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                                 next.setAudioEncodingBitRate(192000)
