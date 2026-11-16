@@ -61,6 +61,11 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
             db.execSQL("CREATE INDEX IF NOT EXISTS notes_ref_idx ON study_notes(translation_id,book_id,chapter,verse)")
         }
         if (oldVersion < 3) {
+            db.execSQL("""DELETE FROM word_occurrences
+                WHERE id NOT IN (
+                    SELECT MIN(id) FROM word_occurrences
+                    GROUP BY translation_id,book_id,chapter,verse,token_index
+                )""")
             db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS word_occurrence_unique_idx ON word_occurrences(translation_id,book_id,chapter,verse,token_index)")
         }
     }
