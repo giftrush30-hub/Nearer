@@ -69,3 +69,30 @@ internal object StudioVideoCaptionCodec {
         }.getOrDefault(emptyList())
     }
 }
+
+
+/** Keeps caption assignments attached to their original clip when the user reorders the sequence. */
+internal fun remapStudioCaptionLayersForClipMove(
+    layers: List<StudioVideoCaptionLayer>,
+    fromIndex: Int,
+    toIndex: Int
+): List<StudioVideoCaptionLayer> {
+    if (fromIndex == toIndex || fromIndex < 0 || toIndex < 0) return layers
+    return layers.map { layer ->
+        val nextIndex = when {
+            layer.clipIndex == fromIndex -> toIndex
+            fromIndex < toIndex && layer.clipIndex in (fromIndex + 1)..toIndex -> layer.clipIndex - 1
+            fromIndex > toIndex && layer.clipIndex in toIndex until fromIndex -> layer.clipIndex + 1
+            else -> layer.clipIndex
+        }
+        layer.copy(clipIndex = nextIndex)
+    }
+}
+
+/** Removes captions belonging to a deleted clip and shifts later assignments left. */
+internal fun removeStudioCaptionLayersForClip(
+    layers: List<StudioVideoCaptionLayer>,
+    removedIndex: Int
+): List<StudioVideoCaptionLayer> = layers
+    .filterNot { it.clipIndex == removedIndex }
+    .map { layer -> if (layer.clipIndex > removedIndex) layer.copy(clipIndex = layer.clipIndex - 1) else layer }
