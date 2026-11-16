@@ -162,6 +162,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                 AudioDeviceInfo.TYPE_WIRED_HEADSET,
                 AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
                 AudioDeviceInfo.TYPE_USB_HEADSET,
+                AudioDeviceInfo.TYPE_USB_DEVICE,
                 AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
                 AudioDeviceInfo.TYPE_BLUETOOTH_SCO
             )
@@ -196,15 +197,17 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         val frameSize = 2_048
         val pitchFrames = StudioPcmFrameAccumulator(frameSize)
         if (StudioAudioEnginePolicy.useOboe(android.os.Build.VERSION.SDK_INT, preferredInputId)) {
-            val nativeStarted = withContext(Dispatchers.IO) {
+            var nativeStarted = withContext(Dispatchers.IO) {
                 StudioOboeEngine.start(preferredInputId, preferUnprocessedInput)
             }
-            if (nativeStarted) {
+            var reconnectAttempts = 0
+            while (nativeStarted && isActive) {
                 val analysisChunk = FloatArray(512)
                 val nativeRate = withContext(Dispatchers.IO) {
                     StudioOboeEngine.diagnostics().getOrNull(0)?.toInt()?.takeIf { it > 0 } ?: 48_000
                 }
                 var statsTick = 0
+                var routeDisconnected = false
                 try {
                     while (isActive && StudioOboeEngine.isRunning()) {
                         val count = withContext(Dispatchers.IO) {
@@ -228,24 +231,37 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             val xruns = stats.getOrNull(3)?.toInt() ?: -1
                             val underruns = stats.getOrNull(4) ?: 0L
                             val dropped = stats.getOrNull(5) ?: 0L
-                            val disconnected = stats.getOrNull(6) == 1L
+                            routeDisconnected = stats.getOrNull(6) == 1L
                             val inputRoute = stats.getOrNull(7)?.toInt() ?: -1
                             val outputRoute = stats.getOrNull(8)?.toInt() ?: -1
                             diagnostics = "Oboe native · $rate Hz · input ID $inputRoute → output ID $outputRoute · burst $burst · buffer $buffer frames · xrun $xruns · underruns $underruns · dropped $dropped"
-                            if (disconnected) status = "Audio route disconnected. Turn monitoring off, reconnect the device, then try again."
+                            if (routeDisconnected) status = "Audio route changed. Reconnecting the live monitor…"
                         }
                     }
-                    if (!StudioOboeEngine.isRunning()) {
+                    if (isActive && !StudioOboeEngine.isRunning()) {
                         val finalStats = withContext(Dispatchers.IO) { StudioOboeEngine.diagnostics() }
-                        if (finalStats.getOrNull(6) == 1L) {
-                            status = "Audio route disconnected. Turn monitoring off, reconnect the device, then try again."
-                        }
+                        routeDisconnected = routeDisconnected || finalStats.getOrNull(6) == 1L
+                        if (routeDisconnected) status = "Audio route changed. Reconnecting the live monitor…"
                     }
                 } finally {
                     withContext(Dispatchers.IO) { StudioOboeEngine.stop() }
                 }
-                return@LaunchedEffect
+                if (!isActive) return@LaunchedEffect
+                if (!routeDisconnected || reconnectAttempts >= 1 || !hasHeadphoneOutput) {
+                    nativeStarted = false
+                    break
+                }
+                reconnectAttempts++
+                pitchFrames.reset()
+                reading = null
+                delay(350)
+                nativeStarted = withContext(Dispatchers.IO) {
+                    StudioOboeEngine.start(preferredInputId, preferUnprocessedInput)
+                }
             }
+            if (isActive && nativeStarted) return@LaunchedEffect
+            if (!isActive) return@LaunchedEffect
+            status = "Native audio route unavailable. Switching to Android compatibility audio…"
         }
         val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
         val outputNativeRate = audioManager?.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
