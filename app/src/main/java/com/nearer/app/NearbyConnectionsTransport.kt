@@ -2375,6 +2375,32 @@ internal object IncomingFilePayloadPolicy {
         return true
     }
 
+    /**
+     * Completes the destination side of a mesh delivery recovered from the durable
+     * inbox. If its encrypted packet is still queued, persist the signed final
+     * receipt before retiring that packet. If the packet is already gone, the
+     * receipt path had already advanced beyond local delivery.
+     */
+    fun persistMeshDeliveryAndReceipt(originPeerId: String, messageId: String): Boolean {
+        val originId = NeaRerIdentity.normalize(originPeerId) ?: return false
+        if (messageId.isBlank() || messageId.length > 80) return false
+        val now = System.currentTimeMillis()
+        val packet = deadDropStore.pendingForDestination(localStableId, now)
+            .firstOrNull { it.packetId == messageId && it.originId == originId }
+        if (!persistIncomingMessageDedupe(originId, messageId)) return false
+        if (packet == null) return true
+
+        val trustedOriginKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, originId) ?: return false
+        if (!java.security.MessageDigest.isEqual(trustedOriginKey, packet.originSigningPublicKey) ||
+            !packet.verify(trustedOriginKey, now)) return false
+
+        val receipt = MeshDeliveryReceipt.create(
+            packet.packetId, packet.originId, packet.destinationId, now
+        ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+        if (!queueMeshReceipt(receipt)) return false
+        return deadDropStore.markLocallyDelivered(packet.packetId)
+    }
+
     /** Release a message whose durable inbox write failed so a sender retry is not suppressed. */
     fun releasePendingIncomingMessage(peerId: String, messageId: String) {
         val pendingKey = NearbyMessageDedupePolicy.key(peerId, messageId) ?: return
