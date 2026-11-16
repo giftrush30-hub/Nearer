@@ -188,13 +188,15 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
         return out
     }
     fun insertLexicalEntry(entry:BibleWordStudyEntry) {
-        writableDatabase.insertWithOnConflict("lexical_entries",null,ContentValues().apply {
+        val values=ContentValues().apply {
             put("id",entry.id);put("language_code",entry.language.code);put("lemma",entry.lemma)
             put("transliteration",entry.transliteration);put("pronunciation",entry.pronunciation)
             put("strong_number",entry.strongNumber);put("part_of_speech",entry.partOfSpeech)
             put("gloss",entry.gloss);put("definition",entry.definition);put("source_name",entry.sourceName)
             put("source_url",entry.sourceUrl);put("license_id",entry.licenseId);put("attribution",entry.attribution)
-        },SQLiteDatabase.CONFLICT_REPLACE)
+        }
+        val updated=writableDatabase.update("lexical_entries",values,"id=?",arrayOf(entry.id))
+        if(updated==0) writableDatabase.insertOrThrow("lexical_entries",null,values)
     }
     fun insertWordOccurrence(occurrence:BibleWordOccurrence) {
         writableDatabase.insertWithOnConflict("word_occurrences",null,ContentValues().apply {
