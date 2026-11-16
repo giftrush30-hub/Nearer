@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -90,6 +91,7 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
     var filterMode by remember { mutableStateOf("ALL") }
     var selected by remember { mutableStateOf<NearerMovie?>(null) }
     var playbackSpeed by remember { mutableStateOf(1f) }
+    var playerIsPlaying by remember { mutableStateOf(false) }
     var statusMessage by remember {
         mutableStateOf(
             when {
@@ -179,6 +181,7 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                playerIsPlaying = isPlaying
                 if (!isPlaying) selected?.let { persistPosition(it.uri, player.currentPosition) }
             }
 
@@ -189,6 +192,7 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
         player.addListener(listener)
         onDispose {
             selected?.let { persistPosition(it.uri, player.currentPosition) }
+            playerIsPlaying = false
             player.removeListener(listener)
             player.release()
         }
@@ -265,10 +269,13 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
                         this.player = player
                         useController = true
                         setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                        keepScreenOn = true
+                        keepScreenOn = playerIsPlaying
                     }
                 },
-                update = { it.player = player },
+                update = {
+                    it.player = player
+                    it.keepScreenOn = playerIsPlaying
+                },
                 modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
             )
             Text("Playing from your phone · no data required", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
@@ -471,8 +478,13 @@ private fun MovieThumbnail(uri: String, modifier: Modifier = Modifier) {
             val retriever = MediaMetadataRetriever()
             try {
                 retriever.setDataSource(context, Uri.parse(uri))
-                val frame = retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    ?: retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                val frame = if (Build.VERSION.SDK_INT >= 27) {
+                    retriever.getScaledFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 320, 180)
+                        ?: retriever.getScaledFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 320, 180)
+                } else {
+                    retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        ?: retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                }
                 if (frame == null) {
                     null
                 } else {
@@ -485,6 +497,8 @@ private fun MovieThumbnail(uri: String, modifier: Modifier = Modifier) {
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (_: OutOfMemoryError) {
+                null
             } catch (_: Exception) {
                 null
             } finally {
