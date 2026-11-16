@@ -32,4 +32,19 @@ class BiblePackManifestTest {
         val result=BiblePackManifestValidator.validate(valid().copy(minimumReaderVersion=4),1)
         assertFalse(result.valid)
     }
+
+    @Test fun rejectsCompleteBibleWithUnknownCanon() {
+        val result=BiblePackManifestValidator.validate(valid().copy(canonId="unspecified",bookCount=66),1)
+        assertFalse(result.valid)
+    }
+
+    @Test fun acceptsCatholicCanonOnlyAtSeventyThreeBooks() {
+        val result=BiblePackManifestValidator.validate(valid().copy(canonId="catholic-73",bookCount=73),1)
+        assertTrue(result.valid)
+    }
+
+    @Test fun rejectsIncorrectCatholicBookCount() {
+        val result=BiblePackManifestValidator.validate(valid().copy(canonId="catholic-73",bookCount=66),1)
+        assertFalse(result.valid)
+    }
 }
