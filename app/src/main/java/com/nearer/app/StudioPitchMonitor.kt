@@ -129,7 +129,7 @@ internal object StudioPitchEngine {
     /** Finds the closest note in the selected key and scale, including adjacent octaves. */
     fun scaleTarget(reading: StudioPitchReading, rootSemitone: Int, isMinor: Boolean): StudioScaleTarget {
         val intervals = if (isMinor) minor else major
-        val candidates = (-2..2).flatMap { octave ->
+        val candidates = (-4..4).flatMap { octave ->
             intervals.map { interval -> 60 + rootSemitone.coerceIn(0, 11) + octave * 12 + interval }
         }
         val target = candidates.minByOrNull { abs(it - reading.midiNote) } ?: reading.nearestMidiNote
@@ -147,7 +147,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
     val keys = listOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B")
 
     LaunchedEffect(Unit) {
-        val sampleRate = 24_000
+        val sampleRate = 22_050
         val frameSize = 2_048
         val minBuffer = AudioRecord.getMinBufferSize(
             sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
