@@ -230,7 +230,9 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             val underruns = stats.getOrNull(4) ?: 0L
                             val dropped = stats.getOrNull(5) ?: 0L
                             val disconnected = stats.getOrNull(6) == 1L
-                            diagnostics = "Oboe native · $rate Hz · burst $burst · output buffer $buffer frames · xrun $xruns · callback underruns $underruns · dropped capture $dropped"
+                            val inputRoute = stats.getOrNull(7)?.toInt() ?: -1
+                            val outputRoute = stats.getOrNull(8)?.toInt() ?: -1
+                            diagnostics = "Oboe native · $rate Hz · input ID $inputRoute → output ID $outputRoute · burst $burst · buffer $buffer frames · xrun $xruns · underruns $underruns · dropped $dropped"
                             if (disconnected) status = "Audio route disconnected. Turn monitoring off, reconnect the device, then try again."
                         }
                     }
