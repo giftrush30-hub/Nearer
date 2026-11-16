@@ -141,18 +141,32 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
             val requestToken = photoImportToken + 1
             photoImportToken = requestToken
             photoMessage = "Importing and preparing your photo…"
+            val alreadyPersisted = context.contentResolver.persistedUriPermissions.any {
+                it.uri == uri && it.isReadPermission
+            }
+            val temporaryPersistableGrant = !alreadyPersisted && runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }.isSuccess
             scope.launch {
-                val imported = BusinessPhotoStorage.import(context, uri)
-                if (requestToken == photoImportToken && showEditor) {
-                    if (imported != null) {
-                        imageUri = imported
-                        photoMessage = "Photo copied into NeaRer's private business storage."
-                        if (previous != imported) releaseImageIfUnused(previous)
-                    } else {
-                        photoMessage = "NeaRer could not import that image. Choose a readable image file up to 30 MB."
+                try {
+                    val imported = BusinessPhotoStorage.import(context, uri)
+                    if (requestToken == photoImportToken && showEditor) {
+                        if (imported != null) {
+                            imageUri = imported
+                            photoMessage = "Photo copied into NeaRer's private business storage."
+                            if (previous != imported) releaseImageIfUnused(previous)
+                        } else {
+                            photoMessage = "NeaRer could not import that image. Choose a readable image file up to 30 MB."
+                        }
+                    } else if (imported != null) {
+                        BusinessPhotoStorage.deleteIfManaged(context, imported)
                     }
-                } else if (imported != null) {
-                    BusinessPhotoStorage.deleteIfManaged(context, imported)
+                } finally {
+                    if (temporaryPersistableGrant) {
+                        runCatching {
+                            context.contentResolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                    }
                 }
             }
         }
