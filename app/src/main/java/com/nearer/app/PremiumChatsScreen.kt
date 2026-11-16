@@ -2,6 +2,8 @@ package com.nearer.app
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.io.File
 import java.util.Date
 import java.util.Locale
 
@@ -70,7 +73,9 @@ internal fun PremiumChatsScreen(
     onChooseFiles: () -> Unit,
     receivedFiles: List<ReceivedFile>,
     onOpenFile: (ReceivedFile) -> Unit,
+    onExtractFolder: (ReceivedFile) -> Unit,
     transferHistory: List<NearbyTransferRecord>,
+    benchmarkSummary: TransferBenchmarkSummary?,
     outgoingTransferId: String?,
     outgoingProgress: Float,
     incomingTransferName: String?,
@@ -88,12 +93,57 @@ internal fun PremiumChatsScreen(
     }
 
     var recipientMenuExpanded by remember { mutableStateOf(false) }
+    var xenderReferenceMibps by remember(connectedPeerStableId) { mutableStateOf("") }
     var replyingTo by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
     var editingMessage by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
     var expandedMessageActions by remember { mutableStateOf<String?>(null) }
     var reactingToMessageId by remember { mutableStateOf<String?>(null) }
     var pendingDeleteMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var folderToBrowse by remember { mutableStateOf<ReceivedFile?>(null) }
+    var folderBrowseLocation by remember { mutableStateOf<File?>(null) }
     val context = LocalContext.current
+    folderToBrowse?.let { folder ->
+        val currentDirectory = folderBrowseLocation ?: folder.file
+        val entries = remember(currentDirectory) {
+            currentDirectory.listFiles()?.sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase(Locale.ROOT) })).orEmpty()
+        }
+        val isRoot = runCatching { currentDirectory.canonicalFile == folder.file.canonicalFile }.getOrDefault(true)
+        AlertDialog(
+            onDismissRequest = { folderToBrowse = null; folderBrowseLocation = null },
+            title = { Text(if (isRoot) folder.displayName else currentDirectory.name) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("${entries.size} items in this folder", color = Muted, fontSize = 11.sp)
+                    entries.take(100).forEach { entry ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable {
+                                if (entry.isDirectory) {
+                                    folderBrowseLocation = entry
+                                } else {
+                                    folderToBrowse = null
+                                    folderBrowseLocation = null
+                                    onOpenFile(ReceivedFile(entry.name, entry))
+                                }
+                            }.padding(vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(if (entry.isDirectory) "▰" else "•", color = Gold, modifier = Modifier.padding(end = 8.dp))
+                            Text(entry.name, color = White, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    if (entries.size > 100) Text("Showing the first 100 items.", color = Muted, fontSize = 10.sp)
+                }
+            },
+            confirmButton = {
+                Row {
+                    if (!isRoot) {
+                        TextButton(onClick = { folderBrowseLocation = currentDirectory.parentFile ?: folder.file }) { Text("Up") }
+                    }
+                    TextButton(onClick = { folderToBrowse = null; folderBrowseLocation = null }) { Text("Close") }
+                }
+            }
+        )
+    }
     pendingDeleteMessage?.let { target ->
         AlertDialog(
             onDismissRequest = { pendingDeleteMessage = null },
@@ -568,17 +618,72 @@ internal fun PremiumChatsScreen(
                         }
                     }
 
-                    if (chatReady && directConversation) receivedFiles.take(3).forEach { fileItem ->
-                        Surface(
-                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).clickable { onOpenFile(fileItem) },
-                            shape = RoundedCornerShape(13.dp),
-                            color = NeaRerPalette.Panel
-                        ) {
-                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("↓", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text(fileItem.displayName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 9.dp))
-                                Text("Open", color = NeaRerPalette.Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    if (chatReady && directConversation) receivedFiles.take(5).forEach { fileItem ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).clickable {
+                                    if (fileItem.isFolder) { folderToBrowse = fileItem; folderBrowseLocation = fileItem.file } else onOpenFile(fileItem)
+                                },
+                                shape = RoundedCornerShape(13.dp),
+                                color = NeaRerPalette.Panel
+                            ) {
+                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (fileItem.isFolder) "▰" else "↓", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    Text(fileItem.displayName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 9.dp))
+                                    Text(if (fileItem.isFolder) "Browse" else "Open", color = NeaRerPalette.Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
+                            if (!fileItem.isFolder && fileItem.file.extension.equals("zip", ignoreCase = true)) {
+                                TextButton(onClick = { onExtractFolder(fileItem) }, modifier = Modifier.align(Alignment.End)) {
+                                    Text("Restore as folder", color = NeaRerPalette.Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
+                    if (chatReady && directConversation && benchmarkSummary != null) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFF12283A))
+                                .border(1.dp, Gold.copy(alpha = 0.24f), RoundedCornerShape(14.dp))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text("NEARER MEASURED PERFORMANCE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            Text(
+                                String.format(java.util.Locale.US, "%.2f MiB/s median end-to-end", benchmarkSummary.medianMibPerSecond),
+                                color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "${benchmarkSummary.medianFirstByteMillis} ms to first byte · ${benchmarkSummary.successfulRuns} verified · ${benchmarkSummary.failedRuns} failed",
+                                color = Muted, fontSize = 10.sp
+                            )
+                            Text(
+                                "Measured from preparation through recipient verification; not a Wi-Fi link-rate claim.",
+                                color = Muted, fontSize = 9.sp
+                            )
+                            OutlinedTextField(
+                                value = xenderReferenceMibps,
+                                onValueChange = { value ->
+                                    xenderReferenceMibps = value.filter { it.isDigit() || it == '.' }.take(12)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text("Xender reference speed (MiB/s)") }
+                            )
+                            val xenderRate = xenderReferenceMibps.toDoubleOrNull()?.takeIf { it > 0.0 }
+                            if (xenderRate != null) {
+                                val ratio = benchmarkSummary.medianMibPerSecond / xenderRate
+                                Text(
+                                    String.format(java.util.Locale.US, "NeaRer measured %.2f× the reference throughput", ratio),
+                                    color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(
+                                "For a fair comparison, use the same file, phone pair, radios and test conditions.",
+                                color = Muted, fontSize = 9.sp
+                            )
                         }
                     }
 

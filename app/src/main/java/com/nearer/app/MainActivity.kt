@@ -181,6 +181,7 @@ class MainActivity : ComponentActivity() {
     private val gameChatMessages = mutableStateListOf<String>()
     private val receivedFiles = mutableStateListOf<ReceivedFile>()
     private val nearbyTransferHistory = mutableStateListOf<NearbyTransferRecord>()
+    private var transferBenchmarkSummary by mutableStateOf<TransferBenchmarkSummary?>(null)
     private var activeOutgoingFileName = "shared-file"
     private var activeOutgoingFileBytes = 0L
     private val pendingDirectOutgoing = ConcurrentHashMap<String, DirectOutgoingTransfer>()
@@ -413,6 +414,7 @@ class MainActivity : ComponentActivity() {
                     hybridConnected = true
                     hybridConnectedEndpoint = id
                     hybridConnectedStableId = stableId.ifBlank { null }
+                    transferBenchmarkSummary = TransferBenchmarkStore(applicationContext).summary(stableId)
                     if (selectedMeshRecipientId == null) {
                         selectedMeshRecipientId = stableId.takeIf { it.isNotBlank() }
                     }
@@ -699,10 +701,13 @@ class MainActivity : ComponentActivity() {
                     ReceivedFileNotification.show(this@MainActivity, name, file.length())
                 }
             }
+            override fun onBenchmarkSummary(summary: TransferBenchmarkSummary) {
+                runOnUiThread { transferBenchmarkSummary = summary }
+            }
             override fun onFileStatus(message: String) {
                 runOnUiThread {
                     chatNotice = message
-                    if (message.startsWith("File sent to the nearby phone") ||
+                    if (NearbyTransferStatusPolicy.isVerifiedOutgoingCompletion(message) ||
                         message.startsWith("Nearby file transfer failed") ||
                         message.startsWith("Nearby file transfer paused") ||
                         message.startsWith("Could not start file transfer") ||
@@ -710,15 +715,16 @@ class MainActivity : ComponentActivity() {
                         message.startsWith("File could not be prepared")) {
                         outgoingTransferId = null
                         outgoingProgress = 0f
-                        if (message.startsWith("File sent to the nearby phone")) {
+                        if (NearbyTransferStatusPolicy.isVerifiedOutgoingCompletion(message)) {
                             recordNearbyTransfer("Sent", activeOutgoingFileName, activeOutgoingFileBytes, "Complete")
                             deleteGeneratedFolderArchive(currentNearbyQueuedFile)
                             activeOutgoingFileName = "shared-file"
                             activeOutgoingFileBytes = 0L
                             currentNearbyQueuedFile = null
                             nearbyQueueCompleted += 1
-                            persistNearbyFileQueue()
-                            if (nearbyQueueTotal > 0) startNextNearbyQueuedFile()
+                            val queueSaved = persistNearbyFileQueue()
+                            if (nearbyQueueTotal > 0 && queueSaved) startNextNearbyQueuedFile()
+                            else if (nearbyQueueTotal > 0) chatNotice = "The previous file was verified, but the next file is paused because its recovery queue could not be saved."
                         } else if (nearbyQueueTotal > 0) {
                             // Keep the active file and remaining queue for retry after reconnect.
                             persistNearbyFileQueue()
@@ -744,6 +750,7 @@ class MainActivity : ComponentActivity() {
             statusMessage = "NeaRer opened, but some saved local data could not be restored."
         }
         runCatching { restoreNearbyTransferHistory() }
+        transferBenchmarkSummary = TransferBenchmarkStore(applicationContext).summary()
         runCatching { restoreNearbyFileQueue() }
         val queuedAfterRestart = runCatching { nearbyTransport?.pendingMessageIds().orEmpty() }.getOrDefault(emptySet())
         val deliveredAfterRestart = runCatching { nearbyTransport?.completedMessageIds().orEmpty() }.getOrDefault(emptySet())
@@ -816,6 +823,7 @@ class MainActivity : ComponentActivity() {
                     onExternalShareConsumed = { pendingExternalShareUris = emptyList() },
                     receivedFiles = receivedFiles,
                     transferHistory = nearbyTransferHistory.toList(),
+                    benchmarkSummary = transferBenchmarkSummary,
                     onSendMessage = ::sendChatMessage,
                     onDeleteMessage = ::deleteChatMessage,
                     onEditMessage = ::editChatMessage,
@@ -847,6 +855,7 @@ class MainActivity : ComponentActivity() {
                     incomingTransferName = incomingTransferName,
                     incomingProgress = incomingProgress,
                     onOpenFile = ::openReceivedFile,
+                    onExtractFolder = ::extractReceivedFolder,
                     onForwardReceivedFile = ::forwardReceivedFile,
                     onSaveReceivedFile = ::saveReceivedFileToDownloads,
                     onInstallAppBundle = ::installReceivedAppBundle,
@@ -1605,6 +1614,18 @@ class MainActivity : ComponentActivity() {
             repairedEntries.add(entry)
             receivedFiles.add(ReceivedFile(entry.displayName, canonical, entry.isAppBundle))
         }
+        canonicalFolder.listFiles()
+            ?.filter { it.isDirectory && it.name.startsWith("Folder-") }
+            ?.sortedByDescending { it.lastModified() }
+            ?.take(30)
+            ?.forEach { directory ->
+                val canonical = runCatching { directory.canonicalFile }.getOrNull() ?: return@forEach
+                if (canonical.parentFile == canonicalFolder && canonical.isDirectory) {
+                    val topLevelEntries = canonical.listFiles().orEmpty()
+                    val displayName = topLevelEntries.singleOrNull()?.takeIf { it.isDirectory }?.name ?: "Restored folder"
+                    receivedFiles.add(0, ReceivedFile(displayName, canonical, isFolder = true))
+                }
+            }
         // Rebuild from files that really exist; stale catalog entries never create phantom items.
         preferences.edit()
             .putString("received_file_catalog_v1", ReceivedFileCatalogPolicy.encode(repairedEntries))
@@ -2935,6 +2956,37 @@ class MainActivity : ComponentActivity() {
         captureExternalShareIntent(intent)
     }
 
+    private fun extractReceivedFolder(item: ReceivedFile) {
+        if (item.isFolder || !item.file.extension.equals("zip", ignoreCase = true)) {
+            chatNotice = "Choose a received ZIP archive to restore as a folder."
+            return
+        }
+        val receivedRoot = File(filesDir, "received").canonicalFile
+        val archive = runCatching { item.file.canonicalFile }.getOrNull()
+        if (archive == null || archive.parentFile != receivedRoot || !archive.isFile) {
+            chatNotice = "This archive is not in NeaRer's received-files folder."
+            return
+        }
+        chatNotice = "Restoring the folder. Files are extracted safely in the background…"
+        io.execute {
+            try {
+                val result = FolderArchiveExtractor.extract(archive, receivedRoot)
+                runOnUiThread {
+                    receivedFiles.removeAll { existing ->
+                        existing.isFolder && runCatching { existing.file.canonicalFile == result.directory.canonicalFile }.getOrDefault(false)
+                    }
+                    receivedFiles.add(0, ReceivedFile(result.displayName, result.directory, isFolder = true))
+                    recordNearbyTransfer("Received", result.directory.name, result.bytesExtracted, "Folder restored")
+                    chatNotice = "Folder restored: ${result.displayName} • ${result.fileCount} files. Open it in the received-files list."
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    chatNotice = "Could not restore this folder: ${error.localizedMessage ?: "the archive is invalid or storage is low"}"
+                }
+            }
+        }
+    }
+
     private fun openReceivedFile(item: ReceivedFile) {
         try {
             val uri = FileProvider.getUriForFile(this, "${packageName}.files", item.file)
@@ -3064,13 +3116,27 @@ class MainActivity : ComponentActivity() {
                     if (cursor.moveToFirst()) rootName = cursor.getString(0)?.takeIf { it.isNotBlank() } ?: rootName
                 }
                 fun safeSegment(value: String): String {
-                    val cleaned = value.replace("/", "_").replace("\\", "_").trim().trim('.')
-                    return cleaned.ifBlank { "folder-item" }
+                    return TransferFileName.safeLeafName(value).ifBlank { "folder-item" }
                 }
                 val stagingDirectory = File(cacheDir, "nearer-folder-shares").apply { mkdirs() }
                 archive = File.createTempFile("nearer-folder-", ".zip", stagingDirectory)
                 val visited = HashSet<String>()
+                val seenArchivePaths = HashSet<String>()
+                var archiveEntryCount = 0
                 var fileCount = 0
+                fun recordArchiveEntry(rawPath: String) {
+                    val normalized = rawPath.removeSuffix("/")
+                    if (normalized.isBlank() || normalized.length > FolderArchiveExtractor.MAX_PATH_LENGTH) {
+                        throw IllegalStateException("A folder path is too long or invalid to share safely")
+                    }
+                    if (!seenArchivePaths.add(normalized.lowercase())) {
+                        throw IllegalStateException("The selected folder contains duplicate names after safe-path normalization")
+                    }
+                    archiveEntryCount += 1
+                    if (archiveEntryCount > FolderArchiveExtractor.MAX_ENTRIES) {
+                        throw IllegalStateException("The selected folder contains too many files and folders for one safe archive")
+                    }
+                }
                 ZipOutputStream(FileOutputStream(archive!!).buffered()).use { zip ->
                     fun addChildren(parentId: String, parentPath: String) {
                         if (!visited.add(parentId)) return
@@ -3090,10 +3156,12 @@ class MainActivity : ComponentActivity() {
                                 val childPath = parentPath + childName
                                 val childMime = cursor.getString(mimeColumn)
                                 if (childMime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                                    recordArchiveEntry(childPath + "/")
                                     zip.putNextEntry(ZipEntry(childPath + "/"))
                                     zip.closeEntry()
                                     addChildren(childId, childPath + "/")
                                 } else {
+                                    recordArchiveEntry(childPath)
                                     val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
                                     val input = contentResolver.openInputStream(childUri)
                                         ?: throw IllegalStateException("Could not read " + childName)
@@ -3106,6 +3174,7 @@ class MainActivity : ComponentActivity() {
                         } ?: throw IllegalStateException("The selected folder could not be listed")
                     }
                     val safeRootName = safeSegment(rootName)
+                    recordArchiveEntry(safeRootName + "/")
                     zip.putNextEntry(ZipEntry(safeRootName + "/"))
                     zip.closeEntry()
                     addChildren(rootId, safeRootName + "/")
@@ -3228,7 +3297,10 @@ class MainActivity : ComponentActivity() {
             chatNotice = "Your saved files are reserved for the phone you originally selected. Reconnect to that same phone to send them."
             return
         }
-        persistNearbyFileQueue()
+        if (!persistNearbyFileQueue()) {
+            chatNotice = "Transfer paused because NeaRer could not save its recovery queue. Your files remain selected."
+            return
+        }
         var fileName = "shared-file"
         try {
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -3249,19 +3321,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun persistNearbyFileQueue() {
-        try {
+    private fun persistNearbyFileQueue(): Boolean {
+        return try {
             val items = JSONArray()
             currentNearbyQueuedFile?.let { items.put(it.toString()) }
             pendingNearbyFileQueue.forEach { items.put(it.toString()) }
-            getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            val saved = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
                 .putString("nearby_file_queue", items.toString())
                 .putInt("nearby_file_queue_total", nearbyQueueTotal)
                 .putInt("nearby_file_queue_completed", nearbyQueueCompleted)
                 .putString("nearby_file_queue_peer", nearbyQueuePeerStableId)
                 .commit()
+            if (!saved) chatNotice = "NeaRer could not save the transfer queue. The next file will not start until its recovery state is safe."
+            saved
         } catch (_: Exception) {
-            chatNotice = "NeaRer could not save the transfer queue. Keep this screen open until sending finishes."
+            chatNotice = "NeaRer could not save the transfer queue. The next file will not start until its recovery state is safe."
+            false
         }
     }
 
@@ -3689,6 +3764,7 @@ private fun NeaRerHome(
     externalShareUris: List<Uri>,
     onExternalShareConsumed: () -> Unit,
     transferHistory: List<NearbyTransferRecord>,
+    benchmarkSummary: TransferBenchmarkSummary?,
     onSendMessage: (String, ChatMessage?) -> Unit,
     onDeleteMessage: (String) -> Boolean,
     onEditMessage: (String, String) -> Boolean,
@@ -3720,6 +3796,7 @@ private fun NeaRerHome(
     incomingTransferName: String?,
     incomingProgress: Float,
     onOpenFile: (ReceivedFile) -> Unit,
+    onExtractFolder: (ReceivedFile) -> Unit,
     onForwardReceivedFile: (ReceivedFile) -> Unit,
     onSaveReceivedFile: (ReceivedFile) -> Unit,
     onInstallAppBundle: (ReceivedFile) -> Unit,
@@ -4437,7 +4514,9 @@ private fun NeaRerHome(
                     onChooseFiles = { chatAttachmentPicker.launch(arrayOf("*/*")) },
                     receivedFiles = receivedFiles,
                     onOpenFile = onOpenFile,
+                    onExtractFolder = onExtractFolder,
                     transferHistory = transferHistory,
+                    benchmarkSummary = benchmarkSummary,
                     outgoingTransferId = outgoingTransferId,
                     outgoingProgress = outgoingProgress,
                     incomingTransferName = incomingTransferName,
@@ -5010,7 +5089,7 @@ private fun isNeaRerAppBundle(file: File): Boolean {
     }.getOrDefault(false)
 }
 
-internal data class ReceivedFile(val displayName: String, val file: File, val isAppBundle: Boolean = false)
+internal data class ReceivedFile(val displayName: String, val file: File, val isAppBundle: Boolean = false, val isFolder: Boolean = false)
 
 private data class UnifiedTransferHistoryEntry(
     val direction: String,
