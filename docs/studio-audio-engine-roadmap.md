@@ -2,7 +2,7 @@
 
 ## Current Java/Kotlin path
 
-The live pitch monitor currently uses Android AudioRecord and AudioTrack. The improved path reads Android's reported output sample rate and frames-per-buffer property, checks the selected USB input's advertised sample rates when available, requests a conservative buffer based on Android's minimum, three bursts, and the pitch-processing block, and reports the active input/output route, estimated output-buffer time, and AudioTrack underrun count.
+The live pitch monitor currently uses Android AudioRecord and AudioTrack. The improved path reads Android's reported output sample rate and frames-per-buffer property, uses advertised USB input rates as a fallback only when Android does not report a valid output-native rate, requests a conservative buffer based on Android's minimum, three bursts, and the pitch-processing block, and reports the active input/output route, estimated output-buffer time, and AudioTrack underrun count.
 
 This is a diagnostic and compatibility improvement, not proof of low round-trip latency. Blocking Java reads/writes and coroutine scheduling still add variable delay. AudioTrack's low-latency mode is only a request; Android notes that route and device support determine the actual path.
 
