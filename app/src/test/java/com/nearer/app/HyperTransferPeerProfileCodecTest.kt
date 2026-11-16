@@ -4,6 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class HyperTransferPeerProfileCodecTest {
     private val profile = HyperTransferModePolicy.DeviceProfile(
@@ -22,21 +24,31 @@ class HyperTransferPeerProfileCodecTest {
         assertEquals(profile, HyperTransferPeerProfileCodec.decode(encoded))
     }
 
-    @Test fun malformedAndOversizedPayloadsAreNotRecognized() {
+    @Test fun malformedAndWrongSizedPayloadsAreNotRecognized() {
         assertFalse(HyperTransferPeerProfileCodec.isEnvelope(byteArrayOf()))
-        assertFalse(HyperTransferPeerProfileCodec.isEnvelope(ByteArray(2_049)))
-        assertFalse(HyperTransferPeerProfileCodec.isEnvelope("not-json".toByteArray()))
+        assertFalse(HyperTransferPeerProfileCodec.isEnvelope(ByteArray(31)))
+        assertFalse(HyperTransferPeerProfileCodec.isEnvelope(ByteArray(33)))
+        assertFalse(HyperTransferPeerProfileCodec.isEnvelope("not-a-profile".toByteArray()))
     }
 
     @Test(expected = IllegalArgumentException::class)
     fun negativeRemoteMemoryIsRejected() {
-        val invalid = """{"kind":"hypertransfer_resource_profile_v1","version":1,"availableMemoryBytes":-1,"availableStorageBytes":1,"thermalStatus":0,"lowMemory":false,"lowRamDevice":false,"streamCapable":true,"measuredBytesPerSecond":0}"""
-        HyperTransferPeerProfileCodec.decode(invalid.toByteArray())
+        val encoded = HyperTransferPeerProfileCodec.encode(profile)
+        ByteBuffer.wrap(encoded).order(ByteOrder.BIG_ENDIAN).putLong(8, -1L)
+        HyperTransferPeerProfileCodec.decode(encoded)
     }
 
     @Test(expected = IllegalArgumentException::class)
     fun unsupportedVersionIsRejected() {
-        val invalid = """{"kind":"hypertransfer_resource_profile_v1","version":99,"availableMemoryBytes":1,"availableStorageBytes":1,"thermalStatus":0,"lowMemory":false,"lowRamDevice":false,"streamCapable":true,"measuredBytesPerSecond":0}"""
-        HyperTransferPeerProfileCodec.decode(invalid.toByteArray())
+        val encoded = HyperTransferPeerProfileCodec.encode(profile)
+        ByteBuffer.wrap(encoded).order(ByteOrder.BIG_ENDIAN).putShort(4, 99)
+        HyperTransferPeerProfileCodec.decode(encoded)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun unknownFlagsAreRejected() {
+        val encoded = HyperTransferPeerProfileCodec.encode(profile)
+        encoded[6] = 0x40
+        HyperTransferPeerProfileCodec.decode(encoded)
     }
 }
