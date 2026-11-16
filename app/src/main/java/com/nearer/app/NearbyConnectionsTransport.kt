@@ -227,6 +227,7 @@ internal object IncomingFilePayloadPolicy {
     private val incomingHyperEndpoints = ConcurrentHashMap<Long, String>()
     private val incomingHyperResumeOffsets = ConcurrentHashMap<Long, Long>()
     private val streamCapablePeers = ConcurrentHashMap.newKeySet<String>()
+    private val remoteHyperTransferProfiles = ConcurrentHashMap<String, HyperTransferModePolicy.DeviceProfile>()
     private val cancelledStreamPayloads = ConcurrentHashMap.newKeySet<Long>()
     private val streamController = NearbyStreamExchangeController()
     private val transferSpeedMeters = ConcurrentHashMap<Long, TransferSpeedMeter>()
@@ -607,6 +608,7 @@ internal object IncomingFilePayloadPolicy {
             pauseHyperStreamsForEndpoint(id)
             val details = synchronized(names) { (stableIds.remove(id).orEmpty()) to (names.remove(id) ?: "Nearby NeaRer user") }
             streamCapablePeers.remove(details.first)
+            remoteHyperTransferProfiles.remove(details.first)
             if (wasAuthenticated && empty) listener.onDisconnected(id, details.first, details.second)
             else if (wasAuthenticated) {
                 listener.onLost(id, details.first)
@@ -1016,6 +1018,7 @@ internal object IncomingFilePayloadPolicy {
                 retryQueuedMessagesForPeer(details.second, endpointId)
                 listener.onConnected(endpointId, details.first, details.second)
                 announceHyperStreamCapability(endpointId)
+                announceHyperTransferProfile(endpointId)
                 resumeHyperStreamsForPeer(details.second, endpointId)
                 // Restore any paused incoming Nearby FILE payloads only after the
                 // authenticated stable peer identity has been re-established.
@@ -1757,6 +1760,16 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun handleHyperTransferControl(endpointId: String, controlBytes: ByteArray) {
+        if (HyperTransferPeerProfileCodec.isEnvelope(controlBytes)) {
+            if (!authenticatedEndpoints.contains(endpointId)) return
+            val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+            if (NeaRerIdentity.normalize(peerId) == null) return
+            val profile = runCatching { HyperTransferPeerProfileCodec.decode(controlBytes) }.getOrNull() ?: return
+            remoteHyperTransferProfiles[peerId] = profile
+            if (profile.streamCapable) streamCapablePeers.add(peerId) else streamCapablePeers.remove(peerId)
+            if (profile.streamCapable) resumeHyperStreamsForPeer(peerId, endpointId)
+            return
+        }
         if (TransferResumeStreamMetadataCodec.isEnvelope(controlBytes)) {
             handleHyperStreamMetadata(endpointId, controlBytes)
             return
@@ -1972,8 +1985,9 @@ internal object IncomingFilePayloadPolicy {
                 streamCapable = true,
                 measuredBytesPerSecond = 0L
             )
+            val remoteProfile = remoteHyperTransferProfiles[ready.authenticatedPeerId]
             HyperTransferModePolicy.receiveBufferBytes(
-                HyperTransferModePolicy.negotiate(localProfile, remote = null)
+                HyperTransferModePolicy.negotiate(localProfile, remote = remoteProfile)
             )
         }.getOrDefault(HyperTransferModePolicy.receiveBufferBytes(HyperTransferModePolicy.Mode.FAST))
         streamPayloadBridge.receive(
@@ -2844,7 +2858,23 @@ internal object IncomingFilePayloadPolicy {
         client.sendPayload(endpointId, Payload.fromBytes(message.toString().toByteArray(Charsets.UTF_8)))
     }
 
+    /** Resource facts are sent only after the encrypted session is established. */
+    private fun announceHyperTransferProfile(endpointId: String) {
+        if (!authenticatedEndpoints.contains(endpointId)) return
+        val profile = runCatching {
+            HyperTransferDeviceProfileProvider.capture(
+                appContext,
+                streamCapable = true,
+                measuredBytesPerSecond = 0L
+            )
+        }.getOrNull() ?: return
+        runCatching {
+            sendHyperTransferControl(endpointId, HyperTransferPeerProfileCodec.encode(profile))
+        }
+    }
+
     fun sendFile(endpointId: String, uri: Uri, displayName: String): Long? {
+        announceHyperTransferProfile(endpointId)
         val knownPeer = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (streamCapablePeers.contains(knownPeer)) {
             val streamId = sendHyperTransferStream(endpointId, uri, displayName)
@@ -3074,6 +3104,7 @@ internal object IncomingFilePayloadPolicy {
         synchronized(activeEndpoints) { activeEndpoints.clear() }
         authenticatedEndpoints.clear()
         streamCapablePeers.clear()
+        remoteHyperTransferProfiles.clear()
         cancelledOutgoingPreparations.addAll(preparingHyperStreams)
         outgoingHyperStreams.values.forEach { state ->
             state.timeout?.let(deliveryHandler::removeCallbacks)
