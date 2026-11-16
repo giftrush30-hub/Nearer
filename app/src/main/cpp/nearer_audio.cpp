@@ -41,6 +41,20 @@ public:
         return available;
     }
 
+    uint32_t available() const noexcept {
+        const uint32_t read = read_.load(std::memory_order_relaxed);
+        const uint32_t write = write_.load(std::memory_order_acquire);
+        return write - read;
+    }
+
+    uint32_t discard(uint32_t count) noexcept {
+        const uint32_t read = read_.load(std::memory_order_relaxed);
+        const uint32_t write = write_.load(std::memory_order_acquire);
+        const uint32_t discarded = std::min<uint32_t>(count, write - read);
+        read_.store(read + discarded, std::memory_order_release);
+        return discarded;
+    }
+
     void reset() noexcept {
         read_.store(0, std::memory_order_relaxed);
         write_.store(0, std::memory_order_relaxed);
@@ -62,6 +76,7 @@ public:
         disconnected_.store(false, std::memory_order_relaxed);
         outputUnderruns_.store(0, std::memory_order_relaxed);
         droppedCaptureFrames_.store(0, std::memory_order_relaxed);
+        droppedPlaybackFrames_.store(0, std::memory_order_relaxed);
 
         auto self = shared_from_this();
         const auto dataCallback =
@@ -131,6 +146,8 @@ public:
 
         const int32_t outputBurst = std::max(1, output_->getFramesPerBurst());
         const int32_t inputBurst = std::max(1, input_->getFramesPerBurst());
+        maxPlaybackQueueFrames_ = static_cast<uint32_t>(
+            std::min<uint64_t>(kRingCapacity / 2, static_cast<uint64_t>(outputBurst) * 4));
         output_->setBufferSizeInFrames(outputBurst * 2);
         input_->setBufferSizeInFrames(inputBurst * 2);
 
@@ -171,6 +188,11 @@ public:
                     std::memory_order_relaxed);
             }
         } else {
+            const uint32_t queued = playbackRing_.available();
+            if (queued > maxPlaybackQueueFrames_) {
+                const uint32_t discarded = playbackRing_.discard(queued - maxPlaybackQueueFrames_);
+                droppedPlaybackFrames_.fetch_add(discarded, std::memory_order_relaxed);
+            }
             const uint32_t copied = playbackRing_.pop(samples, frameCount);
             if (copied < frameCount) {
                 std::fill(samples + copied, samples + frameCount, 0.0f);
@@ -196,19 +218,20 @@ public:
             const auto xrunResult = output_->getXRunCount();
             if (xrunResult == oboe::Result::OK) xrunCount = xrunResult.value();
         }
-        jlong values[9] = {
+        jlong values[10] = {
             output_ ? output_->getSampleRate() : 0,
             output_ ? output_->getFramesPerBurst() : 0,
             output_ ? output_->getBufferSizeInFrames() : 0,
             xrunCount,
             static_cast<jlong>(outputUnderruns_.load(std::memory_order_relaxed)),
             static_cast<jlong>(droppedCaptureFrames_.load(std::memory_order_relaxed)),
+            static_cast<jlong>(droppedPlaybackFrames_.load(std::memory_order_relaxed)),
             disconnected_.load(std::memory_order_acquire) ? 1 : 0,
             input_ ? input_->getDeviceId() : -1,
             output_ ? output_->getDeviceId() : -1
         };
-        jlongArray result = env->NewLongArray(9);
-        if (result != nullptr) env->SetLongArrayRegion(result, 0, 9, values);
+        jlongArray result = env->NewLongArray(10);
+        if (result != nullptr) env->SetLongArrayRegion(result, 0, 10, values);
         return result;
     }
 
@@ -236,10 +259,12 @@ private:
     std::shared_ptr<oboe::AudioStream> output_;
     FloatRing playbackRing_;
     FloatRing analysisRing_;
+    uint32_t maxPlaybackQueueFrames_ = 768;
     std::atomic<bool> running_{false};
     std::atomic<bool> disconnected_{false};
     std::atomic<uint32_t> outputUnderruns_{0};
     std::atomic<uint32_t> droppedCaptureFrames_{0};
+    std::atomic<uint32_t> droppedPlaybackFrames_{0};
 };
 
 std::mutex gEngineMutex;
@@ -294,9 +319,9 @@ Java_com_nearer_app_StudioOboeEngine_nativeGetStats(JNIEnv* env, jobject) {
         engine = gEngine;
     }
     if (engine) return engine->stats(env);
-    jlong empty[9] = {0, 0, 0, -1, 0, 0, 0, -1, -1};
-    jlongArray result = env->NewLongArray(9);
-    if (result != nullptr) env->SetLongArrayRegion(result, 0, 9, empty);
+    jlong empty[10] = {0, 0, 0, -1, 0, 0, 0, 0, -1, -1};
+    jlongArray result = env->NewLongArray(10);
+    if (result != nullptr) env->SetLongArrayRegion(result, 0, 10, empty);
     return result;
 }
 
