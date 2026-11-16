@@ -1,4 +1,5 @@
 name: Messaging JVM tests (no APK)
+# Deliberately runs only JVM tests; never assembles or uploads an Android package.
 
 on:
   push:
