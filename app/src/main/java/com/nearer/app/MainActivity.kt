@@ -1615,7 +1615,7 @@ class MainActivity : ComponentActivity() {
                 val canonical = runCatching { directory.canonicalFile }.getOrNull() ?: return@forEach
                 if (canonical.parentFile == canonicalFolder && canonical.isDirectory) {
                     val topLevelEntries = canonical.listFiles().orEmpty()
-                    val displayName = topLevelEntries.singleOrNull()?.name ?: "Restored folder"
+                    val displayName = topLevelEntries.singleOrNull()?.takeIf { it.isDirectory }?.name ?: "Restored folder"
                     receivedFiles.add(0, ReceivedFile(displayName, canonical, isFolder = true))
                 }
             }
