@@ -80,3 +80,24 @@ Use these exact status labels in project documentation:
 4. **Automated checks passed** — tests/build passed on the exact commit.
 5. **Device verified** — tested on named physical device(s), Android version(s), and scenario(s).
 6. **Release ready** — required product, security, compatibility, licensing and release gates passed.
+
+## Nearby background-service integration gate
+
+The current `main` branch has begun introducing `NearbyIncomingMessageInbox` and `NearbyTransportService`. These are promising boundaries, but the presence of the classes alone is not proof that background messaging is integrated or usable. At the audit snapshot, the manifest and `MainActivity` did not yet declare/bind/start `NearbyTransportService`; treat the work as an integration-in-progress until the wiring lands.
+
+Before calling this complete, verify all of the following on the final integrated branch:
+
+- [ ] Declare the service in the manifest with the correct foreground-service type and `exported=false`.
+- [ ] Match every foreground-service type to its required manifest permission and Android-version rules.
+- [ ] Start only from a user-authorized, user-visible flow; persist the user's choice and provide a clear stop/disable control.
+- [ ] Bind/unbind across Activity recreation without replacing or losing the service-owned transport listener.
+- [ ] Verify process death/recreation, sticky restart, and explicit stop behaviour; do not restart indefinitely after the user disables nearby.
+- [ ] Confirm Android 13+ notification permission denial does not create a false "service is visible" promise, and explain the persistent system foreground-service notification.
+- [ ] Verify Android 14+ connected-device foreground-service prerequisites and permission/type declarations.
+- [ ] Drain the encrypted inbox after Activity rebind; remove an entry only after the chat/community repository confirms durable commit.
+- [ ] Preserve the original transport acknowledgement callback for live events and use the persisted-event acknowledgement path after process recreation.
+- [ ] Test duplicate message IDs, inbox-full behaviour, unreadable ciphertext, failed persistence, failed UI commit, detach during delivery, and process death at each acknowledgement boundary.
+- [ ] Verify files arriving with no Activity attached are safely catalogued on rebind and do not silently disappear.
+- [ ] Run JVM tests, debug APK build, and physical-device lifecycle tests across at least two Android versions.
+
+**Important:** A successful JVM suite and APK build do not establish background execution reliability, OEM battery-policy compatibility, or radio reconnection behaviour. Those require real-device testing.
