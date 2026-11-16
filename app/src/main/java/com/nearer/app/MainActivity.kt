@@ -5010,11 +5010,10 @@ internal data class NearbyTransferRecord(
     val timestamp: Long,
     val status: String
 ) {
-    val timeLabel: String get() = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+    val timeLabel: String get() = formatChatTime(timestamp)
 }
 
-private fun formatChatTime(timestamp: Long): String =
-    java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+
 
 
 
