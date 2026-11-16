@@ -270,7 +270,8 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
             } else {
                 NeaRerWordReaderScreen(
                     state=BibleReaderScreenState(selectedTranslation!!.name,selectedBook!!.name,chapter,verses,
-                        hasPreviousChapter=chapter>1,hasNextChapter=chapter<selectedBook!!.chapterCount),
+                        hasPreviousChapter=chapter>1,hasNextChapter=chapter<selectedBook!!.chapterCount,
+                        isRightToLeft=selectedTranslation!!.languageTag.substringBefore("-") in setOf("ar","he","fa","ur")),
                     onPreviousChapter={
                         chapter=(chapter-1).coerceAtLeast(1)
                         verses=database.readChapter(selectedTranslation!!.id,selectedBook!!.id,chapter)
