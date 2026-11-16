@@ -153,13 +153,14 @@ public:
         input_->setBufferSizeInFrames(inputBurst * 2);
 
         running_.store(true, std::memory_order_release);
-        result = output_->requestStart();
+        // Start capture first so the playback ring has audio before the output callback begins.
+        result = input_->requestStart();
         if (result != oboe::Result::OK) {
             running_.store(false, std::memory_order_release);
             closeStreams();
             return false;
         }
-        result = input_->requestStart();
+        result = output_->requestStart();
         if (result != oboe::Result::OK) {
             running_.store(false, std::memory_order_release);
             closeStreams();
@@ -224,7 +225,7 @@ public:
             const auto xrunResult = output_->getXRunCount();
             if (xrunResult == oboe::Result::OK) xrunCount = xrunResult.value();
         }
-        jlong values[11] = {
+        jlong values[13] = {
             output_ ? output_->getSampleRate() : 0,
             output_ ? output_->getFramesPerBurst() : 0,
             output_ ? output_->getBufferSizeInFrames() : 0,
@@ -235,10 +236,12 @@ public:
             static_cast<jlong>(droppedAnalysisFrames_.load(std::memory_order_relaxed)),
             disconnected_.load(std::memory_order_acquire) ? 1 : 0,
             input_ ? input_->getDeviceId() : -1,
-            output_ ? output_->getDeviceId() : -1
+            output_ ? output_->getDeviceId() : -1,
+            output_ && output_->getPerformanceMode() == oboe::PerformanceMode::LowLatency ? 1 : 0,
+            output_ && output_->getSharingMode() == oboe::SharingMode::Exclusive ? 1 : 0
         };
-        jlongArray result = env->NewLongArray(11);
-        if (result != nullptr) env->SetLongArrayRegion(result, 0, 11, values);
+        jlongArray result = env->NewLongArray(13);
+        if (result != nullptr) env->SetLongArrayRegion(result, 0, 13, values);
         return result;
     }
 
@@ -328,9 +331,9 @@ Java_com_nearer_app_StudioOboeEngine_nativeGetStats(JNIEnv* env, jobject) {
         engine = gEngine;
     }
     if (engine) return engine->stats(env);
-    jlong empty[11] = {0, 0, 0, -1, 0, 0, 0, 0, 0, -1, -1};
-    jlongArray result = env->NewLongArray(11);
-    if (result != nullptr) env->SetLongArrayRegion(result, 0, 11, empty);
+    jlong empty[13] = {0, 0, 0, -1, 0, 0, 0, 0, 0, -1, -1, 0, 0};
+    jlongArray result = env->NewLongArray(13);
+    if (result != nullptr) env->SetLongArrayRegion(result, 0, 13, empty);
     return result;
 }
 
