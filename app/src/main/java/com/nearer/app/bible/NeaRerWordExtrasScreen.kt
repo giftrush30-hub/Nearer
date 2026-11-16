@@ -101,11 +101,25 @@ fun NeaRerWordExtrasScreen(onBack: () -> Unit, onOpenReading: (String) -> Unit) 
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+                if (!playing && audioFile?.exists() == true) {
+                    prefs.edit().putLong("audio_position_ms", player.currentPosition).apply()
+                }
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    isPlaying = false
+                    prefs.edit().putLong("audio_position_ms", 0L).apply()
+                }
+            }
         }
         player.addListener(listener)
         onDispose {
             player.removeListener(listener)
+            if (audioFile?.exists() == true) {
+                prefs.edit().putLong("audio_position_ms", player.currentPosition).apply()
+            }
             player.release()
         }
     }
@@ -151,7 +165,7 @@ fun NeaRerWordExtrasScreen(onBack: () -> Unit, onOpenReading: (String) -> Unit) 
                     player.stop()
                     audioFile?.takeIf { it != file }?.delete()
                     audioFile = file
-                    prefs.edit().putString("audio_file", file.name).apply()
+                    prefs.edit().putString("audio_file", file.name).putLong("audio_position_ms", 0L).apply()
                     audioLabel = file.name
                     audioNotice = "Audio imported into private app storage. It is ready for offline playback."
                     player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
@@ -226,13 +240,23 @@ fun NeaRerWordExtrasScreen(onBack: () -> Unit, onOpenReading: (String) -> Unit) 
                             else {
                                 if (player.currentMediaItem == null) {
                                     player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+                                    player.prepare()
+                                    player.seekTo(prefs.getLong("audio_position_ms", 0L))
+                                } else if (player.playbackState == Player.STATE_IDLE) {
+                                    player.prepare()
+                                    player.seekTo(prefs.getLong("audio_position_ms", 0L))
+                                } else if (player.playbackState == Player.STATE_ENDED) {
+                                    player.seekTo(0L)
                                 }
-                                if (player.playbackState == Player.STATE_IDLE) player.prepare()
                                 player.play()
                             }
                         }
                     }) { Text(if (isPlaying) "Pause" else "Play") }
                     OutlinedButton(enabled = audioFile?.exists() == true, onClick = {
+                        player.pause()
+                        prefs.edit().putLong("audio_position_ms", player.currentPosition).apply()
+                        player.seekTo(0L)
+                        prefs.edit().putLong("audio_position_ms", 0L).apply()
                         player.stop()
                         isPlaying = false
                     }) { Text("Stop") }
