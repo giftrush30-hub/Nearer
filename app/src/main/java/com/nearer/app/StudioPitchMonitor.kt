@@ -223,7 +223,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         val pitchFrames = StudioPcmFrameAccumulator(frameSize)
         if (StudioAudioEnginePolicy.useOboe(android.os.Build.VERSION.SDK_INT, preferredInputId)) {
             var nativeStarted = withContext(Dispatchers.IO) {
-                StudioOboeEngine.start(preferredInputId, preferUnprocessedInput)
+                StudioOboeEngine.start(preferredInputId, preferUnprocessedInput && android.os.Build.VERSION.SDK_INT >= 28)
             }
             var reconnectAttempts = 0
             while (nativeStarted && isActive) {
@@ -446,7 +446,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
             Text("PITCH MONITOR", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         }
         Text("Vocal pitch & key guide", color = White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
-        Text("${if (preferredInputId == null) "Phone default" else "Selected USB"} input · ${if (preferUnprocessedInput) "Unprocessed capture" else "Standard microphone path"} · No recording is saved", color = Muted, fontSize = 11.sp)
+        Text("${if (preferredInputId == null) "Phone default" else "Selected USB"} input · ${if (preferUnprocessedInput && (android.os.Build.VERSION.SDK_INT < 27 || android.os.Build.VERSION.SDK_INT >= 28)) "Unprocessed capture" else "Standard microphone path"} · No recording is saved", color = Muted, fontSize = 11.sp)
         Button(
             onClick = { monitorEnabled = !monitorEnabled },
             modifier = Modifier.fillMaxWidth(),
