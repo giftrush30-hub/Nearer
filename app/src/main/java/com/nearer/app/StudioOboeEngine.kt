@@ -29,7 +29,7 @@ internal object StudioOboeEngine {
 }
 
 internal object StudioAudioEnginePolicy {
-    /** AAudio begins at API 27; USB device-id routing is only reliable from API 28. */
+    /** Oboe uses AAudio from API 27; AAudio device-ID routing is available there. */
     fun useOboe(apiLevel: Int, preferredInputId: Int?): Boolean =
-        apiLevel >= 27 && (preferredInputId == null || apiLevel >= 28)
+        apiLevel >= 27
 }
