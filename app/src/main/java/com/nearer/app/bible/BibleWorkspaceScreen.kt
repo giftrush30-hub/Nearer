@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -108,12 +109,16 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
 
     if(selectedWord!=null) {
         val selected=selectedWord!!
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest={selectedWord=null},
-            title={Text("Word study: "+selected.second)},
-            text={Text("Original-language alignment is not yet installed for this passage. NeaRer will not guess a Greek, Hebrew or Aramaic equivalent. Import an attributed lexical/alignment dataset when available.")},
-            confirmButton={TextButton(onClick={selectedWord=null}){Text("Close")}}
-        )
+        val entry=BibleWordStudyEngine(database).findForVerseWord(selected.first,selected.second)
+        Dialog(onDismissRequest={selectedWord=null}) {
+            NeaRerWordStudyDetail(
+                surfaceWord=selected.second,entry=entry,passageReference=selected.first.reference,
+                onSearchOriginalLanguage={language,query->
+                    notice="Search " + language.displayName + " for " + query + " in the installed lexical library."
+                },
+                onClose={selectedWord=null}
+            )
+        }
     }
 
     Column(Modifier.fillMaxSize().background(Color(0xFF101A2B)).padding(14.dp),
