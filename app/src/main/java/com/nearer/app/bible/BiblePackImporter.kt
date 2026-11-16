@@ -109,7 +109,7 @@ class BiblePackImporter(
     }
 
     private fun extractSafely(zipFile:File):Map<String,File> {
-        val allowed=setOf("manifest.json","scripture.ndjson")
+        val allowed=setOf("manifest.json","books.ndjson","scripture.ndjson")
         val outputs=linkedMapOf<String,File>()
         var total=0L
         try {
