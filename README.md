@@ -23,7 +23,7 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - The receiver syncs durable checkpoints, verifies the completed whole-file SHA-256, and publishes without overwriting an existing destination. A recipient receipt tells the sender whether the file was actually verified and saved.
 - Receive finalization is bounded to two workers; duplicate concurrent receives for the same transfer/item are rejected, while unrelated transfers can proceed independently.
 - Transfer progress reports application-level throughput, not Wi-Fi link/PHY speed. No fixed application-level file-size cap is imposed; actual capacity depends on storage, providers, memory, hardware and connection stability.
-- The adaptive LITE / FAST / TURBO policy in draft PR #218 now has an Android resource-profile provider (available memory/storage, low-memory/low-RAM flags and thermal status) plus symmetric negotiation and bounded buffer policy. It remains a foundation: live transfer-mode negotiation, radio switching and performance claims are not enabled.
+- The adaptive LITE / FAST / TURBO policy has an Android resource-profile provider (available memory/storage, low-memory/low-RAM flags and thermal status) plus symmetric negotiation. Its bounded receive-buffer policy is now wired into the actual Nearby STREAM receive path: local thermal/memory pressure can select LITE, while an unknown remote profile safely caps the session at FAST. TURBO is deliberately unavailable until both peers exchange authenticated resource profiles; no radio switching or performance gain is claimed.
 
 ### Community and game features
 - Local group creation and joining with a six-digit code.
