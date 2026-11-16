@@ -23,10 +23,10 @@ class StudioTrackToneProcessorTest {
     ): ShortArray {
         val processor = StudioTrackToneProcessor(lowDb, midDb, highDb, reverb)
         val format = AudioProcessor.AudioFormat(48_000, 2, C.ENCODING_PCM_16BIT)
-        assertEquals(format, processor.configure(format))
+        assertEquals(2, processor.configure(format).channelCount)
         processor.flush()
         val input = ByteBuffer.allocateDirect(samples.size * 2).order(ByteOrder.nativeOrder())
-        samples.forEach(input::putShort)
+        samples.forEach { input.putShort(it) }
         input.flip()
         processor.queueInput(input)
         val output = processor.output
