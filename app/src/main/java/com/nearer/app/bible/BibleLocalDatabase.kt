@@ -178,7 +178,7 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
             FROM verse_search s JOIN books b ON b.id=s.book_id AND b.translation_id=s.translation_id
             WHERE verse_search MATCH ? AND s.translation_id=?
             ORDER BY s.book_id,CAST(s.chapter AS INTEGER),CAST(s.verse AS INTEGER) LIMIT ?""",
-            arrayOf(""$q"",translationId,limit.coerceIn(1,500).toString())).use { c ->
+            arrayOf(q,translationId,limit.coerceIn(1,500).toString())).use { c ->
             while(c.moveToNext()) out += c.toVerse()
         }
         return out
