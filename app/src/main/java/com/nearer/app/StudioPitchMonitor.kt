@@ -31,6 +31,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -147,6 +150,21 @@ internal object StudioPitchEngine {
 @Composable
 internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int? = null, preferUnprocessedInput: Boolean = false) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var appInForeground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_START -> appInForeground = true
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> appInForeground = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var reading by remember { mutableStateOf<StudioPitchReading?>(null) }
     var status by remember { mutableStateOf("Listening for a clear single vocal note…") }
     var diagnostics by remember { mutableStateOf("Audio diagnostics will appear when monitoring starts.") }
@@ -182,7 +200,14 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
     }
     val keys = listOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B")
 
-    LaunchedEffect(monitorEnabled, preferredInputId, preferUnprocessedInput, hasHeadphoneOutput) {
+    LaunchedEffect(monitorEnabled, preferredInputId, preferUnprocessedInput, hasHeadphoneOutput, appInForeground) {
+        if (!appInForeground) {
+            monitorEnabled = false
+            reading = null
+            status = "Monitoring stopped because NeaRer left the foreground. Turn it on again when you are ready."
+            diagnostics = "Monitoring paused for privacy while the app is in the background."
+            return@LaunchedEffect
+        }
         if (!monitorEnabled) {
             reading = null
             status = "Microphone monitoring is off. Turn it on when you are ready."
@@ -263,6 +288,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
             }
             if (isActive && nativeStarted) return@LaunchedEffect
             if (!isActive) return@LaunchedEffect
+            pitchFrames.reset()
             status = "Native audio route unavailable. Switching to Android compatibility audio…"
         }
         val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
