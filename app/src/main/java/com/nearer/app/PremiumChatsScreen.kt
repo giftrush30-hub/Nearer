@@ -73,6 +73,7 @@ internal fun PremiumChatsScreen(
     onOpenFile: (ReceivedFile) -> Unit,
     onExtractFolder: (ReceivedFile) -> Unit,
     transferHistory: List<NearbyTransferRecord>,
+    benchmarkSummary: TransferBenchmarkSummary?,
     outgoingTransferId: String?,
     outgoingProgress: Float,
     incomingTransferName: String?,
@@ -634,6 +635,31 @@ internal fun PremiumChatsScreen(
                                     Text("Restore as folder", color = NeaRerPalette.Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
+                        }
+                    }
+
+                    if (chatReady && directConversation && benchmarkSummary != null) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFF12283A))
+                                .border(1.dp, Gold.copy(alpha = 0.24f), RoundedCornerShape(14.dp))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text("NEARER MEASURED PERFORMANCE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            Text(
+                                String.format(java.util.Locale.US, "%.2f MiB/s median end-to-end", benchmarkSummary.medianMibPerSecond),
+                                color = White, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "${benchmarkSummary.medianFirstByteMillis} ms to first byte · ${benchmarkSummary.successfulRuns} verified · ${benchmarkSummary.failedRuns} failed",
+                                color = Muted, fontSize = 10.sp
+                            )
+                            Text(
+                                "Measured from preparation through recipient verification; not a Wi-Fi link-rate claim.",
+                                color = Muted, fontSize = 9.sp
+                            )
                         }
                     }
 
