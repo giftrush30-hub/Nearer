@@ -1,0 +1,258 @@
+package com.nearer.app
+
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import kotlin.math.abs
+import kotlin.math.ln
+import kotlin.math.log2
+import kotlin.math.sqrt
+
+internal data class StudioPitchReading(
+    val frequencyHz: Float,
+    val midiNote: Float,
+    val nearestMidiNote: Int,
+    val cents: Int,
+    val confidence: Float
+)
+
+internal data class StudioScaleTarget(
+    val midiNote: Int,
+    val noteName: String,
+    val correctionCents: Int
+)
+
+internal object StudioPitchEngine {
+    private val noteNames = arrayOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B")
+    private val major = intArrayOf(0, 2, 4, 5, 7, 9, 11)
+    private val minor = intArrayOf(0, 2, 3, 5, 7, 8, 10)
+
+    /** YIN difference/CMND pitch estimate. Input is mono floating-point PCM in [-1, 1]. */
+    fun detect(samples: FloatArray, sampleRate: Int, minHz: Float = 70f, maxHz: Float = 1_000f): StudioPitchReading? {
+        if (sampleRate <= 0 || samples.size < 512 || minHz <= 0f || maxHz <= minHz) return null
+        var energy = 0.0
+        for (sample in samples) energy += sample * sample
+        val rms = sqrt(energy / samples.size).toFloat()
+        if (rms < 0.012f) return null
+
+        val minTau = (sampleRate / maxHz).toInt().coerceAtLeast(2)
+        val maxTau = (sampleRate / minHz).toInt().coerceAtMost(samples.size / 2)
+        if (maxTau <= minTau + 2) return null
+        val difference = FloatArray(maxTau + 1)
+        for (tau in 1..maxTau) {
+            var sum = 0.0
+            val limit = samples.size - maxTau
+            for (i in 0 until limit) {
+                val delta = samples[i] - samples[i + tau]
+                sum += delta * delta
+            }
+            difference[tau] = sum.toFloat()
+        }
+
+        val normalized = FloatArray(maxTau + 1)
+        normalized[0] = 1f
+        var running = 0f
+        for (tau in 1..maxTau) {
+            running += difference[tau]
+            normalized[tau] = if (running > 0f) difference[tau] * tau / running else 1f
+        }
+
+        val threshold = 0.16f
+        var selectedTau = -1
+        var tau = minTau
+        while (tau < maxTau) {
+            if (normalized[tau] < threshold) {
+                while (tau + 1 < maxTau && normalized[tau + 1] < normalized[tau]) tau++
+                selectedTau = tau
+                break
+            }
+            tau++
+        }
+        if (selectedTau < 0) {
+            var best = minTau
+            for (candidate in minTau + 1..maxTau) if (normalized[candidate] < normalized[best]) best = candidate
+            if (normalized[best] > 0.28f) return null
+            selectedTau = best
+        }
+
+        val left = normalized[(selectedTau - 1).coerceAtLeast(1)]
+        val centre = normalized[selectedTau]
+        val right = normalized[(selectedTau + 1).coerceAtMost(maxTau)]
+        val denominator = left - 2f * centre + right
+        val adjustment = if (abs(denominator) > 1e-7f) 0.5f * (left - right) / denominator else 0f
+        val refinedTau = selectedTau + adjustment.coerceIn(-0.5f, 0.5f)
+        val frequency = sampleRate / refinedTau
+        if (frequency !in minHz..maxHz) return null
+        val midi = (69.0 + 12.0 * (ln(frequency / 440.0) / ln(2.0))).toFloat()
+        val nearest = midi.toInt().let { if (midi - it >= 0.5f) it + 1 else it }
+        return StudioPitchReading(
+            frequencyHz = frequency,
+            midiNote = midi,
+            nearestMidiNote = nearest,
+            cents = ((midi - nearest) * 100f).toInt(),
+            confidence = (1f - centre).coerceIn(0f, 1f)
+        )
+    }
+
+    fun noteName(midiNote: Int): String {
+        val octave = Math.floorDiv(midiNote, 12) - 1
+        return "${noteNames[Math.floorMod(midiNote, 12)]}$octave"
+    }
+
+    /** Finds the closest note in the selected key and scale, including adjacent octaves. */
+    fun scaleTarget(reading: StudioPitchReading, rootSemitone: Int, isMinor: Boolean): StudioScaleTarget {
+        val intervals = if (isMinor) minor else major
+        val candidates = (-2..2).flatMap { octave ->
+            intervals.map { interval -> 60 + rootSemitone.coerceIn(0, 11) + octave * 12 + interval }
+        }
+        val target = candidates.minByOrNull { abs(it - reading.midiNote) } ?: reading.nearestMidiNote
+        return StudioScaleTarget(target, noteName(target), ((target - reading.midiNote) * 100f).toInt())
+    }
+}
+ 
+@Composable
+internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    var reading by remember { mutableStateOf<StudioPitchReading?>(null) }
+    var status by remember { mutableStateOf("Listening for a clear single vocal note…") }
+    var keyRoot by remember { mutableStateOf(0) }
+    var minorScale by remember { mutableStateOf(false) }
+    val keys = listOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B")
+
+    LaunchedEffect(Unit) {
+        val sampleRate = 24_000
+        val frameSize = 2_048
+        val minBuffer = AudioRecord.getMinBufferSize(
+            sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
+        )
+        if (minBuffer <= 0) {
+            status = "This device could not open a compatible microphone stream."
+            return@LaunchedEffect
+        }
+        val recorder = withContext(Dispatchers.IO) {
+            AudioRecord(
+                MediaRecorder.AudioSource.MIC,
+                sampleRate,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                maxOf(minBuffer, frameSize * 2 * 3)
+            ).also { if (it.state == AudioRecord.STATE_INITIALIZED) it.startRecording() }
+        }
+        if (recorder.state != AudioRecord.STATE_INITIALIZED || recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+            withContext(Dispatchers.IO) { recorder.release() }
+            status = "Microphone unavailable. Close other recording apps and try again."
+            return@LaunchedEffect
+        }
+
+        val pcm = ShortArray(frameSize)
+        val mono = FloatArray(frameSize)
+        // Downsample the 48 kHz device capture to 24 kHz for efficient vocal pitch analysis.
+        val downsampled = FloatArray(frameSize / 2)
+        try {
+            while (isActive) {
+                val count = withContext(Dispatchers.IO) {
+                    recorder.read(pcm, 0, pcm.size, AudioRecord.READ_BLOCKING)
+                }
+                if (count <= 0) {
+                    status = "Microphone read interrupted."
+                    continue
+                }
+                for (i in 0 until count) mono[i] = pcm[i] / 32768f
+                if (count == frameSize) {
+                    for (i in downsampled.indices) downsampled[i] = (mono[i * 2] + mono[i * 2 + 1]) * 0.5f
+                    reading = StudioPitchEngine.detect(downsampled, sampleRate, 70f, 1_000f)
+                    status = if (reading == null) "No stable pitch yet — sing or hold one clear note." else "Live pitch detected"
+                }
+            }
+        } finally {
+            withContext(Dispatchers.IO) {
+                runCatching { recorder.stop() }
+                recorder.release()
+            }
+        }
+    }
+
+    val current = reading
+    val target = current?.let { StudioPitchEngine.scaleTarget(it, keyRoot, minorScale) }
+    Column(
+        Modifier.fillMaxSize().background(Midnight).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(15.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("‹  STUDIO", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable(onClick = onBack).padding(vertical = 8.dp))
+            Text("PITCH MONITOR", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        }
+        Text("Vocal pitch & key guide", color = White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+        Text("Live microphone analysis · Offline · No recording is saved", color = Muted, fontSize = 11.sp)
+        Surface(color = Panel, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (current == null) "WAITING FOR VOICE" else "LIVE NOTE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                Text(current?.let { StudioPitchEngine.noteName(it.nearestMidiNote) } ?: "—", color = White, fontSize = 54.sp, fontWeight = FontWeight.ExtraBold)
+                Text(current?.let { "${"%.1f".format(it.frequencyHz)} Hz   ·   ${it.cents} cents" } ?: status,
+                    color = Gold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(current?.let { "Pitch confidence ${(it.confidence * 100).toInt()}%" } ?: "Sing one note at a time for the clearest reading",
+                    color = Muted, fontSize = 10.sp)
+            }
+        }
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("SET THE SONG KEY", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(false, true).forEach { minor ->
+                        Button(onClick = { minorScale = minor }, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = if (minorScale == minor) Mint else Midnight,
+                                contentColor = if (minorScale == minor) Midnight else White)) {
+                            Text(if (minor) "MINOR" else "MAJOR", fontSize = 10.sp)
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    keys.forEachIndexed { index, key ->
+                        Button(onClick = { keyRoot = index }, modifier = Modifier.weight(1f),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp, vertical = 8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = if (keyRoot == index) Mint else Midnight,
+                                contentColor = if (keyRoot == index) Midnight else White)) {
+                            Text(key, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                Text("Nearest note in ${keys[keyRoot]} ${if (minorScale) "minor" else "major"}: ${target?.noteName ?: "—"}",
+                    color = Mint, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("Target offset: ${target?.correctionCents ?: 0} cents · This is a tuning guide, not pitch-shifted audio yet.",
+                    color = Muted, fontSize = 10.sp)
+            }
+        }
+        Text(status, color = Muted, fontSize = 11.sp)
+        Button(onClick = onBack, modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) { Text("BACK TO RECORDER") }
+    }
+}
