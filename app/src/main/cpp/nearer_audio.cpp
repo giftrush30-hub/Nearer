@@ -73,6 +73,7 @@ public:
             builder.setDirection(oboe::Direction::Output)
                 ->setChannelCount(1)
                 ->setFormat(oboe::AudioFormat::Float)
+                ->setFormatConversionAllowed(true)
                 ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
                 ->setSharingMode(sharing)
                 ->setDataCallback(dataCallback)
@@ -94,6 +95,7 @@ public:
             builder.setDirection(oboe::Direction::Input)
                 ->setChannelCount(1)
                 ->setFormat(oboe::AudioFormat::Float)
+                ->setFormatConversionAllowed(true)
                 ->setSampleRate(output_->getSampleRate())
                 ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
                 ->setSharingMode(sharing)
@@ -118,17 +120,19 @@ public:
         output_->setBufferSizeInFrames(outputBurst * 2);
         input_->setBufferSizeInFrames(inputBurst * 2);
 
+        running_.store(true, std::memory_order_release);
         result = output_->requestStart();
         if (result != oboe::Result::OK) {
+            running_.store(false, std::memory_order_release);
             closeStreams();
             return false;
         }
         result = input_->requestStart();
         if (result != oboe::Result::OK) {
+            running_.store(false, std::memory_order_release);
             closeStreams();
             return false;
         }
-        running_.store(true, std::memory_order_release);
         return true;
     }
 
@@ -172,6 +176,7 @@ public:
     }
 
     jlongArray stats(JNIEnv* env) const {
+        std::lock_guard<std::mutex> lock(streamMutex_);
         int32_t xrunCount = -1;
         if (output_ && !disconnected_.load(std::memory_order_acquire)) {
             const auto xrunResult = output_->getXRunCount();
@@ -197,6 +202,7 @@ public:
 
 private:
     void closeStreams() {
+        std::lock_guard<std::mutex> lock(streamMutex_);
         if (input_) {
             input_->requestStop();
             input_->close();
@@ -209,6 +215,7 @@ private:
         }
     }
 
+    mutable std::mutex streamMutex_;
     std::shared_ptr<oboe::AudioStream> input_;
     std::shared_ptr<oboe::AudioStream> output_;
     FloatRing playbackRing_;
