@@ -79,6 +79,7 @@ public:
                 ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
                 ->setUsage(oboe::Usage::Media)
                 ->setContentType(oboe::ContentType::Music)
+                ->setPackageName("com.nearer.app")
                 ->setSharingMode(sharing)
                 ->setDataCallback(dataCallback)
                 ->setErrorCallback(errorCallback);
@@ -105,6 +106,7 @@ public:
                 ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
                 ->setSharingMode(sharing)
                 ->setInputPreset(preferUnprocessedInput ? oboe::InputPreset::Unprocessed : oboe::InputPreset::VoiceRecognition)
+                ->setPackageName("com.nearer.app")
                 ->setDataCallback(dataCallback)
                 ->setErrorCallback(errorCallback);
             if (inputDeviceId >= 0) builder.setDeviceId(inputDeviceId);
