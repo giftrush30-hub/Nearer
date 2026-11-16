@@ -5,14 +5,14 @@ internal object StudioOboeEngine {
         System.loadLibrary("nearer_audio")
     }.isSuccess
 
-    external fun nativeStart(inputDeviceId: Int, preferUnprocessedInput: Boolean): Boolean
+    external fun nativeStart(inputDeviceId: Int, preferUnprocessedInput: Boolean, privacySensitiveCapture: Boolean): Boolean
     external fun nativeStop()
     external fun nativeReadAnalysis(destination: FloatArray): Int
     external fun nativeGetStats(): LongArray
     external fun nativeIsRunning(): Boolean
 
     fun start(inputDeviceId: Int?, preferUnprocessedInput: Boolean): Boolean =
-        available && runCatching { nativeStart(inputDeviceId ?: -1, preferUnprocessedInput) }.getOrDefault(false)
+        available && runCatching { nativeStart(inputDeviceId ?: -1, preferUnprocessedInput, StudioAudioEnginePolicy.usePrivacySensitiveCapture(android.os.Build.VERSION.SDK_INT)) }.getOrDefault(false)
 
     fun stop() {
         if (available) runCatching { nativeStop() }
@@ -36,4 +36,7 @@ internal object StudioAudioEnginePolicy {
     /** AAudio input-preset selection is only applied on API 28+ by this integration. */
     fun useUnprocessedInput(apiLevel: Int, requested: Boolean): Boolean =
         requested && apiLevel >= 28
+
+    /** Explicit native capture privacy is supported by AAudio from Android 11 / API 30. */
+    fun usePrivacySensitiveCapture(apiLevel: Int): Boolean = apiLevel >= 30
 }
