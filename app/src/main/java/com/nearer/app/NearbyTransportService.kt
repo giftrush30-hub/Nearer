@@ -7,7 +7,11 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.bluetooth.BluetoothManager
+import android.location.LocationManager
+import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -233,26 +237,53 @@ class NearbyTransportService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val preferences = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+        val onboardingComplete = preferences.getBoolean("onboarding_complete", false)
+        val permissionsGranted = NearbyPermissionPolicy.runtimePermissions(Build.VERSION.SDK_INT).all { permission ->
+            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+        }
+        val bluetoothEnabled = runCatching {
+            (getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter?.isEnabled == true
+        }.getOrDefault(false)
+        val wifiEnabled = runCatching {
+            (applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.isWifiEnabled == true
+        }.getOrDefault(false)
+        val locationServicesEnabled = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
+            runCatching {
+                val location = getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) location?.isLocationEnabled == true
+                else {
+                    @Suppress("DEPRECATION")
+                    location?.let { it.isProviderEnabled(LocationManager.GPS_PROVIDER) || it.isProviderEnabled(LocationManager.NETWORK_PROVIDER) } == true
+                }
+            }.getOrDefault(false)
+        } else true
+        val readyForDiscovery = NearbyServiceStartPolicy.shouldStartDiscovery(
+            onboardingComplete, permissionsGranted, SmartConnectPolicy.hasUsableRadio(bluetoothEnabled, wifiEnabled), locationServicesEnabled
+        )
+        val notificationText = if (readyForDiscovery) "Nearby discovery and message recovery can continue while you use other apps." else "Nearby discovery is paused. Open NeaRer to review permissions, Bluetooth and Wi-Fi."
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
-            .setContentTitle("NeaRer nearby is ready")
-            .setContentText("Nearby discovery and message recovery can continue while you use other apps.")
+            .setContentTitle(if (readyForDiscovery) "NeaRer nearby is ready" else "NeaRer nearby is paused")
+            .setContentText(notificationText)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
             .setContentIntent(openApp)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
-
-        if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
-
-        if (getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
-                .getBoolean("nearby_service_active", false)) {
-            runCatching { nearbyTransport.start() }
-                .onFailure { lastStatus = "Nearby background service could not start discovery: ${it.localizedMessage ?: "check permissions"}" }
+        if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        else startForeground(NOTIFICATION_ID, notification)
+        if (preferences.getBoolean("nearby_service_active", false) && readyForDiscovery) {
+            runCatching { nearbyTransport.start() }.onFailure { error ->
+                lastStatus = "Nearby background service could not start discovery: " + (error.localizedMessage ?: "check permissions")
+            }
+        } else if (!readyForDiscovery) {
+            lastStatus = when {
+                !onboardingComplete -> "Complete NeaRer setup before starting nearby discovery."
+                !permissionsGranted -> "Nearby discovery is paused until the required nearby-device permissions are granted."
+                !locationServicesEnabled -> "Nearby discovery is paused until Location is enabled on this Android version."
+                else -> "Nearby discovery is paused. Turn on Bluetooth or Wi-Fi to continue."
+            }
         }
         return START_STICKY
     }
