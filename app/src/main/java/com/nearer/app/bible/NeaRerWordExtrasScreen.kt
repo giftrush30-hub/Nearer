@@ -89,7 +89,7 @@ fun NeaRerWordExtrasScreen(onBack: () -> Unit) {
     val prefs = remember(context) { context.getSharedPreferences("nearer_word_plans", android.content.Context.MODE_PRIVATE) }
     var selectedPlan by remember { mutableStateOf<WordReadingPlan?>(null) }
     var completed by remember { mutableStateOf(prefs.getStringSet("completed_days", emptySet())?.toSet().orEmpty()) }
-    var audioFile by remember { mutableStateOf(File(context.filesDir, "nearer-word-audio/current-audio.mp3").takeIf { it.exists() }) }
+    var audioFile by remember { mutableStateOf(prefs.getString("audio_file", null)?.let { File(context.filesDir, "nearer-word-audio/" + it) }?.takeIf { it.exists() }) }
     var audioLabel by remember { mutableStateOf(audioFile?.name ?: "No audio imported") }
     var isPlaying by remember { mutableStateOf(false) }
     var audioNotice by remember { mutableStateOf("Import an audio Bible file you have permission to use. It will be copied into private app storage for offline playback.") }
@@ -123,6 +123,7 @@ fun NeaRerWordExtrasScreen(onBack: () -> Unit) {
                 result.onSuccess { file ->
                     player.stop()
                     audioFile = file
+                    prefs.edit().putString("audio_file", file.name).apply()
                     audioLabel = file.name
                     audioNotice = "Audio imported into private app storage. It is ready for offline playback."
                     player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
