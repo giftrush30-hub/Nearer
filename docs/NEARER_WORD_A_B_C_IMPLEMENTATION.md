@@ -20,7 +20,8 @@ Target: native Kotlin + Jetpack Compose; offline-first; Android API 26+; no mand
 - The reader now supports installed translation selection, book/chapter navigation, verse search, verse bookmarks and private study journal access.
 - Display required copyright notice whenever copyrighted Scripture is shown.
 - No scraping or redistribution without written permission.
-- Bible Society of Nigeria reports full Bibles in 27 Nigerian languages and additional work in progress; confirm edition availability and distribution rights directly with BSN.
+- Bible Society of Nigeria reports complete Bibles in 27 Nigerian languages, but its current Bible-download page lists a smaller set of Nigerian-language editions available through YouVersion (17 editions on one page; a newer BSN guide says 18). Treat these as discovery leads, not as permission to redistribute them inside NeaRer. Contact BSN and each rights holder for exact edition files and offline redistribution rights.
+- BSN also describes New Testament and Scripture portions in additional Nigerian languages; the catalogue must distinguish full Bible, New Testament and portions rather than marking all as complete.
 - API.Bible is an optional adapter. Its Starter plan is non-commercial; monetized NeaRer use requires the applicable commercial plan and translation-specific permissions. Never assume offline caching/redistribution is permitted.
 - Pack manifest fields: packId, version, translationId, languageTag, canonId, sourceId, licenseId, copyrightNotice, bookCount, verseCount, sha256, minimumReaderVersion, attribution, packFileName.
 
@@ -32,7 +33,7 @@ Target: native Kotlin + Jetpack Compose; offline-first; Android API 26+; no mand
 - Added an attributed lexicon/alignment dataset importer. It verifies the referenced verse and token index against the installed translation before accepting a surface-word-to-lemma mapping.
 - Word taps now query only imported alignment records; absent mappings are explicitly reported as unavailable.
 - Show grammar, contextual senses and occurrence lists only when supported by imported source data.
-- Candidate: STEPBible-Data. Repository states CC BY 4.0 and asks users to credit “STEP Bible” with a link to STEP Bible. Preserve attribution and record changes; verify individual dataset provenance before import.
+- Candidate: STEPBible-Data. Its repository states CC BY 4.0, allows reuse and adaptation with changes recorded, and asks users to credit “STEP Bible” linked to STEP Bible. It contains Hebrew OT and Greek NT morphology/lexical resources; inspect individual dataset formats and provenance before mapping to the importer.
 
 ## Local schema
 translations, books, verses, verse_search (FTS4), lexical_entries, word_occurrences, bookmarks, study_notes, installed_packs. Database v3 migrations preserve personal notes/bookmarks and add unique source-token alignment indexing. Personal notes/bookmarks must survive content-pack refresh and database migrations.
@@ -82,6 +83,9 @@ translations, books, verses, verse_search (FTS4), lexical_entries, word_occurren
 10. Physical-device storage, memory and performance test on a low-end phone.
 
 ## Research sources
+- BSN current Nigerian-language Bible downloads and YouVersion edition list: https://www.biblesociety-nigeria.org/bible-downloads/
+- BSN translation partnership and 27 full-Bible languages claim: https://www.biblesociety-nigeria.org/bible-translation-partnership/
+- BSN global scripture access and Nigerian translation context: https://www.biblesociety-nigeria.org/what-we-do/
 - BSN: https://www.biblesociety-nigeria.org/bible-downloads/
 - BSN translation partnership: https://www.biblesociety-nigeria.org/bible-translation-partnership/
 - API.Bible licensing: https://care.api.bible/article/369-understanding-api-bible-licensing
