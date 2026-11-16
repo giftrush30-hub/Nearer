@@ -180,6 +180,9 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
             if (nativeStarted) {
                 val analysisChunk = FloatArray(512)
                 val monoNative = FloatArray(frameSize)
+                val nativeRate = withContext(Dispatchers.IO) {
+                    StudioOboeEngine.diagnostics().getOrNull(0)?.toInt()?.takeIf { it > 0 } ?: 48_000
+                }
                 var nativeOffset = 0
                 var statsTick = 0
                 try {
@@ -193,7 +196,6 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             }
                             nativeOffset += count
                             if (nativeOffset >= frameSize) {
-                                val nativeRate = StudioOboeEngine.diagnostics().getOrNull(0)?.toInt()?.takeIf { it > 0 } ?: 48_000
                                 reading = StudioPitchEngine.detect(monoNative, nativeRate, 70f, 1_000f)
                                 status = if (reading == null) "No stable pitch yet — sing or hold one clear note." else "Live pitch detected · Oboe native engine"
                                 nativeOffset = 0
@@ -214,6 +216,12 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             val disconnected = stats.getOrNull(6) == 1L
                             diagnostics = "Oboe native · $rate Hz · burst $burst · output buffer $buffer frames · xrun $xruns · callback underruns $underruns · dropped capture $dropped"
                             if (disconnected) status = "Audio route disconnected. Turn monitoring off, reconnect the device, then try again."
+                        }
+                    }
+                    if (!StudioOboeEngine.isRunning()) {
+                        val finalStats = withContext(Dispatchers.IO) { StudioOboeEngine.diagnostics() }
+                        if (finalStats.getOrNull(6) == 1L) {
+                            status = "Audio route disconnected. Turn monitoring off, reconnect the device, then try again."
                         }
                     }
                 } finally {
