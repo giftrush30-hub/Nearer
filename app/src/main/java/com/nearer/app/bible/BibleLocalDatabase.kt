@@ -141,6 +141,21 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
     }
+    fun listBooks(translationId:String):List<BibleBook> {
+        val out=mutableListOf<BibleBook>()
+        readableDatabase.query("books",null,"translation_id=?",arrayOf(translationId),null,null,"canonical_number ASC").use { c ->
+            while(c.moveToNext()) out += BibleBook(
+                c.getString(c.getColumnIndexOrThrow("id")),translationId,
+                c.getInt(c.getColumnIndexOrThrow("canonical_number")),
+                c.getString(c.getColumnIndexOrThrow("name")),c.getString(c.getColumnIndexOrThrow("testament")),
+                c.getInt(c.getColumnIndexOrThrow("chapter_count")))
+        }
+        return out
+    }
+    fun installedPackCount():Int = readableDatabase.rawQuery("SELECT COUNT(*) FROM installed_packs",null).use {
+        if(it.moveToFirst()) it.getInt(0) else 0
+    }
+
     fun readChapter(translationId:String,bookId:String,chapter:Int):List<BibleVerse> {
         val out=mutableListOf<BibleVerse>()
         readableDatabase.rawQuery("""SELECT v.translation_id,v.book_id,b.name,v.chapter,v.verse,v.text
