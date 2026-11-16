@@ -16,7 +16,7 @@ The native diagnostics report the negotiated sample rate, output burst and buffe
 - The app minimum SDK is 26. Oboe supports older Android versions, but this integration deliberately uses the native path from API 27 (AAudio) and preserves Java fallback on API 26.
 - Oboe's AAudio setDeviceId routing is respected from API 28; therefore explicit USB routing stays on the Java path below API 28. On API 28+, the selected Android input-device ID is passed to Oboe.
 - Oboe 1.11.0 is consumed as a Google Maven Prefab dependency. The app enables Prefab, CMake, NDK 27.2.12479018 and packages arm64-v8a, armeabi-v7a and x86_64.
-- The engine requests Float mono streams and uses the output stream's actual negotiated sample rate for input and pitch detection. Actual stream properties are queried after opening; requested low-latency/exclusive modes are not treated as guaranteed.
+- The engine requests Float mono streams and uses the output stream's actual negotiated sample rate for input and pitch detection. When Android reports unprocessed-input support, the native stream requests Oboe's Unprocessed input preset; otherwise it requests VoiceRecognition. Actual stream properties are queried after opening; requested low-latency/exclusive modes are not treated as guaranteed.
 
 ## Lifecycle and recovery
 
