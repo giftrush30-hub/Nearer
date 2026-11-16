@@ -34,15 +34,15 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         fun onRequest(id: String, name: String, token: String)
         fun onConnected(id: String, name: String, stableId: String)
         fun onDisconnected(id: String, stableId: String, name: String)
-        fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit)
-        fun onMessageWithReply(id: String, senderName: String, messageId: String, body: String, replyToMessageId: String?, replyToPreview: String?, replyToSender: String?, acknowledge: () -> Unit) {
+        fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Boolean)
+        fun onMessageWithReply(id: String, senderName: String, messageId: String, body: String, replyToMessageId: String?, replyToPreview: String?, replyToSender: String?, acknowledge: () -> Boolean) {
             onMessage(id, senderName, messageId, body, acknowledge)
         }
         /** Message whose sender is the original end-to-end identity, not the immediate relay. */
-        fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
+        fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Boolean) {
             onMessage(originPeerId, senderName, messageId, body, acknowledge)
         }
-        fun onMeshMessageWithReply(originPeerId: String, senderName: String, messageId: String, body: String, replyToMessageId: String?, replyToPreview: String?, replyToSender: String?, acknowledge: () -> Unit) {
+        fun onMeshMessageWithReply(originPeerId: String, senderName: String, messageId: String, body: String, replyToMessageId: String?, replyToPreview: String?, replyToSender: String?, acknowledge: () -> Boolean) {
             onMeshMessage(originPeerId, senderName, messageId, body, acknowledge)
         }
         fun onMessageStatus(messageId: String, status: String)
@@ -80,7 +80,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         override fun onRequest(id: String, name: String, token: String) {}
         override fun onConnected(id: String, name: String, stableId: String) {}
         override fun onDisconnected(id: String, stableId: String, name: String) {}
-        override fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {}
+        override fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Boolean) { acknowledge() }
         override fun onMessageStatus(messageId: String, status: String) {}
         override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {}
         override fun onFileReceived(id: String, name: String, file: File) {}
@@ -2211,11 +2211,11 @@ internal object IncomingFilePayloadPolicy {
         val senderName = synchronized(names) { names[endpointId] ?: "Nearby member" }
         try {
             listener.onMessageWithReply(endpointId, senderName, messageId, body, replyId, replyPreview, replySender) {
-                if (pendingKey in pendingIncomingMessageIds) {
-                    val dedupeRecordSaved = rememberMessageId(peerId, messageId)
-                    pendingIncomingMessageIds.remove(pendingKey)
-                    if (dedupeRecordSaved) sendAcknowledgement(endpointId, messageId)
-                }
+                if (pendingKey !in pendingIncomingMessageIds) return@onMessageWithReply false
+                val dedupeRecordSaved = rememberMessageId(peerId, messageId)
+                pendingIncomingMessageIds.remove(pendingKey)
+                if (dedupeRecordSaved) sendAcknowledgement(endpointId, messageId)
+                dedupeRecordSaved
             }
         } catch (error: Exception) {
             pendingIncomingMessageIds.remove(pendingKey)
