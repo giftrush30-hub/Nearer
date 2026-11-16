@@ -71,6 +71,8 @@ class NearbyTransportService : Service() {
     private val inFlightMessageIds = ConcurrentHashMap.newKeySet<String>()
     private val acknowledgementCallbacks = ConcurrentHashMap<String, () -> Unit>()
 
+    private fun inboxKey(peerId: String, messageId: String): String = "$peerId|$messageId"
+
     private val serviceListener = object : NearbyConnectionsTransport.ListenerAdapter() {
         override fun onStatus(message: String) {
             lastStatus = message
@@ -131,7 +133,7 @@ class NearbyTransportService : Service() {
                 uiListener?.onStatus("NeaRer could not securely save an incoming message for later delivery. The sender has not been acknowledged.")
                 return
             }
-            acknowledgementCallbacks[messageId] = acknowledge
+            acknowledgementCallbacks[inboxKey(peerId, messageId)] = acknowledge
             dispatchInboxEntry(entry)
         }
 
@@ -159,7 +161,7 @@ class NearbyTransportService : Service() {
                 uiListener?.onStatus("NeaRer could not securely save an incoming nearby message. Delivery was not acknowledged.")
                 return
             }
-            acknowledgementCallbacks[messageId] = acknowledge
+            acknowledgementCallbacks[inboxKey(originPeerId, messageId)] = acknowledge
             dispatchInboxEntry(entry)
         }
 
@@ -246,18 +248,20 @@ class NearbyTransportService : Service() {
 
     private fun dispatchInboxEntry(entry: NearbyIncomingMessageInbox.Entry) {
         val listener = uiListener ?: return
-        if (!inFlightMessageIds.add(entry.messageId)) return
+        val key = inboxKey(entry.peerId, entry.messageId)
+        if (!inFlightMessageIds.add(key)) return
         val acknowledgeAfterUiCommit = {
-            val removed = inbox.remove(entry.messageId)
+            val key = inboxKey(entry.peerId, entry.messageId)
+            val removed = inbox.remove(entry.peerId, entry.messageId)
             if (removed) {
-                val originalAck = acknowledgementCallbacks.remove(entry.messageId)
+                val originalAck = acknowledgementCallbacks.remove(key)
                 if (originalAck != null) {
                     originalAck()
                 } else {
                     nearbyTransport.acknowledgePersistedIncomingMessage(entry.peerId, entry.messageId)
                 }
             }
-            inFlightMessageIds.remove(entry.messageId)
+            inFlightMessageIds.remove(key)
         }
         try {
             if (entry.mesh) {
