@@ -42,7 +42,6 @@ internal object HyperTransferModePolicy {
         profile.thermalStatus >= 2 -> Mode.FAST
         profile.availableMemoryBytes < MIN_TURBO_MEMORY_BYTES -> Mode.FAST
         profile.availableStorageBytes < MIN_TURBO_STORAGE_BYTES -> Mode.FAST
-        profile.thermalStatus > 1 -> Mode.FAST
         !profile.streamCapable -> Mode.FAST
         profile.measuredBytesPerSecond < MIN_TURBO_THROUGHPUT_BYTES_PER_SECOND -> Mode.FAST
         else -> Mode.TURBO
