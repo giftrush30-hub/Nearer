@@ -113,7 +113,7 @@ def main():
         parser.error("Attribution and licence ID are mandatory.")
     if args.canon_id != "protestant-66":
         parser.error("This builder currently validates only the Protestant 66-book canon.")
-    if not re.fullmatch(r"[A-Za-z0-9._-]{1,120}\\.zip", args.output_zip.name, re.IGNORECASE):
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,120}\.zip", args.output_zip.name, re.IGNORECASE):
         parser.error("Output pack filename must be a safe .zip filename.")
     if not re.fullmatch(r"[A-Za-z0-9._-]{2,100}", args.pack_id):
         parser.error("Pack ID contains unsupported characters.")
