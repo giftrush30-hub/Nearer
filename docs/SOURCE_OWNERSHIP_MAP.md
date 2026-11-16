@@ -104,3 +104,8 @@ The pure `isNeaRerAppBundle` archive-structure check now lives in `NeaRerAppBund
 ## Sixth extraction: shared chat time formatter
 
 The duplicate 24-hour local-time formatting logic for chat timestamps and nearby transfer-history labels now delegates to `formatChatTime` in `ChatTimeFormatter.kt`. The formatter retains the existing default locale and device-local time-zone behaviour. `ChatTimeFormatterTest.kt` fixes the locale and time zone during its assertion and restores both afterward. This is a presentation-only extraction; timestamp storage and ordering are unchanged.
+
+
+## Seventh extraction: incoming file payload peer policy
+
+The pure `IncomingFilePayloadPolicy` has been moved out of the 3,111-line `NearbyConnectionsTransport.kt` into its own file. Its existing eight-case JVM test suite now targets the standalone policy. The policy still requires a matching stable peer identity when metadata supplies one, permits legacy endpoint matching only when no stable identity is known, and rejects blank incoming endpoints. No payload callbacks, transfer metadata, or wire protocol were changed.
