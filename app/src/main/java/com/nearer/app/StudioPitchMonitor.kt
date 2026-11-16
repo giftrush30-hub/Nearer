@@ -1,7 +1,11 @@
 package com.nearer.app
 
+import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
+import android.media.AudioTrack
 import android.media.MediaRecorder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -144,9 +148,22 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
     var status by remember { mutableStateOf("Listening for a clear single vocal note…") }
     var keyRoot by remember { mutableStateOf(0) }
     var minorScale by remember { mutableStateOf(false) }
+    var monitorEnabled by remember { mutableStateOf(false) }
+    val hasHeadphoneOutput = remember(context) {
+        val manager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
+        manager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.any {
+            it.isSink && it.type in setOf(
+                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                AudioDeviceInfo.TYPE_USB_HEADSET,
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+            )
+        } == true
+    }
     val keys = listOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B")
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(monitorEnabled) {
         val frameSize = 2_048
         val supportedRate = listOf(22_050, 44_100, 48_000).firstNotNullOfOrNull { rate ->
             val size = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
@@ -175,12 +192,52 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
             return@LaunchedEffect
         }
 
+        val monitorTrack = if (monitorEnabled) {
+            runCatching {
+                val minOutputBuffer = AudioTrack.getMinBufferSize(
+                    sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT
+                )
+                check(minOutputBuffer > 0) { "No compatible audio output is available." }
+                AudioTrack.Builder()
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build()
+                    )
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setSampleRate(sampleRate)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .build()
+                    )
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .setBufferSizeInBytes(maxOf(minOutputBuffer, frameSize * 2 * 2))
+                    .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+                    .build()
+                    .also { track ->
+                        check(track.state == AudioTrack.STATE_INITIALIZED) { "Android could not initialise the monitoring output." }
+                        track.play()
+                    }
+            }.getOrElse {
+                status = "Live monitor unavailable: ${it.message ?: "audio output could not start"}"
+                null
+            }
+        } else null
+
         val pcm = ShortArray(frameSize)
         val mono = FloatArray(frameSize)
         try {
             while (isActive) {
                 val count = withContext(Dispatchers.IO) {
                     recorder.read(pcm, 0, pcm.size, AudioRecord.READ_BLOCKING)
+                }
+                if (count > 0 && monitorTrack != null) {
+                    val written = withContext(Dispatchers.IO) {
+                        monitorTrack.write(pcm, 0, count, AudioTrack.WRITE_BLOCKING)
+                    }
+                    if (written < 0) status = "Live monitor output was interrupted."
                 }
                 if (count <= 0) {
                     status = "Microphone read interrupted."
@@ -194,6 +251,9 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
             }
         } finally {
             withContext(Dispatchers.IO) {
+                runCatching { monitorTrack?.pause() }
+                runCatching { monitorTrack?.flush() }
+                runCatching { monitorTrack?.release() }
                 runCatching { recorder.stop() }
                 recorder.release()
             }
@@ -214,6 +274,20 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
         }
         Text("Vocal pitch & key guide", color = White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
         Text("Live microphone analysis · Offline · No recording is saved", color = Muted, fontSize = 11.sp)
+        Button(
+            onClick = { monitorEnabled = !monitorEnabled },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (monitorEnabled) Mint else Panel,
+                contentColor = if (monitorEnabled) Midnight else Gold
+            )
+        ) { Text(if (monitorEnabled) "LIVE VOCAL MONITOR · ON" else "TURN ON LIVE VOCAL MONITOR") }
+        Text(
+            if (monitorEnabled) "Monitoring is playing the microphone through Android's low-latency AudioTrack mode. Wired or USB headphones are strongly recommended to prevent speaker feedback."
+            else if (hasHeadphoneOutput) "Headphone output detected. Bluetooth may still introduce noticeable delay."
+            else "Connect wired or USB headphones before monitoring. Speaker playback can feed back into the microphone.",
+            color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+        )
         Surface(color = Panel, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (current == null) "WAITING FOR VOICE" else "LIVE NOTE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
