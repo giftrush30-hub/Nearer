@@ -2364,6 +2364,11 @@ internal object IncomingFilePayloadPolicy {
         return true
     }
 
+    /** Release a message whose durable inbox write failed so a sender retry is not suppressed. */
+    fun releasePendingIncomingMessage(messageId: String) {
+        if (messageId.isNotBlank()) pendingIncomingMessageIds.remove(messageId)
+    }
+
     fun setDisplayName(name: String) {
         val clean = name.trim().replace("|", " ").take(23).ifBlank { "NeaRer User" }
         if (clean == localName) return
