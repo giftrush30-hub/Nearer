@@ -228,6 +228,7 @@ internal object IncomingFilePayloadPolicy {
     private val incomingHyperResumeOffsets = ConcurrentHashMap<Long, Long>()
     private val streamCapablePeers = ConcurrentHashMap.newKeySet<String>()
     private val remoteHyperTransferProfiles = ConcurrentHashMap<String, HyperTransferModePolicy.DeviceProfile>()
+    private val peerMeasuredThroughput = ConcurrentHashMap<String, Long>()
     private val cancelledStreamPayloads = ConcurrentHashMap.newKeySet<Long>()
     private val streamController = NearbyStreamExchangeController()
     private val transferSpeedMeters = ConcurrentHashMap<Long, TransferSpeedMeter>()
@@ -693,6 +694,7 @@ internal object IncomingFilePayloadPolicy {
                 if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
                     val speed = transferSpeedMeters.computeIfAbsent(payloadId) { TransferSpeedMeter() }
                         .record(transferred, expected)
+                    recordPeerThroughput(id, speed)
                     listener.onFileTransferUpdate(id, payloadId, label, transferred, expected, incomingFlag, speed)
                     return
                 }
@@ -772,6 +774,7 @@ internal object IncomingFilePayloadPolicy {
             if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
                 val speed = transferSpeedMeters.computeIfAbsent(payloadId) { TransferSpeedMeter() }
                     .record(update.bytesTransferred, update.totalBytes)
+                recordPeerThroughput(id, speed)
                 listener.onFileTransferUpdate(id, payloadId, name, update.bytesTransferred, update.totalBytes, isIncoming, speed)
                 return
             }
@@ -1759,6 +1762,16 @@ internal object IncomingFilePayloadPolicy {
             .addOnFailureListener { onFailure(it) }
     }
 
+    private fun recordPeerThroughput(endpointId: String, snapshot: TransferSpeedSnapshot) {
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (NeaRerIdentity.normalize(peerId) == null) return
+        val measured = snapshot.recentBytesPerSecond
+            .takeIf { it.isFinite() && it > 0.0 }
+            ?.toLong()
+            ?: return
+        peerMeasuredThroughput.merge(peerId, measured, ::maxOf)
+    }
+
     private fun handleHyperTransferControl(endpointId: String, controlBytes: ByteArray) {
         if (HyperTransferPeerProfileCodec.isEnvelope(controlBytes)) {
             if (!authenticatedEndpoints.contains(endpointId)) return
@@ -1983,7 +1996,7 @@ internal object IncomingFilePayloadPolicy {
             val localProfile = HyperTransferDeviceProfileProvider.capture(
                 appContext,
                 streamCapable = true,
-                measuredBytesPerSecond = 0L
+                measuredBytesPerSecond = peerMeasuredThroughput[ready.authenticatedPeerId] ?: 0L
             )
             val remoteProfile = remoteHyperTransferProfiles[ready.authenticatedPeerId]
             HyperTransferModePolicy.receiveBufferBytes(
@@ -2861,11 +2874,12 @@ internal object IncomingFilePayloadPolicy {
     /** Resource facts are sent only after the encrypted session is established. */
     private fun announceHyperTransferProfile(endpointId: String) {
         if (!authenticatedEndpoints.contains(endpointId)) return
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         val profile = runCatching {
             HyperTransferDeviceProfileProvider.capture(
                 appContext,
                 streamCapable = true,
-                measuredBytesPerSecond = 0L
+                measuredBytesPerSecond = peerId.let { peerMeasuredThroughput[it] ?: 0L }
             )
         }.getOrNull() ?: return
         runCatching {
@@ -3105,6 +3119,7 @@ internal object IncomingFilePayloadPolicy {
         authenticatedEndpoints.clear()
         streamCapablePeers.clear()
         remoteHyperTransferProfiles.clear()
+        peerMeasuredThroughput.clear()
         cancelledOutgoingPreparations.addAll(preparingHyperStreams)
         outgoingHyperStreams.values.forEach { state ->
             state.timeout?.let(deliveryHandler::removeCallbacks)
