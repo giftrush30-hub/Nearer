@@ -426,7 +426,12 @@ internal object IncomingFilePayloadPolicy {
         if (endpointId.isBlank() || stablePeerId.isBlank()) return
         var changed = false
         pendingOutgoingMessages.forEach { (messageId, pending) ->
-            if (pending.endpointId == endpointId && pending.stablePeerId == stablePeerId) {
+            if (OutgoingAckPolicy.matchesExpectedRecipient(
+                    expectedEndpointId = pending.endpointId,
+                    incomingEndpointId = endpointId,
+                    expectedPeerId = pending.stablePeerId,
+                    incomingPeerId = stablePeerId
+                )) {
                 pending.retryTask?.let(deliveryHandler::removeCallbacks)
                 pending.retryTask = null
                 pending.endpointId = ""
