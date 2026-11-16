@@ -12,7 +12,7 @@ internal object StudioAudioBufferPolicy {
 
     /** Conservative minimum: Android's estimate, three output bursts, or the processing block. */
     fun bufferFrames(minBufferBytes: Int, framesPerBurst: Int, processingBlockFrames: Int): Int {
-        val minimumFrames = (minBufferBytes.coerceAtLeast(0) + 1) / 2
+        val minimumFrames = ((minBufferBytes.toLong().coerceAtLeast(0L) + 1L) / 2L).coerceAtMost(32_768L).toInt()
         return maxOf(minimumFrames, framesPerBurst.coerceAtLeast(1) * 3, processingBlockFrames.coerceAtLeast(1))
             .coerceAtMost(32_768)
     }
