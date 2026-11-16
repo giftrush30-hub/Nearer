@@ -217,6 +217,11 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
         return out
     }
 
+    fun findLexicalEntryById(id:String):BibleWordStudyEntry? {
+        readableDatabase.query("lexical_entries",null,"id=?",arrayOf(id),null,null,null,"1").use { c ->
+            return if(c.moveToFirst()) c.toLexicalEntry() else null
+        }
+    }
     fun findLexicalEntryByStrong(number:String):BibleWordStudyEntry? {
         readableDatabase.query("lexical_entries",null,"strong_number=?",arrayOf(number.trim().uppercase()),null,null,null,"1").use { c ->
             return if(c.moveToFirst()) c.toLexicalEntry() else null
