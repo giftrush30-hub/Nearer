@@ -43,10 +43,12 @@ class BiblePackImporter(
             val manifestFile=extracted["manifest.json"] ?: error("Pack manifest is missing.")
             val booksFile=extracted["books.ndjson"] ?: error("Book catalogue is missing.")
             val scriptureFile=extracted["scripture.ndjson"] ?: error("Scripture data is missing.")
+            require(manifestFile.length() in 1..256*1024) { "Manifest exceeds its size limit." }
+            require(booksFile.length() in 1..4*1024*1024) { "Book catalogue exceeds its size limit." }
+            require(scriptureFile.length()<=maxScriptureBytes) { "Scripture payload exceeds permitted size." }
             val manifest=parseManifest(manifestFile)
             val validation=BiblePackManifestValidator.validate(manifest,readerVersion)
             require(validation.valid) { validation.errors.joinToString(" ") }
-            require(scriptureFile.length()<=maxScriptureBytes) { "Scripture payload exceeds permitted size." }
             require(sha256(scriptureFile).equals(manifest.sha256,ignoreCase=true)) {
                 "Scripture checksum does not match the pack manifest."
             }
