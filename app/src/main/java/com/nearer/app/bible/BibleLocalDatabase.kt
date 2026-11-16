@@ -189,6 +189,26 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
             if(ownTransaction) db.setTransactionSuccessful()
         } finally { if(ownTransaction) db.endTransaction() }
     }
+    fun listTranslations():List<BibleTranslation> {
+        val out=mutableListOf<BibleTranslation>()
+        readableDatabase.query("translations",null,null,null,null,null,"language_name,name").use { c ->
+            while(c.moveToNext()) out += BibleTranslation(
+                id=c.getString(c.getColumnIndexOrThrow("id")),
+                name=c.getString(c.getColumnIndexOrThrow("name")),
+                languageTag=c.getString(c.getColumnIndexOrThrow("language_tag")),
+                languageName=c.getString(c.getColumnIndexOrThrow("language_name")),
+                abbreviation=c.getString(c.getColumnIndexOrThrow("abbreviation")),
+                canonId=c.getString(c.getColumnIndexOrThrow("canon_id")),
+                sourceId=c.getString(c.getColumnIndexOrThrow("source_id")),
+                licenseId=c.getString(c.getColumnIndexOrThrow("license_id")),
+                copyrightNotice=c.getString(c.getColumnIndexOrThrow("copyright_notice")),
+                isDownloaded=true,
+                attribution=c.getString(c.getColumnIndexOrThrow("attribution"))
+            )
+        }
+        return out
+    }
+
     fun listBooks(translationId:String):List<BibleBook> {
         val out=mutableListOf<BibleBook>()
         readableDatabase.query("books",null,"translation_id=?",arrayOf(translationId),null,null,"canonical_number ASC").use { c ->
