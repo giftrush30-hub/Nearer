@@ -33,4 +33,10 @@ class StudioAudioEnginePolicyTest {
         assertFalse(StudioAudioEnginePolicy.useUnprocessedInput(35, false))
         assertFalse(StudioAudioEnginePolicy.useUnprocessedInput(26, false))
     }
+
+    @Test fun explicitPrivacySensitiveCaptureStartsOnAndroid11() {
+        assertFalse(StudioAudioEnginePolicy.usePrivacySensitiveCapture(29))
+        assertTrue(StudioAudioEnginePolicy.usePrivacySensitiveCapture(30))
+        assertTrue(StudioAudioEnginePolicy.usePrivacySensitiveCapture(35))
+    }
 }
