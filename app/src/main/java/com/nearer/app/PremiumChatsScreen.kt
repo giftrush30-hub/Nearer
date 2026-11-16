@@ -70,6 +70,7 @@ internal fun PremiumChatsScreen(
     onChooseFiles: () -> Unit,
     receivedFiles: List<ReceivedFile>,
     onOpenFile: (ReceivedFile) -> Unit,
+    onExtractFolder: (ReceivedFile) -> Unit,
     transferHistory: List<NearbyTransferRecord>,
     outgoingTransferId: String?,
     outgoingProgress: Float,
@@ -93,7 +94,30 @@ internal fun PremiumChatsScreen(
     var expandedMessageActions by remember { mutableStateOf<String?>(null) }
     var reactingToMessageId by remember { mutableStateOf<String?>(null) }
     var pendingDeleteMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var folderToBrowse by remember { mutableStateOf<ReceivedFile?>(null) }
     val context = LocalContext.current
+    folderToBrowse?.let { folder ->
+        val entries = remember(folder.file) {
+            folder.file.listFiles()?.sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase(Locale.ROOT) })).orEmpty()
+        }
+        AlertDialog(
+            onDismissRequest = { folderToBrowse = null },
+            title = { Text(folder.displayName) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("${entries.size} items in this folder", color = Muted, fontSize = 11.sp)
+                    entries.take(100).forEach { entry ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(if (entry.isDirectory) "▰" else "•", color = Gold, modifier = Modifier.padding(end = 8.dp))
+                            Text(entry.name, color = White, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    if (entries.size > 100) Text("Showing the first 100 items.", color = Muted, fontSize = 10.sp)
+                }
+            },
+            confirmButton = { TextButton(onClick = { folderToBrowse = null }) { Text("Close") } }
+        )
+    }
     pendingDeleteMessage?.let { target ->
         AlertDialog(
             onDismissRequest = { pendingDeleteMessage = null },
@@ -568,16 +592,25 @@ internal fun PremiumChatsScreen(
                         }
                     }
 
-                    if (chatReady && directConversation) receivedFiles.take(3).forEach { fileItem ->
-                        Surface(
-                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).clickable { onOpenFile(fileItem) },
-                            shape = RoundedCornerShape(13.dp),
-                            color = NeaRerPalette.Panel
-                        ) {
-                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("↓", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text(fileItem.displayName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 9.dp))
-                                Text("Open", color = NeaRerPalette.Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    if (chatReady && directConversation) receivedFiles.take(5).forEach { fileItem ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).clickable {
+                                    if (fileItem.isFolder) folderToBrowse = fileItem else onOpenFile(fileItem)
+                                },
+                                shape = RoundedCornerShape(13.dp),
+                                color = NeaRerPalette.Panel
+                            ) {
+                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (fileItem.isFolder) "▰" else "↓", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    Text(fileItem.displayName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 9.dp))
+                                    Text(if (fileItem.isFolder) "Browse" else "Open", color = NeaRerPalette.Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            if (!fileItem.isFolder && fileItem.file.extension.equals("zip", ignoreCase = true)) {
+                                TextButton(onClick = { onExtractFolder(fileItem) }, modifier = Modifier.align(Alignment.End)) {
+                                    Text("Restore as folder", color = NeaRerPalette.Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
