@@ -7,6 +7,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
+import android.util.LruCache
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -182,7 +183,9 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playerIsPlaying = isPlaying
-                if (!isPlaying) selected?.let { persistPosition(it.uri, player.currentPosition) }
+                if (!isPlaying && player.playbackState == Player.STATE_READY) {
+                    selected?.let { persistPosition(it.uri, player.currentPosition) }
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -217,6 +220,7 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
             player.clearMediaItems()
             return@LaunchedEffect
         }
+        statusMessage = ""
         val resumeAt = maxOf(movie.resumePositionMs, prefs.getLong("resume_${movie.uri}", 0L))
         player.setMediaItem(MediaItem.fromUri(Uri.parse(movie.uri)), resumeAt)
         player.setPlaybackSpeed(playbackSpeed)
@@ -306,6 +310,7 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
                 color = Muted,
                 fontSize = 11.sp
             )
+            if (statusMessage.isNotBlank()) Text(statusMessage, color = Gold, fontSize = 10.sp, lineHeight = 15.sp)
         } else {
             Surface(color = Panel, shape = RoundedCornerShape(24.dp)) {
                 Column(Modifier.padding(19.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -470,39 +475,46 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
     }
 }
 
+private object MovieThumbnailCache : LruCache<String, Bitmap>(4 * 1_024) {
+    override fun sizeOf(key: String, value: Bitmap): Int = (value.byteCount / 1_024).coerceAtLeast(1)
+}
+
 @Composable
 private fun MovieThumbnail(uri: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val bitmap by produceState<Bitmap?>(null, uri, context) {
         value = withContext(Dispatchers.IO) {
-            val retriever = MediaMetadataRetriever()
-            try {
-                retriever.setDataSource(context, Uri.parse(uri))
-                val frame = if (Build.VERSION.SDK_INT >= 27) {
-                    retriever.getScaledFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 320, 180)
-                        ?: retriever.getScaledFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 320, 180)
-                } else {
-                    retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                        ?: retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                }
-                if (frame == null) {
+            MovieThumbnailCache.get(uri) ?: run {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(context, Uri.parse(uri))
+                    val frame = if (Build.VERSION.SDK_INT >= 27) {
+                        retriever.getScaledFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 320, 180)
+                            ?: retriever.getScaledFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 320, 180)
+                    } else {
+                        retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                            ?: retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    }
+                    if (frame == null) {
+                        null
+                    } else {
+                        val scale = minOf(320f / frame.width.coerceAtLeast(1), 180f / frame.height.coerceAtLeast(1), 1f)
+                        val width = (frame.width * scale).toInt().coerceAtLeast(1)
+                        val height = (frame.height * scale).toInt().coerceAtLeast(1)
+                        val thumbnail = Bitmap.createScaledBitmap(frame, width, height, true)
+                        if (thumbnail !== frame) frame.recycle()
+                        MovieThumbnailCache.put(uri, thumbnail)
+                        thumbnail
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: OutOfMemoryError) {
                     null
-                } else {
-                    val scale = minOf(320f / frame.width.coerceAtLeast(1), 180f / frame.height.coerceAtLeast(1), 1f)
-                    val width = (frame.width * scale).toInt().coerceAtLeast(1)
-                    val height = (frame.height * scale).toInt().coerceAtLeast(1)
-                    val thumbnail = Bitmap.createScaledBitmap(frame, width, height, true)
-                    if (thumbnail !== frame) frame.recycle()
-                    thumbnail
+                } catch (_: Exception) {
+                    null
+                } finally {
+                    runCatching { retriever.release() }
                 }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: OutOfMemoryError) {
-                null
-            } catch (_: Exception) {
-                null
-            } finally {
-                runCatching { retriever.release() }
             }
         }
     }
