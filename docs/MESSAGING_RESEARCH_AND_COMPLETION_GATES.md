@@ -121,3 +121,50 @@ The legacy fallback is temporary compatibility behavior: old records did not ret
 ## 8. No-APK rule
 
 Do not run `assembleDebug`, `assembleRelease`, or any workflow that packages/uploads an APK during this workstream unless the owner explicitly authorizes it. Prefer code review, static inspection and JVM-only validation. The existing repository workflow currently runs both JVM tests and `assembleDebug` on selected PR targets, so do not open a PR against a triggering target until the APK workflow has been adjusted or the owner approves it.
+
+
+## 9. Continuous integration and branch-recovery audit (2026-11-16)
+
+### Current integration candidate
+
+- Active work branch: `work/messaging-service-owned-nearby`.
+- It is based directly on current `main`; at the time of this audit it is ahead of `main` and not behind it.
+- The service-owned transport, durable incoming inbox, peer-scoped dedupe, mesh receipt recovery, Android manifest registration, service-start readiness gate and startup-failure recovery are kept together as one candidate module.
+- The service must be declared in the manifest as a non-exported `connectedDevice` foreground service. The declaration and its permissions are now present.
+- The Activity is a detachable UI client; the service owns the Nearby transport and durable inbox/outbox recovery.
+
+### Branch and pull-request reconciliation
+
+The repository currently has 269 branches and 14 open pull requests. These are not 269 independent features: many are stale branches, alternative versions, or work already represented in `main`.
+
+Messaging findings:
+- Existing mainline policies for chat editing, replies, reactions, inbox state, delivery labels, restart recovery, retry backoff, message-ID history and nearby permissions are already present. Older branches carrying the same files must not be merged as duplicates.
+- `feature/messaging-inbox-search-pins` is substantially behind current main. Its policy files are already present in main; its remaining screen differences inspected so far are mostly older hard-coded blue/mint colour values, not a missing feature module.
+- `feature/messaging-onboarding-port` has the same onboarding file content as main and should not be re-imported.
+- `feature/messaging-a-sync` contains unique direct/group read-receipt and typing-indicator work. It is not yet in main and needs a fresh port/review against the service-owned transport. In particular, receipt retry semantics must be checked against asynchronous Nearby send failures and the durable queue.
+- `feature/chat-background-notifications` contains unique notification policy and background-alert wiring. It is not yet in main; notification delivery must be moved to or coordinated with the service so it works while no Activity is bound.
+- `feature/messaging-forwarding-voice-foundations` contains pure policy/test foundations only. Forwarding UI, normal encrypted-send wiring, voice recording/playback, and file-transfer lifecycle remain incomplete; do not advertise these as shipped features.
+- The old service-owned PR #243 targets a stale branch. The fresh current-main-based work branch supersedes its implementation; do not merge the stale PR snapshot.
+- The architecture/HyperTransfer draft PR #250 changes the same `MainActivity` and `NearbyConnectionsTransport` files and is substantially divergent. Its unique HyperTransfer/storage work needs a separate file-by-file reconciliation; do not merge its transport snapshot over the current service work.
+
+### CI safety and validation
+
+- The repository's Android validation workflow now runs JVM tests, Android manifest processing and Android lint for pull requests.
+- APK packaging and upload are opt-in only through an explicit `workflow_dispatch` input named `build_apk`; ordinary branch and pull-request validation must not package an APK.
+- The Messaging validation workflow runs `testDebugUnitTest`, `processDebugManifest` and `lintDebug`; it does not run `assembleDebug` or `assembleRelease`.
+- This is cloud CI validation, not physical-device validation. It does not prove process-death recovery on OEM devices, radio interoperability, background execution under battery restrictions, or two-phone delivery.
+
+### Android platform research
+
+- Android 14+ requires foreground-service types and their matching permissions. For `connectedDevice`, the platform also requires an eligible device/network permission such as `CHANGE_WIFI_STATE` or a granted Bluetooth runtime permission. NeaRer declares `FOREGROUND_SERVICE_CONNECTED_DEVICE` and `CHANGE_WIFI_STATE`; this satisfies the documented manifest-side prerequisite, but actual service start and Nearby permission behavior still require device testing.
+- Google Nearby Connections requires its platform permissions at runtime; if required permissions are denied, advertising/discovery cannot start.
+- Android's background Bluetooth guidance recommends an appropriately declared `connectedDevice` foreground service when an app must keep a device connection alive while the user switches apps. This does not promise survival after force-stop or every OEM process-kill policy.
+
+Additional official sources:
+- Android foreground-service type requirements: https://developer.android.com/about/versions/14/changes/fgs-types-required
+- Google Nearby Connections Android setup and permissions: https://developers.google.com/nearby/connections/android/get-started
+- Android background Bluetooth communication: https://developer.android.com/develop/connectivity/bluetooth/ble/background
+
+### Integration rule
+
+Each complete module should be tested against current main, reviewed in a focused pull request, merged, verified on main, and then the working branch should be synchronized from main. Any useful work found outside main must be classified as already integrated, safe to port, incomplete, superseded, or conflicting before it is moved.
