@@ -149,7 +149,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
             }.isSuccess
             scope.launch {
                 try {
-                    val imported = BusinessPhotoStorage.import(context, uri)
+                    val imported = BusinessPhotoStorage.importPhoto(context, uri)
                     if (requestToken == photoImportToken && showEditor) {
                         if (imported != null) {
                             imageUri = imported
