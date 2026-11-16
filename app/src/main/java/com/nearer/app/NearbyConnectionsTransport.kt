@@ -1441,6 +1441,7 @@ internal object IncomingFilePayloadPolicy {
      * persisted receipt for this packet ID: a fresh timestamp/signature would be
      * a different receipt and the outbox correctly rejects that ID collision.
      */
+    @Synchronized
     private fun ensureFinalMeshReceipt(packet: MeshRelayPacketV1): Boolean {
         val now = System.currentTimeMillis()
         if (packet.destinationId != localStableId || !packet.verifyEmbeddedOrigin(now)) return false
