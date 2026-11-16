@@ -294,10 +294,27 @@ public:
     }
 
 private:
-    // Oboe automatically stops and closes a disconnected stream before
-    // onErrorAfterClose(). Calling requestStop() on that stream is invalid.
-    // For streams stopped by our own lifecycle, requestStop() is appropriate;
-    // for already-closed/disconnected streams, only release our shared_ptr.
+    // Streams can fail before they are started (for example, if opening the
+    // paired input stream fails). requestStop() is only valid for active states.
+    // Oboe also auto-closes disconnected streams after onErrorBeforeClose().
+    void stopAndCloseIfOpen(std::shared_ptr<oboe::AudioStream>& stream, bool disconnected) {
+        if (!stream) return;
+        const auto state = stream->getState();
+        if (disconnected || state == oboe::StreamState::Disconnected ||
+            state == oboe::StreamState::Closed) {
+            stream.reset();
+            return;
+        }
+        if (state == oboe::StreamState::Started ||
+            state == oboe::StreamState::Starting ||
+            state == oboe::StreamState::Pausing ||
+            state == oboe::StreamState::Paused) {
+            stream->requestStop();
+        }
+        stream->close();
+        stream.reset();
+    }
+
     void closeStreams() {
         std::lock_guard<std::mutex> lock(streamMutex_);
         {
@@ -306,21 +323,9 @@ private:
                 return errorCallbacksInFlight_.load(std::memory_order_acquire) == 0;
             });
         }
-        if (input_) {
-            if (!inputDisconnected_.load(std::memory_order_acquire)) {
-                input_->requestStop();
-                input_->close();
-            }
-            input_.reset();
-        }
+        stopAndCloseIfOpen(input_, inputDisconnected_.load(std::memory_order_acquire));
         inputRaw_.store(nullptr, std::memory_order_release);
-        if (output_) {
-            if (!outputDisconnected_.load(std::memory_order_acquire)) {
-                output_->requestStop();
-                output_->close();
-            }
-            output_.reset();
-        }
+        stopAndCloseIfOpen(output_, outputDisconnected_.load(std::memory_order_acquire));
         outputRaw_.store(nullptr, std::memory_order_release);
     }
 
