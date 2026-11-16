@@ -299,6 +299,9 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                 Text("No Bible translation installed yet",color=Color.White,fontSize=17.sp,fontWeight=FontWeight.Bold)
                 Text("Choose a Bible pack supplied by its publisher or a trusted distributor. NeaRer verifies its checksum, declared canon and verse counts before saving it. Packs remain separate from the APK so the app stays lightweight.",
                     color=Color(0xFFA8B6C9),fontSize=12.sp,lineHeight=18.sp)
+                Text("GLOBAL STARTING POINT",color=Color(0xFFFFD12D),fontSize=10.sp,fontWeight=FontWeight.Bold)
+                Text("World English Bible (WEBP) · public-domain text. A pack still needs to be prepared from the publisher's official USFM files; preserve the text and trademark conditions.",
+                    color=Color(0xFFA8B6C9),fontSize=11.sp,lineHeight=16.sp)
                 Text("NIGERIAN LANGUAGE EDITIONS TO PURSUE",color=Color(0xFFFFD12D),fontSize=10.sp,fontWeight=FontWeight.Bold)
                 Text("BSN reports 27 complete Nigerian-language Bibles. These public catalogue leads are not yet NeaRer downloads; each edition needs direct rights clearance.",
                     color=Color(0xFFA8B6C9),fontSize=11.sp,lineHeight=16.sp)
