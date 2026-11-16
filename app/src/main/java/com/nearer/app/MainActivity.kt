@@ -4988,16 +4988,6 @@ private internal data class ChatMessage(
     val editedAt: Long = 0L
 )
 
-private fun isNeaRerAppBundle(file: File): Boolean {
-    if (!file.isFile || !(file.extension.equals("zip", ignoreCase = true) ||
-            file.extension.equals("nearerapp", ignoreCase = true))) return false
-    return runCatching {
-        ZipFile(file).use { archive ->
-            archive.getEntry("INSTALLATION.txt") != null && archive.getEntry("base.apk") != null
-        }
-    }.getOrDefault(false)
-}
-
 internal data class ReceivedFile(val displayName: String, val file: File, val isAppBundle: Boolean = false)
 
 private data class UnifiedTransferHistoryEntry(
@@ -5031,44 +5021,4 @@ private data class IncomingTransfer(
     fun close() {
         try { output.flush(); output.close() } catch (_: Exception) { }
     }
-}
-
-internal class AppInstallResultActivity : android.app.Activity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
-        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-            val confirmation = if (Build.VERSION.SDK_INT >= 33) {
-                intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                intent.getParcelableExtra(Intent.EXTRA_INTENT) as? Intent
-            }
-            if (confirmation != null) startActivity(confirmation)
-            finish()
-            return
-        }
-        val success = status == PackageInstaller.STATUS_SUCCESS
-        val detail = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE).orEmpty()
-        val message = if (success) {
-            "Android reports that the app was installed successfully."
-        } else {
-            "Android did not complete the installation." + if (detail.isBlank()) "" else "\n\n" + detail
-        }
-        AlertDialog.Builder(this)
-            .setTitle(if (success) "App installed" else "Installation not completed")
-            .setMessage(message)
-            .setPositiveButton("OK") { _, _ -> finish() }
-            .setOnCancelListener { finish() }
-            .show()
-    }
-}
-
-private fun deviceStatus(status: Int): String = when (status) {
-    WifiP2pDevice.AVAILABLE -> "Available"
-    WifiP2pDevice.INVITED -> "Invitation pending"
-    WifiP2pDevice.CONNECTED -> "Connected"
-    WifiP2pDevice.FAILED -> "Connection failed"
-    WifiP2pDevice.UNAVAILABLE -> "Temporarily unavailable"
-    else -> "Nearby Wi-Fi Direct device"
 }
