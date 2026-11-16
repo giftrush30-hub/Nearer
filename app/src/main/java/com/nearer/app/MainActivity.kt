@@ -2,6 +2,8 @@ package com.nearer.app
 
 import android.Manifest
 import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.ServiceConnection
 import android.content.ClipData
 import android.content.Context
 import android.app.AlertDialog
@@ -31,6 +33,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.os.Handler
+import android.os.IBinder
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
@@ -129,6 +132,63 @@ class MainActivity : ComponentActivity() {
     private var receiverRegistered = false
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
+    private var nearbyServiceBinder: NearbyTransportService.LocalBinder? = null
+    private var nearbyServiceBound = false
+    private var nearbyServiceBinding = false
+    private var nearbyServiceStarted = false
+    private val nearbyServiceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val local = service as? NearbyTransportService.LocalBinder
+            if (local == null) {
+                nearbyServiceBinding = false
+                statusMessage = "NeaRer could not attach to its nearby connection service."
+                return
+            }
+            nearbyServiceBinder = local
+            nearbyServiceBound = true
+            nearbyServiceBinding = false
+            nearbyTransport = local.transport()
+            local.attachUiListener(nearbyListener)
+            runCatching { nearbyTransport?.setDisplayName(displayName) }
+            runCatching { nearbyTransport?.setMeshTransitEnabled(false) }
+            runCatching { restoreReceivedFiles() }
+            reconcileNearbyStateAfterServiceAttach()
+            startAlwaysReadyDiscovery()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            nearbyServiceBinder = null
+            nearbyServiceBound = false
+            nearbyServiceBinding = false
+            nearbyServiceStarted = false
+            nearbyTransport = null
+            hybridSearching = false
+            hybridConnected = false
+            hybridConnectedEndpoint = null
+            hybridConnectedStableId = null
+            chatReady = false
+            connectionMessage = "Nearby service is restarting. NeaRer will reconnect automatically."
+            statusMessage = connectionMessage
+        }
+
+        override fun onBindingDied(name: ComponentName?) {
+            nearbyServiceBinder = null
+            nearbyServiceBound = false
+            nearbyServiceBinding = false
+            nearbyServiceStarted = false
+            nearbyTransport = null
+            hybridSearching = false
+            runCatching { unbindService(this) }
+            ensureNearbyServiceBound()
+        }
+
+        override fun onNullBinding(name: ComponentName?) {
+            nearbyServiceBinding = false
+            nearbyServiceStarted = false
+            statusMessage = "Android did not provide the nearby service. Reopen NeaRer and try again."
+        }
+    }
+
     private var ultraSpeedMode by mutableStateOf(false)
     private var ultraSpeedRestartRequired by mutableStateOf(false)
     private val hybridPeers = mutableStateMapOf<String, String>()
@@ -138,6 +198,405 @@ class MainActivity : ComponentActivity() {
     // Endpoint IDs are temporary; the tracker prevents duplicate reconnects
     // without ever treating a transient endpoint as a person's identity.
     private val trustedPeerReconnectTracker = TrustedPeerReconnectTracker()
+
+    private val nearbyListener = object : NearbyConnectionsTransport.Listener {
+            override fun onStatus(message: String) {
+                runOnUiThread {
+                    statusMessage = message
+                    if (message.startsWith("Nearby advertising could not start") ||
+                        message.startsWith("Nearby discovery could not start")) {
+                        hybridSearching = false
+                    }
+                }
+            }
+            override fun onMeshRoutesChanged(recipients: List<MeshRecipient>) {
+                runOnUiThread {
+                    meshRecipients.clear()
+                    recipients.forEach { meshRecipients[it.peerId] = it }
+                    // Keep an unreachable selection as an explicit target. Never silently
+                    // switch the recipient to another nearby person after route loss.
+                    if (selectedMeshRecipientId == null) {
+                        selectedMeshRecipientId = hybridConnectedStableId?.takeIf { it in meshRecipients.keys }
+                    }
+                }
+            }
+            override fun onFound(id: String, name: String, stableId: String) { runOnUiThread {
+                hybridPeers[id] = name
+                if (stableId.isNotBlank()) {
+                    recentlySeenPeers.remove(stableId)
+                    // Only identities whose cryptographic key was trusted in an
+                    // earlier in-person pairing are reconnected automatically.
+                    // First-time peers still require the existing comparison/approval.
+                    val alreadyTrusted = TrustedPeerKeyStore.hasPinnedPeer(this@MainActivity, stableId)
+                    if (trustedPeerReconnectTracker.shouldRequest(id, stableId, alreadyTrusted, hybridConnected)) {
+                        statusMessage = "Reconnecting securely to $name…"
+                        val transport = nearbyTransport
+                        if (transport != null) {
+                            transport.request(id) { trustedPeerReconnectTracker.clear(id) }
+                        } else {
+                            trustedPeerReconnectTracker.clear(id)
+                        }
+                    }
+                }
+            } }
+            override fun onLost(id: String, stableId: String) { runOnUiThread {
+                trustedPeerReconnectTracker.clear(id)
+                val name = hybridPeers.remove(id)
+                if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
+                if (hybridConnectedEndpoint == id) {
+                    hybridConnected = false
+                    hybridConnectedEndpoint = null
+                    hybridConnectedStableId = null
+                    chatReady = false
+                    connectedDeviceName = null
+                    connectionMessage = "Direct link lost. Checking available mesh routes…"
+                }
+            } }
+            override fun onRequest(id: String, name: String, token: String) {
+                runOnUiThread {
+                    val advertisedStableId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                    // Returning peers with both pinned keys reconnect without
+                    // repeating first-contact approval. The handshake still verifies
+                    // key continuity before accepting application data.
+                    if (TrustedPeerKeyStore.hasPinnedPeer(this@MainActivity, advertisedStableId)) {
+                        nearbyTransport?.accept(id)
+                        statusMessage = "Reconnecting securely to $name…"
+                        return@runOnUiThread
+                    }
+                    pendingHybridEndpoint = id
+                    incomingRequesterName = name
+                    pairingCode = token
+                    approvalMessage = "FIRST-TIME TRUST CHECK: compare the code on both phones in person. Accept only if it matches and you expected this person."
+                    statusMessage = "$name is requesting a first-time nearby connection."
+                }
+            }
+            override fun onConnected(id: String, name: String, stableId: String) {
+                runOnUiThread {
+                    trustedPeerReconnectTracker.clear(id)
+                    hybridSearching = false
+                    hybridConnected = true
+                    hybridConnectedEndpoint = id
+                    hybridConnectedStableId = stableId.ifBlank { null }
+                    if (selectedMeshRecipientId == null) {
+                        selectedMeshRecipientId = stableId.takeIf { it.isNotBlank() }
+                    }
+                    val requestedIncomingResume = nearbyTransport?.requestPendingIncomingFilesForPeer(stableId, id) == true
+                    val hasQueuedOutgoingFile = currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()
+                    if (hasQueuedOutgoingFile) {
+                        // Schedule the sender-side fallback independently of incoming resume requests.
+                        // A phone can have a queued outgoing file and a partial incoming file at once.
+                        // Wait for any matching resume response before restarting from byte zero.
+                        discoveryHandler.postDelayed({
+                            if (hybridConnected && hybridConnectedStableId == stableId &&
+                                outgoingTransferId == null &&
+                                (currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty())) {
+                                chatNotice = "No matching partial transfer was found. Restarting this file safely from the beginning…"
+                                startNextNearbyQueuedFile()
+                            }
+                        }, 5000L)
+                    }
+                    pendingHybridEndpoint = null
+                    incomingRequesterName = null
+                    connectedDeviceName = name
+                    chatReady = true
+                    resumeLudoAfterReconnect(name, stableId)
+                    connectionMessage = "Secure nearby connection active"
+                    approvalMessage = "Connection approved"
+                    chatNotice = when {
+                        requestedIncomingResume -> "Connection restored. Requesting the saved receive position…"
+                        hasQueuedOutgoingFile -> "Connection restored. Checking for a saved transfer position…"
+                        else -> "Connected to $name. Offline chat is ready."
+                    }
+                    statusMessage = "Connected to $name using Bluetooth / nearby Wi-Fi."
+                    syncCommunityRostersForPeer(stableId)
+                }
+            }
+            override fun onDisconnected(id: String, stableId: String, name: String) {
+                runOnUiThread {
+                    hybridConnected = false
+                    hybridConnectedEndpoint = null
+                    hybridConnectedStableId = null
+                    if (outgoingTransferId?.startsWith("nearby:") == true) {
+                        outgoingTransferId = null
+                        outgoingProgress = 0f
+                        persistNearbyFileQueue()
+                    }
+                    activeGame = activeGame?.let { it.copy(ready = false) }
+                    incomingGameInvite = null
+                    val lastName = hybridPeers.remove(id) ?: name
+                    recordRecentlySeen(stableId.ifBlank { id }, lastName)
+                    pendingHybridEndpoint = null
+                    connectedDeviceName = null
+                    chatReady = false
+                    connectionMessage = "Not connected"
+                    chatNotice = if (activeGame != null) "Connection paused. Your Ludo match is saved here; reconnect to $lastName to continue." else "Nearby connection ended. Search again to reconnect."
+                    if (activeGame != null) communityNotice = "Ludo paused — waiting for $lastName to reconnect."
+                }
+            }
+            override fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Boolean) {
+                onMessageWithReply(id, senderName, messageId, body, null, null, null, acknowledge)
+            }
+            override fun onMessageWithReply(
+                id: String, senderName: String, messageId: String, body: String,
+                replyToMessageId: String?, replyToPreview: String?, replyToSender: String?,
+                acknowledge: () -> Boolean
+            ) {
+                runOnUiThread {
+                    var safelyStored = false
+                    if (body.startsWith("NR_REACTION:")) {
+                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), actorPeerId)
+                    } else if (body.startsWith("NR_EDIT:")) {
+                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        safelyStored = applyIncomingChatEdit(body.removePrefix("NR_EDIT:"), actorPeerId)
+                    } else if (body.startsWith("NR_COMMUNITY:")) {
+                        val senderPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        val communityBody = body.removePrefix("NR_COMMUNITY:")
+                        val packet = try { JSONObject(communityBody) } catch (_: Exception) { JSONObject() }
+                        val type = packet.optString("type")
+                        if (!CommunityIngressPolicy.isValid(communityBody, senderPeerId)) {
+                            communityNotice = "An invalid or unauthenticated community packet was rejected before processing."
+                        } else {
+                        // Never mutate group/game state until packet shape and transport identity pass.
+                        handleCommunityPacket(senderName, senderPeerId, communityBody)
+                        val code = packet.optString("code")
+                        val group = communityGroups.firstOrNull { it.code == code }
+                        val accepted = when (type) {
+                            "group_created" -> group != null && group.ownerPeerId == senderPeerId &&
+                                NeaRerIdentity.normalize(senderPeerId) == senderPeerId
+                            "group_join" -> group != null && group.ownerPeerId == nearbyTransport?.localIdentityId() &&
+                                senderPeerId in group.memberPeerIds
+                            "group_members" -> {
+                                val packetOwnerId = packet.optString("ownerPeerId")
+                                val packetIds = packet.optJSONArray("memberPeerIds")
+                                val incomingPeerIds = packetIds?.let { array ->
+                                    (0 until array.length()).map { array.optString(it) }
+                                }.orEmpty()
+                                val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+                                group != null && CommunityRosterPolicy.mayAcknowledgeRosterUpdate(
+                                    packetOwnerId, senderPeerId, incomingPeerIds, localPeerId,
+                                    group.ownerPeerId, group.memberPeerIds
+                                )
+                            }
+                            "group_message" -> {
+                                val id = packet.optString("id")
+                                group != null && CommunityRosterPolicy.mayAcceptGroupMessage(senderPeerId, group.memberPeerIds) &&
+                                    id.isNotBlank() && communityMessages.any { it.id == id && it.groupCode == code }
+                            }
+                            "broadcast", "ludo_invite", "ludo_accept", "ludo_reject", "ludo_action",
+                            "ludo_chat", "ludo_end", "ludo_rematch", "ludo_state", "ludo_sync" -> true
+                            else -> false
+                        }
+                        safelyStored = accepted && persistCommunityData()
+                        }
+                    } else if (chatMessages.any { it.id == messageId }) {
+                        safelyStored = true
+                    } else {
+                        val quoteValid = ChatReplyPolicy.isValidIncomingQuote(replyToMessageId, replyToPreview, replyToSender)
+                        if ((replyToMessageId != null || replyToPreview != null || replyToSender != null) && !quoteValid) {
+                            chatNotice = "A message with invalid reply details was rejected."
+                        } else {
+                            chatMessages.add(ChatMessage(
+                                messageId, body, outgoing = false, delivery = "Received",
+                                conversationId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty(),
+                                conversationName = senderName,
+                                replyToMessageId = replyToMessageId,
+                                replyToPreview = replyToPreview,
+                                replyToSender = replyToSender
+                            ))
+                            safelyStored = persistMessages()
+                            if (safelyStored) {
+                                trimChatMessages()
+                                chatNotice = "New offline message received from $senderName."
+                            } else {
+                                chatMessages.removeAll { it.id == messageId }
+                                chatNotice = "Message received, but could not be saved. Delivery was not confirmed."
+                            }
+                        }
+                    }
+                    if (safelyStored) acknowledge()
+                }
+            }
+            override fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Boolean) {
+                onMeshMessageWithReply(originPeerId, senderName, messageId, body, null, null, null, acknowledge)
+            }
+            override fun onMeshMessageWithReply(
+                originPeerId: String, senderName: String, messageId: String, body: String,
+                replyToMessageId: String?, replyToPreview: String?, replyToSender: String?,
+                acknowledge: () -> Boolean
+            ) {
+                runOnUiThread {
+                    var safelyStored = false
+                    if (body.startsWith("NR_REACTION:")) {
+                        safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), originPeerId)
+                    } else if (body.startsWith("NR_EDIT:")) {
+                        safelyStored = applyIncomingChatEdit(body.removePrefix("NR_EDIT:"), originPeerId)
+                    } else if (chatMessages.any { it.id == messageId }) {
+                        safelyStored = true
+                    } else {
+                        val quoteValid = ChatReplyPolicy.isValidIncomingQuote(replyToMessageId, replyToPreview, replyToSender)
+                        if ((replyToMessageId != null || replyToPreview != null || replyToSender != null) && !quoteValid) {
+                            chatNotice = "A message with invalid reply details was rejected."
+                        } else {
+                            chatMessages.add(ChatMessage(
+                                messageId, body, outgoing = false, delivery = "Received",
+                                conversationId = originPeerId, conversationName = senderName,
+                                replyToMessageId = replyToMessageId, replyToPreview = replyToPreview,
+                                replyToSender = replyToSender
+                            ))
+                            safelyStored = persistMessages()
+                            if (safelyStored) {
+                                trimChatMessages()
+                                chatNotice = "New offline message received from $senderName."
+                            } else {
+                                chatMessages.removeAll { it.id == messageId }
+                                chatNotice = "Message received, but could not be saved. Delivery was not confirmed."
+                            }
+                        }
+                    }
+                    if (safelyStored) acknowledge()
+                }
+            }
+            override fun onMessageStatus(messageId: String, status: String) {
+                runOnUiThread {
+                    val index = chatMessages.indexOfFirst { it.id == messageId }
+                    if (index >= 0) {
+                        chatMessages[index] = chatMessages[index].copy(delivery = status)
+                        persistMessages()
+                        chatNotice = when (status) {
+                            "Delivered" -> "Your message was received by the other NeaRer phone."
+                            "Queued" -> "Not delivered yet. NeaRer saved it and will retry when this person reconnects."
+                            else -> "Message delivery failed. Reconnect and try again."
+                        }
+                    }
+
+                    val ref = communityDeliveryRefs[messageId]
+                    if (ref != null) {
+                        val communityIndex = communityMessages.indexOfFirst { it.id == ref.communityMessageId }
+                        if (communityIndex >= 0) {
+                            val previous = communityMessages[communityIndex]
+                            val updated = CommunityDeliveryPolicy.applyStatus(previous.deliveryByPeerId, ref.peerId, status)
+                            if (updated != null) {
+                                communityMessages[communityIndex] = previous.copy(deliveryByPeerId = updated)
+                                if (status == "Delivered") communityDeliveryRefs.remove(messageId)
+                                if (!persistCommunityData()) {
+                                    // Keep the in-memory receipt; retry persistence when the
+                                    // activity pauses/resumes because transport ACK has retired.
+                                    communityNotice = "A group delivery receipt is updated on this phone but could not yet be saved to disk."
+                                }
+                            }
+                        } else if (status == "Delivered") {
+                            communityDeliveryRefs.remove(messageId)
+                            persistCommunityData()
+                        }
+                    }
+                }
+            }
+            // The transport's combined callback below handles ordinary progress updates.
+            // This legacy callback remains for the completed-payload notification path.
+            override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {
+                if (incoming && total > 0L && transferred >= total) {
+                    runOnUiThread {
+                        incomingTransferName = name
+                        incomingProgress = 1f
+                    }
+                }
+            }
+            override fun onFileTransferUpdate(
+                id: String,
+                payloadId: Long,
+                name: String,
+                transferred: Long,
+                total: Long,
+                incoming: Boolean,
+                snapshot: TransferSpeedSnapshot
+            ) {
+                runOnUiThread {
+                    // One main-thread dispatch now carries both progress and measured
+                    // throughput; the old path queued two UI tasks for every SDK update.
+                    val rate = snapshot.recentBytesPerSecond.toLong().coerceAtLeast(0L)
+                    val peak = snapshot.peakWindowBytesPerSecond.toLong().coerceAtLeast(0L)
+                    if (incoming) {
+                        incomingRateBytesPerSecond = rate
+                        incomingTransferName = name
+                    } else {
+                        outgoingRateBytesPerSecond = rate
+                        activeOutgoingFileName = name
+                        activeOutgoingFileBytes = total
+                        outgoingTransferId = "nearby:$payloadId"
+                    }
+                    val fraction = snapshot.progressFraction
+                        ?: if (total > 0L) (transferred.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
+                        else 0f
+                    if (incoming) incomingProgress = fraction else outgoingProgress = fraction
+
+                    val currentRateText = when {
+                        rate >= 1_000_000L -> String.format(java.util.Locale.US, "%.1f MB/s", rate / 1_000_000.0)
+                        rate >= 1_000L -> String.format(java.util.Locale.US, "%.0f KB/s", rate / 1_000.0)
+                        else -> ""
+                    }
+                    val peakText = if (peak > rate && peak >= 1_000L) {
+                        if (peak >= 1_000_000L) String.format(java.util.Locale.US, " • peak %.1f MB/s", peak / 1_000_000.0)
+                        else String.format(java.util.Locale.US, " • peak %.0f KB/s", peak / 1_000.0)
+                    } else ""
+                    val remaining = if (total > transferred && rate > 0L) (total - transferred) / rate else -1L
+                    val etaText = if (remaining >= 0L) " • ~${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')} left" else ""
+                    val action = if (incoming) "Receiving" else "Sending"
+                    val speedText = if (currentRateText.isBlank()) "" else " • $currentRateText$peakText"
+                    chatNotice = if (total > 0L) {
+                        "$action $name • ${(fraction * 100).toInt()}%$speedText$etaText"
+                    } else "$action $name…"
+                }
+            }
+            override fun onFileReceived(id: String, name: String, file: File) {
+                val isAppBundle = isNeaRerAppBundle(file)
+                runOnUiThread {
+                    incomingTransferName = null
+                    incomingProgress = 0f
+                    val catalogSaved = rememberReceivedFile(name, file, isAppBundle)
+                    recordNearbyTransfer("Received", name, file.length(), "Complete")
+                    chatNotice = when {
+                        !catalogSaved -> "Received $name, but NeaRer could not save its library details. Keep the app's received files folder intact."
+                        isAppBundle -> "Received an app bundle: $name. Review it and tap Install when ready."
+                        else -> "Received and saved: $name. Tap it below to open."
+                    }
+                    ReceivedFileNotification.show(this@MainActivity, name, file.length())
+                }
+            }
+            override fun onFileStatus(message: String) {
+                runOnUiThread {
+                    chatNotice = message
+                    if (message.startsWith("File sent to the nearby phone") ||
+                        message.startsWith("Nearby file transfer failed") ||
+                        message.startsWith("Nearby file transfer paused") ||
+                        message.startsWith("Could not start file transfer") ||
+                        message.startsWith("Could not send file details") ||
+                        message.startsWith("File could not be prepared")) {
+                        outgoingTransferId = null
+                        outgoingProgress = 0f
+                        if (message.startsWith("File sent to the nearby phone")) {
+                            recordNearbyTransfer("Sent", activeOutgoingFileName, activeOutgoingFileBytes, "Complete")
+                            deleteGeneratedFolderArchive(currentNearbyQueuedFile)
+                            activeOutgoingFileName = "shared-file"
+                            activeOutgoingFileBytes = 0L
+                            currentNearbyQueuedFile = null
+                            nearbyQueueCompleted += 1
+                            persistNearbyFileQueue()
+                            if (nearbyQueueTotal > 0) startNextNearbyQueuedFile()
+                        } else if (nearbyQueueTotal > 0) {
+                            // Keep the active file and remaining queue for retry after reconnect.
+                            persistNearbyFileQueue()
+                            chatNotice = message + " Your transfer is saved; reconnect to retry it."
+                        }
+                    }
+                    if (message.startsWith("Nearby file transfer failed")) {
+                        incomingTransferName = null
+                        incomingProgress = 0f
+                    }
+                }
+            }
+    }
+
     private var displayName by mutableStateOf("NeaRer User")
     private var onboardingComplete by mutableStateOf(false)
     private var profileAvatarId by mutableStateOf("orbit")
@@ -334,408 +793,7 @@ class MainActivity : ComponentActivity() {
             .putBoolean("ultra_speed_mode", false)
             .apply()
         ultraSpeedRestartRequired = false
-        nearbyTransport = try {
-            NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
-            override fun onStatus(message: String) {
-                runOnUiThread {
-                    statusMessage = message
-                    if (message.startsWith("Nearby advertising could not start") ||
-                        message.startsWith("Nearby discovery could not start")) {
-                        hybridSearching = false
-                    }
-                }
-            }
-            override fun onMeshRoutesChanged(recipients: List<MeshRecipient>) {
-                runOnUiThread {
-                    meshRecipients.clear()
-                    recipients.forEach { meshRecipients[it.peerId] = it }
-                    // Keep an unreachable selection as an explicit target. Never silently
-                    // switch the recipient to another nearby person after route loss.
-                    if (selectedMeshRecipientId == null) {
-                        selectedMeshRecipientId = hybridConnectedStableId?.takeIf { it in meshRecipients.keys }
-                    }
-                }
-            }
-            override fun onFound(id: String, name: String, stableId: String) { runOnUiThread {
-                hybridPeers[id] = name
-                if (stableId.isNotBlank()) {
-                    recentlySeenPeers.remove(stableId)
-                    // Only identities whose cryptographic key was trusted in an
-                    // earlier in-person pairing are reconnected automatically.
-                    // First-time peers still require the existing comparison/approval.
-                    val alreadyTrusted = TrustedPeerKeyStore.hasPinnedPeer(this@MainActivity, stableId)
-                    if (trustedPeerReconnectTracker.shouldRequest(id, stableId, alreadyTrusted, hybridConnected)) {
-                        statusMessage = "Reconnecting securely to $name…"
-                        val transport = nearbyTransport
-                        if (transport != null) {
-                            transport.request(id) { trustedPeerReconnectTracker.clear(id) }
-                        } else {
-                            trustedPeerReconnectTracker.clear(id)
-                        }
-                    }
-                }
-            } }
-            override fun onLost(id: String, stableId: String) { runOnUiThread {
-                trustedPeerReconnectTracker.clear(id)
-                val name = hybridPeers.remove(id)
-                if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
-                if (hybridConnectedEndpoint == id) {
-                    hybridConnected = false
-                    hybridConnectedEndpoint = null
-                    hybridConnectedStableId = null
-                    chatReady = false
-                    connectedDeviceName = null
-                    connectionMessage = "Direct link lost. Checking available mesh routes…"
-                }
-            } }
-            override fun onRequest(id: String, name: String, token: String) {
-                runOnUiThread {
-                    val advertisedStableId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
-                    // Returning peers with both pinned keys reconnect without
-                    // repeating first-contact approval. The handshake still verifies
-                    // key continuity before accepting application data.
-                    if (TrustedPeerKeyStore.hasPinnedPeer(this@MainActivity, advertisedStableId)) {
-                        nearbyTransport?.accept(id)
-                        statusMessage = "Reconnecting securely to $name…"
-                        return@runOnUiThread
-                    }
-                    pendingHybridEndpoint = id
-                    incomingRequesterName = name
-                    pairingCode = token
-                    approvalMessage = "FIRST-TIME TRUST CHECK: compare the code on both phones in person. Accept only if it matches and you expected this person."
-                    statusMessage = "$name is requesting a first-time nearby connection."
-                }
-            }
-            override fun onConnected(id: String, name: String, stableId: String) {
-                runOnUiThread {
-                    trustedPeerReconnectTracker.clear(id)
-                    hybridSearching = false
-                    hybridConnected = true
-                    hybridConnectedEndpoint = id
-                    hybridConnectedStableId = stableId.ifBlank { null }
-                    if (selectedMeshRecipientId == null) {
-                        selectedMeshRecipientId = stableId.takeIf { it.isNotBlank() }
-                    }
-                    val requestedIncomingResume = nearbyTransport?.requestPendingIncomingFilesForPeer(stableId, id) == true
-                    val hasQueuedOutgoingFile = currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty()
-                    if (hasQueuedOutgoingFile) {
-                        // Schedule the sender-side fallback independently of incoming resume requests.
-                        // A phone can have a queued outgoing file and a partial incoming file at once.
-                        // Wait for any matching resume response before restarting from byte zero.
-                        discoveryHandler.postDelayed({
-                            if (hybridConnected && hybridConnectedStableId == stableId &&
-                                outgoingTransferId == null &&
-                                (currentNearbyQueuedFile != null || pendingNearbyFileQueue.isNotEmpty())) {
-                                chatNotice = "No matching partial transfer was found. Restarting this file safely from the beginning…"
-                                startNextNearbyQueuedFile()
-                            }
-                        }, 5000L)
-                    }
-                    pendingHybridEndpoint = null
-                    incomingRequesterName = null
-                    connectedDeviceName = name
-                    chatReady = true
-                    resumeLudoAfterReconnect(name, stableId)
-                    connectionMessage = "Secure nearby connection active"
-                    approvalMessage = "Connection approved"
-                    chatNotice = when {
-                        requestedIncomingResume -> "Connection restored. Requesting the saved receive position…"
-                        hasQueuedOutgoingFile -> "Connection restored. Checking for a saved transfer position…"
-                        else -> "Connected to $name. Offline chat is ready."
-                    }
-                    statusMessage = "Connected to $name using Bluetooth / nearby Wi-Fi."
-                    syncCommunityRostersForPeer(stableId)
-                }
-            }
-            override fun onDisconnected(id: String, stableId: String, name: String) {
-                runOnUiThread {
-                    hybridConnected = false
-                    hybridConnectedEndpoint = null
-                    hybridConnectedStableId = null
-                    if (outgoingTransferId?.startsWith("nearby:") == true) {
-                        outgoingTransferId = null
-                        outgoingProgress = 0f
-                        persistNearbyFileQueue()
-                    }
-                    activeGame = activeGame?.let { it.copy(ready = false) }
-                    incomingGameInvite = null
-                    val lastName = hybridPeers.remove(id) ?: name
-                    recordRecentlySeen(stableId.ifBlank { id }, lastName)
-                    pendingHybridEndpoint = null
-                    connectedDeviceName = null
-                    chatReady = false
-                    connectionMessage = "Not connected"
-                    chatNotice = if (activeGame != null) "Connection paused. Your Ludo match is saved here; reconnect to $lastName to continue." else "Nearby connection ended. Search again to reconnect."
-                    if (activeGame != null) communityNotice = "Ludo paused — waiting for $lastName to reconnect."
-                }
-            }
-            override fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
-                onMessageWithReply(id, senderName, messageId, body, null, null, null, acknowledge)
-            }
-            override fun onMessageWithReply(
-                id: String, senderName: String, messageId: String, body: String,
-                replyToMessageId: String?, replyToPreview: String?, replyToSender: String?,
-                acknowledge: () -> Unit
-            ) {
-                runOnUiThread {
-                    var safelyStored = false
-                    if (body.startsWith("NR_REACTION:")) {
-                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
-                        safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), actorPeerId)
-                    } else if (body.startsWith("NR_EDIT:")) {
-                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
-                        safelyStored = applyIncomingChatEdit(body.removePrefix("NR_EDIT:"), actorPeerId)
-                    } else if (body.startsWith("NR_COMMUNITY:")) {
-                        val senderPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
-                        val communityBody = body.removePrefix("NR_COMMUNITY:")
-                        val packet = try { JSONObject(communityBody) } catch (_: Exception) { JSONObject() }
-                        val type = packet.optString("type")
-                        if (!CommunityIngressPolicy.isValid(communityBody, senderPeerId)) {
-                            communityNotice = "An invalid or unauthenticated community packet was rejected before processing."
-                        } else {
-                        // Never mutate group/game state until packet shape and transport identity pass.
-                        handleCommunityPacket(senderName, senderPeerId, communityBody)
-                        val code = packet.optString("code")
-                        val group = communityGroups.firstOrNull { it.code == code }
-                        val accepted = when (type) {
-                            "group_created" -> group != null && group.ownerPeerId == senderPeerId &&
-                                NeaRerIdentity.normalize(senderPeerId) == senderPeerId
-                            "group_join" -> group != null && group.ownerPeerId == nearbyTransport?.localIdentityId() &&
-                                senderPeerId in group.memberPeerIds
-                            "group_members" -> {
-                                val packetOwnerId = packet.optString("ownerPeerId")
-                                val packetIds = packet.optJSONArray("memberPeerIds")
-                                val incomingPeerIds = packetIds?.let { array ->
-                                    (0 until array.length()).map { array.optString(it) }
-                                }.orEmpty()
-                                val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
-                                group != null && CommunityRosterPolicy.mayAcknowledgeRosterUpdate(
-                                    packetOwnerId, senderPeerId, incomingPeerIds, localPeerId,
-                                    group.ownerPeerId, group.memberPeerIds
-                                )
-                            }
-                            "group_message" -> {
-                                val id = packet.optString("id")
-                                group != null && CommunityRosterPolicy.mayAcceptGroupMessage(senderPeerId, group.memberPeerIds) &&
-                                    id.isNotBlank() && communityMessages.any { it.id == id && it.groupCode == code }
-                            }
-                            "broadcast", "ludo_invite", "ludo_accept", "ludo_reject", "ludo_action",
-                            "ludo_chat", "ludo_end", "ludo_rematch", "ludo_state", "ludo_sync" -> true
-                            else -> false
-                        }
-                        safelyStored = accepted && persistCommunityData()
-                        }
-                    } else if (chatMessages.any { it.id == messageId }) {
-                        safelyStored = true
-                    } else {
-                        val quoteValid = ChatReplyPolicy.isValidIncomingQuote(replyToMessageId, replyToPreview, replyToSender)
-                        if ((replyToMessageId != null || replyToPreview != null || replyToSender != null) && !quoteValid) {
-                            chatNotice = "A message with invalid reply details was rejected."
-                        } else {
-                            chatMessages.add(ChatMessage(
-                                messageId, body, outgoing = false, delivery = "Received",
-                                conversationId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty(),
-                                conversationName = senderName,
-                                replyToMessageId = replyToMessageId,
-                                replyToPreview = replyToPreview,
-                                replyToSender = replyToSender
-                            ))
-                            safelyStored = persistMessages()
-                            if (safelyStored) {
-                                trimChatMessages()
-                                chatNotice = "New offline message received from $senderName."
-                            } else {
-                                chatMessages.removeAll { it.id == messageId }
-                                chatNotice = "Message received, but could not be saved. Delivery was not confirmed."
-                            }
-                        }
-                    }
-                    if (safelyStored) acknowledge()
-                }
-            }
-            override fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
-                onMeshMessageWithReply(originPeerId, senderName, messageId, body, null, null, null, acknowledge)
-            }
-            override fun onMeshMessageWithReply(
-                originPeerId: String, senderName: String, messageId: String, body: String,
-                replyToMessageId: String?, replyToPreview: String?, replyToSender: String?,
-                acknowledge: () -> Unit
-            ) {
-                runOnUiThread {
-                    var safelyStored = false
-                    if (body.startsWith("NR_REACTION:")) {
-                        safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), originPeerId)
-                    } else if (body.startsWith("NR_EDIT:")) {
-                        safelyStored = applyIncomingChatEdit(body.removePrefix("NR_EDIT:"), originPeerId)
-                    } else if (chatMessages.any { it.id == messageId }) {
-                        safelyStored = true
-                    } else {
-                        val quoteValid = ChatReplyPolicy.isValidIncomingQuote(replyToMessageId, replyToPreview, replyToSender)
-                        if ((replyToMessageId != null || replyToPreview != null || replyToSender != null) && !quoteValid) {
-                            chatNotice = "A message with invalid reply details was rejected."
-                        } else {
-                            chatMessages.add(ChatMessage(
-                                messageId, body, outgoing = false, delivery = "Received",
-                                conversationId = originPeerId, conversationName = senderName,
-                                replyToMessageId = replyToMessageId, replyToPreview = replyToPreview,
-                                replyToSender = replyToSender
-                            ))
-                            safelyStored = persistMessages()
-                            if (safelyStored) {
-                                trimChatMessages()
-                                chatNotice = "New offline message received from $senderName."
-                            } else {
-                                chatMessages.removeAll { it.id == messageId }
-                                chatNotice = "Message received, but could not be saved. Delivery was not confirmed."
-                            }
-                        }
-                    }
-                    if (safelyStored) acknowledge()
-                }
-            }
-            override fun onMessageStatus(messageId: String, status: String) {
-                runOnUiThread {
-                    val index = chatMessages.indexOfFirst { it.id == messageId }
-                    if (index >= 0) {
-                        chatMessages[index] = chatMessages[index].copy(delivery = status)
-                        persistMessages()
-                        chatNotice = when (status) {
-                            "Delivered" -> "Your message was received by the other NeaRer phone."
-                            "Queued" -> "Not delivered yet. NeaRer saved it and will retry when this person reconnects."
-                            else -> "Message delivery failed. Reconnect and try again."
-                        }
-                    }
-
-                    val ref = communityDeliveryRefs[messageId]
-                    if (ref != null) {
-                        val communityIndex = communityMessages.indexOfFirst { it.id == ref.communityMessageId }
-                        if (communityIndex >= 0) {
-                            val previous = communityMessages[communityIndex]
-                            val updated = CommunityDeliveryPolicy.applyStatus(previous.deliveryByPeerId, ref.peerId, status)
-                            if (updated != null) {
-                                communityMessages[communityIndex] = previous.copy(deliveryByPeerId = updated)
-                                if (status == "Delivered") communityDeliveryRefs.remove(messageId)
-                                if (!persistCommunityData()) {
-                                    // Keep the in-memory receipt; retry persistence when the
-                                    // activity pauses/resumes because transport ACK has retired.
-                                    communityNotice = "A group delivery receipt is updated on this phone but could not yet be saved to disk."
-                                }
-                            }
-                        } else if (status == "Delivered") {
-                            communityDeliveryRefs.remove(messageId)
-                            persistCommunityData()
-                        }
-                    }
-                }
-            }
-            // The transport's combined callback below handles ordinary progress updates.
-            // This legacy callback remains for the completed-payload notification path.
-            override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {
-                if (incoming && total > 0L && transferred >= total) {
-                    runOnUiThread {
-                        incomingTransferName = name
-                        incomingProgress = 1f
-                    }
-                }
-            }
-            override fun onFileTransferUpdate(
-                id: String,
-                payloadId: Long,
-                name: String,
-                transferred: Long,
-                total: Long,
-                incoming: Boolean,
-                snapshot: TransferSpeedSnapshot
-            ) {
-                runOnUiThread {
-                    // One main-thread dispatch now carries both progress and measured
-                    // throughput; the old path queued two UI tasks for every SDK update.
-                    val rate = snapshot.recentBytesPerSecond.toLong().coerceAtLeast(0L)
-                    val peak = snapshot.peakWindowBytesPerSecond.toLong().coerceAtLeast(0L)
-                    if (incoming) {
-                        incomingRateBytesPerSecond = rate
-                        incomingTransferName = name
-                    } else {
-                        outgoingRateBytesPerSecond = rate
-                        activeOutgoingFileName = name
-                        activeOutgoingFileBytes = total
-                        outgoingTransferId = "nearby:$payloadId"
-                    }
-                    val fraction = snapshot.progressFraction
-                        ?: if (total > 0L) (transferred.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
-                        else 0f
-                    if (incoming) incomingProgress = fraction else outgoingProgress = fraction
-
-                    val currentRateText = when {
-                        rate >= 1_000_000L -> String.format(java.util.Locale.US, "%.1f MB/s", rate / 1_000_000.0)
-                        rate >= 1_000L -> String.format(java.util.Locale.US, "%.0f KB/s", rate / 1_000.0)
-                        else -> ""
-                    }
-                    val peakText = if (peak > rate && peak >= 1_000L) {
-                        if (peak >= 1_000_000L) String.format(java.util.Locale.US, " • peak %.1f MB/s", peak / 1_000_000.0)
-                        else String.format(java.util.Locale.US, " • peak %.0f KB/s", peak / 1_000.0)
-                    } else ""
-                    val remaining = if (total > transferred && rate > 0L) (total - transferred) / rate else -1L
-                    val etaText = if (remaining >= 0L) " • ~${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')} left" else ""
-                    val action = if (incoming) "Receiving" else "Sending"
-                    val speedText = if (currentRateText.isBlank()) "" else " • $currentRateText$peakText"
-                    chatNotice = if (total > 0L) {
-                        "$action $name • ${(fraction * 100).toInt()}%$speedText$etaText"
-                    } else "$action $name…"
-                }
-            }
-            override fun onFileReceived(id: String, name: String, file: File) {
-                val isAppBundle = isNeaRerAppBundle(file)
-                runOnUiThread {
-                    incomingTransferName = null
-                    incomingProgress = 0f
-                    val catalogSaved = rememberReceivedFile(name, file, isAppBundle)
-                    recordNearbyTransfer("Received", name, file.length(), "Complete")
-                    chatNotice = when {
-                        !catalogSaved -> "Received $name, but NeaRer could not save its library details. Keep the app's received files folder intact."
-                        isAppBundle -> "Received an app bundle: $name. Review it and tap Install when ready."
-                        else -> "Received and saved: $name. Tap it below to open."
-                    }
-                    ReceivedFileNotification.show(this@MainActivity, name, file.length())
-                }
-            }
-            override fun onFileStatus(message: String) {
-                runOnUiThread {
-                    chatNotice = message
-                    if (message.startsWith("File sent to the nearby phone") ||
-                        message.startsWith("Nearby file transfer failed") ||
-                        message.startsWith("Nearby file transfer paused") ||
-                        message.startsWith("Could not start file transfer") ||
-                        message.startsWith("Could not send file details") ||
-                        message.startsWith("File could not be prepared")) {
-                        outgoingTransferId = null
-                        outgoingProgress = 0f
-                        if (message.startsWith("File sent to the nearby phone")) {
-                            recordNearbyTransfer("Sent", activeOutgoingFileName, activeOutgoingFileBytes, "Complete")
-                            deleteGeneratedFolderArchive(currentNearbyQueuedFile)
-                            activeOutgoingFileName = "shared-file"
-                            activeOutgoingFileBytes = 0L
-                            currentNearbyQueuedFile = null
-                            nearbyQueueCompleted += 1
-                            persistNearbyFileQueue()
-                            if (nearbyQueueTotal > 0) startNextNearbyQueuedFile()
-                        } else if (nearbyQueueTotal > 0) {
-                            // Keep the active file and remaining queue for retry after reconnect.
-                            persistNearbyFileQueue()
-                            chatNotice = message + " Your transfer is saved; reconnect to retry it."
-                        }
-                    }
-                    if (message.startsWith("Nearby file transfer failed")) {
-                        incomingTransferName = null
-                        incomingProgress = 0f
-                    }
-                }
-            }
-            })
-        } catch (error: Exception) {
-            statusMessage = "Nearby services could not initialise: ${error.javaClass.simpleName}. NeaRer opened in safe mode."
-            null
-        }
+        nearbyTransport = null
         nearbyTransport?.setMeshTransitEnabled(false)
         if (wifiManager == null && statusMessage == "Ready to find nearby Android phones.") {
             statusMessage = "Wi-Fi Direct is unavailable. Bluetooth nearby features may still work."
@@ -745,22 +803,7 @@ class MainActivity : ComponentActivity() {
         }
         runCatching { restoreNearbyTransferHistory() }
         runCatching { restoreNearbyFileQueue() }
-        val queuedAfterRestart = runCatching { nearbyTransport?.pendingMessageIds().orEmpty() }.getOrDefault(emptySet())
-        val deliveredAfterRestart = runCatching { nearbyTransport?.completedMessageIds().orEmpty() }.getOrDefault(emptySet())
-        val recoveredChatStates = runCatching {
-            ChatRestartRecoveryPolicy.reconcile(chatMessages, queuedAfterRestart, deliveredAfterRestart)
-        }.getOrDefault(false)
-        if (recoveredChatStates) {
-            runCatching { persistMessages() }
-            chatNotice = when {
-                queuedAfterRestart.isNotEmpty() -> "Some messages are safely queued. NeaRer will retry when those people reconnect."
-                chatMessages.any { it.outgoing && it.delivery == "Interrupted" } ->
-                    "A message was interrupted when NeaRer closed before its delivery could be confirmed. Check with the recipient before sending it again."
-                else -> chatNotice
-            }
-        }
         runCatching { restoreCommunityData() }
-        runCatching { reconcileCommunityDeliveryReceipts(deliveredAfterRestart) }
         displayName = runCatching {
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
@@ -925,6 +968,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        nearbyServiceBinder?.replayPendingMessages()
         val filter = IntentFilter().apply {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
@@ -956,7 +1000,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         finishDiscovery()
-        nearbyTransport?.stop()
+        nearbyServiceBinder?.detachUiListener(nearbyListener)
+        nearbyServiceBinder = null
+        if (nearbyServiceBound) runCatching { unbindService(nearbyServiceConnection) }
+        nearbyServiceBound = false
+        nearbyServiceBinding = false
+        // NearbyConnectionsTransport is service-owned; Activity recreation must not stop it.
+        nearbyTransport = null
         closePeerTransport()
         io.shutdownNow()
         super.onDestroy()
@@ -971,6 +1021,58 @@ class MainActivity : ComponentActivity() {
         super.onPause()
     }
 
+    private fun ensureNearbyServiceBound(startForeground: Boolean = true) {
+        val actions = NearbyServiceBindingPolicy.actions(
+            requestForeground = startForeground,
+            serviceStarted = nearbyServiceStarted,
+            serviceBound = nearbyServiceBound,
+            serviceBinding = nearbyServiceBinding
+        )
+        try {
+            // Promotion must happen even when an earlier non-foreground bind is
+            // already pending or has completed. Otherwise the service dies when
+            // the Activity unbinds after permissions/radios become available.
+            if (actions.startForegroundService) {
+                NearbyTransportService.start(this)
+                nearbyServiceStarted = true
+            }
+            if (!actions.bindService) return
+            nearbyServiceBinding = true
+            val bound = bindService(
+                Intent(this, NearbyTransportService::class.java),
+                nearbyServiceConnection,
+                Context.BIND_AUTO_CREATE
+            )
+            if (!bound) {
+                nearbyServiceBinding = false
+                statusMessage = "NeaRer could not bind to its nearby connection service."
+            }
+        } catch (error: Exception) {
+            nearbyServiceBinding = false
+            nearbyServiceStarted = false
+            statusMessage = "Nearby service could not start: " +
+                (error.localizedMessage ?: error.javaClass.simpleName)
+        }
+    }
+    private fun reconcileNearbyStateAfterServiceAttach() {
+        val transport = nearbyTransport ?: return
+        val queued = runCatching { transport.pendingMessageIds() }.getOrDefault(emptySet())
+        val delivered = runCatching { transport.completedMessageIds() }.getOrDefault(emptySet())
+        val recovered = runCatching {
+            ChatRestartRecoveryPolicy.reconcile(chatMessages, queued, delivered)
+        }.getOrDefault(false)
+        if (recovered) {
+            runCatching { persistMessages() }
+            chatNotice = when {
+                queued.isNotEmpty() -> "Some messages are safely queued. NeaRer will retry when those people reconnect."
+                chatMessages.any { it.outgoing && it.delivery == "Interrupted" } ->
+                    "A message was interrupted before delivery could be confirmed. Check with the recipient before retrying."
+                else -> chatNotice
+            }
+        }
+        runCatching { reconcileCommunityDeliveryReceipts(delivered) }
+    }
+
     /**
      * Starts the primary Nearby Connections engine without requiring a manual
      * Wi-Fi Direct peer scan. The SDK selects the available nearby transports.
@@ -979,30 +1081,57 @@ class MainActivity : ComponentActivity() {
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val bluetoothOn = try { bluetoothManager?.adapter?.isEnabled == true } catch (_: SecurityException) { false }
         val wifiOn = isWifiEnabled()
+        val permissionsGranted = hasNearbyPermissions()
+        val radioAvailable = SmartConnectPolicy.hasUsableRadio(bluetoothOn, wifiOn)
+        val locationServicesEnabled = Build.VERSION.SDK_INT > Build.VERSION_CODES.R || isLocationEnabled()
+        val platformReady = NearbyServiceStartPolicy.shouldStartDiscovery(
+            onboardingComplete = onboardingComplete,
+            permissionsGranted = permissionsGranted,
+            radioAvailable = radioAvailable,
+            sdkInt = Build.VERSION.SDK_INT,
+            locationServicesEnabled = locationServicesEnabled
+        )
+
+        if (!platformReady) {
+            // Do not leave a discovery session advertising after the user revokes
+            // access, turns off the required radio, or disables Location on Android 8–11.
+            nearbyTransport?.stopSearching()
+            hybridSearching = false
+            statusMessage = when {
+                !onboardingComplete -> "Complete NeaRer setup before starting nearby discovery."
+                !permissionsGranted -> "Nearby discovery is paused until the required nearby-device permissions are granted."
+                !radioAvailable -> "NeaRer is ready. Turn on Bluetooth or Wi-Fi to discover nearby people; mobile data is not needed."
+                !locationServicesEnabled -> "Nearby discovery is paused. On Android 8–11, turn Location on to allow nearby radio discovery."
+                else -> "Nearby discovery is paused. Review your phone's nearby settings."
+            }
+            if (onboardingComplete) ensureNearbyServiceBound(startForeground = false)
+            return
+        }
+
         if (!SmartConnectPolicy.shouldStartDiscovery(
                 onboardingComplete = onboardingComplete,
-                permissionsGranted = hasNearbyPermissions(),
-                radioAvailable = SmartConnectPolicy.hasUsableRadio(bluetoothOn, wifiOn),
+                permissionsGranted = permissionsGranted,
+                radioAvailable = radioAvailable,
                 alreadySearching = hybridSearching,
                 alreadyConnected = hybridConnected
             )) {
-            if (onboardingComplete && hasNearbyPermissions() && !bluetoothOn && !wifiOn) {
-                statusMessage = "NeaRer is ready. Turn on Bluetooth or Wi-Fi to discover nearby people; mobile data is not needed."
-            }
+            if (onboardingComplete) ensureNearbyServiceBound(startForeground = false)
             return
         }
+
         val transport = nearbyTransport
         if (transport == null) {
-            statusMessage = "Nearby services are unavailable on this phone right now. Reopen NeaRer and try again."
+            statusMessage = "Starting NeaRer's background nearby service…"
+            ensureNearbyServiceBound(startForeground = true)
             return
         }
+        ensureNearbyServiceBound(startForeground = true)
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("nearby_service_active", true)
+            .commit()
         transport.start()
         hybridSearching = true
-        statusMessage = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R && !isLocationEnabled()) {
-            "NeaRer is ready. On this Android version, turn Location on too if nearby discovery does not find people."
-        } else {
-            "NeaRer is ready. Nearby people will appear automatically while the app is open."
-        }
+        statusMessage = "NeaRer is ready. Nearby people will appear automatically while the app is open."
     }
 
     private fun hasDiscoveryPermission(): Boolean {
@@ -1188,6 +1317,11 @@ class MainActivity : ComponentActivity() {
             statusMessage = "Turn Bluetooth or Wi-Fi ON on both phones. NeaRer does not need mobile data or an internet connection for nearby play."
             return
         }
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R && !isLocationEnabled()) {
+            finishDiscovery()
+            statusMessage = "Nearby discovery is paused. On Android 8–11, turn Location on before searching for nearby phones."
+            return
+        }
         // Start Nearby Connections whenever at least one suitable radio is already enabled.
         // Android no longer silently enables radios for apps; the user stays in control.
         nearbyTransport?.start()
@@ -1204,11 +1338,7 @@ class MainActivity : ComponentActivity() {
         }
         val manager = wifiManager ?: run { finishDiscovery(); statusMessage = "This phone does not provide Wi-Fi Direct."; return }
         val activeChannel = channel ?: run { finishDiscovery(); statusMessage = "Bluetooth discovery is active, but Wi-Fi Direct is unavailable."; return }
-        if (!isLocationEnabled()) {
-            finishDiscovery()
-            statusMessage = "Bluetooth discovery is active. Turn Location ON if you also want Wi-Fi Direct discovery on this Android version."
-            return
-        }
+
         finishDiscovery()
         val generation = discoveryGeneration
         scanning = true

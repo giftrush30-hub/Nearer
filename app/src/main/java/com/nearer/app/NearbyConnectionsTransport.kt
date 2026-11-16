@@ -25,7 +25,8 @@ data class MeshRecipient(
     val isDirect: Boolean
 )
 
-class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = false, private val listener: Listener) {
+class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = false, listener: Listener) {
+    @Volatile private var listener: Listener = listener
     interface Listener {
         fun onStatus(message: String)
         fun onFound(id: String, name: String, stableId: String)
@@ -33,15 +34,15 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         fun onRequest(id: String, name: String, token: String)
         fun onConnected(id: String, name: String, stableId: String)
         fun onDisconnected(id: String, stableId: String, name: String)
-        fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit)
-        fun onMessageWithReply(id: String, senderName: String, messageId: String, body: String, replyToMessageId: String?, replyToPreview: String?, replyToSender: String?, acknowledge: () -> Unit) {
+        fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Boolean)
+        fun onMessageWithReply(id: String, senderName: String, messageId: String, body: String, replyToMessageId: String?, replyToPreview: String?, replyToSender: String?, acknowledge: () -> Boolean) {
             onMessage(id, senderName, messageId, body, acknowledge)
         }
         /** Message whose sender is the original end-to-end identity, not the immediate relay. */
-        fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
+        fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Boolean) {
             onMessage(originPeerId, senderName, messageId, body, acknowledge)
         }
-        fun onMeshMessageWithReply(originPeerId: String, senderName: String, messageId: String, body: String, replyToMessageId: String?, replyToPreview: String?, replyToSender: String?, acknowledge: () -> Unit) {
+        fun onMeshMessageWithReply(originPeerId: String, senderName: String, messageId: String, body: String, replyToMessageId: String?, replyToPreview: String?, replyToSender: String?, acknowledge: () -> Boolean) {
             onMeshMessage(originPeerId, senderName, messageId, body, acknowledge)
         }
         fun onMessageStatus(messageId: String, status: String)
@@ -69,6 +70,25 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         }
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
+    }
+
+    /** Convenience base for service-owned listeners that override only selected events. */
+    open class ListenerAdapter : Listener {
+        override fun onStatus(message: String) {}
+        override fun onFound(id: String, name: String, stableId: String) {}
+        override fun onLost(id: String, stableId: String) {}
+        override fun onRequest(id: String, name: String, token: String) {}
+        override fun onConnected(id: String, name: String, stableId: String) {}
+        override fun onDisconnected(id: String, stableId: String, name: String) {}
+        override fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Boolean) { acknowledge() }
+        override fun onMessageStatus(messageId: String, status: String) {}
+        override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {}
+        override fun onFileReceived(id: String, name: String, file: File) {}
+        override fun onFileStatus(message: String) {}
+    }
+
+    fun setListener(listener: Listener) {
+        this.listener = listener
     }
 
     private val appContext = context.applicationContext
@@ -491,16 +511,19 @@ internal object IncomingFilePayloadPolicy {
         return false
     }
 
-    private fun hasSeenMessageId(messageId: String): Boolean =
-        synchronized(seenMessageIdsLock) { messageId in seenMessageIds }
+    private fun hasSeenMessageId(peerId: String, messageId: String): Boolean =
+        synchronized(seenMessageIdsLock) {
+            NearbyMessageDedupePolicy.hasSeen(seenMessageIds, peerId, messageId)
+        }
 
     /**
      * A delivery receipt is allowed only after this ID is durably committed.
      * Restore the previous in-memory history if SharedPreferences cannot commit.
      */
-    private fun rememberMessageId(messageId: String): Boolean = synchronized(seenMessageIdsLock) {
+    private fun rememberMessageId(peerId: String, messageId: String): Boolean = synchronized(seenMessageIdsLock) {
+        val scopedKey = NearbyMessageDedupePolicy.key(peerId, messageId) ?: return false
         val previous = LinkedHashSet(seenMessageIds)
-        seenMessageIds.add(messageId)
+        seenMessageIds.add(scopedKey)
         MessageIdHistoryPolicy.trimOldest(seenMessageIds)
         try {
             val ordered = org.json.JSONArray()
@@ -1413,6 +1436,50 @@ internal object IncomingFilePayloadPolicy {
         return true
     }
 
+    /**
+     * Idempotently completes destination receipt creation. Reuse a previously
+     * persisted receipt for this packet ID: a fresh timestamp/signature would be
+     * a different receipt and the outbox correctly rejects that ID collision.
+     */
+    @Synchronized
+    private fun ensureFinalMeshReceipt(
+        packetId: String,
+        originId: String,
+        destinationId: String,
+        packet: MeshRelayPacketV1? = null
+    ): Boolean {
+        val now = System.currentTimeMillis()
+        if (NeaRerIdentity.normalize(originId) != originId ||
+            NeaRerIdentity.normalize(destinationId) != destinationId ||
+            originId == destinationId ||
+            !packetId.matches(Regex("[A-Za-z0-9._:-]{1,80}"))) return false
+
+        if (packet != null) {
+            if (packet.packetId != packetId || packet.originId != originId ||
+                packet.destinationId != destinationId || !packet.verifyEmbeddedOrigin(now)) return false
+            val originKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, originId) ?: return false
+            if (!java.security.MessageDigest.isEqual(originKey, packet.originSigningPublicKey) ||
+                !packet.verify(originKey, now)) return false
+        }
+
+        // Reuse the exact signed receipt if a crash occurred after its durable
+        // enqueue. A fresh timestamp/signature for the same packet ID is a conflict.
+        val existing = meshReceiptOutbox.pending()
+            .firstOrNull { it.receipt.packetId == packetId }?.receipt
+        val receipt = MeshReceiptRecoveryPolicy.reuseOrCreate(existing) {
+            MeshDeliveryReceipt.create(
+                packetId, originId, destinationId, now
+            ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+        }
+
+        if (receipt.originId != originId || receipt.destinationId != destinationId ||
+            receipt.packetId != packetId) return false
+        if (!queueMeshReceipt(receipt)) return false
+        // A null packet means it was already retired or expired after the encrypted
+        // inbox commit. The durable inbox is now the remaining local copy.
+        return packet == null || deadDropStore.markLocallyDelivered(packetId)
+    }
+
     private fun flushPendingMeshReceipts() {
         if (!meshRouteWithdrawalStoreHealthy) return
         val now = System.currentTimeMillis()
@@ -1508,14 +1575,14 @@ internal object IncomingFilePayloadPolicy {
             listener.onStatus("A relayed message is safely queued, but its sender must be verified on this phone before it can be opened.")
             return
         }
-        if (hasSeenMessageId(packet.packetId)) {
-            val duplicateReceipt = MeshDeliveryReceipt.create(
-                packet.packetId, packet.originId, packet.destinationId, System.currentTimeMillis()
-            ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
-            if (queueMeshReceipt(duplicateReceipt)) deadDropStore.markLocallyDelivered(packet.packetId)
+        if (hasSeenMessageId(packet.originId, packet.packetId)) {
+            // A prior process may have persisted the receipt but died before
+            // retiring the packet. Reuse that exact receipt on every replay.
+            ensureFinalMeshReceipt(packet.packetId, packet.originId, packet.destinationId, packet)
             return
         }
-        if (!pendingIncomingMessageIds.add(packet.packetId)) return
+        val pendingKey = NearbyMessageDedupePolicy.key(packet.originId, packet.packetId) ?: return
+        if (!pendingIncomingMessageIds.add(pendingKey)) return
         try {
             val clear = RecipientMessageCrypto.decrypt(
                 localRecipientIdentity.privateKey,
@@ -1534,25 +1601,17 @@ internal object IncomingFilePayloadPolicy {
             val hasReplyFields = replyId != null || replyPreview != null || replySender != null
             require(!hasReplyFields || ChatReplyPolicy.isValidIncomingQuote(replyId, replyPreview, replySender))
             listener.onMeshMessageWithReply(packet.originId, senderName, packet.packetId, body, replyId, replyPreview, replySender) {
-                if (packet.packetId in pendingIncomingMessageIds) {
-                    val saved = rememberMessageId(packet.packetId)
-                    pendingIncomingMessageIds.remove(packet.packetId)
-                    if (saved) {
-                        val receipt = MeshDeliveryReceipt.create(
-                            packet.packetId, packet.originId, packet.destinationId, System.currentTimeMillis()
-                        ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
-                        // Persist the final receipt before deleting the locally delivered packet.
-                        // If receipt storage fails, keep the packet so a retry can regenerate it.
-                        if (queueMeshReceipt(receipt)) {
-                            deadDropStore.markLocallyDelivered(packet.packetId)
-                        } else {
-                            listener.onStatus("Message saved here. Its encrypted packet is retained until the final receipt can be saved.")
-                        }
-                    }
+                if (pendingKey !in pendingIncomingMessageIds) return@onMeshMessageWithReply false
+                val saved = rememberMessageId(packet.originId, packet.packetId)
+                pendingIncomingMessageIds.remove(pendingKey)
+                val receiptCommitted = saved && ensureFinalMeshReceipt(packet.packetId, packet.originId, packet.destinationId, packet)
+                if (saved && !receiptCommitted) {
+                    listener.onStatus("Message saved here. Its encrypted packet is retained until the final receipt can be saved.")
                 }
+                saved && receiptCommitted
             }
         } catch (_: Exception) {
-            pendingIncomingMessageIds.remove(packet.packetId)
+            pendingIncomingMessageIds.remove(pendingKey)
             listener.onStatus("A relayed message could not be decrypted or validated. It was not delivered.")
         }
     }
@@ -2177,22 +2236,24 @@ internal object IncomingFilePayloadPolicy {
         if (hasReplyFields && !ChatReplyPolicy.isValidIncomingQuote(replyId, replyPreview, replySender)) return
         if (messageId.isBlank() || body.isBlank() || body.length > 4000) return
         if (messageId.length > 80 || ttl !in 0..4) return
-        if (hasSeenMessageId(messageId)) {
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        val pendingKey = NearbyMessageDedupePolicy.key(peerId, messageId) ?: return
+        if (hasSeenMessageId(peerId, messageId)) {
             sendAcknowledgement(endpointId, messageId)
             return
         }
-        if (!pendingIncomingMessageIds.add(messageId)) return
+        if (!pendingIncomingMessageIds.add(pendingKey)) return
         val senderName = synchronized(names) { names[endpointId] ?: "Nearby member" }
         try {
             listener.onMessageWithReply(endpointId, senderName, messageId, body, replyId, replyPreview, replySender) {
-                if (messageId in pendingIncomingMessageIds) {
-                    val dedupeRecordSaved = rememberMessageId(messageId)
-                    pendingIncomingMessageIds.remove(messageId)
-                    if (dedupeRecordSaved) sendAcknowledgement(endpointId, messageId)
-                }
+                if (pendingKey !in pendingIncomingMessageIds) return@onMessageWithReply false
+                val dedupeRecordSaved = rememberMessageId(peerId, messageId)
+                pendingIncomingMessageIds.remove(pendingKey)
+                if (dedupeRecordSaved) sendAcknowledgement(endpointId, messageId)
+                dedupeRecordSaved
             }
         } catch (error: Exception) {
-            pendingIncomingMessageIds.remove(messageId)
+            pendingIncomingMessageIds.remove(pendingKey)
             throw error
         }
         // Direct/private chat only. No relay forwarding is enabled.
@@ -2303,9 +2364,80 @@ internal object IncomingFilePayloadPolicy {
 
     fun stableIdentityForEndpoint(endpointId: String): String =
         synchronized(names) { stableIds[endpointId].orEmpty() }
+            .ifBlank { NeaRerIdentity.normalize(endpointId).orEmpty() }
 
     fun displayNameForEndpoint(endpointId: String): String =
         synchronized(names) { names[endpointId].orEmpty() }
+
+    data class ConnectedPeerSnapshot(val endpointId: String, val displayName: String, val stablePeerId: String)
+
+    fun connectedPeersSnapshot(): List<ConnectedPeerSnapshot> = synchronized(activeEndpoints) {
+        activeEndpoints.mapNotNull { endpoint ->
+            if (!authenticatedEndpoints.contains(endpoint)) return@mapNotNull null
+            val peerId = synchronized(names) { stableIds[endpoint].orEmpty() }
+            val name = synchronized(names) { names[endpoint].orEmpty() }
+            if (NeaRerIdentity.normalize(peerId) == null) null
+            else ConnectedPeerSnapshot(endpoint, name.ifBlank { "Nearby member" }, peerId)
+        }
+    }
+
+    fun discoveredPeersSnapshot(): List<ConnectedPeerSnapshot> = synchronized(names) {
+        names.keys.mapNotNull { endpoint ->
+            val peerId = stableIds[endpoint].orEmpty()
+            val name = names[endpoint].orEmpty()
+            if (NeaRerIdentity.normalize(peerId) == null) null
+            else ConnectedPeerSnapshot(endpoint, name.ifBlank { "Nearby member" }, peerId)
+        }
+    }
+
+    /**
+     * Commits an inbox event after its Activity has safely saved it. If the
+     * original transport callback was lost during process death, this method
+     * still restores duplicate protection and acknowledges a currently active
+     * authenticated endpoint when one exists.
+     */
+    fun persistIncomingMessageDedupe(peerId: String, messageId: String): Boolean {
+        if (messageId.isBlank() || messageId.length > 80) return false
+        val pendingKey = NearbyMessageDedupePolicy.key(peerId, messageId) ?: return false
+        val saved = rememberMessageId(peerId, messageId)
+        pendingIncomingMessageIds.remove(pendingKey)
+        return saved
+    }
+
+    fun acknowledgePersistedIncomingMessage(peerId: String, messageId: String): Boolean {
+        if (!persistIncomingMessageDedupe(peerId, messageId)) return false
+        endpointForStablePeer(NeaRerIdentity.normalize(peerId).orEmpty())?.let { sendAcknowledgement(it, messageId) }
+        return true
+    }
+
+    /**
+     * Completes the destination side of a mesh delivery recovered from the durable
+     * inbox. If its encrypted packet is still queued, persist the signed final
+     * receipt before retiring that packet. If the packet has expired or was already
+     * retired, the encrypted inbox remains sufficient to recreate the final receipt.
+     */
+    @Synchronized
+    fun persistMeshDeliveryAndReceipt(originPeerId: String, messageId: String): Boolean {
+        val originId = NeaRerIdentity.normalize(originPeerId) ?: return false
+        if (messageId.isBlank() || messageId.length > 80) return false
+        val now = System.currentTimeMillis()
+        val packet = deadDropStore.pendingForDestination(localStableId, now)
+            .firstOrNull { it.packetId == messageId && it.originId == originId }
+        if (!persistIncomingMessageDedupe(originId, messageId)) return false
+        return ensureFinalMeshReceipt(messageId, originId, localStableId, packet)
+    }
+
+    /** Release a message whose durable inbox write failed so a sender retry is not suppressed. */
+    fun releasePendingIncomingMessage(peerId: String, messageId: String) {
+        val pendingKey = NearbyMessageDedupePolicy.key(peerId, messageId) ?: return
+        pendingIncomingMessageIds.remove(pendingKey)
+    }
+
+    /** Releases any in-flight key when its authenticated peer could not be resolved. */
+    fun releasePendingIncomingMessage(messageId: String) {
+        if (messageId.isBlank()) return
+        pendingIncomingMessageIds.removeIf { it.endsWith("|$messageId") }
+    }
 
     fun setDisplayName(name: String) {
         val clean = name.trim().replace("|", " ").take(23).ifBlank { "NeaRer User" }
@@ -2318,15 +2450,24 @@ internal object IncomingFilePayloadPolicy {
         if (started) return
         started = true
         val generation = ++startGeneration
-        val discovering = DiscoveryOptions.Builder().setStrategy(connectionStrategy).build()
-        startAdvertising(generation)
-        client.startDiscovery(serviceId, discoveryCallback(generation), discovering).addOnFailureListener {
-            failStart(
-                generation,
-                "Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again."
-            )
+        try {
+            val discovering = DiscoveryOptions.Builder().setStrategy(connectionStrategy).build()
+            startAdvertising(generation)
+            client.startDiscovery(serviceId, discoveryCallback(generation), discovering).addOnFailureListener {
+                failStart(
+                    generation,
+                    "Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again."
+                )
+            }
+            listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
+        } catch (error: Exception) {
+            if (generation == startGeneration) {
+                stopSearching()
+                listener.onStatus(
+                    "Nearby discovery could not start: ${error.localizedMessage ?: "check nearby-device permissions and Bluetooth/Wi-Fi"}."
+                )
+            }
         }
-        listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
     }
 
     fun request(id: String, onFailure: (() -> Unit)? = null) {
