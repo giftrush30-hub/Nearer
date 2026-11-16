@@ -35,7 +35,7 @@ internal object HyperTransferModePolicy {
     }
 
     fun localSafeMode(profile: DeviceProfile): Mode = when {
-        profile.thermalStatus >= 4 -> Mode.LITE
+        profile.thermalStatus >= 3 -> Mode.LITE
         profile.lowMemory && profile.availableMemoryBytes < MIN_FAST_MEMORY_BYTES -> Mode.LITE
         profile.availableMemoryBytes < MIN_LITE_MEMORY_BYTES -> Mode.LITE
         profile.lowRamDevice || profile.lowMemory -> Mode.FAST
