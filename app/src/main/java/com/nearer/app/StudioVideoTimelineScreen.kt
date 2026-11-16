@@ -52,7 +52,7 @@ import androidx.media3.effect.Brightness
 import androidx.media3.effect.Contrast
 import androidx.media3.effect.HslAdjustment
 import androidx.media3.effect.OverlayEffect
-import androidx.media3.common.OverlaySettings
+import androidx.media3.effect.OverlaySettings
 import androidx.media3.effect.TextOverlay
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.Composition
