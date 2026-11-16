@@ -34,3 +34,15 @@ data class BibleStudyNote(
     val chapter: Int?, val verse: Int?, val title: String, val body: String,
     val colorArgb: Long, val updatedAt: Long
 )
+
+data class BibleWordOccurrence(
+    val translationId:String,
+    val bookId:String,
+    val chapter:Int,
+    val verse:Int,
+    val tokenIndex:Int,
+    val surfaceForm:String,
+    val lemmaId:String?,
+    val strongNumber:String?,
+    val morphologyCode:String?
+)
