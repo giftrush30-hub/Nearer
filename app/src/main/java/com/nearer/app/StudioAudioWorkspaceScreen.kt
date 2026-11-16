@@ -268,14 +268,16 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                 minor = pitchPreferences.getBoolean("minor", false),
                 style = runCatching { StudioTuningStyle.valueOf(pitchPreferences.getString("style", StudioTuningStyle.NATURAL.name)!!) }.getOrDefault(StudioTuningStyle.NATURAL),
                 retuneSpeedMs = pitchPreferences.getInt("retune_speed_ms", 90),
-                enabled = pitchPreferences.getBoolean("enabled", false)
+                enabled = pitchPreferences.getBoolean("enabled", false),
+                preserveFormants = pitchPreferences.getBoolean("preserve_formants", true)
             )
         )
     }
     LaunchedEffect(pitchCorrection) {
         pitchPreferences.edit().putInt("key_root", pitchCorrection.keyRoot).putBoolean("minor", pitchCorrection.minor)
             .putString("style", pitchCorrection.style.name).putInt("retune_speed_ms", pitchCorrection.retuneSpeedMs)
-            .putBoolean("enabled", pitchCorrection.enabled).apply()
+            .putBoolean("enabled", pitchCorrection.enabled)
+            .putBoolean("preserve_formants", pitchCorrection.preserveFormants).apply()
     }
 
     DisposableEffect(player) {
@@ -394,7 +396,12 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                 }
                 Text("RETUNE SPEED · ${pitchCorrection.retuneSpeedMs} ms", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 Slider(value = pitchCorrection.retuneSpeedMs.toFloat(), onValueChange = { pitchCorrection = pitchCorrection.copy(retuneSpeedMs = it.toInt()); exportedFile = null }, valueRange = 0f..500f, steps = 49)
-                Text("Natural uses gentler correction; Hard Tune snaps more firmly to the selected scale. This first version targets monophonic lead vocals. Formant preservation and polyphonic correction are not yet included.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Button(onClick = { pitchCorrection = pitchCorrection.copy(preserveFormants = !pitchCorrection.preserveFormants); exportedFile = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (pitchCorrection.preserveFormants) Mint else Midnight, contentColor = if (pitchCorrection.preserveFormants) Midnight else White)) {
+                    Text(if (pitchCorrection.preserveFormants) "LPC FORMANT PRESERVATION · ON" else "LPC FORMANT PRESERVATION · OFF", fontSize = 9.sp)
+                }
+                Text("Natural uses gentler correction; Hard Tune snaps more firmly to the selected scale. Formant compensation uses an LPC spectral-envelope model for cleaner single-lead vocals. Extreme shifts, noisy inputs and polyphonic material may still sound unnatural.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
             }
         }
 
