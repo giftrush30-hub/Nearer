@@ -1,0 +1,39 @@
+name: Messaging JVM tests (no APK)
+
+on:
+  push:
+    branches:
+      - work/messaging-service-owned-nearby
+    paths:
+      - "app/src/main/java/com/nearer/app/**"
+      - "app/src/test/java/com/nearer/app/**"
+      - ".github/workflows/messaging-jvm-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nearer-messaging-jvm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  messaging-jvm-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Run JVM unit tests only
+        run: gradle --no-daemon --stacktrace testDebugUnitTest
