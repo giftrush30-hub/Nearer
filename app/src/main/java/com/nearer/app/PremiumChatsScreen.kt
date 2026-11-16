@@ -674,8 +674,7 @@ internal fun PremiumChatsScreen(
                             if (xenderRate != null) {
                                 val ratio = benchmarkSummary.medianMibPerSecond / xenderRate
                                 Text(
-                                    if (ratio >= 1.0) String.format(java.util.Locale.US, "NeaRer measured %.2f× the reference throughput", ratio)
-                                    else String.format(java.util.Locale.US, "NeaRer measured %.2f× the reference throughput", ratio),
+                                    String.format(java.util.Locale.US, "NeaRer measured %.2f× the reference throughput", ratio),
                                     color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold
                                 )
                             }
