@@ -44,6 +44,8 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
     val scope= rememberCoroutineScope()
     var translations by remember { mutableStateOf(database.listTranslations()) }
     var selectedTranslation by remember { mutableStateOf(translations.firstOrNull()) }
+    var compareTranslation by remember { mutableStateOf(translations.getOrNull(1)) }
+    var showComparison by remember { mutableStateOf(false) }
     var books by remember { mutableStateOf(selectedTranslation?.let{database.listBooks(it.id)}.orEmpty()) }
     var selectedBook by remember { mutableStateOf(books.firstOrNull()) }
     var chapter by remember { mutableStateOf(1) }
@@ -58,6 +60,8 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
     fun refresh() {
         translations=database.listTranslations()
         selectedTranslation=translations.firstOrNull()
+        compareTranslation=translations.getOrNull(1)
+        showComparison=false
         books=selectedTranslation?.let{database.listBooks(it.id)}.orEmpty()
         selectedBook=books.firstOrNull()
         chapter=1
@@ -150,6 +154,19 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                 }
             }
         }
+        if(translations.size>1 && selectedTranslation!=null) {
+            Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                TextButton(onClick={showComparison=false}) { Text("SINGLE",color=if(!showComparison) Color(0xFF69E0C0) else Color.White) }
+                TextButton(onClick={showComparison=true}) { Text("COMPARE VERSIONS",color=if(showComparison) Color(0xFF69E0C0) else Color.White) }
+            }
+            if(showComparison) {
+                Row(horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                    translations.filter{it.id!=selectedTranslation!!.id}.forEach { translation ->
+                        OutlinedButton(onClick={compareTranslation=translation}) { Text(translation.abbreviation) }
+                    }
+                }
+            }
+        }
         if(books.isNotEmpty() && selectedTranslation!=null) {
             Row(horizontalArrangement=Arrangement.spacedBy(5.dp)) {
                 OutlinedButton(onClick={
@@ -181,7 +198,26 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                 searchResults=database.searchVerses(selectedTranslation!!.id,search)
                 notice=searchResults.size.toString()+" matching verses"
             },enabled=search.isNotBlank()) { Text("Search verses") }
-            if(searchResults.isNotEmpty()) {
+            val secondaryBook=if(showComparison && compareTranslation!=null)
+                database.listBooks(compareTranslation!!.id).firstOrNull{it.canonicalNumber==selectedBook!!.canonicalNumber}
+                else null
+            val secondaryVerses=if(secondaryBook!=null)
+                database.readChapter(compareTranslation!!.id,secondaryBook.id,chapter) else emptyList()
+            if(showComparison && compareTranslation!=null && secondaryBook!=null) {
+                val primaryMap=verses.associateBy{it.verse}
+                val secondaryMap=secondaryVerses.associateBy{it.verse}
+                val maxVerse=maxOf(primaryMap.keys.maxOrNull() ?: 0,secondaryMap.keys.maxOrNull() ?: 0)
+                NeaRerWordParallelReader(
+                    primaryName=selectedTranslation!!.abbreviation,
+                    secondaryName=compareTranslation!!.abbreviation,
+                    verses=(1..maxVerse).map{n->BibleParallelVerse(
+                        selectedBook!!.name+" "+chapter+":"+n,primaryMap[n],secondaryMap[n])},
+                    modifier=Modifier.weight(1f)
+                )
+            } else if(showComparison) {
+                Text("This book is not available in the selected comparison translation.",
+                    color=Color(0xFFA8B6C9),modifier=Modifier.weight(1f))
+            } else if(searchResults.isNotEmpty()) {
                 androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f)) {
                     items(searchResults.size) { index ->
                         val verse=searchResults[index]
