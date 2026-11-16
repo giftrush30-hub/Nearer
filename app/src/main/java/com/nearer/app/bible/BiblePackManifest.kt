@@ -54,11 +54,9 @@ object BiblePackManifestValidator {
         if(manifest.coverage==BibleCoverage.COMPLETE_BIBLE) {
             val expectedBooks=when(manifest.canonId.lowercase()) {
                 "protestant-66" -> 66
-                "catholic-73" -> 73
-                "ethiopian-81" -> 81
                 else -> null
             }
-            if(expectedBooks==null) errors += "Complete coverage requires a recognized, explicitly identified canon."
+            if(expectedBooks==null) errors += "Complete coverage currently requires the chapter-validated Protestant 66-book canon."
             else if(manifest.bookCount!=expectedBooks)
                 errors += "The " + manifest.canonId + " canon requires exactly " + expectedBooks + " books."
         }
