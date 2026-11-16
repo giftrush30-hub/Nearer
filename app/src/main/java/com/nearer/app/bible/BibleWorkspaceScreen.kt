@@ -68,6 +68,12 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
     var showJournal by remember { mutableStateOf(false) }
     var selectedVerseNumber by remember { mutableStateOf<Int?>(null) }
     var selectedVerseAction by remember { mutableStateOf<BibleVerse?>(null) }
+    var showExtras by remember { mutableStateOf(false) }
+
+    if(showExtras) {
+        NeaRerWordExtrasScreen(onBack={showExtras=false})
+        return
+    }
 
     LaunchedEffect(selectedTranslation?.id,selectedBook?.id,chapter) {
         selectedVerseNumber=null
@@ -217,6 +223,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
             Button(onClick={importerPicker.launch(arrayOf("application/zip","application/x-zip-compressed"))},
                 enabled=!busy) { Text("＋ Install Bible pack") }
             OutlinedButton(onClick={showJournal=true}) { Text("My notes") }
+            OutlinedButton(onClick={showExtras=true}) { Text("Plans & audio") }
         }
         if(busy) CircularProgressIndicator(color=Color(0xFF69E0C0))
         if(translations.isNotEmpty()) {
