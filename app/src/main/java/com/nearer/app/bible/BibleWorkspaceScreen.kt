@@ -49,7 +49,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
     var selectedTranslation by remember {
         mutableStateOf(translations.firstOrNull{it.id==readingPrefs.getString("translation_id",null)} ?: translations.firstOrNull())
     }
-    var compareTranslation by remember { mutableStateOf(translations.getOrNull(1)) }
+    var compareTranslation by remember { mutableStateOf(translations.firstOrNull{it.id!=selectedTranslation?.id}) }
     var showComparison by remember { mutableStateOf(false) }
     var books by remember { mutableStateOf(selectedTranslation?.let{database.listBooks(it.id)}.orEmpty()) }
     var selectedBook by remember {
