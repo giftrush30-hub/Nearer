@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main, integration/nearer-complete-app, feature/messaging-people-chat-inbox]
   workflow_dispatch:
+    inputs:
+      build_apk:
+        description: "Build and upload an installable APK (only when explicitly requested)"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: nearer-validation-${{ github.ref }}
@@ -34,13 +40,15 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Run JVM unit tests
-        run: gradle --no-daemon --stacktrace testDebugUnitTest
+      - name: Run JVM tests and validate Android manifest (no APK)
+        run: gradle --no-daemon --stacktrace testDebugUnitTest processDebugManifest
 
       - name: Build installable debug APK
+        if: github.event_name == 'workflow_dispatch' && inputs.build_apk == true
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Upload debug APK
+        if: github.event_name == 'workflow_dispatch' && inputs.build_apk == true
         uses: actions/upload-artifact@v4
         with:
           name: NeaRer-debug-apk
