@@ -39,7 +39,7 @@ class HyperTransferModePolicyTest {
     @Test fun severeThermalPressureForcesLite() {
         assertEquals(
             HyperTransferModePolicy.Mode.LITE,
-            HyperTransferModePolicy.negotiate(profile(), profile(thermal = 4))
+            HyperTransferModePolicy.negotiate(profile(), profile(thermal = 3))
         )
     }
 
