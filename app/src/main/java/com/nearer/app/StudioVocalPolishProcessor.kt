@@ -41,6 +41,7 @@ internal class StudioVocalPolishProcessor(
     private var previousInput = FloatArray(2)
     private var previousHighPass = FloatArray(2)
     private var lowPassPresence = FloatArray(2)
+    private var lowPassWarmth = FloatArray(2)
     private var lowPassEss = FloatArray(2)
     private var lowPassAir = FloatArray(2)
     private var compressorEnvelope = 0f
@@ -52,6 +53,7 @@ internal class StudioVocalPolishProcessor(
     private val inputScratch = FloatArray(2)
     private val processedScratch = FloatArray(2)
     private var highPassCoefficient = 0f
+    private var warmthCoefficient = 0f
     private var presenceCoefficient = 0f
     private var essCoefficient = 0f
     private var airCoefficient = 0f
@@ -62,8 +64,8 @@ internal class StudioVocalPolishProcessor(
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
         val sampleRate = inputAudioFormat.sampleRate.coerceAtLeast(8_000)
-        val adjustedLowCut = (profile.lowCutHz * (1f - controls.warmth * 0.3f)).coerceIn(50f, 180f)
-        highPassCoefficient = rcCoefficient(adjustedLowCut, sampleRate)
+        highPassCoefficient = rcCoefficient(profile.lowCutHz, sampleRate)
+        warmthCoefficient = rcCoefficient(180f, sampleRate)
         presenceCoefficient = rcCoefficient(2_400f, sampleRate)
         essCoefficient = rcCoefficient(5_800f, sampleRate)
         airCoefficient = rcCoefficient(9_000f, sampleRate)
@@ -84,6 +86,7 @@ internal class StudioVocalPolishProcessor(
         val gateRelease = exp(-1f / (sampleRate * 0.080f))
         val driveNorm = tanh(profile.drive.toDouble()).toFloat().coerceAtLeast(0.001f)
         val presenceAmount = (profile.presence + controls.presence).coerceIn(0f, 0.5f)
+        val warmthAmount = controls.warmth * 0.22f
         val deEssAmount = (profile.deEssAmount + controls.deEss).coerceIn(0f, 0.85f)
         val compressorRatio = (profile.compressorRatio + controls.compression).coerceIn(1.5f, 8f)
         val roomMix = (profile.roomMix + controls.ambience).coerceIn(0f, 0.25f)
@@ -109,9 +112,11 @@ internal class StudioVocalPolishProcessor(
                 previousInput[channel] = raw
                 previousHighPass[channel] = highPass
 
+                lowPassWarmth[channel] += (highPass - lowPassWarmth[channel]) * (1f - warmthCoefficient)
+                val lowBand = lowPassWarmth[channel]
                 lowPassPresence[channel] += (highPass - lowPassPresence[channel]) * (1f - presenceCoefficient)
                 val presence = highPass - lowPassPresence[channel]
-                val present = highPass + presence * presenceAmount
+                val present = highPass + lowBand * warmthAmount + presence * presenceAmount
 
                 lowPassEss[channel] += (present - lowPassEss[channel]) * (1f - essCoefficient)
                 lowPassAir[channel] += (present - lowPassAir[channel]) * (1f - airCoefficient)
@@ -176,6 +181,7 @@ internal class StudioVocalPolishProcessor(
         previousInput = FloatArray(2)
         previousHighPass = FloatArray(2)
         lowPassPresence = FloatArray(2)
+        lowPassWarmth = FloatArray(2)
         lowPassEss = FloatArray(2)
         lowPassAir = FloatArray(2)
         compressorEnvelope = 0f
