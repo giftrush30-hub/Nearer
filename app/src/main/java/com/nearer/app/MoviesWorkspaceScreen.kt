@@ -135,6 +135,10 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
             var rejected = 0
             uris.forEach { uri ->
                 if (movies.any { it.uri == uri.toString() }) return@forEach
+                if (uri.toString().length > MoviesLibraryCodec.MAX_URI_LENGTH) {
+                    rejected++
+                    return@forEach
+                }
                 if (movies.size >= MoviesLibraryCodec.MAX_MOVIES) {
                     rejected++
                     return@forEach
