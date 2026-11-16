@@ -37,6 +37,30 @@ Archive entry names must be exactly those names, at archive root. Nested paths a
 
 Supported complete-canon IDs currently validated by the reader: `protestant-66` (66 books), `catholic-73` (73 books), and `ethiopian-81` (81 books). Other canons must be explicitly added and reviewed before being labelled complete. Partial, Old Testament and New Testament packs must declare the correct coverage.
 
+## Preparing the public-domain World English Bible (WEBP) seed
+
+The official eBible.org page lists a USFM ZIP for WEBP and states that the text is public domain. Download the source from:
+
+`https://ebible.org/Scriptures/engwebp_usfm.zip`
+
+Then prepare the NeaRer pack with the repository utility:
+
+```bash
+python tools/build_nearer_bible_pack_from_usfm.py engwebp_usfm.zip build/nearer-word-webp.zip \
+  --pack-id webp-eng-1 \
+  --translation-id WEBP \
+  --translation-name "World English Bible" \
+  --language-tag en \
+  --language-name English \
+  --abbreviation WEBP \
+  --canon-id protestant-66 \
+  --source-id ebible.org \
+  --license-id public-domain \
+  --attribution "World English Bible text from eBible.org; public domain; preserve the text faithfully and observe trademark conditions."
+```
+
+The builder currently supports the 66-book Protestant canon and intentionally rejects verse bridges for manual versification review. The output still needs validation with the app importer and a verse-by-verse spot check before being published. The World English Bible name is trademarked and may only identify faithful copies of the source text; do not edit the text and keep the source conditions visible.
+
 ## Book records
 
 Each line in `books.ndjson` is a JSON object:
