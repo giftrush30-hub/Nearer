@@ -66,7 +66,7 @@ internal class NearbyIncomingMessageInbox(context: Context) {
         )
     }
 
-    private fun restore() = synchronized(lock) {
+    private fun restore(): Unit = synchronized(lock) {
         val stored = preferences.getString(KEY, null) ?: return
         try {
             val plaintext = LocalDataCipher.decrypt(appContext, stored)
