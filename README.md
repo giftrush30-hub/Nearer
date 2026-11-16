@@ -106,3 +106,12 @@ The current group/broadcast methods encrypt a separate packet for each connected
 ### Process lifecycle boundary
 
 The direct outbox is restored when the transport is recreated and retries when the matching trusted peer authenticates again. This is reconnect-driven recovery, not a guarantee of background delivery while the app is stopped or the phone is in Doze. Android background execution and a durable scheduled retry mechanism remain separate work.
+
+
+## Engineering governance
+
+- [Architecture and quality audit](docs/ARCHITECTURE_QUALITY_AUDIT.md) — measured repository findings and the incremental architecture plan.
+- [Engineering quality gates](docs/ENGINEERING_QUALITY_GATES.md) — evidence-based completion criteria for features and releases.
+- [Source ownership map](docs/SOURCE_OWNERSHIP_MAP.md) — responsibility map for the two largest coordinators and safe extraction sequence.
+
+These documents are living engineering references. They do not claim that planned modularisation, device validation or release gates have already been completed.

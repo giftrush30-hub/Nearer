@@ -4972,17 +4972,7 @@ private data class CommunityChatMessage(
 private data class CommunityDeliveryRef(val communityMessageId: String, val peerId: String)
 data class GameInvite(val matchId: String, val sender: String, val senderPeerId: String = "")
 
-private data class NearbyPerson(val name: String, val lastSeenAt: Long)
 
-private fun seenAgo(timestamp: Long): String {
-    val seconds = (System.currentTimeMillis() - timestamp).coerceAtLeast(0L) / 1000L
-    return when {
-        seconds < 60 -> "Seen just now"
-        seconds < 3600 -> "Seen ${seconds / 60}m ago"
-        seconds < 86400 -> "Seen ${seconds / 3600}h ago"
-        else -> "Seen ${seconds / 86400}d ago"
-    }
-}
 
 internal data class ChatMessage(
     val id: String,
@@ -4999,16 +4989,6 @@ internal data class ChatMessage(
     val editVersion: Int = 0,
     val editedAt: Long = 0L
 )
-
-private fun isNeaRerAppBundle(file: File): Boolean {
-    if (!file.isFile || !(file.extension.equals("zip", ignoreCase = true) ||
-            file.extension.equals("nearerapp", ignoreCase = true))) return false
-    return runCatching {
-        ZipFile(file).use { archive ->
-            archive.getEntry("INSTALLATION.txt") != null && archive.getEntry("base.apk") != null
-        }
-    }.getOrDefault(false)
-}
 
 internal data class ReceivedFile(val displayName: String, val file: File, val isAppBundle: Boolean = false)
 
@@ -5030,18 +5010,12 @@ internal data class NearbyTransferRecord(
     val timestamp: Long,
     val status: String
 ) {
-    val timeLabel: String get() = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+    val timeLabel: String get() = formatChatTime(timestamp)
 }
 
-private fun formatChatTime(timestamp: Long): String =
-    java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
 
-internal fun formatTransferBytes(bytes: Long): String = when {
-    bytes >= 1024L * 1024L * 1024L -> String.format(java.util.Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
-    bytes >= 1024L * 1024L -> String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
-    bytes >= 1024L -> String.format(java.util.Locale.US, "%.0f KB", bytes / 1024.0)
-    else -> "$bytes B"
-}
+
+
 
 private data class IncomingTransfer(
     val name: String,
@@ -5055,42 +5029,4 @@ private data class IncomingTransfer(
     }
 }
 
-internal class AppInstallResultActivity : android.app.Activity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
-        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-            val confirmation = if (Build.VERSION.SDK_INT >= 33) {
-                intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                intent.getParcelableExtra(Intent.EXTRA_INTENT) as? Intent
-            }
-            if (confirmation != null) startActivity(confirmation)
-            finish()
-            return
-        }
-        val success = status == PackageInstaller.STATUS_SUCCESS
-        val detail = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE).orEmpty()
-        val message = if (success) {
-            "Android reports that the app was installed successfully."
-        } else {
-            "Android did not complete the installation." + if (detail.isBlank()) "" else "\n\n" + detail
-        }
-        AlertDialog.Builder(this)
-            .setTitle(if (success) "App installed" else "Installation not completed")
-            .setMessage(message)
-            .setPositiveButton("OK") { _, _ -> finish() }
-            .setOnCancelListener { finish() }
-            .show()
-    }
-}
 
-private fun deviceStatus(status: Int): String = when (status) {
-    WifiP2pDevice.AVAILABLE -> "Available"
-    WifiP2pDevice.INVITED -> "Invitation pending"
-    WifiP2pDevice.CONNECTED -> "Connected"
-    WifiP2pDevice.FAILED -> "Connection failed"
-    WifiP2pDevice.UNAVAILABLE -> "Temporarily unavailable"
-    else -> "Nearby Wi-Fi Direct device"
-}
