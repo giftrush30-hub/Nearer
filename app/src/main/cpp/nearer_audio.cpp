@@ -196,6 +196,14 @@ public:
         }
         auto* samples = static_cast<float*>(audioData);
         const auto frameCount = static_cast<uint32_t>(numFrames);
+        // Stop playback immediately when the user disables monitoring or a route errors.
+        // Do not let an in-flight output callback drain queued microphone samples.
+        if (!running_.load(std::memory_order_acquire)) {
+            if (stream->getDirection() == oboe::Direction::Output) {
+                std::fill(samples, samples + frameCount, 0.0f);
+            }
+            return oboe::DataCallbackResult::Continue;
+        }
         if (stream->getDirection() == oboe::Direction::Input) {
             const uint32_t writtenToPlayback = playbackRing_.push(samples, frameCount);
             const uint32_t writtenToAnalysis = analysisRing_.push(samples, frameCount);
