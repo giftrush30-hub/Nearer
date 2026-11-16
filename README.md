@@ -102,5 +102,6 @@ The direct outbox is restored when the transport is recreated and retries when t
 
 - [Architecture and quality audit](docs/ARCHITECTURE_QUALITY_AUDIT.md) — measured repository findings and the incremental architecture plan.
 - [Engineering quality gates](docs/ENGINEERING_QUALITY_GATES.md) — evidence-based completion criteria for features and releases.
+- [Source ownership map](docs/SOURCE_OWNERSHIP_MAP.md) — responsibility map for the two largest coordinators and safe extraction sequence.
 
 These documents are living engineering references. They do not claim that planned modularisation, device validation or release gates have already been completed.
