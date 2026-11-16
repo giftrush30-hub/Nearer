@@ -293,10 +293,11 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
     }
 
     val latestComparisonMode = rememberUpdatedState(comparisonMode)
+    val latestExportedFile = rememberUpdatedState(exportedFile)
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY && player.duration > 0L && !latestComparisonMode.value) {
+                if (playbackState == Player.STATE_READY && player.duration > 0L && !latestComparisonMode.value && latestExportedFile.value == null) {
                     durationMs = player.duration
                     if (endMs == 0L || endMs > player.duration) endMs = player.duration
                 }
