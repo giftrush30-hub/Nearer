@@ -1,3 +1,5 @@
+> - A receiver-side verified-completion journal now records the authenticated source peer, transfer/item identity, digest, size and app-private published file. If the sender restarts after the receiver saved the file but before the sender received the ACK, the receiver can answer the retried metadata with the saved receipt instead of publishing a duplicate. The sender accepts a matching authenticated saved receipt even if Nearby's payload-completion callback arrives later.
+>
 > **Implementation status update — 16 November 2026 (expanded recovery and bundle integration)**
 >
 > The single-file Nearby HyperTransfer STREAM path remains the common transport and now has a durable sender recovery layer:
