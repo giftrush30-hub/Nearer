@@ -230,17 +230,18 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             val buffer = stats.getOrNull(2)?.toInt() ?: 0
                             val xruns = stats.getOrNull(3)?.toInt() ?: -1
                             val underruns = stats.getOrNull(4) ?: 0L
-                            val dropped = stats.getOrNull(5) ?: 0L
-                            routeDisconnected = stats.getOrNull(6) == 1L
-                            val inputRoute = stats.getOrNull(7)?.toInt() ?: -1
-                            val outputRoute = stats.getOrNull(8)?.toInt() ?: -1
-                            diagnostics = "Oboe native · $rate Hz · input ID $inputRoute → output ID $outputRoute · burst $burst · buffer $buffer frames · xrun $xruns · underruns $underruns · dropped $dropped"
+                            val captureDropped = stats.getOrNull(5) ?: 0L
+                            val playbackDropped = stats.getOrNull(6) ?: 0L
+                            routeDisconnected = stats.getOrNull(7) == 1L
+                            val inputRoute = stats.getOrNull(8)?.toInt() ?: -1
+                            val outputRoute = stats.getOrNull(9)?.toInt() ?: -1
+                            diagnostics = "Oboe native · $rate Hz · input ID $inputRoute → output ID $outputRoute · burst $burst · buffer $buffer frames · xrun $xruns · underruns $underruns · capture drops $captureDropped · latency drops $playbackDropped"
                             if (routeDisconnected) status = "Audio route changed. Reconnecting the live monitor…"
                         }
                     }
                     if (isActive && !StudioOboeEngine.isRunning()) {
                         val finalStats = withContext(Dispatchers.IO) { StudioOboeEngine.diagnostics() }
-                        routeDisconnected = routeDisconnected || finalStats.getOrNull(6) == 1L
+                        routeDisconnected = routeDisconnected || finalStats.getOrNull(7) == 1L
                         if (routeDisconnected) status = "Audio route changed. Reconnecting the live monitor…"
                     }
                 } finally {
