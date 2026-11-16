@@ -717,8 +717,9 @@ class MainActivity : ComponentActivity() {
                             activeOutgoingFileBytes = 0L
                             currentNearbyQueuedFile = null
                             nearbyQueueCompleted += 1
-                            persistNearbyFileQueue()
-                            if (nearbyQueueTotal > 0) startNextNearbyQueuedFile()
+                            val queueSaved = persistNearbyFileQueue()
+                            if (nearbyQueueTotal > 0 && queueSaved) startNextNearbyQueuedFile()
+                            else if (nearbyQueueTotal > 0) chatNotice = "The previous file was verified, but the next file is paused because its recovery queue could not be saved."
                         } else if (nearbyQueueTotal > 0) {
                             // Keep the active file and remaining queue for retry after reconnect.
                             persistNearbyFileQueue()
@@ -3270,7 +3271,10 @@ class MainActivity : ComponentActivity() {
             chatNotice = "Your saved files are reserved for the phone you originally selected. Reconnect to that same phone to send them."
             return
         }
-        persistNearbyFileQueue()
+        if (!persistNearbyFileQueue()) {
+            chatNotice = "Transfer paused because NeaRer could not save its recovery queue. Your files remain selected."
+            return
+        }
         var fileName = "shared-file"
         try {
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -3291,19 +3295,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun persistNearbyFileQueue() {
-        try {
+    private fun persistNearbyFileQueue(): Boolean {
+        return try {
             val items = JSONArray()
             currentNearbyQueuedFile?.let { items.put(it.toString()) }
             pendingNearbyFileQueue.forEach { items.put(it.toString()) }
-            getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            val saved = getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
                 .putString("nearby_file_queue", items.toString())
                 .putInt("nearby_file_queue_total", nearbyQueueTotal)
                 .putInt("nearby_file_queue_completed", nearbyQueueCompleted)
                 .putString("nearby_file_queue_peer", nearbyQueuePeerStableId)
                 .commit()
+            if (!saved) chatNotice = "NeaRer could not save the transfer queue. The next file will not start until its recovery state is safe."
+            saved
         } catch (_: Exception) {
-            chatNotice = "NeaRer could not save the transfer queue. Keep this screen open until sending finishes."
+            chatNotice = "NeaRer could not save the transfer queue. The next file will not start until its recovery state is safe."
+            false
         }
     }
 
