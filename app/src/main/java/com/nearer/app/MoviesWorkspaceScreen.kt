@@ -85,7 +85,7 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
         mutableStateListOf<NearerMovie>().apply {
             addAll(restoredMovies.filter { it.uri in persistedUris }.map { movie ->
                 val legacyResume = runCatching { prefs.getLong("resume_${movie.uri}", 0L) }.getOrDefault(0L)
-                movie.copy(resumePositionMs = maxOf(movie.resumePositionMs, legacyResume))
+                movie.copy(resumePositionMs = maxOf(movie.resumePositionMs, legacyResume).coerceIn(0L, MoviesLibraryCodec.MAX_RESUME_POSITION_MS))
             })
         }
     }
@@ -223,7 +223,7 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
         }
         statusMessage = ""
         val legacyResume = runCatching { prefs.getLong("resume_${movie.uri}", 0L) }.getOrDefault(0L)
-        val resumeAt = maxOf(movie.resumePositionMs, legacyResume)
+        val resumeAt = maxOf(movie.resumePositionMs, legacyResume).coerceIn(0L, MoviesLibraryCodec.MAX_RESUME_POSITION_MS)
         player.setMediaItem(MediaItem.fromUri(Uri.parse(movie.uri)), resumeAt)
         player.setPlaybackSpeed(playbackSpeed)
         player.prepare()
