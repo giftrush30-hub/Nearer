@@ -58,6 +58,14 @@ private data class BusinessDraft(
 internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("nearer_business_center", Context.MODE_PRIVATE) }
+    var activeSection by remember { mutableStateOf("CATALOGUE") }
+    if (activeSection == "ENQUIRIES") {
+        BusinessEnquiriesScreen(
+            businessName = context.getSharedPreferences("nearer_business_center", Context.MODE_PRIVATE).getString("business_name", "").orEmpty(),
+            onBack = { activeSection = "CATALOGUE" }
+        )
+        return
+    }
     var businessName by remember { mutableStateOf(prefs.getString("business_name", "").orEmpty()) }
     var tagline by remember { mutableStateOf(prefs.getString("tagline", "").orEmpty()) }
     var contact by remember { mutableStateOf(prefs.getString("contact", "").orEmpty()) }
@@ -132,7 +140,8 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text("‹  MORE", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 8.dp))
-            Text("LOCAL BUSINESS DESK", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text("ENQUIRIES  ↗", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
+                modifier = Modifier.clickable { activeSection = "ENQUIRIES" }.padding(8.dp))
         }
         Surface(color = Panel, shape = RoundedCornerShape(24.dp)) {
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
