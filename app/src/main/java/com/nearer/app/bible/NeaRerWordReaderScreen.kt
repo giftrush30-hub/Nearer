@@ -80,14 +80,17 @@ fun NeaRerWordReaderScreen(
                             }
                             if(end<verse.text.length) append(verse.text.substring(end))
                         }}
+                        val versePrefix="${verse.verse}  "
                         ClickableText(
                             text=buildAnnotatedString {
                                 pushStyle(SpanStyle(color=Color(0xFF1D2634),fontFamily=FontFamily.Serif,fontSize=18.sp,lineHeight=29.sp))
-                                append("${verse.verse}  "); append(annotated); pop()
+                                append(versePrefix); append(annotated); pop()
                             },
                             onClick={offset->
-                                val found=annotated.getStringAnnotations("word",(offset-2).coerceAtLeast(0),
-                                    (offset+1).coerceAtMost(annotated.length)).firstOrNull()
+                                val wordOffset=offset-versePrefix.length
+                                val found=if(wordOffset in 0 until annotated.length)
+                                    annotated.getStringAnnotations("word",wordOffset,wordOffset+1).firstOrNull()
+                                else null
                                 if(found!=null) onWordSelected(verse,found.item) else onVerseSelected(verse)
                             },modifier=Modifier.fillMaxWidth()
                         )
