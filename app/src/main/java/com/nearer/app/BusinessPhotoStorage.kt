@@ -8,6 +8,7 @@ import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -74,6 +75,10 @@ internal object BusinessPhotoStorage {
             }
             temporary.delete()
             FileProvider.getUriForFile(context, "${context.packageName}.files", output)
+        } catch (cancelled: CancellationException) {
+            temporary.delete()
+            output.delete()
+            throw cancelled
         } catch (_: Throwable) {
             temporary.delete()
             output.delete()
