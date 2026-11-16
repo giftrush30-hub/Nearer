@@ -3132,8 +3132,9 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
             it.timeout?.let(deliveryHandler::removeCallbacks)
             it.receiptTimeout?.let(deliveryHandler::removeCallbacks)
             it.retentionTimeout?.let(deliveryHandler::removeCallbacks)
+            // stop() is a lifecycle/process shutdown, not user cancellation.
+            // Keep the durable source and journal so a new transport can recover it.
             it.prepared.close()
-            outgoingHyperStore.remove(it.transferId)
         }
         outgoingHyperStreams.clear()
         pendingIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
