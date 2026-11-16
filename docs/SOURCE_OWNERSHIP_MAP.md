@@ -99,3 +99,8 @@ The pure `formatTransferBytes` helper now lives in `TransferByteFormatter.kt` ra
 ## Fifth extraction: app-bundle structure validator
 
 The pure `isNeaRerAppBundle` archive-structure check now lives in `NeaRerAppBundleValidator.kt`. Its accepted extensions and required ZIP entries are unchanged. `NeaRerAppBundleValidatorTest.kt` covers valid `.zip` and `.nearerapp` archives, each missing required entry, a wrong extension, a missing file and a malformed archive. This is only a structural check; it does not verify APK signatures, publisher identity or installation safety.
+
+
+## Sixth extraction: shared chat time formatter
+
+The duplicate 24-hour local-time formatting logic for chat timestamps and nearby transfer-history labels now delegates to `formatChatTime` in `ChatTimeFormatter.kt`. The formatter retains the existing default locale and device-local time-zone behaviour. `ChatTimeFormatterTest.kt` fixes the locale and time zone during its assertion and restores both afterward. This is a presentation-only extraction; timestamp storage and ordering are unchanged.
