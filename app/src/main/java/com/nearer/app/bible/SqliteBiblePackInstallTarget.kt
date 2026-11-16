@@ -30,6 +30,15 @@ class SqliteBiblePackInstallTarget(private val database:BibleLocalDatabase):Bibl
         require(book.id.isNotBlank() && book.name.isNotBlank())
         require(book.canonicalNumber in 1..100 && book.chapterCount in 1..200)
         require(book.testament in setOf("OT","NT","DEUTEROCANONICAL"))
+        val manifest=checkNotNull(activeManifest)
+        if(manifest.coverage==BibleCoverage.COMPLETE_BIBLE) {
+            require(manifest.canonId=="protestant-66") { "This reader build only validates the Protestant 66-book complete canon." }
+            val expected=BibleCanonChapterCounts.protestant66[book.canonicalNumber]
+                ?: error("Book number is outside the validated Protestant canon.")
+            require(expected.usfmCode==book.id && expected.chapterCount==book.chapterCount) {
+                "Book identity or chapter count does not match the validated Protestant canon."
+            }
+        }
         require(booksById.put(book.id,book)==null) { "Duplicate book ID in Bible pack." }
         require(seenCanonicalNumbers.add(book.canonicalNumber)) { "Duplicate canonical book number in Bible pack." }
         database.insertBook(book)
