@@ -261,7 +261,9 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             routeDisconnected = stats.getOrNull(8) == 1L
                             val inputRoute = stats.getOrNull(9)?.toInt() ?: -1
                             val outputRoute = stats.getOrNull(10)?.toInt() ?: -1
-                            diagnostics = "Oboe native · $rate Hz · input ID $inputRoute → output ID $outputRoute · burst $burst · buffer $buffer frames · xrun $xruns · underruns $underruns · capture drops $captureDropped · playback drops $playbackDropped · pitch drops $analysisDropped"
+                            val actualLowLatency = stats.getOrNull(11) == 1L
+                            val actualExclusive = stats.getOrNull(12) == 1L
+                            diagnostics = "Oboe native · $rate Hz · input ID $inputRoute → output ID $outputRoute · low-latency ${if (actualLowLatency) "active" else "not granted"} · ${if (actualExclusive) "exclusive" else "shared"} · burst $burst · buffer $buffer frames · xrun $xruns · underruns $underruns · capture drops $captureDropped · playback drops $playbackDropped · pitch drops $analysisDropped"
                             if (routeDisconnected) status = "Audio route changed. Reconnecting the live monitor…"
                         }
                     }
