@@ -25,12 +25,13 @@ internal class VerifiedTransferReceiptStore(private val directory: File) {
     fun record(
         peerId: String,
         metadata: TransferResumeStreamMetadataCodec.Metadata,
-        completedFile: File
+        completedFile: File,
+        verifiedSha256: String
     ) {
         val normalized = NeaRerIdentity.normalize(peerId)
             ?: throw SecurityException("The source peer is not authenticated")
         require(completedFile.isFile && completedFile.length() == metadata.item.sizeBytes)
-        require(hash(completedFile).equals(metadata.wholeFileSha256, ignoreCase = true))
+        require(verifiedSha256.equals(metadata.wholeFileSha256, ignoreCase = true))
         require(directory.exists() || directory.mkdirs()) { "Could not create completed-transfer journal" }
         val properties = Properties().apply {
             setProperty("version", "1")
@@ -81,8 +82,7 @@ internal class VerifiedTransferReceiptStore(private val directory: File) {
             val file = File(path).canonicalFile
             val receivedRoot = File(directory.parentFile, "received").canonicalFile
             if (!file.path.startsWith(receivedRoot.path + File.separator) ||
-                !file.isFile || file.length() != size ||
-                !hash(file).equals(sha, ignoreCase = true)) return false
+                !file.isFile || file.length() != size) return false
             ReceiptRecord(storedPeer, transferId, itemId, sha, size, file)
         } catch (_: Exception) {
             null
@@ -97,16 +97,4 @@ internal class VerifiedTransferReceiptStore(private val directory: File) {
         MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
 
-    private fun hash(file: File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().buffered().use { input ->
-            val buffer = ByteArray(256 * 1024)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                if (count > 0) digest.update(buffer, 0, count)
-            }
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
-    }
 }
