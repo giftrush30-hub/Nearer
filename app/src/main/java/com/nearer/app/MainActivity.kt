@@ -4990,16 +4990,6 @@ internal data class ChatMessage(
     val editedAt: Long = 0L
 )
 
-private fun isNeaRerAppBundle(file: File): Boolean {
-    if (!file.isFile || !(file.extension.equals("zip", ignoreCase = true) ||
-            file.extension.equals("nearerapp", ignoreCase = true))) return false
-    return runCatching {
-        ZipFile(file).use { archive ->
-            archive.getEntry("INSTALLATION.txt") != null && archive.getEntry("base.apk") != null
-        }
-    }.getOrDefault(false)
-}
-
 internal data class ReceivedFile(val displayName: String, val file: File, val isAppBundle: Boolean = false)
 
 private data class UnifiedTransferHistoryEntry(
