@@ -175,7 +175,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         val frameSize = 2_048
         if (StudioAudioEnginePolicy.useOboe(android.os.Build.VERSION.SDK_INT, preferredInputId)) {
             val nativeStarted = withContext(Dispatchers.IO) {
-                StudioOboeEngine.start(preferredInputId)
+                StudioOboeEngine.start(preferredInputId, preferUnprocessedInput)
             }
             if (nativeStarted) {
                 val analysisChunk = FloatArray(512)
