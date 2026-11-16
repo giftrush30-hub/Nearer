@@ -115,7 +115,7 @@ class NearbyTransportService : Service() {
         }
 
         override fun onMessage(
-            id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit
+            id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Boolean
         ) {
             onMessageWithReply(id, senderName, messageId, body, null, null, null, acknowledge)
         }
@@ -128,7 +128,7 @@ class NearbyTransportService : Service() {
             replyToMessageId: String?,
             replyToPreview: String?,
             replyToSender: String?,
-            acknowledge: () -> Unit
+            acknowledge: () -> Boolean
         ) {
             val peerId = nearbyTransport.stableIdentityForEndpoint(id)
             if (peerId.isBlank()) {
@@ -145,12 +145,12 @@ class NearbyTransportService : Service() {
                 return
             }
             // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
-            if (runCatching { acknowledge() }.isFailure) nearbyTransport.releasePendingIncomingMessage(messageId)
-            dispatchInboxEntry(entry)
+            val dedupeCommitted = runCatching { acknowledge() }.getOrDefault(false)
+            dispatchInboxEntry(entry, dedupeCommitted)
         }
 
         override fun onMeshMessage(
-            originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit
+            originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Boolean
         ) {
             onMeshMessageWithReply(originPeerId, senderName, messageId, body, null, null, null, acknowledge)
         }
@@ -163,7 +163,7 @@ class NearbyTransportService : Service() {
             replyToMessageId: String?,
             replyToPreview: String?,
             replyToSender: String?,
-            acknowledge: () -> Unit
+            acknowledge: () -> Boolean
         ) {
             val entry = NearbyIncomingMessageInbox.Entry(
                 messageId, originPeerId, senderName, body,
@@ -175,8 +175,8 @@ class NearbyTransportService : Service() {
                 return
             }
             // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
-            if (runCatching { acknowledge() }.isFailure) nearbyTransport.releasePendingIncomingMessage(messageId)
-            dispatchInboxEntry(entry)
+            val dedupeCommitted = runCatching { acknowledge() }.getOrDefault(false)
+            dispatchInboxEntry(entry, dedupeCommitted)
         }
 
         override fun onMessageStatus(messageId: String, status: String) {
@@ -260,16 +260,16 @@ class NearbyTransportService : Service() {
         return START_STICKY
     }
 
-    private fun dispatchInboxEntry(entry: NearbyIncomingMessageInbox.Entry) {
+    private fun dispatchInboxEntry(entry: NearbyIncomingMessageInbox.Entry, dedupeCommitted: Boolean = false) {
         val listener = uiListener ?: return
         val key = inboxKey(entry.peerId, entry.messageId)
         if (!inFlightMessageIds.add(key)) return
-        val removeAfterUiCommit: () -> Unit = {
-            // The sender has already been acknowledged after the encrypted inbox
-            // commit. Keep the inbox copy until the chat/community store commits.
-            inbox.remove(entry.peerId, entry.messageId)
+        val removeAfterUiCommit: () -> Boolean = {
+            // A durable dedupe record must exist before the inbox copy can be
+            // retired. If that write failed, keep the event for a later replay.
+            val removed = dedupeCommitted && inbox.remove(entry.peerId, entry.messageId)
             inFlightMessageIds.remove(key)
-            Unit
+            removed
         }
         try {
             if (entry.mesh) {
