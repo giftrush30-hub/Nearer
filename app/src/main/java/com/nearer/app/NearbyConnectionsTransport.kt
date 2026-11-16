@@ -228,7 +228,8 @@ internal object IncomingFilePayloadPolicy {
     private val incomingHyperResumeOffsets = ConcurrentHashMap<Long, Long>()
     private val streamCapablePeers = ConcurrentHashMap.newKeySet<String>()
     private val remoteHyperTransferProfiles = ConcurrentHashMap<String, HyperTransferModePolicy.DeviceProfile>()
-    private val peerMeasuredThroughput = ConcurrentHashMap<String, Long>()
+    private data class PeerThroughputSample(val bytesPerSecond: Long, val measuredAtElapsedMs: Long)
+    private val peerMeasuredThroughput = ConcurrentHashMap<String, PeerThroughputSample>()
     private val cancelledStreamPayloads = ConcurrentHashMap.newKeySet<Long>()
     private val streamController = NearbyStreamExchangeController()
     private val transferSpeedMeters = ConcurrentHashMap<Long, TransferSpeedMeter>()
@@ -276,7 +277,10 @@ internal object IncomingFilePayloadPolicy {
     private val completedOutgoingMessageIds = LinkedHashSet<String>()
     private val deliveryHandler = Handler(Looper.getMainLooper())
     private val maxMessageAttempts = MessageRetryPolicy.MAX_ATTEMPTS
-    private companion object { const val RECEIPT_RETRY_MS = 15_000L }
+    private companion object {
+        const val RECEIPT_RETRY_MS = 15_000L
+        const val PEER_THROUGHPUT_FRESHNESS_MS = 60_000L
+    }
     init {
         restorePendingOutbox()
         // Restore replay protection before any cached route can become usable.
@@ -1762,6 +1766,15 @@ internal object IncomingFilePayloadPolicy {
             .addOnFailureListener { onFailure(it) }
     }
 
+    private fun measuredThroughputForPeer(peerId: String): Long {
+        val sample = peerMeasuredThroughput[peerId] ?: return 0L
+        if (SystemClock.elapsedRealtime() - sample.measuredAtElapsedMs > PEER_THROUGHPUT_FRESHNESS_MS) {
+            peerMeasuredThroughput.remove(peerId, sample)
+            return 0L
+        }
+        return sample.bytesPerSecond
+    }
+
     private fun recordPeerThroughput(endpointId: String, snapshot: TransferSpeedSnapshot) {
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (NeaRerIdentity.normalize(peerId) == null) return
@@ -1769,7 +1782,7 @@ internal object IncomingFilePayloadPolicy {
             .takeIf { it.isFinite() && it > 0.0 }
             ?.toLong()
             ?: return
-        peerMeasuredThroughput.merge(peerId, measured) { previous, current -> maxOf(previous, current) }
+        peerMeasuredThroughput[peerId] = PeerThroughputSample(measured, SystemClock.elapsedRealtime())
     }
 
     private fun handleHyperTransferControl(endpointId: String, controlBytes: ByteArray) {
@@ -1996,7 +2009,7 @@ internal object IncomingFilePayloadPolicy {
             val localProfile = HyperTransferDeviceProfileProvider.capture(
                 appContext,
                 streamCapable = true,
-                measuredBytesPerSecond = peerMeasuredThroughput[ready.authenticatedPeerId] ?: 0L
+                measuredBytesPerSecond = measuredThroughputForPeer(ready.authenticatedPeerId)
             )
             val remoteProfile = remoteHyperTransferProfiles[ready.authenticatedPeerId]
             HyperTransferModePolicy.receiveBufferBytes(
@@ -2879,7 +2892,7 @@ internal object IncomingFilePayloadPolicy {
             HyperTransferDeviceProfileProvider.capture(
                 appContext,
                 streamCapable = true,
-                measuredBytesPerSecond = peerId.let { peerMeasuredThroughput[it] ?: 0L }
+                measuredBytesPerSecond = measuredThroughputForPeer(peerId)
             )
         }.getOrNull() ?: return
         runCatching {
