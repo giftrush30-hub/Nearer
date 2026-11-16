@@ -72,7 +72,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                     runCatching {
                         context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         val temp=File.createTempFile("nearer-word-",".zip",context.cacheDir)
-                        context.contentResolver.openInputStream(uri)!!.use { input -> temp.outputStream().use(input::copyTo) }
+                        context.contentResolver.openInputStream(uri)!!.use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
                         try {
                             BiblePackImporter(context,SqliteBiblePackInstallTarget(database)).import(temp)
                         } finally { temp.delete() }
