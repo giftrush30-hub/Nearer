@@ -2375,15 +2375,24 @@ internal object IncomingFilePayloadPolicy {
         if (started) return
         started = true
         val generation = ++startGeneration
-        val discovering = DiscoveryOptions.Builder().setStrategy(connectionStrategy).build()
-        startAdvertising(generation)
-        client.startDiscovery(serviceId, discoveryCallback(generation), discovering).addOnFailureListener {
-            failStart(
-                generation,
-                "Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again."
-            )
+        try {
+            val discovering = DiscoveryOptions.Builder().setStrategy(connectionStrategy).build()
+            startAdvertising(generation)
+            client.startDiscovery(serviceId, discoveryCallback(generation), discovering).addOnFailureListener {
+                failStart(
+                    generation,
+                    "Nearby discovery could not start: ${it.localizedMessage ?: "check Bluetooth permissions"}. You can try again."
+                )
+            }
+            listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
+        } catch (error: Exception) {
+            if (generation == startGeneration) {
+                stopSearching()
+                listener.onStatus(
+                    "Nearby discovery could not start: ${error.localizedMessage ?: "check nearby-device permissions and Bluetooth/Wi-Fi"}."
+                )
+            }
         }
-        listener.onStatus("Searching over Bluetooth and nearby Wi-Fi…")
     }
 
     fun request(id: String, onFailure: (() -> Unit)? = null) {
