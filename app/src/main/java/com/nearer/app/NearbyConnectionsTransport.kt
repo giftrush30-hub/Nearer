@@ -2623,7 +2623,8 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         uri: Uri,
         displayName: String,
         mimeType: String? = null,
-        deleteSourceAfterStaging: Boolean = false
+        deleteSourceAfterStaging: Boolean = false,
+        allowLegacyFallback: Boolean = true
     ): Long? {
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (NeaRerIdentity.normalize(peerId) == null) return null
@@ -2718,8 +2719,12 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                 staged?.delete()
                 if (deleteSourceAfterStaging) runCatching { File(uri.path.orEmpty()).delete() }
                 if (wasCancelled) return@execute
-                listener.onFileStatus("The fast resumable stream could not be prepared. Using standard file transfer instead.")
-                sendFileLegacy(endpointId, uri, displayName)
+                if (allowLegacyFallback) {
+                    listener.onFileStatus("The fast resumable stream could not be prepared. Using standard file transfer instead.")
+                    sendFileLegacy(endpointId, uri, displayName)
+                } else {
+                    listener.onFileStatus("The folder bundle could not be staged for a verified resumable transfer.")
+                }
             }
         }
         return payloadId
@@ -2979,7 +2984,8 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                     val uri = Uri.fromFile(archive)
                     val payloadId = sendHyperTransferStream(
                         endpointId, uri, "$safeBundleName.nearerbundle",
-                        BUNDLE_MIME_TYPE, deleteSourceAfterStaging = true
+                        BUNDLE_MIME_TYPE, deleteSourceAfterStaging = true,
+                        allowLegacyFallback = false
                     )
                     if (payloadId == null) throw IllegalStateException("The bundle could not be queued for transfer")
                     listener.onFileStatus("Folder bundle prepared. Sending ${sources.size} files as one resumable transfer…")
