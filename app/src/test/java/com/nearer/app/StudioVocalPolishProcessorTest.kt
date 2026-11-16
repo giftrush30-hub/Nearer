@@ -49,7 +49,9 @@ class StudioVocalPolishProcessorTest {
 
     @Test fun sustainedHotSignalSettlesBelowConfiguredLimiterCeiling() {
         val ceiling = 0.78f
-        val input = FloatArray(6_000) { 0.98f }
+        val input = FloatArray(6_000) { index ->
+            (0.98 * sin(2.0 * PI * 220.0 * index / 48_000.0)).toFloat()
+        }
         val output = process(1, input, StudioVocalControls(limiterCeiling = ceiling))
         val lastFrames = output.takeLast(512)
         val peak = lastFrames.maxOf { abs(it.toInt()) } / 32767f
@@ -70,6 +72,7 @@ class StudioVocalPolishProcessorTest {
         }
         val output = process(2, input, StudioVocalControls(stereoWidth = 1.4f, limiterCeiling = 0.82f))
         assertEquals(frames * 2, output.size)
-        assertTrue(output.all { it.toInt() in Short.MIN_VALUE..Short.MAX_VALUE })
+        val peak = output.maxOf { abs(it.toInt()) } / 32767f
+        assertTrue("Processed PCM should remain within full scale", peak <= 1f)
     }
 }
