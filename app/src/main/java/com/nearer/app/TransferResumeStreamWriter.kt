@@ -12,8 +12,9 @@ import java.security.MessageDigest
  *
  * Every durable checkpoint is recorded only after the corresponding bytes have
  * been synced. On restart, TransferResumeStore verifies the retained prefix
- * before this writer appends to it. This is a storage primitive; transport
- * negotiation and Nearby STREAM wiring remain the caller's responsibility.
+ * before this writer appends to it. The live NearbyStreamPayloadBridge invokes
+ * this writer only after authenticated transport negotiation has approved the
+ * exact peer, transfer, item, and offset.
  */
 internal class TransferResumeStreamWriter(
     private val store: TransferResumeStore,
