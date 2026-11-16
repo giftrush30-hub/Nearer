@@ -109,3 +109,8 @@ The duplicate 24-hour local-time formatting logic for chat timestamps and nearby
 ## Seventh extraction: incoming file payload peer policy
 
 The pure `IncomingFilePayloadPolicy` has been moved out of the 3,111-line `NearbyConnectionsTransport.kt` into its own file. Its existing eight-case JVM test suite now targets the standalone policy. The policy still requires a matching stable peer identity when metadata supplies one, permits legacy endpoint matching only when no stable identity is known, and rejects blank incoming endpoints. No payload callbacks, transfer metadata, or wire protocol were changed.
+
+
+## Eighth extraction: Nearby endpoint name codec
+
+The endpoint-name decoder now lives in `NearbyEndpointNameCodec.kt` rather than inside `NearbyConnectionsTransport.kt`. Its tests cover legacy names, display-name length limits, names containing the separator, invalid identities and empty prefixes. The transport still emits the same endpoint-name format; only decoding ownership moved.
