@@ -56,8 +56,11 @@ internal class TransferResumeStreamWriter(
         sourceModifiedAtMillis: Long?,
         input: InputStream,
         sourcePeerId: String?,
-        isCancelled: () -> Boolean = { false }
+        isCancelled: () -> Boolean = { false },
+        bufferBytesOverride: Int? = null
     ): Result {
+        val effectiveBufferBytes = bufferBytesOverride ?: bufferBytes
+        require(effectiveBufferBytes in 4 * 1024..1024 * 1024) { "Invalid resume stream buffer size" }
         require(item.kind == TransferBundleItem.Kind.FILE) { "Only files can be resumed" }
         val candidate = store.findValid(transferId, item, sourceModifiedAtMillis, sourcePeerId)
         val partial = candidate?.partialFile ?: store.partialFileFor(transferId, item.id)
@@ -78,7 +81,7 @@ internal class TransferResumeStreamWriter(
         val digest = MessageDigest.getInstance("SHA-256")
         if (offset > 0L) {
             FileInputStream(partial).use { prefix ->
-                val prefixBuffer = ByteArray(bufferBytes)
+                val prefixBuffer = ByteArray(effectiveBufferBytes)
                 var remaining = offset
                 while (remaining > 0L) {
                     checkCancelled(isCancelled)
@@ -102,7 +105,7 @@ internal class TransferResumeStreamWriter(
                 output.fd.sync()
                 store.checkpoint(transferId, item, sourceModifiedAtMillis, 0L, sourcePeerId)
             }
-            val buffer = ByteArray(bufferBytes)
+            val buffer = ByteArray(effectiveBufferBytes)
             while (received < item.sizeBytes) {
                 checkCancelled(isCancelled)
                 val untilCheckpoint = (nextCheckpoint - received).coerceAtLeast(1L)
