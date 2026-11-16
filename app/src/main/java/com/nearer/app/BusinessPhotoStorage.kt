@@ -21,7 +21,7 @@ internal object BusinessPhotoStorage {
     private const val MAX_DIMENSION = 2_048
     private const val JPEG_QUALITY = 88
 
-    suspend fun import(context: Context, source: Uri): Uri? = withContext(Dispatchers.IO) {
+    suspend fun importPhoto(context: Context, source: Uri): Uri? = withContext(Dispatchers.IO) {
         val mime = runCatching { context.contentResolver.getType(source) }.getOrNull()
         if (mime?.startsWith("image/") != true) return@withContext null
 
