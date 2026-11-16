@@ -35,7 +35,7 @@ Archive entry names must be exactly those names, at archive root. Nested paths a
 }
 ```
 
-Supported complete-canon IDs currently validated by the reader: `protestant-66` (66 books), `catholic-73` (73 books), and `ethiopian-81` (81 books). Other canons must be explicitly added and reviewed before being labelled complete. Partial, Old Testament and New Testament packs must declare the correct coverage.
+Complete Bible installation is currently validated only for `protestant-66` (66 books), with exact book IDs/order and chapter counts checked against the reader's canon table. Catholic, Orthodox and Ethiopian canons remain unsupported for `COMPLETE_BIBLE` until their own authoritative book-order and chapter-count tables are implemented. Partial, Old Testament and New Testament packs must declare the correct coverage.
 
 ## Preparing the public-domain World English Bible (WEBP) seed
 
