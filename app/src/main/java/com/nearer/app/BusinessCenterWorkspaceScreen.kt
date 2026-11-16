@@ -255,6 +255,54 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
             }
             Button(onClick = {
                 if (showEditor) {
+                    resetEditor()
+                } else if (drafts.size >= BusinessDraftCodec.MAX_DRAFTS) {
+                    statusMessage = "Your local catalogue has reached its ${BusinessDraftCodec.MAX_DRAFTS}-listing limit."
+                } else {
+                    editingDraftId = null
+                    title = ""
+                    price = ""
+                    description = ""
+                    imageUri = null
+                    category = "PRODUCT"
+                    itemCategory = "General"
+                    availability = "AVAILABLE"
+                    photoMessage = ""
+                    photoImportToken += 1
+                    showEditor = true
+                }
+            }, enabled = !catalogueReadOnly && (showEditor || drafts.size < BusinessDraftCodec.MAX_DRAFTS), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
+                Text(if (showEditor) "Close" else "+ Add listing", fontWeight = FontWeight.Bold)
+            }
+        }
+        if (drafts.isNotEmpty()) {
+            Button(onClick = {
+                val catalogueText = buildString {
+                    append(businessName.ifBlank { "NeaRer Business Catalogue" })
+                    if (tagline.isNotBlank()) append("\n$tagline")
+                    if (businessCategory.isNotBlank()) append("\nCategory: $businessCategory")
+                    if (serviceArea.isNotBlank()) append("\nArea: $serviceArea")
+                    if (businessHours.isNotBlank()) append("\nHours: $businessHours")
+                    if (contact.isNotBlank()) append("\nContact: $contact")
+                    append("\n\nCATALOGUE")
+                    drafts.forEach { item ->
+                        append("\n\n• ${item.title}")
+                        if (item.itemCategory.isNotBlank()) append(" · ${item.itemCategory}")
+                        if (item.price.isNotBlank()) append("\nPrice: ${item.price}")
+                        append("\nStatus: ${item.availability.replace('_', ' ').lowercase()}")
+                        if (item.description.isNotBlank()) append("\n${item.description.take(240)}")
+                    }
+                    append("\n\nShared via NeaRer Business")
+                }
+                runCatching {
+                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, catalogueText), "Share business catalogue"))
+                }.onFailure { statusMessage = "Could not share catalogue: ${it.message ?: "unknown error"}" }
+            }, enabled = profileSaved && !catalogueReadOnly, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
+                Text("Share catalogue summary")
+            }
+        }
+
+        if (showEditor) {
             Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(if (editingDraftId == null) "CREATE A LISTING" else "EDIT LISTING", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
