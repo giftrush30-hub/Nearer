@@ -15,14 +15,6 @@ android {
         versionCode = 14
         versionName = "0.5.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
-
-    buildFeatures {
-        compose = true
-        prefab = true
-    }
-
-    defaultConfig {
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
@@ -32,6 +24,12 @@ android {
             }
         }
     }
+
+    buildFeatures {
+        compose = true
+        prefab = true
+    }
+
 
     externalNativeBuild {
         cmake {
@@ -72,6 +70,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.5.1")
     implementation("androidx.media3:media3-transformer:1.5.1")
     implementation("androidx.media3:media3-effect:1.5.1")
+    implementation("com.google.oboe:oboe:1.11.0")
 
     testImplementation("junit:junit:4.13.2")
     // JVM tests exercise Android-compatible JSON codecs without android.jar stubs.
