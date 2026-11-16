@@ -8,7 +8,7 @@ import android.database.sqlite.SQLiteOpenHelper
 
 /** Offline store. Scripture and lexicon content enter only through validated, licensed packs. */
 class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
-    context.applicationContext, "nearer_word.db", null, 4
+    context.applicationContext, "nearer_word.db", null, 5
 ) {
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
@@ -18,7 +18,7 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
         db.execSQL("""CREATE TABLE translations(
             id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, language_tag TEXT NOT NULL,
             language_name TEXT NOT NULL, abbreviation TEXT NOT NULL, canon_id TEXT NOT NULL,
-            source_id TEXT NOT NULL, license_id TEXT NOT NULL, copyright_notice TEXT, installed_at INTEGER NOT NULL)""")
+            source_id TEXT NOT NULL, license_id TEXT NOT NULL, copyright_notice TEXT, attribution TEXT, installed_at INTEGER NOT NULL)""")
         db.execSQL("""CREATE TABLE books(
             id TEXT NOT NULL, translation_id TEXT NOT NULL REFERENCES translations(id) ON DELETE CASCADE,
             canonical_number INTEGER NOT NULL, name TEXT NOT NULL, testament TEXT NOT NULL,
@@ -79,6 +79,9 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
                 chapter INTEGER NOT NULL, verse INTEGER NOT NULL, color_argb INTEGER NOT NULL,
                 created_at INTEGER NOT NULL, UNIQUE(translation_id,book_id,chapter,verse))""")
             db.execSQL("CREATE INDEX IF NOT EXISTS highlights_ref_idx ON verse_highlights(translation_id,book_id,chapter,verse)")
+        }
+        if (oldVersion < 5) {
+            db.execSQL("ALTER TABLE translations ADD COLUMN attribution TEXT")
         }
     }
 
@@ -160,7 +163,8 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
             put("id",t.id); put("name",t.name); put("language_tag",t.languageTag)
             put("language_name",t.languageName); put("abbreviation",t.abbreviation)
             put("canon_id",t.canonId); put("source_id",t.sourceId); put("license_id",t.licenseId)
-            put("copyright_notice",t.copyrightNotice); put("installed_at",System.currentTimeMillis())
+            put("copyright_notice",t.copyrightNotice); put("attribution",t.attribution)
+            put("installed_at",System.currentTimeMillis())
         }, SQLiteDatabase.CONFLICT_REPLACE)
     }
     fun insertBook(b: BibleBook) {
