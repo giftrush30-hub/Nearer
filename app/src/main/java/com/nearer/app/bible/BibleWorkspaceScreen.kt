@@ -59,7 +59,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
     var searchResults by remember { mutableStateOf(emptyList<BibleVerse>()) }
     var busy by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("Import a licensed NeaRer Bible pack to begin reading offline.") }
-    var selectedWord by remember { mutableStateOf<Pair<BibleVerse,String>?>(null) }
+    var selectedWord by remember { mutableStateOf<Triple<BibleVerse,String,Int>?>(null) }
     var lexiconQuery by remember { mutableStateOf<String?>(null) }
     var lexiconLanguage by remember { mutableStateOf(BiblicalLanguage.GREEK) }
     var selectedLexicalEntry by remember { mutableStateOf<BibleWordStudyEntry?>(null) }
@@ -153,7 +153,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
 
     if(selectedWord!=null) {
         val selected=selectedWord!!
-        val entry=BibleWordStudyEngine(database).findForVerseWord(selected.first,selected.second)
+        val entry=BibleWordStudyEngine(database).findForVerseWord(selected.first,selected.second,selected.third)
         Dialog(onDismissRequest={selectedWord=null}) {
             NeaRerWordStudyDetail(
                 surfaceWord=selected.second,entry=entry,passageReference=selected.first.reference,
@@ -281,7 +281,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                         verses=database.readChapter(selectedTranslation!!.id,selectedBook!!.id,chapter)
                     },
                     onModeChanged={},
-                    onWordSelected={verse,word->selectedWord=verse to word},
+                    onWordSelected={verse,word,tokenIndex->selectedWord=Triple(verse,word,tokenIndex)},
                     onVerseSelected={verse->
                         selectedVerseNumber=verse.verse
                         database.saveBookmark(BibleBookmark(
