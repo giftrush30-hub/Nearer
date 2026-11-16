@@ -68,7 +68,8 @@ translations, books, verses, verse_search (FTS4), lexical_entries, word_occurren
 - The page transition remains a simple 3D turn, not a true paper-curl shader.
 
 ## Remaining work before calling Bible complete
-- No licensed Scripture pack or full multilingual catalogue has been distributed in this branch. The installer expects publisher-approved pack files; it does not fetch copyrighted translations from the web.
+- No Scripture pack has been bundled or distributed in this branch. The World English Bible (WEBP) is a viable first global seed because eBible.org identifies its text as public domain; its name is trademarked, so the text must remain faithful and the naming conditions must be respected. A source USFM ZIP still needs to be processed into a NeaRer pack.
+- BSN reports 27 complete Nigerian-language Bibles, while its public Bible-app download guides list a smaller subset; the app shows discovery leads only and does not imply NeaRer has distribution permission. The installer expects publisher-approved pack files; it does not fetch copyrighted translations from the web.
 - The lexicon importer exists, but no lexical corpus is bundled and no automatic downloadable lexical catalogue is connected yet.
 - Original-language study detail is live only where trusted alignment records have been imported.
 - Add audio Bible playback, side-by-side translation comparison, reading plans, highlights, pronunciation audio, and robust reading-position restoration.
@@ -88,6 +89,8 @@ translations, books, verses, verse_search (FTS4), lexical_entries, word_occurren
 10. Physical-device storage, memory and performance test on a low-end phone.
 
 ## Research sources
+- World English Bible public-domain and trademark conditions: https://ebible.org/engwebp/copyright.htm
+- World English Bible official USFM download listing: https://ebible.org/details.php?id=engwebp
 - BSN current Nigerian-language Bible downloads and YouVersion edition list: https://www.biblesociety-nigeria.org/bible-downloads/
 - BSN translation partnership and 27 full-Bible languages claim: https://www.biblesociety-nigeria.org/bible-translation-partnership/
 - BSN global scripture access and Nigerian translation context: https://www.biblesociety-nigeria.org/what-we-do/
