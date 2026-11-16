@@ -5,7 +5,8 @@ data class TransferBenchmarkRun(
     val bytesTransferred: Long,
     val elapsedMillis: Long,
     val firstByteMillis: Long,
-    val succeeded: Boolean
+    val succeeded: Boolean,
+    val peerId: String = ""
 ) {
     init {
         require(bytesTransferred >= 0L) { "Transferred bytes cannot be negative" }
@@ -13,6 +14,9 @@ data class TransferBenchmarkRun(
         require(firstByteMillis >= 0L) { "First-byte latency cannot be negative" }
         require(firstByteMillis <= elapsedMillis || elapsedMillis == 0L) {
             "First-byte latency cannot exceed elapsed time"
+        }
+        require(peerId.isBlank() || NeaRerIdentity.normalize(peerId) != null) {
+            "Benchmark peer identity is invalid"
         }
     }
 }
