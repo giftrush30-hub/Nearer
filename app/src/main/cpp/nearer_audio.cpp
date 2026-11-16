@@ -251,18 +251,25 @@ public:
     }
 
 private:
+    // Oboe automatically stops and closes a disconnected stream before
+    // onErrorAfterClose(). Calling requestStop() on that stream is invalid.
+    // For streams stopped by our own lifecycle, requestStop() is appropriate;
+    // for already-closed/disconnected streams, only release our shared_ptr.
+    static void stopAndCloseIfOpen(std::shared_ptr<oboe::AudioStream>& stream) {
+        if (!stream) return;
+        const oboe::StreamState state = stream->getState();
+        if (state != oboe::StreamState::Closed &&
+            state != oboe::StreamState::Disconnected) {
+            stream->requestStop();
+            stream->close();
+        }
+        stream.reset();
+    }
+
     void closeStreams() {
         std::lock_guard<std::mutex> lock(streamMutex_);
-        if (input_) {
-            input_->requestStop();
-            input_->close();
-            input_.reset();
-        }
-        if (output_) {
-            output_->requestStop();
-            output_->close();
-            output_.reset();
-        }
+        stopAndCloseIfOpen(input_);
+        stopAndCloseIfOpen(output_);
     }
 
     mutable std::mutex streamMutex_;
