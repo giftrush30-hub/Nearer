@@ -21,6 +21,11 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - Nearby group messaging to currently connected members.
 - Ludo includes a traditional four-colour board, visible dice, token movement, safe squares, captures, computer opponents and nearby multiplayer foundations. Same-device offline pass-and-play supports two to four human players; solo mode supports three computer opponents. Nearby multiplayer still requires physical two-phone verification. Internet multiplayer and live voice calling are not claimed as complete.
 
+### Business Center
+- Local-first business identity with category, service area, hours and optional public contact details.
+- Bounded local product/service catalogue (up to 100 listings), availability labels, search/filter, private product-photo storage and local catalogue sharing through Android's share sheet.
+- This is not yet a public marketplace, direct NeaRer Nearby catalogue delivery, online ordering or payment processing. See [Business Center implementation and roadmap](docs/business-center-roadmap.md).
+
 ## Mesh relay milestone — Batch One
 
 The recipient-encrypted mesh and Dead Drop foundations have been integrated into `main` (commit `1a6006463f3e206941e2195e69d7aed818831fa1`). The implementation includes recipient-addressed encryption, signed route advertisements, encrypted store-and-forward persistence, authenticated hop acknowledgements, destination-signed delivery receipts, route withdrawals and retry handling. This is source integration, not proof of production readiness.
