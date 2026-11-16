@@ -2413,9 +2413,10 @@ internal object IncomingFilePayloadPolicy {
     /**
      * Completes the destination side of a mesh delivery recovered from the durable
      * inbox. If its encrypted packet is still queued, persist the signed final
-     * receipt before retiring that packet. If the packet is already gone, the
-     * receipt path had already advanced beyond local delivery.
+     * receipt before retiring that packet. If the packet has expired or was already
+     * retired, the encrypted inbox remains sufficient to recreate the final receipt.
      */
+    @Synchronized
     fun persistMeshDeliveryAndReceipt(originPeerId: String, messageId: String): Boolean {
         val originId = NeaRerIdentity.normalize(originPeerId) ?: return false
         if (messageId.isBlank() || messageId.length > 80) return false
