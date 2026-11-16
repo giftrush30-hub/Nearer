@@ -68,6 +68,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
     var selectedLexicalEntry by remember { mutableStateOf<BibleWordStudyEntry?>(null) }
     var showJournal by remember { mutableStateOf(false) }
     var selectedVerseNumber by remember { mutableStateOf<Int?>(null) }
+    var readerFocusVerse by remember { mutableStateOf<Int?>(null) }
     var selectedVerseAction by remember { mutableStateOf<BibleVerse?>(null) }
     var showExtras by remember { mutableStateOf(false) }
 
@@ -79,7 +80,10 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                 val current=selectedTranslation
                 val separator=reference.lastIndexOf(' ')
                 val requestedBook=if(separator>0) reference.substring(0,separator).let { if(it.equals("Psalm",true)) "Psalms" else it } else ""
-                val requestedChapter=if(separator>0) reference.substring(separator+1).takeWhile { it.isDigit() }.toIntOrNull() else null
+                val passagePart=if(separator>0) reference.substring(separator+1) else ""
+                val requestedChapter=passagePart.takeWhile { it.isDigit() }.toIntOrNull()
+                val versePart=passagePart.substringAfter(':',"").takeWhile { it.isDigit() }
+                val requestedVerse=versePart.toIntOrNull()
                 val targetBook=books.firstOrNull { it.name.equals(requestedBook,true) }
                 if(current==null) {
                     notice="Install a Bible translation before opening this reading-plan passage."
@@ -88,6 +92,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                 } else {
                     selectedBook=targetBook
                     chapter=requestedChapter
+                    readerFocusVerse=requestedVerse
                     verses=database.readChapter(current.id,targetBook.id,requestedChapter)
                     searchResults=emptyList()
                     notice="Opened "+reference+" in "+current.abbreviation+". Read the full chapter and focus on the listed verses."
@@ -368,7 +373,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                         hasPreviousChapter=chapter>1,hasNextChapter=chapter<selectedBook!!.chapterCount,
                         isRightToLeft=selectedTranslation!!.languageTag.substringBefore("-") in setOf("ar","he","fa","ur"),
                         copyrightNotice=selectedTranslation!!.copyrightNotice,
-                        attribution=selectedTranslation!!.attribution),
+                        attribution=selectedTranslation!!.attribution,focusVerseNumber=readerFocusVerse),
                     onPreviousChapter={
                         chapter=(chapter-1).coerceAtLeast(1)
                         verses=database.readChapter(selectedTranslation!!.id,selectedBook!!.id,chapter)
@@ -381,6 +386,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                     onWordSelected={verse,word,tokenIndex->selectedWord=Triple(verse,word,tokenIndex)},
                     onVerseSelected={verse->
                         selectedVerseNumber=verse.verse
+                        readerFocusVerse=verse.verse
                         selectedVerseAction=verse
                     },
                     modifier=Modifier.weight(1f)
