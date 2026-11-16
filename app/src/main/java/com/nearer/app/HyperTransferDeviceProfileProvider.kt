@@ -10,9 +10,9 @@ import android.os.StatFs
  * Captures only local, transient device headroom for a transfer session.
  *
  * The caller supplies the latest application-level throughput sample and
- * negotiated STREAM capability. No device profile is persisted or transmitted
- * by this class; a future authenticated handshake must explicitly encode only
- * the fields it needs.
+ * negotiated STREAM capability. This provider only captures local facts;
+ * HyperTransferPeerProfileCodec sends a bounded profile through the already
+ * authenticated and encrypted peer session.
  */
 internal object HyperTransferDeviceProfileProvider {
     fun capture(
