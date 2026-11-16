@@ -120,7 +120,7 @@ The legacy fallback is temporary compatibility behavior: old records did not ret
 
 ## 8. No-APK rule
 
-Do not run `assembleDebug`, `assembleRelease`, or any workflow that packages/uploads an APK during this workstream unless the owner explicitly authorizes it. Prefer code review, static inspection and JVM-only validation. The existing repository workflow currently runs both JVM tests and `assembleDebug` on selected PR targets, so do not open a PR against a triggering target until the APK workflow has been adjusted or the owner approves it.
+Do not run `assembleDebug`, `assembleRelease`, or any workflow that packages/uploads an APK during this workstream unless the owner explicitly authorizes it. Prefer code review, static inspection and JVM-only validation. The baseline `main` workflow previously packaged an APK on selected PR targets. The current integration candidate changes that workflow so pull requests run JVM tests, manifest processing and lint only; APK packaging/upload is available only through an explicit manual `workflow_dispatch` input. Verify the PR merge-branch workflow before merging so ordinary integration remains APK-free.
 
 
 ## 9. Continuous integration and branch-recovery audit (2026-11-16)
