@@ -50,10 +50,10 @@ def clean_inline(text: str) -> str:
     text = re.sub(r"\\x\b.*?\\x\*", " ", text)
     text = re.sub(r"\\fig\b.*?\\fig\*", " ", text)
     # Keep the visible surface word and discard USFM word attributes.
-    text = re.sub(r"\\w\s+([^|]+?)\|.*?\\w\*", r"\1", text)
+    text = re.sub(r"\\\+?w\s+([^|]+?)\|.*?\\\+?w\*", r"\1", text)
     # Markers are formatting/control codes, not spaces; remove them without
     # inserting gaps before punctuation or between a word and its closing marker.
-    text = re.sub(r"\\[a-zA-Z0-9]+\*?", "", text)
+    text = re.sub(r"\\\+?[a-zA-Z0-9]+\*?", "", text)
     text = re.sub(r"\s+([,.;:!?])", r"\1", text)
     text = re.sub(r"([([{])\s+", r"\1", text)
     text = re.sub(r"\s+([)\]}])", r"\1", text)
