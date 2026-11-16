@@ -307,7 +307,7 @@ class TransferResumeStreamWriterTest {
                 item = item(data.size.toLong()),
                 sourceModifiedAtMillis = null,
                 input = trackingInput,
-                sourcePeerId = "verified-peer",
+                sourcePeerId = "23456789ABCD",
                 bufferBytesOverride = 8 * 1024
             )
             assertEquals(data.size.toLong(), result.bytesReceived)
@@ -328,7 +328,7 @@ class TransferResumeStreamWriterTest {
                 item = item(1L),
                 sourceModifiedAtMillis = null,
                 input = ByteArrayInputStream(byteArrayOf(1)),
-                sourcePeerId = "verified-peer",
+                sourcePeerId = "23456789ABCD",
                 bufferBytesOverride = 1024
             )
         } finally {
