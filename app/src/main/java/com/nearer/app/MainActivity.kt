@@ -181,6 +181,7 @@ class MainActivity : ComponentActivity() {
     private val gameChatMessages = mutableStateListOf<String>()
     private val receivedFiles = mutableStateListOf<ReceivedFile>()
     private val nearbyTransferHistory = mutableStateListOf<NearbyTransferRecord>()
+    private var transferBenchmarkSummary by mutableStateOf<TransferBenchmarkSummary?>(null)
     private var activeOutgoingFileName = "shared-file"
     private var activeOutgoingFileBytes = 0L
     private val pendingDirectOutgoing = ConcurrentHashMap<String, DirectOutgoingTransfer>()
@@ -699,6 +700,9 @@ class MainActivity : ComponentActivity() {
                     ReceivedFileNotification.show(this@MainActivity, name, file.length())
                 }
             }
+            override fun onBenchmarkSummary(summary: TransferBenchmarkSummary) {
+                runOnUiThread { transferBenchmarkSummary = summary }
+            }
             override fun onFileStatus(message: String) {
                 runOnUiThread {
                     chatNotice = message
@@ -745,6 +749,7 @@ class MainActivity : ComponentActivity() {
             statusMessage = "NeaRer opened, but some saved local data could not be restored."
         }
         runCatching { restoreNearbyTransferHistory() }
+        transferBenchmarkSummary = TransferBenchmarkStore(applicationContext).summary()
         runCatching { restoreNearbyFileQueue() }
         val queuedAfterRestart = runCatching { nearbyTransport?.pendingMessageIds().orEmpty() }.getOrDefault(emptySet())
         val deliveredAfterRestart = runCatching { nearbyTransport?.completedMessageIds().orEmpty() }.getOrDefault(emptySet())
@@ -4491,6 +4496,7 @@ private fun NeaRerHome(
                     onOpenFile = onOpenFile,
                     onExtractFolder = onExtractFolder,
                     transferHistory = transferHistory,
+                    benchmarkSummary = transferBenchmarkSummary,
                     outgoingTransferId = outgoingTransferId,
                     outgoingProgress = outgoingProgress,
                     incomingTransferName = incomingTransferName,
