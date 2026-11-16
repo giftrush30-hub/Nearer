@@ -249,6 +249,8 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
             }
         }
         if(books.isNotEmpty() && selectedTranslation!=null) {
+            Text("SOURCE · "+selectedTranslation!!.sourceId+"  |  LICENCE · "+selectedTranslation!!.licenseId,
+                color=Color(0xFFA8B6C9),fontSize=9.sp)
             Row(horizontalArrangement=Arrangement.spacedBy(5.dp)) {
                 OutlinedButton(onClick={
                     val index=books.indexOfFirst{it.id==selectedBook?.id}
@@ -310,7 +312,9 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                 NeaRerWordReaderScreen(
                     state=BibleReaderScreenState(selectedTranslation!!.name,selectedBook!!.name,chapter,verses,
                         hasPreviousChapter=chapter>1,hasNextChapter=chapter<selectedBook!!.chapterCount,
-                        isRightToLeft=selectedTranslation!!.languageTag.substringBefore("-") in setOf("ar","he","fa","ur")),
+                        isRightToLeft=selectedTranslation!!.languageTag.substringBefore("-") in setOf("ar","he","fa","ur"),
+                        copyrightNotice=selectedTranslation!!.copyrightNotice,
+                        attribution=selectedTranslation!!.attribution),
                     onPreviousChapter={
                         chapter=(chapter-1).coerceAtLeast(1)
                         verses=database.readChapter(selectedTranslation!!.id,selectedBook!!.id,chapter)
