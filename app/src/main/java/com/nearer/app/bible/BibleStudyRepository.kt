@@ -14,6 +14,24 @@ class BibleStudyRepository(context:Context) {
             check(db==null) { "Import transaction already active." }
             db=helper.writableDatabase.also { it.beginTransaction() }
         }
+        override fun installTranslation(manifest:BiblePackManifest) {
+            val active=checkNotNull(db)
+            active.insertWithOnConflict("translations",null,ContentValues().apply {
+                put("id",manifest.translationId); put("name",manifest.translationName)
+                put("language_tag",manifest.languageTag); put("language_name",manifest.languageName)
+                put("abbreviation",manifest.abbreviation); put("canon_id",manifest.canonId)
+                put("source_id",manifest.sourceId); put("license_id",manifest.licenseId)
+                put("copyright_notice",manifest.copyrightNotice); put("installed_at",System.currentTimeMillis())
+            },SQLiteDatabase.CONFLICT_REPLACE)
+        }
+        override fun putBook(book:BibleBook) {
+            val active=checkNotNull(db)
+            active.insertWithOnConflict("books",null,ContentValues().apply {
+                put("id",book.id); put("translation_id",book.translationId)
+                put("canonical_number",book.canonicalNumber); put("name",book.name)
+                put("testament",book.testament); put("chapter_count",book.chapterCount)
+            },SQLiteDatabase.CONFLICT_REPLACE)
+        }
         override fun putVerse(verse:BibleVerse) {
             val active=checkNotNull(db) { "Import transaction has not started." }
             val bookExists=active.query("books",arrayOf("id"),"id=? AND translation_id=?",
