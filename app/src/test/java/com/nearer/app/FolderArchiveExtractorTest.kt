@@ -61,6 +61,21 @@ class FolderArchiveExtractorTest {
         }
     }
 
+    @Test fun rejectsCaseConflictingImplicitParentFolders() {
+        val root = Files.createTempDirectory("nearer-folder-case-parent").toFile()
+        try {
+            val archive = File(root, "case-conflict.zip")
+            writeZip(archive, listOf(
+                "Photos/one.jpg" to byteArrayOf(1),
+                "photos/two.jpg" to byteArrayOf(2)
+            ))
+            val error = runCatching { FolderArchiveExtractor.extract(archive, File(root, "received")) }.exceptionOrNull()
+            assertTrue(error is java.io.IOException)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun rejectsFileUsedAsParentFolder() {
         val root = Files.createTempDirectory("nearer-folder-parent").toFile()
         try {
