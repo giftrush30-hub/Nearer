@@ -47,7 +47,11 @@ class NearbyTransportService : Service() {
         }
 
         fun replayPendingMessages() {
-            inbox.snapshot().forEach(::dispatchInboxEntry)
+            val pending = inbox.snapshot()
+            // A previous UI persistence attempt may have failed without invoking
+            // its success callback. Resume is a safe point to retry those entries.
+            pending.forEach { inFlightMessageIds.remove(inboxKey(it.peerId, it.messageId)) }
+            pending.forEach(::dispatchInboxEntry)
         }
     }
 
