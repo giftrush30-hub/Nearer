@@ -421,6 +421,25 @@ internal object IncomingFilePayloadPolicy {
         pendingOutgoingMessages.forEach { (id, p) -> if (p.stablePeerId == peerId) { p.retryTask?.let(deliveryHandler::removeCallbacks); p.endpointId = endpointId; p.attempts = 0; outgoingMessageTargets[id] = endpointId; persistPendingOutbox(); attemptOutgoingMessage(id) } }
     }
 
+    /** Drop stale endpoint bindings as soon as their authenticated peer disconnects. */
+    private fun releaseOutgoingMessagesForEndpoint(endpointId: String, stablePeerId: String) {
+        if (endpointId.isBlank() || stablePeerId.isBlank()) return
+        var changed = false
+        pendingOutgoingMessages.forEach { (messageId, pending) ->
+            if (pending.endpointId == endpointId && pending.stablePeerId == stablePeerId) {
+                pending.retryTask?.let(deliveryHandler::removeCallbacks)
+                pending.retryTask = null
+                pending.endpointId = ""
+                pending.attempts = 0
+                outgoingMessageTargets.remove(messageId, endpointId)
+                changed = true
+            }
+        }
+        if (changed && !persistPendingOutbox()) {
+            listener.onStatus("A queued message remains protected, but its disconnected route could not be refreshed on disk.")
+        }
+    }
+
     private fun attemptOutgoingMessage(messageId: String) {
         val pending = pendingOutgoingMessages[messageId] ?: return
         if (pending.attempts >= maxMessageAttempts) { pending.endpointId = ""; pending.attempts = 0; outgoingMessageTargets.remove(messageId); persistPendingOutbox(); listener.onMessageStatus(messageId, "Queued"); return }
@@ -595,6 +614,7 @@ internal object IncomingFilePayloadPolicy {
             peerHandshakes.remove(id)
             messageSessions.remove(id)
             val lostPeerId = synchronized(names) { stableIds[id].orEmpty() }
+            releaseOutgoingMessagesForEndpoint(id, lostPeerId)
             // Persist every learned route withdrawal before evicting it in memory.
             // This closes the crash window where a stale encrypted route-cache entry
             // could otherwise be restored after the next launch.
@@ -2219,7 +2239,16 @@ internal object IncomingFilePayloadPolicy {
         val kind = envelope.optString("kind", "message")
         if (kind == "ack") {
             val acknowledgedId = envelope.optString("id")
-            if (acknowledgedId.isNotBlank() && outgoingMessageTargets[acknowledgedId] == endpointId) {
+            val pending = pendingOutgoingMessages[acknowledgedId]
+            val expectedPeerId = pending?.stablePeerId
+            val acknowledgingPeerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+            val belongsToExpectedRecipient = OutgoingAckPolicy.matchesExpectedRecipient(
+                expectedEndpointId = outgoingMessageTargets[acknowledgedId],
+                incomingEndpointId = endpointId,
+                expectedPeerId = expectedPeerId,
+                incomingPeerId = acknowledgingPeerId
+            )
+            if (acknowledgedId.isNotBlank() && belongsToExpectedRecipient) {
                 val retired = clearPendingOutgoingMessage(acknowledgedId, acknowledged = true)
                 listener.onMessageStatus(acknowledgedId, if (retired) "Delivered" else "Queued")
             }
