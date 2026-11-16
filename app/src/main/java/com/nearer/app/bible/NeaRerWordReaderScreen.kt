@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -97,9 +98,10 @@ fun NeaRerWordReaderScreen(
                         val versePrefix="${verse.verse}  "
                         ClickableText(
                             text=buildAnnotatedString {
-                                pushStyle(SpanStyle(color=Color(0xFF1D2634),fontFamily=FontFamily.Serif,fontSize=18.sp,lineHeight=29.sp))
+                                pushStyle(SpanStyle(color=Color(0xFF1D2634),fontFamily=FontFamily.Serif,fontSize=18.sp))
                                 append(versePrefix); append(annotated); pop()
                             },
+                            style=TextStyle(lineHeight=29.sp),
                             onClick={offset->
                                 val wordOffset=offset-versePrefix.length
                                 val found=if(wordOffset in 0 until annotated.length)
