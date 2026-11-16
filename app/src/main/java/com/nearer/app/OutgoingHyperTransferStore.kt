@@ -101,7 +101,7 @@ internal class OutgoingHyperTransferStore(private val directory: File) {
     private fun readRecord(file: File): Record? {
         return try {
         val p = Properties()
-        FileInputStream(file).use(p::load)
+        FileInputStream(file).use { input -> p.load(input) }
         if (p.getProperty("version") != "1") return null
         val transferId = p.getProperty("transferId") ?: return null
         val peerId = p.getProperty("peerId") ?: return null
