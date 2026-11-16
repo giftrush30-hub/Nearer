@@ -168,6 +168,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         if (!monitorEnabled) {
             reading = null
             status = "Microphone monitoring is off. Turn it on when you are ready."
+            diagnostics = "Monitoring is off."
             return@LaunchedEffect
         }
         val frameSize = 2_048
@@ -197,7 +198,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                             .build()
                     )
-                    .setBufferSizeInBytes(inputBufferFrames * 2 * 2)
+                    .setBufferSizeInBytes(inputBufferFrames * 2)
                     .build()
                     .also { audioRecord ->
                         if (preferredInputId != null) {
