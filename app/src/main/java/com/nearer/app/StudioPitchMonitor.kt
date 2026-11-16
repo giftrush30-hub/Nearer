@@ -232,16 +232,17 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             val underruns = stats.getOrNull(4) ?: 0L
                             val captureDropped = stats.getOrNull(5) ?: 0L
                             val playbackDropped = stats.getOrNull(6) ?: 0L
-                            routeDisconnected = stats.getOrNull(7) == 1L
-                            val inputRoute = stats.getOrNull(8)?.toInt() ?: -1
-                            val outputRoute = stats.getOrNull(9)?.toInt() ?: -1
-                            diagnostics = "Oboe native · $rate Hz · input ID $inputRoute → output ID $outputRoute · burst $burst · buffer $buffer frames · xrun $xruns · underruns $underruns · capture drops $captureDropped · latency drops $playbackDropped"
+                            val analysisDropped = stats.getOrNull(7) ?: 0L
+                            routeDisconnected = stats.getOrNull(8) == 1L
+                            val inputRoute = stats.getOrNull(9)?.toInt() ?: -1
+                            val outputRoute = stats.getOrNull(10)?.toInt() ?: -1
+                            diagnostics = "Oboe native · $rate Hz · input ID $inputRoute → output ID $outputRoute · burst $burst · buffer $buffer frames · xrun $xruns · underruns $underruns · capture drops $captureDropped · playback drops $playbackDropped · pitch drops $analysisDropped"
                             if (routeDisconnected) status = "Audio route changed. Reconnecting the live monitor…"
                         }
                     }
                     if (isActive && !StudioOboeEngine.isRunning()) {
                         val finalStats = withContext(Dispatchers.IO) { StudioOboeEngine.diagnostics() }
-                        routeDisconnected = routeDisconnected || finalStats.getOrNull(7) == 1L
+                        routeDisconnected = routeDisconnected || finalStats.getOrNull(8) == 1L
                         if (routeDisconnected) status = "Audio route changed. Reconnecting the live monitor…"
                     }
                 } finally {
