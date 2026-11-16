@@ -268,6 +268,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                     if (tagline.isNotBlank()) append("\n$tagline")
                     if (businessCategory.isNotBlank()) append("\nCategory: $businessCategory")
                     if (serviceArea.isNotBlank()) append("\nArea: $serviceArea")
+                    if (businessHours.isNotBlank()) append("\nHours: $businessHours")
                     if (contact.isNotBlank()) append("\nContact: $contact")
                     append("\n\nCATALOGUE")
                     drafts.forEach { item ->
@@ -283,7 +284,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                     context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, catalogueText), "Share business catalogue"))
                 }.onFailure { statusMessage = "Could not share catalogue: ${it.message ?: "unknown error"}" }
             }, enabled = profileSaved && !catalogueReadOnly, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
-                Text("Share complete catalogue")
+                Text("Share catalogue summary")
             }
         }
 
