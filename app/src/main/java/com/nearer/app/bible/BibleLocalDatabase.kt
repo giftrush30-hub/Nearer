@@ -8,7 +8,7 @@ import android.database.sqlite.SQLiteOpenHelper
 
 /** Offline store. Scripture and lexicon content enter only through validated, licensed packs. */
 class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
-    context.applicationContext, "nearer_word.db", null, 3
+    context.applicationContext, "nearer_word.db", null, 4
 ) {
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
@@ -53,6 +53,11 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
         db.execSQL("CREATE TABLE installed_packs(pack_id TEXT PRIMARY KEY NOT NULL, translation_id TEXT NOT NULL, version INTEGER NOT NULL, installed_at INTEGER NOT NULL, verse_count INTEGER NOT NULL)")
         db.execSQL("CREATE INDEX bookmarks_ref_idx ON bookmarks(translation_id,book_id,chapter,verse)")
         db.execSQL("CREATE INDEX notes_ref_idx ON study_notes(translation_id,book_id,chapter,verse)")
+        db.execSQL("""CREATE TABLE verse_highlights(
+            id TEXT PRIMARY KEY NOT NULL, translation_id TEXT NOT NULL, book_id TEXT NOT NULL,
+            chapter INTEGER NOT NULL, verse INTEGER NOT NULL, color_argb INTEGER NOT NULL,
+            created_at INTEGER NOT NULL, UNIQUE(translation_id,book_id,chapter,verse))""")
+        db.execSQL("CREATE INDEX highlights_ref_idx ON verse_highlights(translation_id,book_id,chapter,verse)")
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
@@ -67,6 +72,13 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
                     GROUP BY translation_id,book_id,chapter,verse,token_index
                 )""")
             db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS word_occurrence_unique_idx ON word_occurrences(translation_id,book_id,chapter,verse,token_index)")
+        }
+        if (oldVersion < 4) {
+            db.execSQL("""CREATE TABLE IF NOT EXISTS verse_highlights(
+                id TEXT PRIMARY KEY NOT NULL, translation_id TEXT NOT NULL, book_id TEXT NOT NULL,
+                chapter INTEGER NOT NULL, verse INTEGER NOT NULL, color_argb INTEGER NOT NULL,
+                created_at INTEGER NOT NULL, UNIQUE(translation_id,book_id,chapter,verse))""")
+            db.execSQL("CREATE INDEX IF NOT EXISTS highlights_ref_idx ON verse_highlights(translation_id,book_id,chapter,verse)")
         }
     }
 
@@ -99,6 +111,26 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
         return out
     }
     fun deleteBookmark(id:String) { writableDatabase.delete("bookmarks","id=?",arrayOf(id)) }
+    fun saveHighlight(highlight:BibleVerseHighlight) {
+        writableDatabase.insertWithOnConflict("verse_highlights",null,ContentValues().apply {
+            put("id",highlight.id);put("translation_id",highlight.translationId);put("book_id",highlight.bookId)
+            put("chapter",highlight.chapter);put("verse",highlight.verse);put("color_argb",highlight.colorArgb)
+            put("created_at",highlight.createdAt)
+        },SQLiteDatabase.CONFLICT_REPLACE)
+    }
+    fun listHighlights(translationId:String?=null):List<BibleVerseHighlight> {
+        val out=mutableListOf<BibleVerseHighlight>()
+        readableDatabase.query("verse_highlights",null,translationId?.let{"translation_id=?"},translationId?.let{arrayOf(it)},
+            null,null,"created_at DESC").use { c ->
+            while(c.moveToNext()) out += BibleVerseHighlight(
+                c.getString(c.getColumnIndexOrThrow("id")),c.getString(c.getColumnIndexOrThrow("translation_id")),
+                c.getString(c.getColumnIndexOrThrow("book_id")),c.getInt(c.getColumnIndexOrThrow("chapter")),
+                c.getInt(c.getColumnIndexOrThrow("verse")),c.getLong(c.getColumnIndexOrThrow("color_argb")),
+                c.getLong(c.getColumnIndexOrThrow("created_at")))
+        }
+        return out
+    }
+    fun deleteHighlight(id:String) { writableDatabase.delete("verse_highlights","id=?",arrayOf(id)) }
     fun saveNote(note:BibleStudyNote) {
         writableDatabase.insertWithOnConflict("study_notes",null,ContentValues().apply {
             put("id",note.id); put("translation_id",note.translationId); put("book_id",note.bookId)
