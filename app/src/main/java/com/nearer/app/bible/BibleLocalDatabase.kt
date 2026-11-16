@@ -8,7 +8,7 @@ import android.database.sqlite.SQLiteOpenHelper
 
 /** Offline store. Scripture and lexicon content enter only through validated, licensed packs. */
 class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
-    context.applicationContext, "nearer_word.db", null, 2
+    context.applicationContext, "nearer_word.db", null, 3
 ) {
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
@@ -42,6 +42,7 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
             surface_form TEXT NOT NULL, lemma_id TEXT REFERENCES lexical_entries(id),
             strong_number TEXT, morphology_code TEXT)""")
         db.execSQL("CREATE INDEX word_occurrence_ref_idx ON word_occurrences(translation_id,book_id,chapter,verse)")
+        db.execSQL("CREATE UNIQUE INDEX word_occurrence_unique_idx ON word_occurrences(translation_id,book_id,chapter,verse,token_index)")
         db.execSQL("""CREATE TABLE bookmarks(
             id TEXT PRIMARY KEY NOT NULL, translation_id TEXT NOT NULL, book_id TEXT NOT NULL,
             chapter INTEGER NOT NULL, verse INTEGER, created_at INTEGER NOT NULL)""")
@@ -58,6 +59,9 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
             db.execSQL("CREATE TABLE IF NOT EXISTS installed_packs(pack_id TEXT PRIMARY KEY NOT NULL, translation_id TEXT NOT NULL, version INTEGER NOT NULL, installed_at INTEGER NOT NULL, verse_count INTEGER NOT NULL)")
             db.execSQL("CREATE INDEX IF NOT EXISTS bookmarks_ref_idx ON bookmarks(translation_id,book_id,chapter,verse)")
             db.execSQL("CREATE INDEX IF NOT EXISTS notes_ref_idx ON study_notes(translation_id,book_id,chapter,verse)")
+        }
+        if (oldVersion < 3) {
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS word_occurrence_unique_idx ON word_occurrences(translation_id,book_id,chapter,verse,token_index)")
         }
     }
 
