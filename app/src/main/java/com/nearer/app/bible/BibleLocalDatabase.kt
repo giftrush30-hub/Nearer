@@ -207,13 +207,14 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
             put("morphology_code",occurrence.morphologyCode)
         },SQLiteDatabase.CONFLICT_REPLACE)
     }
-    fun findAlignedLexicalEntries(verse:BibleVerse,surfaceForm:String):List<BibleWordStudyEntry> {
+    fun findAlignedLexicalEntries(verse:BibleVerse,surfaceForm:String,tokenIndex:Int?=null):List<BibleWordStudyEntry> {
         val out=mutableListOf<BibleWordStudyEntry>()
         readableDatabase.rawQuery("""SELECT DISTINCT l.* FROM word_occurrences o
             JOIN lexical_entries l ON l.id=o.lemma_id
             WHERE o.translation_id=? AND o.book_id=? AND o.chapter=? AND o.verse=?
-            AND o.surface_form=? COLLATE NOCASE ORDER BY o.token_index""",
-            arrayOf(verse.translationId,verse.bookId,verse.chapter.toString(),verse.verse.toString(),surfaceForm)).use { c ->
+            AND o.surface_form=? COLLATE NOCASE AND (? IS NULL OR o.token_index=?) ORDER BY o.token_index""",
+            arrayOf(verse.translationId,verse.bookId,verse.chapter.toString(),verse.verse.toString(),
+                surfaceForm,tokenIndex?.toString(),tokenIndex?.toString())).use { c ->
             while(c.moveToNext()) out += c.toLexicalEntry()
         }
         return out
