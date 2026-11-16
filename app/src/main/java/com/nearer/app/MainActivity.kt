@@ -135,6 +135,7 @@ class MainActivity : ComponentActivity() {
     private var nearbyServiceBinder: NearbyTransportService.LocalBinder? = null
     private var nearbyServiceBound = false
     private var nearbyServiceBinding = false
+    private var nearbyServiceStarted = false
     private val nearbyServiceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val local = service as? NearbyTransportService.LocalBinder
@@ -797,22 +798,7 @@ class MainActivity : ComponentActivity() {
         }
         runCatching { restoreNearbyTransferHistory() }
         runCatching { restoreNearbyFileQueue() }
-        val queuedAfterRestart = runCatching { nearbyTransport?.pendingMessageIds().orEmpty() }.getOrDefault(emptySet())
-        val deliveredAfterRestart = runCatching { nearbyTransport?.completedMessageIds().orEmpty() }.getOrDefault(emptySet())
-        val recoveredChatStates = runCatching {
-            ChatRestartRecoveryPolicy.reconcile(chatMessages, queuedAfterRestart, deliveredAfterRestart)
-        }.getOrDefault(false)
-        if (recoveredChatStates) {
-            runCatching { persistMessages() }
-            chatNotice = when {
-                queuedAfterRestart.isNotEmpty() -> "Some messages are safely queued. NeaRer will retry when those people reconnect."
-                chatMessages.any { it.outgoing && it.delivery == "Interrupted" } ->
-                    "A message was interrupted when NeaRer closed before its delivery could be confirmed. Check with the recipient before sending it again."
-                else -> chatNotice
-            }
-        }
         runCatching { restoreCommunityData() }
-        runCatching { reconcileCommunityDeliveryReceipts(deliveredAfterRestart) }
         displayName = runCatching {
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
@@ -1030,11 +1016,14 @@ class MainActivity : ComponentActivity() {
         super.onPause()
     }
 
-    private fun ensureNearbyServiceBound() {
+    private fun ensureNearbyServiceBound(startForeground: Boolean = true) {
+        if (startForeground && !nearbyServiceStarted) {
+            NearbyTransportService.start(this)
+            nearbyServiceStarted = true
+        }
         if (nearbyServiceBound || nearbyServiceBinding) return
         nearbyServiceBinding = true
         try {
-            NearbyTransportService.start(this)
             val bound = bindService(
                 Intent(this, NearbyTransportService::class.java),
                 nearbyServiceConnection,
@@ -1087,14 +1076,16 @@ class MainActivity : ComponentActivity() {
             if (onboardingComplete && hasNearbyPermissions() && !bluetoothOn && !wifiOn) {
                 statusMessage = "NeaRer is ready. Turn on Bluetooth or Wi-Fi to discover nearby people; mobile data is not needed."
             }
+            if (onboardingComplete) ensureNearbyServiceBound(startForeground = false)
             return
         }
         val transport = nearbyTransport
         if (transport == null) {
             statusMessage = "Starting NeaRer's background nearby service…"
-            ensureNearbyServiceBound()
+            ensureNearbyServiceBound(startForeground = true)
             return
         }
+        ensureNearbyServiceBound(startForeground = true)
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
             .putBoolean("nearby_service_active", true)
             .commit()
