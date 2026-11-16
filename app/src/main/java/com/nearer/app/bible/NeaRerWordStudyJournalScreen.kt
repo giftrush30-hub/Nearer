@@ -35,6 +35,10 @@ fun NeaRerWordStudyJournalScreen(
     onDeleteNote:(String)->Unit,
     onDeleteBookmark:(String)->Unit,
     onOpenReference:(String,String,Int,Int?)->Unit,
+    defaultTranslationId:String?=null,
+    defaultBookId:String?=null,
+    defaultChapter:Int?=null,
+    defaultVerse:Int?=null,
     modifier:Modifier=Modifier
 ) {
     var title by remember { mutableStateOf("") }
@@ -57,8 +61,9 @@ fun NeaRerWordStudyJournalScreen(
                     OutlinedTextField(value=body,onValueChange={body=it},modifier=Modifier.fillMaxWidth(),
                         minLines=3,label={Text("What did you learn?")})
                     Button(onClick={
-                        onSaveNote(BibleStudyNote(UUID.randomUUID().toString(),null,null,null,null,
-                            title.trim().ifBlank{"My Bible study"},body.trim(),0xFFFFD12D, System.currentTimeMillis()))
+                        onSaveNote(BibleStudyNote(UUID.randomUUID().toString(),defaultTranslationId,defaultBookId,
+                            defaultChapter,defaultVerse,title.trim().ifBlank{"My Bible study"},body.trim(),
+                            0xFFFFD12D,System.currentTimeMillis()))
                         title="";body=""
                     },enabled=body.isNotBlank(),modifier=Modifier.fillMaxWidth()) { Text("Save private note") }
                 }
