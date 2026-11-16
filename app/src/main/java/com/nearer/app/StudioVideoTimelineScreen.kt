@@ -165,7 +165,7 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
     val player = remember(context) { ExoPlayer.Builder(context).build() }
 
     DisposableEffect(player) { onDispose { player.release() } }
-    LaunchedEffect(clips.toList(), brightness, contrast, saturation, textOverlay, captionLayers.toList()) {
+    LaunchedEffect(clips.toList(), brightness, contrast, saturation, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
         player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
         if (clips.isNotEmpty()) {
             val previewItems = clips.map { clip ->
@@ -179,7 +179,7 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
         } else player.clearMediaItems()
     }
 
-    DisposableEffect(player, clips.size, brightness, contrast, saturation, textOverlay, captionLayers.toList()) {
+    DisposableEffect(player, clips.size, brightness, contrast, saturation, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
         val captionListener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
