@@ -71,9 +71,12 @@ internal object BusinessDraftCodec {
         if (raw.isNullOrBlank()) return true
         return runCatching {
             val trimmed = raw.trim()
-            if (trimmed.startsWith("[")) JSONArray(trimmed)
-            else JSONObject(trimmed).optInt("version", -1).takeIf { it == VERSION }
-                ?: return false
+            if (trimmed.startsWith("[")) {
+                JSONArray(trimmed)
+            } else {
+                val root = JSONObject(trimmed)
+                if (root.optInt("version", -1) != VERSION || root.optJSONArray("items") == null) return false
+            }
             true
         }.getOrDefault(false)
     }
