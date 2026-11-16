@@ -179,14 +179,41 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                     }
                 }
                 Text("BUSINESS IDENTITY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                TextField(value = businessName, onValueChange = { businessName = it; profileSaved = false }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Business or brand name") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
-                TextField(value = tagline, onValueChange = { tagline = it; profileSaved = false }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("What do you offer?") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
-                TextField(value = contact, onValueChange = { contact = it; profileSaved = false }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Public contact number (optional)") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
+                TextField(value = businessName, onValueChange = { businessName = it.take(80); profileSaved = false }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Business or brand name") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
+                TextField(value = tagline, onValueChange = { tagline = it.take(120); profileSaved = false }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("What do you offer?") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
+                TextField(value = businessCategory, onValueChange = { businessCategory = it.take(40); profileSaved = false }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Business category (e.g. Fashion, Food, Repairs)") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
+                TextField(value = serviceArea, onValueChange = { serviceArea = it.take(100); profileSaved = false }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Location or service area (optional)") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
+                TextField(value = businessHours, onValueChange = { businessHours = it.take(100); profileSaved = false }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Business hours (optional)") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
+                TextField(value = contact, onValueChange = { contact = it.take(40); profileSaved = false }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Public contact number (optional)") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
                 Button(onClick = {
-                    prefs.edit().putString("business_name", businessName.trim()).putString("tagline", tagline.trim()).putString("contact", contact.trim()).apply()
+                    prefs.edit()
+                        .putString("business_name", businessName.trim())
+                        .putString("tagline", tagline.trim())
+                        .putString("contact", contact.trim())
+                        .putString("business_category", businessCategory.trim())
+                        .putString("service_area", serviceArea.trim())
+                        .putString("business_hours", businessHours.trim())
+                        .apply()
                     profileSaved = businessName.isNotBlank()
+                    statusMessage = "Business identity saved on this phone."
                 }, enabled = businessName.isNotBlank(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                     Text("Save business identity", fontWeight = FontWeight.Bold)
+                }
+                Button(onClick = {
+                    val card = buildString {
+                        append(businessName.trim())
+                        if (tagline.isNotBlank()) append("\\n$tagline")
+                        if (businessCategory.isNotBlank()) append("\\nCategory: $businessCategory")
+                        if (serviceArea.isNotBlank()) append("\\nArea: $serviceArea")
+                        if (businessHours.isNotBlank()) append("\\nHours: $businessHours")
+                        if (contact.isNotBlank()) append("\\nContact: $contact")
+                        append("\\nShared via NeaRer Business")
+                    }
+                    runCatching {
+                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, card), "Share business card"))
+                    }.onFailure { statusMessage = "Could not open sharing: ${it.message ?: "unknown error"}" }
+                }, enabled = profileSaved, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
+                    Text("Share business card")
                 }
             }
         }
@@ -194,17 +221,28 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("YOUR CATALOGUE", color = White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("${drafts.size} local drafts", color = Muted, fontSize = 10.sp)
+                Text("${drafts.size}/${BusinessDraftCodec.MAX_DRAFTS} local listings", color = Muted, fontSize = 10.sp)
             }
             Button(onClick = {
                 if (showEditor) {
-                    showEditor = false
+                    resetEditor()
                 } else {
-                    editingDraftId = null
-                    title = ""; price = ""; description = ""; imageUri = null; category = "PRODUCT"
-                    showEditor = true
+                    if (drafts.size >= BusinessDraftCodec.MAX_DRAFTS) {
+                        statusMessage = "Your local catalogue has reached its ${BusinessDraftCodec.MAX_DRAFTS}-listing limit."
+                    } else {
+                        editingDraftId = null
+                        title = ""
+                        price = ""
+                        description = ""
+                        imageUri = null
+                        category = "PRODUCT"
+                        itemCategory = "General"
+                        availability = "AVAILABLE"
+                        photoMessage = ""
+                        showEditor = true
+                    }
                 }
-            }, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
+            }, enabled = showEditor || drafts.size < BusinessDraftCodec.MAX_DRAFTS, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                 Text(if (showEditor) "Close" else "+ Add listing", fontWeight = FontWeight.Bold)
             }
         }
