@@ -17,7 +17,7 @@ Target: native Kotlin + Jetpack Compose; offline-first; Android API 26+; no mand
 - Search by language, region, script, canon and completeness.
 - Versioned, checksummed, transactionally imported packs; selected downloads only; no large text corpus in base APK.
 - Added a pack importer for `manifest.json`, `books.ndjson` and `scripture.ndjson`, a SQLite transaction adapter, archive-entry/path/size checks, SHA-256 verification, and a real Bible destination in the existing More navigation.
-- The reader now supports installed translation selection, book/chapter navigation, verse search, verse bookmarks and private study journal access.
+- The reader now supports installed translation selection, book/chapter navigation, verse search, verse bookmarks, highlights, private study notes and visible publisher copyright/licence/attribution notices.
 - Side-by-side comparison now joins two installed translations by canonical book number and verse number.
 - Reading position (translation, book and chapter) is saved locally and restored on next open.
 - Reader layout switches to RTL for Arabic, Hebrew, Persian and Urdu language tags.
@@ -41,7 +41,7 @@ Target: native Kotlin + Jetpack Compose; offline-first; Android API 26+; no mand
 - Candidate: STEPBible-Data. Its repository states CC BY 4.0, allows reuse and adaptation with changes recorded, and asks users to credit “STEP Bible” linked to STEP Bible. It contains Hebrew OT and Greek NT morphology/lexical resources; inspect individual dataset formats and provenance before mapping to the importer.
 
 ## Local schema
-translations, books, verses, verse_search (FTS4), lexical_entries, word_occurrences, bookmarks, study_notes, installed_packs. Database v3 migrations preserve personal notes/bookmarks and add unique source-token alignment indexing. Personal notes/bookmarks must survive content-pack refresh and database migrations.
+translations, books, verses, verse_search (FTS4), lexical_entries, word_occurrences, bookmarks, study_notes, installed_packs. Database v5 migrations preserve personal notes/bookmarks, add unique source-token alignment indexing and persist publisher attribution. Personal notes/bookmarks must survive content-pack refresh and database migrations.
 
 ## Integration contract
 1. Add a Word destination to the existing navigation model without removing or reordering existing destinations.
