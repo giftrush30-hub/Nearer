@@ -3,7 +3,8 @@ package com.nearer.app.bible
 data class BibleTranslation(
     val id: String, val name: String, val languageTag: String, val languageName: String,
     val abbreviation: String, val canonId: String = "protestant-66", val sourceId: String,
-    val licenseId: String, val copyrightNotice: String? = null, val isDownloaded: Boolean = false
+    val licenseId: String, val copyrightNotice: String? = null, val isDownloaded: Boolean = false,
+    val attribution:String?=null
 )
 data class BibleBook(
     val id: String, val translationId: String, val canonicalNumber: Int,
