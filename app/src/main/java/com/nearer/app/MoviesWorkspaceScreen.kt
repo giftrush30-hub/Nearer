@@ -485,6 +485,13 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
     }
 }
 
+private val localVideoAuthorities = setOf(
+    "media",
+    "com.android.providers.media.documents",
+    "com.android.externalstorage.documents",
+    "com.android.providers.downloads.documents"
+)
+
 private object MovieThumbnailCache : LruCache<String, Bitmap>(4 * 1_024) {
     override fun sizeOf(key: String, value: Bitmap): Int = (value.byteCount / 1_024).coerceAtLeast(1)
 }
@@ -494,7 +501,10 @@ private fun MovieThumbnail(uri: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val bitmap by produceState<Bitmap?>(null, uri, context) {
         value = withContext(Dispatchers.IO) {
-            MovieThumbnailCache.get(uri) ?: run {
+            val sourceUri = Uri.parse(uri)
+            if (sourceUri.authority !in localVideoAuthorities) {
+                null
+            } else MovieThumbnailCache.get(uri) ?: run {
                 val retriever = MediaMetadataRetriever()
                 try {
                     retriever.setDataSource(context, Uri.parse(uri))
