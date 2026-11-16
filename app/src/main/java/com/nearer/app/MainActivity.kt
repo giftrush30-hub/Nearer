@@ -414,6 +414,7 @@ class MainActivity : ComponentActivity() {
                     hybridConnected = true
                     hybridConnectedEndpoint = id
                     hybridConnectedStableId = stableId.ifBlank { null }
+                    transferBenchmarkSummary = TransferBenchmarkStore(applicationContext).summary(stableId)
                     if (selectedMeshRecipientId == null) {
                         selectedMeshRecipientId = stableId.takeIf { it.isNotBlank() }
                     }
