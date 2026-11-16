@@ -93,6 +93,13 @@ class HyperTransferModePolicyTest {
         )
     }
 
+    @Test fun missingPeerProfileNeverOverridesLocalLiteSafetyCap() {
+        assertEquals(
+            HyperTransferModePolicy.Mode.LITE,
+            HyperTransferModePolicy.negotiate(profile(thermal = 3), null)
+        )
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun negativeMemoryIsRejected() {
         profile(memory = -1L)
