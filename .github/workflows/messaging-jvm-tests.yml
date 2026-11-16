@@ -4,7 +4,7 @@ name: Messaging JVM tests + manifest validation (no APK)
 on:
   push:
     branches:
-      - work/messaging-service-owned-nearby
+      - "work/messaging-*"
     paths:
       - "app/src/main/AndroidManifest.xml"
       - "app/build.gradle.kts"
