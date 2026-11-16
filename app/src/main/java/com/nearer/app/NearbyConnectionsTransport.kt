@@ -1442,23 +1442,40 @@ internal object IncomingFilePayloadPolicy {
      * a different receipt and the outbox correctly rejects that ID collision.
      */
     @Synchronized
-    private fun ensureFinalMeshReceipt(packet: MeshRelayPacketV1): Boolean {
+    private fun ensureFinalMeshReceipt(
+        packetId: String,
+        originId: String,
+        destinationId: String,
+        packet: MeshRelayPacketV1? = null
+    ): Boolean {
         val now = System.currentTimeMillis()
-        if (packet.destinationId != localStableId || !packet.verifyEmbeddedOrigin(now)) return false
-        val originKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, packet.originId) ?: return false
-        if (!java.security.MessageDigest.isEqual(originKey, packet.originSigningPublicKey) ||
-            !packet.verify(originKey, now)) return false
+        if (NeaRerIdentity.normalize(originId) != originId ||
+            NeaRerIdentity.normalize(destinationId) != destinationId ||
+            originId == destinationId ||
+            !packetId.matches(Regex("[A-Za-z0-9._:-]{1,80}"))) return false
 
+        if (packet != null) {
+            if (packet.packetId != packetId || packet.originId != originId ||
+                packet.destinationId != destinationId || !packet.verifyEmbeddedOrigin(now)) return false
+            val originKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, originId) ?: return false
+            if (!java.security.MessageDigest.isEqual(originKey, packet.originSigningPublicKey) ||
+                !packet.verify(originKey, now)) return false
+        }
+
+        // Reuse the exact signed receipt if a crash occurred after its durable
+        // enqueue. A fresh timestamp/signature for the same packet ID is a conflict.
         val existing = meshReceiptOutbox.pending()
-            .firstOrNull { it.receipt.packetId == packet.packetId }?.receipt
+            .firstOrNull { it.receipt.packetId == packetId }?.receipt
         val receipt = existing ?: MeshDeliveryReceipt.create(
-            packet.packetId, packet.originId, packet.destinationId, now
+            packetId, originId, destinationId, now
         ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
 
-        if (receipt.originId != packet.originId || receipt.destinationId != packet.destinationId ||
-            receipt.packetId != packet.packetId) return false
+        if (receipt.originId != originId || receipt.destinationId != destinationId ||
+            receipt.packetId != packetId) return false
         if (!queueMeshReceipt(receipt)) return false
-        return deadDropStore.markLocallyDelivered(packet.packetId)
+        // A null packet means it was already retired or expired after the encrypted
+        // inbox commit. The durable inbox is now the remaining local copy.
+        return packet == null || deadDropStore.markLocallyDelivered(packetId)
     }
 
     private fun flushPendingMeshReceipts() {
@@ -1559,7 +1576,7 @@ internal object IncomingFilePayloadPolicy {
         if (hasSeenMessageId(packet.originId, packet.packetId)) {
             // A prior process may have persisted the receipt but died before
             // retiring the packet. Reuse that exact receipt on every replay.
-            ensureFinalMeshReceipt(packet)
+            ensureFinalMeshReceipt(packet.packetId, packet.originId, packet.destinationId, packet)
             return
         }
         val pendingKey = NearbyMessageDedupePolicy.key(packet.originId, packet.packetId) ?: return
@@ -1585,7 +1602,7 @@ internal object IncomingFilePayloadPolicy {
                 if (pendingKey !in pendingIncomingMessageIds) return@onMeshMessageWithReply false
                 val saved = rememberMessageId(packet.originId, packet.packetId)
                 pendingIncomingMessageIds.remove(pendingKey)
-                val receiptCommitted = saved && ensureFinalMeshReceipt(packet)
+                val receiptCommitted = saved && ensureFinalMeshReceipt(packet.packetId, packet.originId, packet.destinationId, packet)
                 if (saved && !receiptCommitted) {
                     listener.onStatus("Message saved here. Its encrypted packet is retained until the final receipt can be saved.")
                 }
@@ -2404,13 +2421,7 @@ internal object IncomingFilePayloadPolicy {
         val packet = deadDropStore.pendingForDestination(localStableId, now)
             .firstOrNull { it.packetId == messageId && it.originId == originId }
         if (!persistIncomingMessageDedupe(originId, messageId)) return false
-        if (packet == null) return true
-
-        val trustedOriginKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, originId) ?: return false
-        if (!java.security.MessageDigest.isEqual(trustedOriginKey, packet.originSigningPublicKey) ||
-            !packet.verify(trustedOriginKey, now)) return false
-
-        return ensureFinalMeshReceipt(packet)
+        return ensureFinalMeshReceipt(messageId, originId, localStableId, packet)
     }
 
     /** Release a message whose durable inbox write failed so a sender retry is not suppressed. */
