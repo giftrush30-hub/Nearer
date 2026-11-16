@@ -34,7 +34,7 @@ class HyperTransferPeerProfileCodecTest {
         HyperTransferPeerProfileCodec.decode(invalid.toByteArray())
     }
 
-    @Test(expected = org.json.JSONException::class)
+    @Test(expected = IllegalArgumentException::class)
     fun unsupportedVersionIsRejected() {
         val invalid = """{"kind":"hypertransfer_resource_profile_v1","version":99,"availableMemoryBytes":1,"availableStorageBytes":1,"thermalStatus":0,"lowMemory":false,"lowRamDevice":false,"streamCapable":true,"measuredBytesPerSecond":0}"""
         HyperTransferPeerProfileCodec.decode(invalid.toByteArray())
