@@ -18,6 +18,10 @@ Target: native Kotlin + Jetpack Compose; offline-first; Android API 26+; no mand
 - Versioned, checksummed, transactionally imported packs; selected downloads only; no large text corpus in base APK.
 - Added a pack importer for `manifest.json`, `books.ndjson` and `scripture.ndjson`, a SQLite transaction adapter, archive-entry/path/size checks, SHA-256 verification, and a real Bible destination in the existing More navigation.
 - The reader now supports installed translation selection, book/chapter navigation, verse search, verse bookmarks and private study journal access.
+- Side-by-side comparison now joins two installed translations by canonical book number and verse number.
+- Reading position (translation, book and chapter) is saved locally and restored on next open.
+- Reader layout switches to RTL for Arabic, Hebrew, Persian and Urdu language tags.
+- Nigerian-language discovery leads are displayed separately from NeaRer-approved downloadable packs; all remain rights-gated.
 - Display required copyright notice whenever copyrighted Scripture is shown.
 - No scraping or redistribution without written permission.
 - Bible Society of Nigeria reports complete Bibles in 27 Nigerian languages, but its current Bible-download page lists a smaller set of Nigerian-language editions available through YouVersion (17 editions on one page; a newer BSN guide says 18). Treat these as discovery leads, not as permission to redistribute them inside NeaRer. Contact BSN and each rights holder for exact edition files and offline redistribution rights.
@@ -31,7 +35,8 @@ Target: native Kotlin + Jetpack Compose; offline-first; Android API 26+; no mand
 - A translated word opens an original-language entry only if trusted alignment data maps it to an actual source token. Otherwise say mapping unavailable; never invent an equivalent.
 - Search original script, transliteration, Strong number, lemma and English gloss.
 - Added an attributed lexicon/alignment dataset importer. It verifies the referenced verse and token index against the installed translation before accepting a surface-word-to-lemma mapping.
-- Word taps now query only imported alignment records; absent mappings are explicitly reported as unavailable.
+- Word taps now pass the exact selected token index and query only imported alignment records; absent mappings are explicitly reported as unavailable.
+- Original-language lexicon search can search lemma, transliteration, gloss and Strong number.
 - Show grammar, contextual senses and occurrence lists only when supported by imported source data.
 - Candidate: STEPBible-Data. Its repository states CC BY 4.0, allows reuse and adaptation with changes recorded, and asks users to credit “STEP Bible” linked to STEP Bible. It contains Hebrew OT and Greek NT morphology/lexical resources; inspect individual dataset formats and provenance before mapping to the importer.
 
