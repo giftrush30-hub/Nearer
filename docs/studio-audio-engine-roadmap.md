@@ -4,7 +4,7 @@
 
 Studio now has two live-monitor backends behind a Kotlin selection policy:
 
-- **Oboe native duplex engine (new prototype):** used on Android API 27+ for the default input, and API 28+ when a specific USB input is selected. It opens a low-latency output stream first, then opens the input at the output stream's negotiated sample rate. It requests exclusive sharing and falls back to shared mode if exclusive is unavailable.
+- **Oboe native duplex engine:** used on Android API 27+ for default input and selected USB input. AAudio device-ID routing is available from API 26; Oboe's AAudio backend begins at API 27. After opening, the engine verifies the actual input device ID and refuses to silently substitute another microphone. It opens a low-latency output stream first, then opens the input at the output stream's negotiated sample rate. It requests exclusive sharing and falls back to shared mode if exclusive is unavailable.
 - **Java compatibility backend:** the existing AudioRecord/AudioTrack path remains available when native startup fails, on Android API 26, and when explicit USB device routing is not supported by the native API level.
 
 The Oboe callback path uses separate single-producer/single-consumer float PCM rings for output monitoring and Kotlin pitch analysis. The input callback copies samples into the rings; the output callback drains the playback ring and fills any missing frames with silence. Callback code performs no file/network I/O, memory allocation, sleeping, or mutex locking. Pitch estimation remains outside the real-time callback on the Kotlin coroutine.
@@ -14,9 +14,9 @@ The native diagnostics report the negotiated sample rate, output burst and buffe
 ## Android and Oboe compatibility
 
 - The app minimum SDK is 26. Oboe supports older Android versions, but this integration deliberately uses the native path from API 27 (AAudio) and preserves Java fallback on API 26.
-- Oboe's AAudio setDeviceId routing is respected from API 28; therefore explicit USB routing stays on the Java path below API 28. On API 28+, the selected Android input-device ID is passed to Oboe.
+- Oboe uses AAudio on Android API 27+ when recommended. The selected Android input-device ID is passed to Oboe; the opened stream's actual device ID is checked against the requested ID. If Android/Oboe cannot honour it, native startup fails safely and the existing Java path tries Android's preferred-device routing.
 - Oboe 1.11.0 is consumed as a Google Maven Prefab dependency. The app enables Prefab, CMake, NDK 27.2.12479018 and packages arm64-v8a, armeabi-v7a and x86_64.
-- The engine requests Float mono streams and uses the output stream's actual negotiated sample rate for input and pitch detection. When Android reports unprocessed-input support, the native stream requests Oboe's Unprocessed input preset; otherwise it requests VoiceRecognition. Actual stream properties are queried after opening; requested low-latency/exclusive modes are not treated as guaranteed.
+- The engine requests Float mono streams, enables Oboe's medium-quality sample-rate converter where needed, and uses the output stream's actual negotiated sample rate for input and pitch detection. The package name is explicitly attributed on both streams for modern Android capture permission checks. When Android reports unprocessed-input support, the native stream requests Oboe's Unprocessed input preset; otherwise it requests VoiceRecognition. Actual stream properties are queried after opening; requested low-latency/exclusive modes are not treated as guaranteed.
 
 ## Lifecycle and recovery
 
@@ -27,7 +27,7 @@ A route disconnect triggers Oboe's error callback and marks the engine disconnec
 The code is integrated into the Android build and automated checks will compile the NDK target as well as run JVM tests and build the APK. This does not prove physical-device performance. Required device testing includes:
 
 1. Phone built-in microphone and speaker/headphones.
-2. USB microphone plus wired/USB headphones on Android 28+.
+2. USB microphone plus wired/USB headphones on Android API 27+; verify the displayed input device ID matches the selected device.
 3. USB disconnect/reconnect while monitoring.
 4. Screen lock/unlock and app background/foreground.
 5. Competing microphone apps and microphone permission revocation.
