@@ -1963,9 +1963,23 @@ internal object IncomingFilePayloadPolicy {
         val folder = File(appContext.filesDir, "received").apply { mkdirs() }
         val destination = File(folder, System.currentTimeMillis().toString() + "-" + UUID.randomUUID().toString().take(8) + "-" +
             TransferFileNamePolicy.safeName(metadata.item.displayName))
+        // Until the authenticated peer-profile handshake is implemented, treat
+        // the remote headroom as unknown. Negotiation therefore never selects
+        // TURBO; local thermal/memory pressure can still reduce this receive to LITE.
+        val adaptiveReceiveBufferBytes = runCatching {
+            val localProfile = HyperTransferDeviceProfileProvider.capture(
+                appContext,
+                streamCapable = true,
+                measuredBytesPerSecond = 0L
+            )
+            HyperTransferModePolicy.receiveBufferBytes(
+                HyperTransferModePolicy.negotiate(localProfile, remote = null)
+            )
+        }.getOrDefault(HyperTransferModePolicy.receiveBufferBytes(HyperTransferModePolicy.Mode.FAST))
         streamPayloadBridge.receive(
             payload, metadata, ready.authenticatedPeerId, ready.proposal, ready.decision, destination,
-            isCancelled = { cancelledStreamPayloads.contains(payloadId) }
+            isCancelled = { cancelledStreamPayloads.contains(payloadId) },
+            receiveBufferBytes = adaptiveReceiveBufferBytes
         ) { result ->
             incomingHyperMetadata.remove(payloadId)
             incomingHyperEndpoints.remove(payloadId)
