@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.*
@@ -31,7 +32,7 @@ data class BibleReaderScreenState(
     val translationName:String,val bookName:String,val chapter:Int,val verses:List<BibleVerse>,
     val mode:BibleReadingMode=BibleReadingMode.BOOK_PAGE,val hasPreviousChapter:Boolean=false,
     val hasNextChapter:Boolean=true,val isRightToLeft:Boolean=false,
-    val copyrightNotice:String?=null,val attribution:String?=null
+    val copyrightNotice:String?=null,val attribution:String?=null,val focusVerseNumber:Int?=null
 )
 
 /** Isolated reader surface; the app navigation/ViewModel supplies installed verses and state. */
@@ -42,6 +43,11 @@ fun NeaRerWordReaderScreen(
     onVerseSelected:(BibleVerse)->Unit,modifier:Modifier=Modifier
 ) {
     val curlProgress= remember { Animatable(0f) }
+    val verseListState= rememberLazyListState()
+    LaunchedEffect(state.focusVerseNumber,state.verses) {
+        val target=state.focusVerseNumber?.let { requested -> state.verses.indexOfFirst { it.verse==requested } } ?: -1
+        if(target>=0) verseListState.animateScrollToItem(target)
+    }
     var lastChapter by remember { mutableStateOf(state.chapter) }
     var curlFromRight by remember { mutableStateOf(true) }
     var hasShownFirstPage by remember { mutableStateOf(false) }
@@ -109,7 +115,7 @@ fun NeaRerWordReaderScreen(
                 if(state.verses.isEmpty()) {
                     Text("This chapter is not installed on this device yet. Download a licensed Bible pack to read it offline.",
                         color=Color(0xFF6E6A61),fontFamily=FontFamily.Serif,fontSize=16.sp,lineHeight=25.sp)
-                } else LazyColumn(verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                } else LazyColumn(state=verseListState,verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     items(state.verses,key={"${it.translationId}:${it.bookId}:${it.chapter}:${it.verse}"}) { verse ->
                         val annotated=remember(verse.text){buildAnnotatedString {
                             val regex=Regex("\\S+"); var end=0
