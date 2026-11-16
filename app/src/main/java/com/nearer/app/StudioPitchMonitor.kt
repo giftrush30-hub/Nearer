@@ -2,6 +2,7 @@ package com.nearer.app
 
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
+import android.media.AudioDeviceCallback
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
@@ -204,7 +205,6 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                 val nativeRate = withContext(Dispatchers.IO) {
                     StudioOboeEngine.diagnostics().getOrNull(0)?.toInt()?.takeIf { it > 0 } ?: 48_000
                 }
-                var nativeOffset = 0
                 var statsTick = 0
                 try {
                     while (isActive && StudioOboeEngine.isRunning()) {
@@ -335,7 +335,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         val pcm = ShortArray(chunkSize)
         var diagnosticTick = 0
         val floatPcm = FloatArray(chunkSize)
-        val pitchFramesJava = StudioPcmFrameAccumulator(frameSize)
+        val pitchFramesJava = pitchFrames
         try {
             while (isActive) {
                 val count = withContext(Dispatchers.IO) {
