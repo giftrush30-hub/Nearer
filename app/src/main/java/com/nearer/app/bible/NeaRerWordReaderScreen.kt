@@ -37,8 +37,13 @@ fun NeaRerWordReaderScreen(
     onVerseSelected:(BibleVerse)->Unit,modifier:Modifier=Modifier
 ) {
     val rotation= remember { Animatable(0f) }
+    var lastChapter by remember { mutableStateOf(state.chapter) }
+    var flipDirection by remember { mutableStateOf(78f) }
     LaunchedEffect(state.bookName,state.chapter) {
-        rotation.snapTo(78f); rotation.animateTo(0f,tween(420))
+        flipDirection=if(state.chapter>=lastChapter) 78f else -78f
+        lastChapter=state.chapter
+        rotation.snapTo(flipDirection)
+        rotation.animateTo(0f,tween(520))
     }
     CompositionLocalProvider(LocalLayoutDirection provides
         if(state.isRightToLeft) LayoutDirection.Rtl else LayoutDirection.Ltr) {
@@ -58,7 +63,11 @@ fun NeaRerWordReaderScreen(
             }
         }
         Card(Modifier.fillMaxWidth().weight(1f).graphicsLayer {
-            rotationY=rotation.value; cameraDistance=18*density
+            rotationY=rotation.value
+            cameraDistance=10*density
+            transformOrigin=androidx.compose.ui.graphics.TransformOrigin(
+                if(flipDirection>0f) 0f else 1f,0.5f)
+            shadowElevation=(kotlin.math.abs(rotation.value)/78f)*22f*density
         },shape=RoundedCornerShape(8.dp),colors=CardDefaults.cardColors(containerColor=Color(0xFFF6F0E3)),
             elevation=CardDefaults.cardElevation(7.dp)) {
             Column(Modifier.fillMaxSize().padding(18.dp)) {
