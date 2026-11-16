@@ -453,6 +453,8 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
                                         if (selected?.uri == movie.uri) {
                                             persistPosition(movie.uri, player.currentPosition)
                                             player.pause()
+                                            player.stop()
+                                            player.clearMediaItems()
                                             selected = null
                                         }
                                         movies.remove(movie)
