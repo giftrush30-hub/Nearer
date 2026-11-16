@@ -60,7 +60,7 @@ internal object HyperTransferModePolicy {
         return minMode(localMode, remoteMode)
     }
 
-    fun minMode(first: Mode, second: Mode, fallback: Mode = Mode.LITE): Mode =
+    fun minMode(first: Mode, second: Mode): Mode =
         if (first.rank <= second.rank) first else second
 
     /** Buffer sizes are bounded and never allocate based on file size. */
