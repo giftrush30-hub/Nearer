@@ -30,9 +30,12 @@ class StudioTrackToneProcessorTest {
         input.flip()
         processor.queueInput(input)
         val output = processor.output
-        val result = ShortArray(output.remaining() / 2) { output.short }
+        val rendered = ShortArray(output.remaining() / 2) { output.short }
+        processor.queueEndOfStream()
+        val tailBuffer = processor.output
+        val tail = ShortArray(tailBuffer.remaining() / 2) { tailBuffer.short }
         processor.reset()
-        return result
+        return rendered + tail
     }
 
     private fun tone(frequencyHz: Double, frames: Int = 8_192): ShortArray =
@@ -75,6 +78,15 @@ class StudioTrackToneProcessorTest {
         assertEquals(0, dry[1_392 * 2].toInt())
         assertTrue("Reverb should create a delayed left-channel tail", wet[1_392 * 2].toInt() > 500)
         assertEquals("Reverb must not leak into the silent right channel", 0, wet[1_392 * 2 + 1].toInt())
+    }
+
+    @Test fun reverbTailContinuesAfterTheFinalSourceFrame() {
+        val frames = 256
+        val input = ShortArray(frames * 2)
+        input[(frames - 1) * 2] = 19_660
+        val output = process(input, reverb = 0.3f)
+        assertTrue("Reverb should extend the rendered track", output.size > input.size)
+        assertTrue("The extended section should contain a decaying echo", output.drop(input.size).any { abs(it.toInt()) > 100 })
     }
 
     @Test fun unsafeSettingsAreBoundedWithoutClippingPcm() {
