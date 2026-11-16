@@ -79,9 +79,6 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     }
 
     private val appContext = context.applicationContext
-    private companion object {
-        const val BUNDLE_MIME_TYPE = "application/vnd.nearer.bundle"
-    }
     private val client = Nearby.getConnectionsClient(appContext)
     // Both peers must choose the same mode before discovery. The distinct service ID
     // prevents automatic-mode peers from accidentally matching Ultra Speed peers.
@@ -264,7 +261,10 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val completedOutgoingMessageIds = LinkedHashSet<String>()
     private val deliveryHandler = Handler(Looper.getMainLooper())
     private val maxMessageAttempts = MessageRetryPolicy.MAX_ATTEMPTS
-    private companion object { const val RECEIPT_RETRY_MS = 15_000L }
+    private companion object {
+        const val RECEIPT_RETRY_MS = 15_000L
+        const val BUNDLE_MIME_TYPE = "application/vnd.nearer.bundle"
+    }
     init {
         restorePendingOutbox()
         // Restore replay protection before any cached route can become usable.
