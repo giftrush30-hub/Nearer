@@ -1,6 +1,6 @@
 # NeaRer Word — A/B/C engineering batch
 
-Status: first source foundation on `feature/nearer-word-a-b-c`  
+Status: expanded implementation batch on `feature/nearer-word-a-b-c`  
 Target: native Kotlin + Jetpack Compose; offline-first; Android API 26+; no mandatory Firebase/Supabase; preserve midnight navy, mint and gold.
 
 ## A — Reader and offline foundation
@@ -16,6 +16,8 @@ Target: native Kotlin + Jetpack Compose; offline-first; Android API 26+; no mand
 - Mark full versus partial Bible coverage accurately; never call an NT-only pack a complete Bible.
 - Search by language, region, script, canon and completeness.
 - Versioned, checksummed, transactionally imported packs; selected downloads only; no large text corpus in base APK.
+- Added a pack importer for `manifest.json`, `books.ndjson` and `scripture.ndjson`, a SQLite transaction adapter, archive-entry/path/size checks, SHA-256 verification, and a real Bible destination in the existing More navigation.
+- The reader now supports installed translation selection, book/chapter navigation, verse search, verse bookmarks and private study journal access.
 - Display required copyright notice whenever copyrighted Scripture is shown.
 - No scraping or redistribution without written permission.
 - Bible Society of Nigeria reports full Bibles in 27 Nigerian languages and additional work in progress; confirm edition availability and distribution rights directly with BSN.
@@ -27,11 +29,13 @@ Target: native Kotlin + Jetpack Compose; offline-first; Android API 26+; no mand
 - Keep surface form, lemma, transliteration, Strong number, morphology, gloss, definition and verse alignment separate.
 - A translated word opens an original-language entry only if trusted alignment data maps it to an actual source token. Otherwise say mapping unavailable; never invent an equivalent.
 - Search original script, transliteration, Strong number, lemma and English gloss.
+- Added an attributed lexicon/alignment dataset importer. It verifies the referenced verse and token index against the installed translation before accepting a surface-word-to-lemma mapping.
+- Word taps now query only imported alignment records; absent mappings are explicitly reported as unavailable.
 - Show grammar, contextual senses and occurrence lists only when supported by imported source data.
 - Candidate: STEPBible-Data. Repository states CC BY 4.0 and asks users to credit “STEP Bible” with a link to STEP Bible. Preserve attribution and record changes; verify individual dataset provenance before import.
 
 ## Local schema
-translations, books, verses, verse_search (FTS4), lexical_entries, word_occurrences, bookmarks, study_notes. Personal notes/bookmarks must survive content-pack refresh and database migrations.
+translations, books, verses, verse_search (FTS4), lexical_entries, word_occurrences, bookmarks, study_notes, installed_packs. Database v3 migrations preserve personal notes/bookmarks and add unique source-token alignment indexing. Personal notes/bookmarks must survive content-pack refresh and database migrations.
 
 ## Integration contract
 1. Add a Word destination to the existing navigation model without removing or reordering existing destinations.
@@ -48,8 +52,22 @@ translations, books, verses, verse_search (FTS4), lexical_entries, word_occurren
 - Parse/import large packs off the main thread.
 - Claim offline support only after airplane-mode tests pass.
 
-## Known gaps in this first source batch
-This branch provides models, SQLite foundation, an initial reader composable and lexical lookup contract. It does not yet contain licensed Bible text, a pack catalogue/importer, every canon/version, audio assets, or MainActivity navigation wiring. The page animation is a first transition, not the final realistic curled-paper effect. No APK/build result is claimed until CI validates the exact branch head.
+## Current implementation status
+- Bible destination is connected to the existing More menu without changing the existing bottom navigation.
+- A user can select a publisher-supplied ZIP pack, install it in the background, and read installed chapters offline.
+- The pack importer validates the manifest, named canon book count, checksum, declared verse count, safe archive entry names, archive size, expanded size, and translation ownership; database writes are transactional.
+- Reader includes translation selection, book/chapter navigation, full-text verse search, verse tap to bookmark, word tap to an original-language detail surface, and a local notes/bookmarks journal.
+- Lexical dataset importer accepts Hebrew, Aramaic and Koine Greek records with source URL, licence and attribution; it validates every verse/token alignment against the installed translation before linking a word to a lemma.
+- Search query is tokenized and quoted to avoid user-supplied FTS operators.
+- The page transition remains a simple 3D turn, not a true paper-curl shader.
+
+## Remaining work before calling Bible complete
+- No licensed Scripture pack or full multilingual catalogue has been distributed in this branch. The installer expects publisher-approved pack files; it does not fetch copyrighted translations from the web.
+- The lexicon importer exists, but no lexical corpus is bundled and no automatic downloadable lexical catalogue is connected yet.
+- Original-language study detail is live only where trusted alignment records have been imported.
+- Add audio Bible playback, side-by-side translation comparison, reading plans, highlights, pronunciation audio, and robust reading-position restoration.
+- Run CI on this exact branch, resolve any compile/test errors, and conduct airplane-mode and low-end-device tests.
+- Confirm per-translation distribution, offline caching and monetization rights in writing before publishing any pack.
 
 ## Acceptance gates
 1. JVM tests and debug APK build pass on exact branch head.
