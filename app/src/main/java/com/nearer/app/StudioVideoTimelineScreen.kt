@@ -2,6 +2,13 @@ package com.nearer.app
 
 import android.content.Intent
 import android.media.MediaMetadataRetriever
+import android.graphics.Color
+import android.graphics.Typeface
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -44,6 +51,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.effect.Brightness
 import androidx.media3.effect.Contrast
 import androidx.media3.effect.HslAdjustment
+import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.StaticOverlaySettings
+import androidx.media3.effect.TextOverlay
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
@@ -91,19 +101,37 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
     var brightness by remember(context) { mutableStateOf(restoredGrade.brightness) }
     var contrast by remember(context) { mutableStateOf(restoredGrade.contrast) }
     var saturation by remember(context) { mutableStateOf(restoredGrade.saturation) }
-    fun videoGradeEffects() = buildList<androidx.media3.common.Effect> {
+    val textPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_text", android.content.Context.MODE_PRIVATE) }
+    var textOverlay by remember(context) { mutableStateOf(StudioVideoTextOverlayCodec.decode(textPreferences.getString("overlay_v1", null))) }
+    fun videoEffects() = buildList<androidx.media3.common.Effect> {
         if (brightness != 0f) add(Brightness(brightness))
         if (contrast != 0f) add(Contrast(contrast))
         if (saturation != 0f) add(HslAdjustment.Builder().adjustSaturation(saturation).build())
+        if (textOverlay.text.isNotBlank()) {
+            val caption = SpannableString(textOverlay.text)
+            caption.setSpan(ForegroundColorSpan(textOverlay.colorArgb), 0, caption.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            caption.setSpan(BackgroundColorSpan(Color.argb(150, 8, 14, 22)), 0, caption.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            caption.setSpan(StyleSpan(Typeface.BOLD), 0, caption.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            val anchorY = when (textOverlay.verticalPosition) { 0 -> 0.78f; 1 -> 0f; else -> -0.78f }
+            val settings = StaticOverlaySettings.Builder()
+                .setOverlayFrameAnchor(0f, 0f)
+                .setBackgroundFrameAnchor(0f, anchorY)
+                .setScale(0.85f, 0.85f)
+                .build()
+            add(OverlayEffect(listOf(TextOverlay.createStaticTextOverlay(caption, settings))))
+        }
     }
     LaunchedEffect(brightness, contrast, saturation) {
         gradePreferences.edit().putString("grade_v1", StudioVideoGradeCodec.encode(StudioVideoGrade(brightness, contrast, saturation))).apply()
     }
+    LaunchedEffect(textOverlay) {
+        textPreferences.edit().putString("overlay_v1", StudioVideoTextOverlayCodec.encode(textOverlay)).apply()
+    }
     val player = remember(context) { ExoPlayer.Builder(context).build() }
 
     DisposableEffect(player) { onDispose { player.release() } }
-    LaunchedEffect(clips.toList(), brightness, contrast, saturation) {
-        player.setVideoEffects(videoGradeEffects())
+    LaunchedEffect(clips.toList(), brightness, contrast, saturation, textOverlay) {
+        player.setVideoEffects(videoEffects())
         if (clips.isNotEmpty()) {
             val previewItems = clips.map { clip ->
                 MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
