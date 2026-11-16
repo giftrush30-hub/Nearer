@@ -36,6 +36,7 @@ class OutgoingHyperTransferStoreTest {
             assertEquals(1, restored.size)
             assertEquals("transfer-a", restored.single().transferId)
             assertEquals(peerA, restored.single().peerId)
+            assertEquals("video/mp4", restored.single().mimeType)
             assertArrayEquals(bytes, restored.single().sourceFile.readBytes())
             assertTrue(OutgoingHyperTransferStore(source).restoreForPeer(peerB).isEmpty())
         } finally {
