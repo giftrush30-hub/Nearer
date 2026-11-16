@@ -5,14 +5,14 @@ internal object StudioOboeEngine {
         System.loadLibrary("nearer_audio")
     }.isSuccess
 
-    external fun nativeStart(inputDeviceId: Int): Boolean
+    external fun nativeStart(inputDeviceId: Int, preferUnprocessedInput: Boolean): Boolean
     external fun nativeStop()
     external fun nativeReadAnalysis(destination: FloatArray): Int
     external fun nativeGetStats(): LongArray
     external fun nativeIsRunning(): Boolean
 
-    fun start(inputDeviceId: Int?): Boolean =
-        available && runCatching { nativeStart(inputDeviceId ?: -1) }.getOrDefault(false)
+    fun start(inputDeviceId: Int?, preferUnprocessedInput: Boolean): Boolean =
+        available && runCatching { nativeStart(inputDeviceId ?: -1, preferUnprocessedInput) }.getOrDefault(false)
 
     fun stop() {
         if (available) runCatching { nativeStop() }
