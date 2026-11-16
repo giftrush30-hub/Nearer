@@ -333,13 +333,13 @@ class MainActivity : ComponentActivity() {
                     if (activeGame != null) communityNotice = "Ludo paused — waiting for $lastName to reconnect."
                 }
             }
-            override fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
+            override fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Boolean) {
                 onMessageWithReply(id, senderName, messageId, body, null, null, null, acknowledge)
             }
             override fun onMessageWithReply(
                 id: String, senderName: String, messageId: String, body: String,
                 replyToMessageId: String?, replyToPreview: String?, replyToSender: String?,
-                acknowledge: () -> Unit
+                acknowledge: () -> Boolean
             ) {
                 runOnUiThread {
                     var safelyStored = false
@@ -417,13 +417,13 @@ class MainActivity : ComponentActivity() {
                     if (safelyStored) acknowledge()
                 }
             }
-            override fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {
+            override fun onMeshMessage(originPeerId: String, senderName: String, messageId: String, body: String, acknowledge: () -> Boolean) {
                 onMeshMessageWithReply(originPeerId, senderName, messageId, body, null, null, null, acknowledge)
             }
             override fun onMeshMessageWithReply(
                 originPeerId: String, senderName: String, messageId: String, body: String,
                 replyToMessageId: String?, replyToPreview: String?, replyToSender: String?,
-                acknowledge: () -> Unit
+                acknowledge: () -> Boolean
             ) {
                 runOnUiThread {
                     var safelyStored = false
