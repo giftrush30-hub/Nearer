@@ -212,7 +212,12 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         File(resumeDirectory, "partials"),
         TransferResumeJournal(File(resumeDirectory, "journal"))
     )
-    private val resumeCoordinator = TransferResumeCoordinator(resumeStore, TransferResumeStreamWriter(resumeStore))
+    // Select the durable receive buffer from this phone's current memory/thermal state.
+    // This tunes local disk I/O only; it does not claim to increase radio throughput.
+    private val resumeCoordinator = TransferResumeCoordinator(
+        resumeStore,
+        TransferResumeStreamWriter(resumeStore, HyperTransferTuning.receiveBufferBytes(appContext))
+    )
     private val streamPayloadBridge = NearbyStreamPayloadBridge(resumeCoordinator, fileIo)
     // Hash large files away from the UI thread before the receiver is given the payload.
     private val transferPreparation = Executors.newFixedThreadPool(2)
