@@ -8,7 +8,7 @@ import android.database.sqlite.SQLiteOpenHelper
 
 /** Offline store. Scripture and lexicon content enter only through validated, licensed packs. */
 class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
-    context.applicationContext, "nearer_word.db", null, 1
+    context.applicationContext, "nearer_word.db", null, 2
 ) {
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
@@ -51,8 +51,61 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
             updated_at INTEGER NOT NULL)""")
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Future migrations must be additive and preserve personal notes/bookmarks.
+        if (oldVersion < 2) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS installed_packs(pack_id TEXT PRIMARY KEY NOT NULL, translation_id TEXT NOT NULL, version INTEGER NOT NULL, installed_at INTEGER NOT NULL, verse_count INTEGER NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS bookmarks_ref_idx ON bookmarks(translation_id,book_id,chapter,verse)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS notes_ref_idx ON study_notes(translation_id,book_id,chapter,verse)")
+        }
     }
+
+    fun recordInstalledPack(packId:String,translationId:String,version:Int,verseCount:Int) {
+        writableDatabase.insertWithOnConflict("installed_packs",null,ContentValues().apply {
+            put("pack_id",packId); put("translation_id",translationId); put("version",version)
+            put("installed_at",System.currentTimeMillis()); put("verse_count",verseCount)
+        },SQLiteDatabase.CONFLICT_REPLACE)
+    }
+    fun saveBookmark(bookmark:BibleBookmark) {
+        writableDatabase.insertWithOnConflict("bookmarks",null,ContentValues().apply {
+            put("id",bookmark.id); put("translation_id",bookmark.translationId); put("book_id",bookmark.bookId)
+            put("chapter",bookmark.chapter); put("verse",bookmark.verse); put("created_at",bookmark.createdAt)
+        },SQLiteDatabase.CONFLICT_REPLACE)
+    }
+    fun listBookmarks(translationId:String?=null):List<BibleBookmark> {
+        val out=mutableListOf<BibleBookmark>()
+        readableDatabase.query("bookmarks",null,translationId?.let { "translation_id=?" },
+            translationId?.let { arrayOf(it) },null,null,"created_at DESC").use { c ->
+            while(c.moveToNext()) out += BibleBookmark(
+                c.getString(c.getColumnIndexOrThrow("id")),c.getString(c.getColumnIndexOrThrow("translation_id")),
+                c.getString(c.getColumnIndexOrThrow("book_id")),c.getInt(c.getColumnIndexOrThrow("chapter")),
+                if(c.isNull(c.getColumnIndexOrThrow("verse"))) null else c.getInt(c.getColumnIndexOrThrow("verse")),
+                c.getLong(c.getColumnIndexOrThrow("created_at")))
+        }
+        return out
+    }
+    fun deleteBookmark(id:String) { writableDatabase.delete("bookmarks","id=?",arrayOf(id)) }
+    fun saveNote(note:BibleStudyNote) {
+        writableDatabase.insertWithOnConflict("study_notes",null,ContentValues().apply {
+            put("id",note.id); put("translation_id",note.translationId); put("book_id",note.bookId)
+            put("chapter",note.chapter); put("verse",note.verse); put("title",note.title)
+            put("body",note.body); put("color_argb",note.colorArgb); put("updated_at",note.updatedAt)
+        },SQLiteDatabase.CONFLICT_REPLACE)
+    }
+    fun listNotes(translationId:String?=null):List<BibleStudyNote> {
+        val out=mutableListOf<BibleStudyNote>()
+        readableDatabase.query("study_notes",null,translationId?.let { "translation_id=?" },
+            translationId?.let { arrayOf(it) },null,null,"updated_at DESC").use { c ->
+            while(c.moveToNext()) out += BibleStudyNote(
+                c.getString(c.getColumnIndexOrThrow("id")),c.getString(c.getColumnIndexOrThrow("translation_id")),
+                c.getString(c.getColumnIndexOrThrow("book_id")),
+                if(c.isNull(c.getColumnIndexOrThrow("chapter"))) null else c.getInt(c.getColumnIndexOrThrow("chapter")),
+                if(c.isNull(c.getColumnIndexOrThrow("verse"))) null else c.getInt(c.getColumnIndexOrThrow("verse")),
+                c.getString(c.getColumnIndexOrThrow("title")),c.getString(c.getColumnIndexOrThrow("body")),
+                c.getLong(c.getColumnIndexOrThrow("color_argb")),c.getLong(c.getColumnIndexOrThrow("updated_at")))
+        }
+        return out
+    }
+    fun deleteNote(id:String) { writableDatabase.delete("study_notes","id=?",arrayOf(id)) }
+
     fun installTranslation(t: BibleTranslation) {
         writableDatabase.insertWithOnConflict("translations", null, ContentValues().apply {
             put("id",t.id); put("name",t.name); put("language_tag",t.languageTag)
