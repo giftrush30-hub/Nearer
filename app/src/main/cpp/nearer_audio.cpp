@@ -12,15 +12,16 @@ namespace {
 
 constexpr uint32_t kRingCapacity = 16384;
 constexpr uint32_t kRingMask = kRingCapacity - 1;
+static_assert(std::atomic<uint32_t>::is_always_lock_free, "Audio callback counters must be lock-free");
 
 class FloatRing {
 public:
     uint32_t push(const float* source, uint32_t count) noexcept {
-        const uint64_t write = write_.load(std::memory_order_relaxed);
-        const uint64_t read = read_.load(std::memory_order_acquire);
-        const uint64_t freeFrames = kRingCapacity - (write - read);
+        const uint32_t write = write_.load(std::memory_order_relaxed);
+        const uint32_t read = read_.load(std::memory_order_acquire);
+        const uint32_t freeFrames = kRingCapacity - (write - read);
         const uint32_t accepted = static_cast<uint32_t>(
-            std::min<uint64_t>(count, freeFrames));
+            std::min<uint32_t>(count, freeFrames));
         for (uint32_t i = 0; i < accepted; ++i) {
             samples_[(write + i) & kRingMask] = source[i];
         }
@@ -29,10 +30,10 @@ public:
     }
 
     uint32_t pop(float* destination, uint32_t count) noexcept {
-        const uint64_t read = read_.load(std::memory_order_relaxed);
-        const uint64_t write = write_.load(std::memory_order_acquire);
+        const uint32_t read = read_.load(std::memory_order_relaxed);
+        const uint32_t write = write_.load(std::memory_order_acquire);
         const uint32_t available = static_cast<uint32_t>(
-            std::min<uint64_t>(count, write - read));
+            std::min<uint32_t>(count, write - read));
         for (uint32_t i = 0; i < available; ++i) {
             destination[i] = samples_[(read + i) & kRingMask];
         }
@@ -47,8 +48,8 @@ public:
 
 private:
     alignas(64) std::array<float, kRingCapacity> samples_{};
-    alignas(64) std::atomic<uint64_t> write_{0};
-    alignas(64) std::atomic<uint64_t> read_{0};
+    alignas(64) std::atomic<uint32_t> write_{0};
+    alignas(64) std::atomic<uint32_t> read_{0};
 };
 
 class DuplexEngine final : public oboe::AudioStreamDataCallback,
@@ -222,8 +223,8 @@ private:
     FloatRing analysisRing_;
     std::atomic<bool> running_{false};
     std::atomic<bool> disconnected_{false};
-    std::atomic<uint64_t> outputUnderruns_{0};
-    std::atomic<uint64_t> droppedCaptureFrames_{0};
+    std::atomic<uint32_t> outputUnderruns_{0};
+    std::atomic<uint32_t> droppedCaptureFrames_{0};
 };
 
 std::mutex gEngineMutex;
