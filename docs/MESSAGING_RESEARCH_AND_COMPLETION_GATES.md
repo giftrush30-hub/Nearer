@@ -87,8 +87,8 @@ The legacy fallback is temporary compatibility behavior: old records did not ret
 - Destination replay checks the encrypted dead-drop queue for a still-pending packet and completes the final receipt path before retiring the inbox event.
 - Final receipt creation is idempotent by packet ID: if the receipt outbox already contains a signed receipt, retries reuse that exact receipt rather than creating a new timestamp/signature for the same packet ID.
 - The destination retires its local encrypted packet only after the final receipt has been durably enqueued.
-- If receipt persistence fails, the packet and durable inbox event remain available for retry.
-- This closes the crash window between receipt persistence and local packet retirement. It does not replace multi-device or real-radio testing.
+- If receipt persistence fails, the packet and durable inbox event remain available for retry. If the packet has already expired or been retired after the inbox commit, the authenticated encrypted inbox is sufficient to recreate the final signed receipt.
+- This closes the crash window between receipt persistence and local packet retirement, including packet expiry after a durable inbox commit. It does not replace multi-device or real-radio testing.
 
 ## 6. Completion order
 
