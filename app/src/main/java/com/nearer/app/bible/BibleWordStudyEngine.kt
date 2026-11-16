@@ -3,8 +3,8 @@ package com.nearer.app.bible
 /** Lookup layer for imported, attributed original-language data. */
 class BibleWordStudyEngine(private val database:BibleLocalDatabase) {
     fun findByStrongNumber(number:String)=database.findLexicalEntryByStrong(number.trim().uppercase())
-    fun findForVerseWord(verse:BibleVerse,surfaceForm:String):BibleWordStudyEntry? =
-        database.findAlignedLexicalEntries(verse,surfaceForm).firstOrNull()
+    fun findForVerseWord(verse:BibleVerse,surfaceForm:String,tokenIndex:Int):BibleWordStudyEntry? =
+        database.findAlignedLexicalEntries(verse,surfaceForm,tokenIndex).firstOrNull()
     fun search(language: BiblicalLanguage,query:String):List<BibleWordStudyEntry> {
         val q=query.trim()
         if(q.length<2) return emptyList()
