@@ -284,7 +284,7 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
             )
-            Text("Playing from your phone · no data required", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Text("Local files play without mobile data; cloud-backed files still depend on their provider.", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("SPEED", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                 listOf(1f, 1.25f, 1.5f, 2f).forEach { speed ->
@@ -319,7 +319,7 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
                     Text("NEARER MOVIES", color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
                     Text("Your stories. Your screen. Your library.", color = Mint, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Add videos already on your phone and watch them here, even when your data is off. NeaRer stores the selected file reference and asks Android to keep permission to open only the videos you choose.",
+                        "Add videos stored on your phone or removable storage and watch them without mobile data. Cloud-only files still depend on their provider. NeaRer keeps a reference to the original file instead of duplicating a huge video into app storage.",
                         color = Muted,
                         fontSize = 12.sp,
                         lineHeight = 18.sp
