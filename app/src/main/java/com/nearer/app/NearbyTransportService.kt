@@ -45,6 +45,10 @@ class NearbyTransportService : Service() {
                 inFlightMessageIds.clear()
             }
         }
+
+        fun replayPendingMessages() {
+            inbox.snapshot().forEach(::dispatchInboxEntry)
+        }
     }
 
     companion object {
