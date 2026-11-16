@@ -80,6 +80,7 @@ class BusinessDraftCodecTest {
         val unknown = """{"version":999,"items":[]}"""
         assertTrue(!BusinessDraftCodec.canDecode(unknown))
         assertTrue(!BusinessDraftCodec.canDecode("{broken"))
+        assertTrue(!BusinessDraftCodec.canDecode("""{"version":2}"""))
         assertTrue(BusinessDraftCodec.canDecode(null))
         assertTrue(BusinessDraftCodec.decode(unknown).isEmpty())
         assertTrue(BusinessDraftCodec.decode("{broken").isEmpty())
