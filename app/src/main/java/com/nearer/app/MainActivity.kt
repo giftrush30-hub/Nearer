@@ -862,7 +862,7 @@ class MainActivity : ComponentActivity() {
                     onSendMessage = ::sendChatMessage,
                     onMarkConversationRead = { peerId -> markConversationRead(peerId ?: hybridConnectedStableId) },
                     readReceiptsEnabled = readReceiptsEnabled,
-                    onReadReceiptsEnabledChange = ::setReadReceiptsEnabled,
+                    onReadReceiptsEnabledChange = ::persistReadReceiptsEnabled,
                     onRequestNotifications = ::requestChatNotifications,
                     typingIndicator = typingPeerId == (selectedMeshRecipientId ?: hybridConnectedStableId) &&
                         typingExpiresAt > System.currentTimeMillis(),
@@ -2141,7 +2141,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun setReadReceiptsEnabled(enabled: Boolean) {
+    private fun persistReadReceiptsEnabled(enabled: Boolean) {
         readReceiptsEnabled = enabled
         getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit().putBoolean("read_receipts_enabled", enabled).apply()
         if (enabled) {
