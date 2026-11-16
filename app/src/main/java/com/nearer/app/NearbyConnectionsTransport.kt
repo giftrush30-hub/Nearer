@@ -1787,10 +1787,11 @@ internal object IncomingFilePayloadPolicy {
                     bytesTransferred = state.item.sizeBytes,
                     elapsedMillis = elapsed,
                     firstByteMillis = firstByte,
-                    succeeded = succeeded
+                    succeeded = succeeded,
+                    peerId = state.stablePeerId
                 )
             )
-            benchmarkStore.summary()?.let(listener::onBenchmarkSummary)
+            benchmarkStore.summary(state.stablePeerId)?.let(listener::onBenchmarkSummary)
         }
     }
 
