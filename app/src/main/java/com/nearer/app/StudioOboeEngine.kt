@@ -32,4 +32,8 @@ internal object StudioAudioEnginePolicy {
     /** Oboe uses AAudio from API 27; AAudio device-ID routing is available there. */
     fun useOboe(apiLevel: Int, preferredInputId: Int?): Boolean =
         apiLevel >= 27
+
+    /** AAudio input-preset selection is only applied on API 28+ by this integration. */
+    fun useUnprocessedInput(apiLevel: Int, requested: Boolean): Boolean =
+        requested && apiLevel >= 28
 }
