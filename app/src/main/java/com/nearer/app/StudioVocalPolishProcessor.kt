@@ -40,15 +40,19 @@ internal class StudioVocalPolishProcessor(
     private var previousHighPass = FloatArray(2)
     private var lowPassPresence = FloatArray(2)
     private var lowPassEss = FloatArray(2)
+    private var lowPassAir = FloatArray(2)
     private var compressorEnvelope = 0f
     private var gateEnvelope = 0f
+    private var limiterGain = 1f
     private var delay = FloatArray(2)
+    private val masterScratch = FloatArray(2)
     private var delayIndex = 0
     private val inputScratch = FloatArray(2)
     private val processedScratch = FloatArray(2)
     private var highPassCoefficient = 0f
     private var presenceCoefficient = 0f
     private var essCoefficient = 0f
+    private var airCoefficient = 0f
     private var delayFrames = 1
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
@@ -60,6 +64,7 @@ internal class StudioVocalPolishProcessor(
         highPassCoefficient = rcCoefficient(adjustedLowCut, sampleRate)
         presenceCoefficient = rcCoefficient(2_400f, sampleRate)
         essCoefficient = rcCoefficient(5_800f, sampleRate)
+        airCoefficient = rcCoefficient(9_000f, sampleRate)
         delayFrames = (sampleRate * 0.055f).toInt().coerceAtLeast(1)
         delay = FloatArray(delayFrames * 2)
         return AudioProcessor.AudioFormat(sampleRate, 2, C.ENCODING_PCM_16BIT)
@@ -81,6 +86,13 @@ internal class StudioVocalPolishProcessor(
         val compressorRatio = (profile.compressorRatio + controls.compression).coerceIn(1.5f, 8f)
         val roomMix = (profile.roomMix + controls.ambience).coerceIn(0f, 0.25f)
         val outputGain = controls.outputGain
+        val airAmount = controls.air
+        val stereoWidth = controls.stereoWidth
+        val limiterCeiling = controls.limiterCeiling
+        val noiseReduction = controls.noiseReduction
+        val gateThreshold = profile.gateThreshold * (1f + noiseReduction * 5f)
+        val limiterAttack = exp(-1f / (sampleRate * 0.0015f))
+        val limiterRelease = exp(-1f / (sampleRate * 0.080f))
 
         repeat(frames) {
             val left = inputBuffer.short / 32768f
@@ -100,19 +112,28 @@ internal class StudioVocalPolishProcessor(
                 val present = highPass + presence * presenceAmount
 
                 lowPassEss[channel] += (present - lowPassEss[channel]) * (1f - essCoefficient)
+                lowPassAir[channel] += (present - lowPassAir[channel]) * (1f - airCoefficient)
+                val airBand = present - lowPassAir[channel]
                 val sibilance = present - lowPassEss[channel]
                 val essLevel = abs(sibilance)
                 val essReduction = if (essLevel > 0.075f) {
                     (1f - deEssAmount * ((essLevel - 0.075f) / 0.35f).coerceIn(0f, 1f))
                 } else 1f
-                processedScratch[channel] = present - sibilance * (1f - essReduction)
+                processedScratch[channel] = present - sibilance * (1f - essReduction) + airBand * airAmount
                 framePeak = maxOf(framePeak, abs(processedScratch[channel]))
+            }
+            if (inputChannels == 2 && stereoWidth != 1f) {
+                val mid = (processedScratch[0] + processedScratch[1]) * 0.5f
+                val side = (processedScratch[0] - processedScratch[1]) * 0.5f * stereoWidth
+                processedScratch[0] = mid + side
+                processedScratch[1] = mid - side
+                framePeak = maxOf(abs(processedScratch[0]), abs(processedScratch[1]))
             }
 
             val gateCoefficient = if (framePeak > gateEnvelope) gateAttack else gateRelease
             gateEnvelope = gateCoefficient * gateEnvelope + (1f - gateCoefficient) * framePeak
-            val gateGain = if (gateEnvelope < profile.gateThreshold) {
-                (gateEnvelope / profile.gateThreshold).coerceIn(0.12f, 1f)
+            val gateGain = if (gateEnvelope < gateThreshold) {
+                (gateEnvelope / gateThreshold).coerceIn(0.12f * (1f - noiseReduction), 1f)
             } else 1f
 
             val compressorCoefficient = if (framePeak > compressorEnvelope) compressorAttack else compressorRelease
@@ -131,8 +152,14 @@ internal class StudioVocalPolishProcessor(
                 val delayPosition = delayIndex * 2 + channel
                 val delayed = delay[delayPosition]
                 delay[delayPosition] = (saturated + delayed * 0.16f).coerceIn(-1f, 1f)
-                val polished = (saturated * (1f - roomMix) + delayed * roomMix)
-                    .coerceIn(-1f, 1f)
+                masterScratch[channel] = saturated * (1f - roomMix) + delayed * roomMix
+            }
+            val masterPeak = maxOf(abs(masterScratch[0]), abs(masterScratch[1]))
+            val targetLimiterGain = if (masterPeak > limiterCeiling) limiterCeiling / masterPeak else 1f
+            val limiterCoefficient = if (targetLimiterGain < limiterGain) limiterAttack else limiterRelease
+            limiterGain = limiterCoefficient * limiterGain + (1f - limiterCoefficient) * targetLimiterGain
+            for (channel in 0..1) {
+                val polished = (masterScratch[channel] * limiterGain).coerceIn(-1f, 1f)
                 val pcm = (polished * 32767f).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
                 output.putShort(pcm.toShort())
             }
@@ -148,8 +175,10 @@ internal class StudioVocalPolishProcessor(
         previousHighPass = FloatArray(2)
         lowPassPresence = FloatArray(2)
         lowPassEss = FloatArray(2)
+        lowPassAir = FloatArray(2)
         compressorEnvelope = 0f
         gateEnvelope = 0f
+        limiterGain = 1f
         delay.fill(0f)
         delayIndex = 0
     }

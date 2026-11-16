@@ -21,7 +21,8 @@ internal data class StudioPitchCorrectionSettings(
     val minor: Boolean = false,
     val style: StudioTuningStyle = StudioTuningStyle.NATURAL,
     val retuneSpeedMs: Int = 90,
-    val enabled: Boolean = false
+    val enabled: Boolean = false,
+    val preserveFormants: Boolean = true
 ) {
     fun normalized() = copy(
         keyRoot = keyRoot.coerceIn(0, 11),
@@ -59,7 +60,8 @@ internal object StudioPitchCorrectionMath {
  * YIN detects the lead-vocal fundamental and the selected scale supplies the nearest
  * legal note. A dual-head granular delay shifter applies the correction without
  * changing clip duration. It is intended for a single lead vocal, not chords or
- * polyphonic backing tracks. Formant preservation is not part of this first DSP pass.
+ * polyphonic backing tracks. Optional LPC envelope compensation reduces formant
+ * movement caused by granular pitch shifting; extreme shifts remain less natural.
  */
 @androidx.media3.common.util.UnstableApi
 internal class StudioPitchCorrectionProcessor(settings: StudioPitchCorrectionSettings) : BaseAudioProcessor() {
@@ -69,6 +71,12 @@ internal class StudioPitchCorrectionProcessor(settings: StudioPitchCorrectionSet
     private val ringSize = 16_384
     private val ringMask = ringSize - 1
     private var ring = Array(2) { FloatArray(ringSize) }
+    private var residualRing = Array(2) { FloatArray(ringSize) }
+    private var inputLpcHistory = Array(2) { FloatArray(12) }
+    private var outputLpcHistory = Array(2) { FloatArray(12) }
+    private var lpcModel = StudioLpcFormantModel.estimate(FloatArray(2_048), 12)
+    private var formantModelReady = false
+    private var formantWarmupRemaining = 0
     private var writeFrame = 0L
     private var analysisCounter = 0
     private val analysisHop = 512
@@ -86,6 +94,7 @@ internal class StudioPitchCorrectionProcessor(settings: StudioPitchCorrectionSet
         sampleRate = inputAudioFormat.sampleRate.coerceAtLeast(8_000)
         channels = inputAudioFormat.channelCount
         ring = Array(2) { FloatArray(ringSize) }
+        residualRing = Array(2) { FloatArray(ringSize) }
         grainSamples = (sampleRate * 0.040f).coerceAtLeast(256f)
         resetState()
         return inputAudioFormat
@@ -102,6 +111,13 @@ internal class StudioPitchCorrectionProcessor(settings: StudioPitchCorrectionSet
             val index = writeFrame.toInt() and ringMask
             ring[0][index] = left
             ring[1][index] = right
+            val formantActive = settings.enabled && settings.preserveFormants &&
+                formantModelReady && formantWarmupRemaining <= 0
+            residualRing[0][index] = if (formantActive) lpcModel.whiten(left, inputLpcHistory[0]) else left
+            residualRing[1][index] = if (formantActive) lpcModel.whiten(right, inputLpcHistory[1]) else right
+            pushLpcHistory(inputLpcHistory[0], left)
+            pushLpcHistory(inputLpcHistory[1], right)
+            if (formantWarmupRemaining > 0) formantWarmupRemaining--
 
             analysisCounter++
             if (analysisCounter >= analysisHop && writeFrame >= analysisFrame.size) {
@@ -118,13 +134,16 @@ internal class StudioPitchCorrectionProcessor(settings: StudioPitchCorrectionSet
             val shifting = settings.enabled && voiced && kotlin.math.abs(smoothedRatio - 1f) > 0.0005f
 
             for (channel in 0 until channels) {
-                val sample = if (shifting) {
+                val raw = if (channel == 0) left else right
+                val shiftedResidual = if (shifting) {
                     val a = readDelayed(channel, delayA)
                     val b = readDelayed(channel, delayB)
                     a * weightA + b * weightB
-                } else {
-                    if (channel == 0) left else right
-                }
+                } else raw
+                val sample = if (shifting && formantActive) {
+                    lpcModel.restore(shiftedResidual, outputLpcHistory[channel])
+                } else shiftedResidual
+                pushLpcHistory(outputLpcHistory[channel], sample)
                 output.putShort((sample.coerceIn(-1f, 1f) * 32767f).roundToInt().toShort())
             }
 
@@ -147,6 +166,18 @@ internal class StudioPitchCorrectionProcessor(settings: StudioPitchCorrectionSet
         } else {
             val target = StudioPitchCorrectionMath.targetMidi(reading.midiNote, settings.keyRoot, settings.minor)
             targetRatio = StudioPitchCorrectionMath.pitchRatio(reading.midiNote, target, settings.style.strength)
+            if (settings.enabled && settings.preserveFormants) {
+                val estimated = StudioLpcFormantModel.estimate(analysisFrame, 12)
+                if (!formantModelReady) {
+                    lpcModel = estimated
+                    formantModelReady = true
+                    formantWarmupRemaining = grainSamples.toInt() + analysisHop
+                } else {
+                    for (index in lpcModel.predictor.indices) {
+                        lpcModel.predictor[index] = lpcModel.predictor[index] * 0.82f + estimated.predictor[index] * 0.18f
+                    }
+                }
+            }
             voiced = true
         }
         val smoothing = StudioPitchCorrectionMath.smoothingCoefficient(sampleRate, analysisHop, settings.retuneSpeedMs)
@@ -160,7 +191,7 @@ internal class StudioPitchCorrectionProcessor(settings: StudioPitchCorrectionSet
         val fraction = delay - whole
         val newerIndex = (writeFrame.toInt() - whole) and ringMask
         val olderIndex = (newerIndex - 1) and ringMask
-        return ring[channel][newerIndex] * (1f - fraction) + ring[channel][olderIndex] * fraction
+        return residualRing[channel][newerIndex] * (1f - fraction) + residualRing[channel][olderIndex] * fraction
     }
 
     private fun wrapPhase(value: Float): Float {
@@ -172,6 +203,12 @@ internal class StudioPitchCorrectionProcessor(settings: StudioPitchCorrectionSet
 
     private fun resetState() {
         ring.forEach { it.fill(0f) }
+        residualRing.forEach { it.fill(0f) }
+        inputLpcHistory.forEach { it.fill(0f) }
+        outputLpcHistory.forEach { it.fill(0f) }
+        lpcModel = StudioLpcFormantModel.estimate(FloatArray(2_048), 12)
+        formantModelReady = false
+        formantWarmupRemaining = 0
         writeFrame = 0L
         analysisCounter = 0
         phase = 0f

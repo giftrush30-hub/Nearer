@@ -121,7 +121,7 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
     }
 
     if (showPitchMonitor) {
-        StudioPitchMonitorScreen(onBack = { showPitchMonitor = false })
+        StudioPitchMonitorScreen(onBack = { showPitchMonitor = false }, preferredInputId = selectedUsbInputId, preferUnprocessedInput = supportsUnprocessedInput)
     } else {
     Column(Modifier.fillMaxSize().background(Midnight).padding(20.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -268,14 +268,16 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                 minor = pitchPreferences.getBoolean("minor", false),
                 style = runCatching { StudioTuningStyle.valueOf(pitchPreferences.getString("style", StudioTuningStyle.NATURAL.name)!!) }.getOrDefault(StudioTuningStyle.NATURAL),
                 retuneSpeedMs = pitchPreferences.getInt("retune_speed_ms", 90),
-                enabled = pitchPreferences.getBoolean("enabled", false)
+                enabled = pitchPreferences.getBoolean("enabled", false),
+                preserveFormants = pitchPreferences.getBoolean("preserve_formants", true)
             )
         )
     }
     LaunchedEffect(pitchCorrection) {
         pitchPreferences.edit().putInt("key_root", pitchCorrection.keyRoot).putBoolean("minor", pitchCorrection.minor)
             .putString("style", pitchCorrection.style.name).putInt("retune_speed_ms", pitchCorrection.retuneSpeedMs)
-            .putBoolean("enabled", pitchCorrection.enabled).apply()
+            .putBoolean("enabled", pitchCorrection.enabled)
+            .putBoolean("preserve_formants", pitchCorrection.preserveFormants).apply()
     }
 
     DisposableEffect(player) {
@@ -337,7 +339,7 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
         Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text("VOCAL PRO  ·  MANUAL STUDIO CONTROLS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                Text("Fine-tune the selected vocal profile. These settings are applied to the rendered copy; the original take stays untouched.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Text("Fine-tune the vocal finish and mastering stage. These settings are applied to the rendered copy; the original take stays untouched.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                 Text("WARMTH  ·  " + "${(vocalControls.warmth * 100).toInt()}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                 Slider(value = vocalControls.warmth, onValueChange = { vocalControls = vocalControls.copy(warmth = it); exportedFile = null }, valueRange = -1f..1f)
                 Text("PRESENCE  ·  " + "${(vocalControls.presence * 100).toInt()}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -350,6 +352,14 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                 Slider(value = vocalControls.ambience, onValueChange = { vocalControls = vocalControls.copy(ambience = it); exportedFile = null }, valueRange = 0f..0.15f)
                 Text("OUTPUT LEVEL  ·  " + "${(vocalControls.outputGain * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                 Slider(value = vocalControls.outputGain, onValueChange = { vocalControls = vocalControls.copy(outputGain = it); exportedFile = null }, valueRange = 0.6f..1.4f)
+                Text("AIR / HIGH SHELF  ·  ${(vocalControls.air * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.air, onValueChange = { vocalControls = vocalControls.copy(air = it); exportedFile = null }, valueRange = 0f..0.5f)
+                Text("STEREO WIDTH  ·  ${(vocalControls.stereoWidth * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.stereoWidth, onValueChange = { vocalControls = vocalControls.copy(stereoWidth = it); exportedFile = null }, valueRange = 0f..1.5f)
+                Text("NOISE GATE DEPTH  ·  ${(vocalControls.noiseReduction * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.noiseReduction, onValueChange = { vocalControls = vocalControls.copy(noiseReduction = it); exportedFile = null }, valueRange = 0f..1f)
+                Text("MASTER LIMITER CEILING  ·  ${(vocalControls.limiterCeiling * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Slider(value = vocalControls.limiterCeiling, onValueChange = { vocalControls = vocalControls.copy(limiterCeiling = it); exportedFile = null }, valueRange = 0.75f..1f)
                 Button(onClick = { vocalControls = StudioVocalControls(); exportedFile = null }, modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("RESET MANUAL CONTROLS") }
             }
@@ -394,7 +404,12 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                 }
                 Text("RETUNE SPEED · ${pitchCorrection.retuneSpeedMs} ms", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 Slider(value = pitchCorrection.retuneSpeedMs.toFloat(), onValueChange = { pitchCorrection = pitchCorrection.copy(retuneSpeedMs = it.toInt()); exportedFile = null }, valueRange = 0f..500f, steps = 49)
-                Text("Natural uses gentler correction; Hard Tune snaps more firmly to the selected scale. This first version targets monophonic lead vocals. Formant preservation and polyphonic correction are not yet included.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Button(onClick = { pitchCorrection = pitchCorrection.copy(preserveFormants = !pitchCorrection.preserveFormants); exportedFile = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (pitchCorrection.preserveFormants) Mint else Midnight, contentColor = if (pitchCorrection.preserveFormants) Midnight else White)) {
+                    Text(if (pitchCorrection.preserveFormants) "LPC FORMANT PRESERVATION · ON" else "LPC FORMANT PRESERVATION · OFF", fontSize = 9.sp)
+                }
+                Text("Natural uses gentler correction; Hard Tune snaps more firmly to the selected scale. Formant compensation uses an LPC spectral-envelope model for cleaner single-lead vocals. Extreme shifts, noisy inputs and polyphonic material may still sound unnatural.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
             }
         }
 
@@ -416,7 +431,7 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                         if (rowProfiles.size == 1) androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
                     }
                 }
-                Text("This offline chain adds a controlled low cut, presence, de-essing, gentle noise gate, compression, soft saturation and subtle room ambience. The live preview above remains the untouched source; the selected polish is applied during export.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Text("This offline chain adds a controlled low cut, presence, de-essing, adjustable noise gate, compression, air shelf, stereo width, soft saturation, room ambience and a linked output limiter. The live preview above remains the untouched source; the selected polish is applied during export.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                 Text("PITCH CORRECTION / AUTO-TUNE IS A SEPARATE ENGINE MILESTONE — NOT SIMULATED BY THIS PRESET.", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
         }
