@@ -73,9 +73,11 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
     var availability by remember { mutableStateOf("AVAILABLE") }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var profileSaved by remember { mutableStateOf(businessName.isNotBlank()) }
+    val rawDrafts = remember(context) { prefs.getString("drafts", "[]") }
+    var catalogueReadOnly by remember(context) { mutableStateOf(!BusinessDraftCodec.canDecode(rawDrafts)) }
     val drafts = remember(context) {
         mutableStateListOf<BusinessDraft>().apply {
-            addAll(BusinessDraftCodec.decode(prefs.getString("drafts", "[]")))
+            addAll(BusinessDraftCodec.decode(rawDrafts))
         }
     }
 
@@ -104,7 +106,9 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
     }
 
     fun saveDrafts() {
-        prefs.edit().putString("drafts", BusinessDraftCodec.encode(drafts)).apply()
+        if (!catalogueReadOnly) {
+            prefs.edit().putString("drafts", BusinessDraftCodec.encode(drafts)).apply()
+        }
     }
 
     fun releaseImageIfUnused(uri: Uri?) {
@@ -256,7 +260,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                     runCatching {
                         context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, catalogueText), "Share business catalogue"))
                     }.onFailure { statusMessage = "Could not share catalogue: ${it.message ?: "unknown error"}" }
-                }, enabled = drafts.isNotEmpty() && profileSaved, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
+                }, enabled = drafts.isNotEmpty() && profileSaved && !catalogueReadOnly, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
                     Text("Share catalogue", fontSize = 10.sp)
                 }
                 Button(onClick = {
@@ -279,7 +283,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                         showEditor = true
                     }
                 }
-            }, enabled = showEditor || drafts.size < BusinessDraftCodec.MAX_DRAFTS, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
+            }, enabled = !catalogueReadOnly && (showEditor || drafts.size < BusinessDraftCodec.MAX_DRAFTS), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                 Text(if (showEditor) "Close" else "+ Add listing", fontWeight = FontWeight.Bold)
                 }
             }
@@ -338,7 +342,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                             saveDrafts()
                             resetEditor()
                         },
-                        enabled = title.isNotBlank() && profileSaved && (editingDraftId != null || drafts.size < BusinessDraftCodec.MAX_DRAFTS),
+                        enabled = !catalogueReadOnly && title.isNotBlank() && profileSaved && (editingDraftId != null || drafts.size < BusinessDraftCodec.MAX_DRAFTS),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
@@ -415,11 +419,11 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                                     }
                                     context.startActivity(Intent.createChooser(shareIntent, "Share business listing"))
                                 }
-                            }, enabled = profileSaved, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
+                            }, enabled = profileSaved && !catalogueReadOnly, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                                 Text("Share listing", fontWeight = FontWeight.Bold)
                             }
-                            Text("EDIT", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editDraft(draft) }.padding(10.dp))
-                            Text("DELETE", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
+                            Text("EDIT", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(enabled = !catalogueReadOnly) { editDraft(draft) }.padding(10.dp))
+                            Text("DELETE", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(enabled = !catalogueReadOnly) {
                                 drafts.remove(draft)
                                 saveDrafts()
                                 if (draft.imageUri.isNotBlank()) releaseImageIfUnused(Uri.parse(draft.imageUri))
@@ -429,6 +433,9 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                     }
                 }
             }
+        }
+        if (catalogueReadOnly) {
+            Text("This catalogue was written by an unsupported or damaged version. NeaRer has preserved its stored data and disabled edits so it is not overwritten.", color = Gold, fontSize = 11.sp, lineHeight = 16.sp)
         }
         if (statusMessage.isNotBlank()) Text(statusMessage, color = Mint, fontSize = 11.sp, lineHeight = 16.sp)
         Surface(color = Panel, shape = RoundedCornerShape(16.dp)) {
