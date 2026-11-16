@@ -26,7 +26,8 @@ import androidx.compose.ui.unit.sp
 data class BibleReaderScreenState(
     val translationName:String,val bookName:String,val chapter:Int,val verses:List<BibleVerse>,
     val mode:BibleReadingMode=BibleReadingMode.BOOK_PAGE,val hasPreviousChapter:Boolean=false,
-    val hasNextChapter:Boolean=true,val isRightToLeft:Boolean=false
+    val hasNextChapter:Boolean=true,val isRightToLeft:Boolean=false,
+    val copyrightNotice:String?=null,val attribution:String?=null
 )
 
 /** Isolated reader surface; the app navigation/ViewModel supplies installed verses and state. */
@@ -117,6 +118,12 @@ fun NeaRerWordReaderScreen(
                 Spacer(Modifier.height(8.dp))
                 Text("NEARER WORD  •  SCRIPTURE STUDY",color=Color(0xFF6E6A61),fontSize=8.sp,
                     modifier=Modifier.fillMaxWidth(),textAlign=TextAlign.Center)
+                state.copyrightNotice?.takeIf{it.isNotBlank()}?.let {
+                    Text(it,color=Color(0xFF6E6A61),fontSize=7.sp,lineHeight=10.sp)
+                }
+                state.attribution?.takeIf{it.isNotBlank()}?.let {
+                    Text(it,color=Color(0xFF6E6A61),fontSize=7.sp,lineHeight=10.sp)
+                }
             }
         }
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
