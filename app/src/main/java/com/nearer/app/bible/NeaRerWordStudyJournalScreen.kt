@@ -31,9 +31,11 @@ import java.util.UUID
 fun NeaRerWordStudyJournalScreen(
     notes:List<BibleStudyNote>,
     bookmarks:List<BibleBookmark>,
+    highlights:List<BibleVerseHighlight>,
     onSaveNote:(BibleStudyNote)->Unit,
     onDeleteNote:(String)->Unit,
     onDeleteBookmark:(String)->Unit,
+    onDeleteHighlight:(String)->Unit,
     onOpenReference:(String,String,Int,Int?)->Unit,
     defaultTranslationId:String?=null,
     defaultBookId:String?=null,
@@ -52,6 +54,7 @@ fun NeaRerWordStudyJournalScreen(
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             TextButton(onClick={filter="NOTES"}) { Text("STUDY NOTES",color=if(filter=="NOTES") Color(0xFF69E0C0) else Color.White) }
             TextButton(onClick={filter="BOOKMARKS"}) { Text("BOOKMARKS",color=if(filter=="BOOKMARKS") Color(0xFF69E0C0) else Color.White) }
+            TextButton(onClick={filter="HIGHLIGHTS"}) { Text("HIGHLIGHTS",color=if(filter=="HIGHLIGHTS") Color(0xFF69E0C0) else Color.White) }
         }
         if(filter=="NOTES") {
             Surface(color=Color(0xFF1A2940)) {
@@ -85,7 +88,7 @@ fun NeaRerWordStudyJournalScreen(
                     }
                 }
             }
-        } else {
+        } else if(filter=="BOOKMARKS") {
             LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 items(bookmarks,key={it.id}) { mark ->
                     Surface(color=Color(0xFF1A2940)) {
@@ -99,6 +102,26 @@ fun NeaRerWordStudyJournalScreen(
                                 Text("OPEN",color=Color(0xFF69E0C0))
                             }
                             TextButton(onClick={onDeleteBookmark(mark.id)}) { Text("REMOVE",color=Color(0xFFFFD12D)) }
+                        }
+                    }
+                }
+            }
+        } else {
+            LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                items(highlights,key={it.id}) { highlight ->
+                    Surface(color=Color(0xFF1A2940)) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.SpaceBetween) {
+                            Column(Modifier.weight(1f)) {
+                                Text(highlight.bookId+" "+highlight.chapter+":"+highlight.verse,
+                                    color=Color.White,fontWeight=FontWeight.Bold)
+                                Text("Highlighted verse",color=Color(0xFFA8B6C9),fontSize=11.sp)
+                            }
+                            TextButton(onClick={onOpenReference(highlight.translationId,highlight.bookId,highlight.chapter,highlight.verse)}) {
+                                Text("OPEN",color=Color(0xFF69E0C0))
+                            }
+                            TextButton(onClick={onDeleteHighlight(highlight.id)}) {
+                                Text("REMOVE",color=Color(0xFFFFD12D))
+                            }
                         }
                     }
                 }
