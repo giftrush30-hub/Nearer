@@ -6,7 +6,8 @@ import org.junit.Test
 
 class BiblePackManifestTest {
     private fun valid()=BiblePackManifest(
-        packId="yoruba-bm",version=1,translationId="YCE",languageTag="yo-NG",
+        packId="yoruba-bm",version=1,translationId="YCE",translationName="Yoruba Bible",
+        languageTag="yo-NG",languageName="Yoruba",abbreviation="YCE",
         canonId="protestant-66",sourceId="bible-society-nigeria",licenseId="open-test",
         copyrightNotice=null,coverage=BibleCoverage.COMPLETE_BIBLE,bookCount=66,verseCount=31102,
         sha256="a".repeat(64),minimumReaderVersion=1,attribution="Publisher attribution",
