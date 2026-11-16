@@ -71,7 +71,7 @@ internal class VerifiedTransferReceiptStore(private val directory: File) {
         if (!target.isFile) return false
         val record = try {
             val p = Properties()
-            FileInputStream(target).use(p::load)
+            FileInputStream(target).use { input -> p.load(input) }
             if (p.getProperty("version") != "1") return false
             val storedPeer = p.getProperty("peerId") ?: return false
             val transferId = p.getProperty("transferId") ?: return false
