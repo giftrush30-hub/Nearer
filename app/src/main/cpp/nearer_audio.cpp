@@ -108,6 +108,7 @@ public:
                 ->setDataCallback(dataCallback)
                 ->setErrorCallback(errorCallback);
             if (inputDeviceId >= 0) builder.setDeviceId(inputDeviceId);
+            builder.setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium);
             return builder.openStream(input_);
         };
 
@@ -116,6 +117,12 @@ public:
             result = openInput(oboe::SharingMode::Shared);
         }
         if (result != oboe::Result::OK || !input_) {
+            closeStreams();
+            return false;
+        }
+        // Android may substitute a different device even when a device ID was requested.
+        // Never silently claim that the chosen USB microphone is active.
+        if (inputDeviceId >= 0 && input_->getDeviceId() != inputDeviceId) {
             closeStreams();
             return false;
         }
@@ -187,17 +194,19 @@ public:
             const auto xrunResult = output_->getXRunCount();
             if (xrunResult == oboe::Result::OK) xrunCount = xrunResult.value();
         }
-        jlong values[7] = {
+        jlong values[9] = {
             output_ ? output_->getSampleRate() : 0,
             output_ ? output_->getFramesPerBurst() : 0,
             output_ ? output_->getBufferSizeInFrames() : 0,
             xrunCount,
             static_cast<jlong>(outputUnderruns_.load(std::memory_order_relaxed)),
             static_cast<jlong>(droppedCaptureFrames_.load(std::memory_order_relaxed)),
-            disconnected_.load(std::memory_order_acquire) ? 1 : 0
+            disconnected_.load(std::memory_order_acquire) ? 1 : 0,
+            input_ ? input_->getDeviceId() : -1,
+            output_ ? output_->getDeviceId() : -1
         };
-        jlongArray result = env->NewLongArray(7);
-        if (result != nullptr) env->SetLongArrayRegion(result, 0, 7, values);
+        jlongArray result = env->NewLongArray(9);
+        if (result != nullptr) env->SetLongArrayRegion(result, 0, 9, values);
         return result;
     }
 
@@ -283,9 +292,9 @@ Java_com_nearer_app_StudioOboeEngine_nativeGetStats(JNIEnv* env, jobject) {
         engine = gEngine;
     }
     if (engine) return engine->stats(env);
-    jlong empty[7] = {0, 0, 0, -1, 0, 0, 0};
-    jlongArray result = env->NewLongArray(7);
-    if (result != nullptr) env->SetLongArrayRegion(result, 0, 7, empty);
+    jlong empty[9] = {0, 0, 0, -1, 0, 0, 0, -1, -1};
+    jlongArray result = env->NewLongArray(9);
+    if (result != nullptr) env->SetLongArrayRegion(result, 0, 9, empty);
     return result;
 }
 
