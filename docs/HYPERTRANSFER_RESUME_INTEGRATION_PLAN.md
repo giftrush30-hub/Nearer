@@ -1,6 +1,6 @@
 # HyperTransfer: live resume integration blueprint
 
-Status: engineering plan grounded in the current transport and Google Nearby Connections API. Resume remains experimental until the end-to-end acceptance tests below pass on two physical Android devices.
+Status: the main branch now contains a live Nearby STREAM resume path. Resume remains experimental until the end-to-end acceptance tests below pass on two physical Android devices. See [the live wiring audit](HYPERTRANSFER_LIVE_WIRING_AUDIT.md) for the source-traced implementation and remaining risks.
 
 ## Current implementation boundary
 
@@ -48,7 +48,7 @@ References:
 - Decision and proposal records are bounded and versioned. Unknown versions are rejected safely.
 
 ### D. Stream lifecycle
-- Sender opens the source at the accepted offset and creates the outgoing STREAM payload; apply Payload.setOffset(offset) before sendPayload().
+- Sender validates the prefix and opens a bounded source at the accepted offset. The current STREAM send path must still be checked against the SDK's documented Payload.setOffset() contract: verify whether the SDK expects an already-positioned InputStream, setOffset(), or both before changing the implementation, to avoid a double-skip.
 - Receiver associates the incoming STREAM payload with its approved manifest item using the control metadata/payload ID association, regardless of callback order.
 - Receiver consumes the stream on a bounded I/O executor through TransferResumeStreamWriter. It must not read on the main thread.
 - The writer syncs data before recording each checkpoint. Cancellation/disconnect closes the stream and leaves only the last valid checkpoint reusable.
@@ -107,7 +107,7 @@ The exchange tracker now keeps a bounded, short-lived tombstone for completed or
 
 A repeated identical proposal/decision/data callback does not refresh an incomplete exchange's lease. Only a newly accepted event advances its expiry timestamp, preventing a peer from keeping stale pending state alive indefinitely by replaying duplicates. Automated tests cover consumed-exchange replay, conflicted-exchange replay, tombstone expiry, endpoint cleanup, and duplicate retry expiry.
 
-This remains a transport-independent safeguard. The active transport still does not invoke the tracker, so it must not be mistaken for end-to-end resume integration.
+This tracker is invoked by the active NearbyStreamExchangeController. Its tests cover replay and expiry behavior, but those unit tests do not replace end-to-end Android transport and device validation.
 
 
 ## Monotonic expiry and signed-clock wraparound
