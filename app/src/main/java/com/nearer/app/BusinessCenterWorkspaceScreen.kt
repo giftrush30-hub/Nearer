@@ -251,7 +251,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
             Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(if (editingDraftId == null) "CREATE A LISTING" else "EDIT LISTING", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                    TextField(value = title, onValueChange = { title = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Product or service name") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
+                    TextField(value = title, onValueChange = { title = it.take(BusinessDraftCodec.MAX_TITLE_LENGTH) }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Product or service name") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("PRODUCT", "SERVICE").forEach { item ->
                             Surface(color = if (category == item) Mint.copy(alpha = 0.18f) else Midnight, shape = RoundedCornerShape(10.dp), modifier = Modifier.clickable { category = item }) {
@@ -259,11 +259,22 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                             }
                         }
                     }
-                    TextField(value = price, onValueChange = { price = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Price (e.g. ₦15,000 or Ask for price)") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
-                    TextField(value = description, onValueChange = { description = it }, modifier = Modifier.fillMaxWidth(), minLines = 3, placeholder = { Text("Describe what makes this offer useful and special") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
-                    if (imageUri != null) {
-                        AndroidView(factory = { ImageView(it).apply { scaleType = ImageView.ScaleType.CENTER_CROP } }, update = { it.setImageURI(imageUri) }, modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(14.dp)))
+                    TextField(value = itemCategory, onValueChange = { itemCategory = it.take(BusinessDraftCodec.MAX_CATEGORY_LENGTH) }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Category (e.g. Fashion, Food, Repairs)") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
+                    TextField(value = price, onValueChange = { price = it.take(BusinessDraftCodec.MAX_PRICE_LENGTH) }, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Price (e.g. ₦15,000 or Ask for price)") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
+                    Text("AVAILABILITY", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("AVAILABLE", "MADE_TO_ORDER", "OUT_OF_STOCK").forEach { state ->
+                            Surface(color = if (availability == state) Mint.copy(alpha = 0.18f) else Midnight, shape = RoundedCornerShape(9.dp), modifier = Modifier.weight(1f).clickable { availability = state }) {
+                                Text(state.replace('_', ' '), color = if (availability == state) Mint else Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 5.dp, vertical = 10.dp))
+                            }
+                        }
                     }
+                    TextField(value = description, onValueChange = { description = it.take(BusinessDraftCodec.MAX_DESCRIPTION_LENGTH) }, modifier = Modifier.fillMaxWidth(), minLines = 3, placeholder = { Text("Describe what makes this offer useful and special") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
+                    if (imageUri != null) {
+                        BusinessDraftPhoto(uri = imageUri!!, modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(14.dp)))
+                    }
+                    if (photoMessage.isNotBlank()) Text(photoMessage, color = Muted, fontSize = 10.sp)
+
                     Button(onClick = { imagePicker.launch(arrayOf("image/*")) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
                         Text(if (imageUri == null) "＋ Add product photo" else "Change product photo")
                     }
@@ -273,17 +284,23 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                             val existingIndex = editingDraftId?.let { id -> drafts.indexOfFirst { it.id == id } } ?: -1
                             if (existingIndex >= 0) {
                                 val oldImage = drafts[existingIndex].imageUri
-                                drafts[existingIndex] = BusinessDraft(editingDraftId!!, title.trim(), price.trim(), category, description.trim(), newImage)
-                                if (oldImage.isNotBlank() && oldImage != newImage) runCatching {
-                                    context.contentResolver.releasePersistableUriPermission(Uri.parse(oldImage), Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
+                                drafts[existingIndex] = BusinessDraftCodec.normalize(
+                                    BusinessDraft(editingDraftId!!, title, price, category, itemCategory, description, newImage, availability)
+                                )
+                                if (oldImage.isNotBlank() && oldImage != newImage) releaseImageIfUnused(Uri.parse(oldImage))
+                                statusMessage = "Listing updated on this phone."
+                            } else if (drafts.size < BusinessDraftCodec.MAX_DRAFTS) {
+                                drafts.add(0, BusinessDraftCodec.normalize(
+                                    BusinessDraft(nextDraftId(), title, price, category, itemCategory, description, newImage, availability)
+                                ))
+                                statusMessage = "Listing saved as a local draft."
                             } else {
-                                drafts.add(0, BusinessDraft(System.currentTimeMillis(), title.trim(), price.trim(), category, description.trim(), newImage))
+                                statusMessage = "Your catalogue has reached its listing limit."
                             }
                             saveDrafts()
-                            title = ""; price = ""; description = ""; imageUri = null; editingDraftId = null; showEditor = false
+                            resetEditor()
                         },
-                        enabled = title.isNotBlank() && profileSaved,
+                        enabled = title.isNotBlank() && profileSaved && (editingDraftId != null || drafts.size < BusinessDraftCodec.MAX_DRAFTS),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)
