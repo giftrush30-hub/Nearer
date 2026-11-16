@@ -21,7 +21,7 @@ class TransferBenchmarkMetricsTest {
         assertEquals(30_000L, summary.slowestElapsedMillis)
     }
 
-    @Test fun speedupUsesMedianDurations() {
+    @Test fun speedupUsesMedianThroughput() {
         val faster = TransferBenchmarkMetrics.summarize(listOf(
             TransferBenchmarkRun(1_000L, 5_000L, 100L, true)
         ))
