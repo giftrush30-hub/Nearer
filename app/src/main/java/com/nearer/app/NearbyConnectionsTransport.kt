@@ -69,9 +69,11 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         }
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
+        fun onBenchmarkSummary(summary: TransferBenchmarkSummary) {}
     }
 
     private val appContext = context.applicationContext
+    private val benchmarkStore = TransferBenchmarkStore(appContext)
     private val client = Nearby.getConnectionsClient(appContext)
     // Both peers must choose the same mode before discovery. The distinct service ID
     // prevents automatic-mode peers from accidentally matching Ultra Speed peers.
@@ -210,6 +212,8 @@ internal object IncomingFilePayloadPolicy {
         val transferId: String,
         val sha256: String,
         val prepared: NearbyStreamPayloadBridge.PreparedOutgoingStream,
+        val startedAtElapsedMs: Long,
+        @Volatile var firstByteElapsedMs: Long? = null,
         @Volatile var awaitingDecision: Boolean = true,
         @Volatile var timeout: Runnable? = null,
         @Volatile var retryCount: Int = 0,
@@ -696,6 +700,9 @@ internal object IncomingFilePayloadPolicy {
                 val label = outgoingStream?.name ?: incomingStream?.item?.displayName ?: "Incoming file"
                 val incomingFlag = outgoingStream == null
                 if (update.status == PayloadTransferUpdate.Status.IN_PROGRESS) {
+                    if (outgoingStream != null && transferred > resumeOffset && outgoingStream.firstByteElapsedMs == null) {
+                        outgoingStream.firstByteElapsedMs = SystemClock.elapsedRealtime()
+                    }
                     val speed = transferSpeedMeters.computeIfAbsent(payloadId) { TransferSpeedMeter() }
                         .record(transferred, expected)
                     recordPeerThroughput(id, speed)
@@ -731,6 +738,7 @@ internal object IncomingFilePayloadPolicy {
                                     it.value.retentionTimeout === cleanup
                                 }
                                 if (pending != null && outgoingHyperStreams.remove(pending.key, pending.value)) {
+                                    recordBenchmark(pending.value, succeeded = false)
                                     pending.value.receiptTimeout?.let(deliveryHandler::removeCallbacks)
                                     pending.value.receiptTimeout = null
                                     pending.value.retentionTimeout = null
@@ -1766,6 +1774,26 @@ internal object IncomingFilePayloadPolicy {
             .addOnFailureListener { onFailure(it) }
     }
 
+    private fun recordBenchmark(state: OutgoingHyperStream, succeeded: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        val elapsed = (now - state.startedAtElapsedMs).coerceAtLeast(1L)
+        val firstByte = state.firstByteElapsedMs
+            ?.minus(state.startedAtElapsedMs)
+            ?.coerceIn(0L, elapsed)
+            ?: 0L
+        runCatching {
+            benchmarkStore.record(
+                TransferBenchmarkRun(
+                    bytesTransferred = state.item.sizeBytes,
+                    elapsedMillis = elapsed,
+                    firstByteMillis = firstByte,
+                    succeeded = succeeded
+                )
+            )
+            benchmarkStore.summary()?.let(listener::onBenchmarkSummary)
+        }
+    }
+
     private fun measuredThroughputForPeer(peerId: String): Long {
         val sample = peerMeasuredThroughput[peerId] ?: return 0L
         if (SystemClock.elapsedRealtime() - sample.measuredAtElapsedMs > PEER_THROUGHPUT_FRESHNESS_MS) {
@@ -1830,6 +1858,7 @@ internal object IncomingFilePayloadPolicy {
         state.receiptTimeout = null
         state.awaitingReceipt = false
         if (receipt.saved) {
+            recordBenchmark(state, succeeded = true)
             state.retentionTimeout?.let(deliveryHandler::removeCallbacks)
             state.retentionTimeout = null
             if (outgoingHyperStreams.remove(receipt.payloadId, state)) {
@@ -2657,6 +2686,7 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun sendHyperTransferStream(endpointId: String, uri: Uri, displayName: String): Long? {
+        val benchmarkStartedAt = SystemClock.elapsedRealtime()
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (NeaRerIdentity.normalize(peerId) == null) return null
         val prepared = try { streamPayloadBridge.prepareOutgoingPayload() } catch (_: Exception) {
@@ -2716,7 +2746,8 @@ internal object IncomingFilePayloadPolicy {
                     return@execute
                 }
                 val state = OutgoingHyperStream(
-                    endpointId, peerId, name, staged!!, item, transferId, copied.sha256, prepared
+                    endpointId, peerId, name, staged!!, item, transferId, copied.sha256, prepared,
+                    startedAtElapsedMs = benchmarkStartedAt
                 )
                 outgoingHyperStreams[payloadId] = state
                 preparingHyperStreams.remove(payloadId)
