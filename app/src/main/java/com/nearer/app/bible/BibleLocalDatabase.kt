@@ -75,7 +75,12 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
                 put("chapter",v.chapter); put("verse",v.verse); put("text",v.text)
             }
             db.insertWithOnConflict("verses",null,values,SQLiteDatabase.CONFLICT_REPLACE)
-            db.insertWithOnConflict("verse_search",null,values,SQLiteDatabase.CONFLICT_REPLACE)
+            // FTS4 has no composite uniqueness constraint: delete the old indexed row
+            // before inserting, otherwise a pack refresh would create duplicate hits.
+            db.delete("verse_search",
+                "translation_id=? AND book_id=? AND chapter=? AND verse=?",
+                arrayOf(v.translationId,v.bookId,v.chapter.toString(),v.verse.toString()))
+            db.insert("verse_search",null,values)
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
     }
