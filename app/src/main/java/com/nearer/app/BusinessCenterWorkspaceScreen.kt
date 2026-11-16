@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
@@ -474,7 +475,7 @@ private fun BusinessDraftPhoto(uri: Uri, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val bitmap by produceState<Bitmap?>(null, uri, context) {
         value = withContext(Dispatchers.IO) {
-            runCatching {
+            try {
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 context.contentResolver.openInputStream(uri)?.use { stream ->
                     BitmapFactory.decodeStream(stream, null, bounds)
@@ -494,7 +495,11 @@ private fun BusinessDraftPhoto(uri: Uri, modifier: Modifier = Modifier) {
                         BitmapFactory.decodeStream(stream, null, options)
                     }
                 }
-            }.getOrNull()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
         }
     }
     AndroidView(
