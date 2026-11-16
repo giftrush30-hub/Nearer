@@ -1025,6 +1025,45 @@ class MainActivity : ComponentActivity() {
      * Starts the primary Nearby Connections engine without requiring a manual
      * Wi-Fi Direct peer scan. The SDK selects the available nearby transports.
      */
+    private fun ensureNearbyServiceBound() {
+        if (nearbyServiceBound || nearbyServiceBinding) return
+        nearbyServiceBinding = true
+        try {
+            NearbyTransportService.start(this)
+            val bound = bindService(
+                Intent(this, NearbyTransportService::class.java),
+                nearbyServiceConnection,
+                Context.BIND_AUTO_CREATE
+            )
+            if (!bound) {
+                nearbyServiceBinding = false
+                statusMessage = "NeaRer could not bind to its nearby connection service."
+            }
+        } catch (error: Exception) {
+            nearbyServiceBinding = false
+            statusMessage = "Nearby service could not start: ${error.localizedMessage ?: error.javaClass.simpleName}"
+        }
+    }
+
+    private fun reconcileNearbyStateAfterServiceAttach() {
+        val transport = nearbyTransport ?: return
+        val queued = runCatching { transport.pendingMessageIds() }.getOrDefault(emptySet())
+        val delivered = runCatching { transport.completedMessageIds() }.getOrDefault(emptySet())
+        val recovered = runCatching {
+            ChatRestartRecoveryPolicy.reconcile(chatMessages, queued, delivered)
+        }.getOrDefault(false)
+        if (recovered) {
+            runCatching { persistMessages() }
+            chatNotice = when {
+                queued.isNotEmpty() -> "Some messages are safely queued. NeaRer will retry when those people reconnect."
+                chatMessages.any { it.outgoing && it.delivery == "Interrupted" } ->
+                    "A message was interrupted before delivery could be confirmed. Check with the recipient before sending it again."
+                else -> chatNotice
+            }
+        }
+        runCatching { reconcileCommunityDeliveryReceipts(delivered) }
+    }
+
     private fun startAlwaysReadyDiscovery() {
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val bluetoothOn = try { bluetoothManager?.adapter?.isEnabled == true } catch (_: SecurityException) { false }
@@ -1043,9 +1082,13 @@ class MainActivity : ComponentActivity() {
         }
         val transport = nearbyTransport
         if (transport == null) {
-            statusMessage = "Nearby services are unavailable on this phone right now. Reopen NeaRer and try again."
+            statusMessage = "Starting NeaRer's background nearby service…"
+            ensureNearbyServiceBound()
             return
         }
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("nearby_service_active", true)
+            .commit()
         transport.start()
         hybridSearching = true
         statusMessage = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R && !isLocationEnabled()) {
@@ -1086,6 +1129,9 @@ class MainActivity : ComponentActivity() {
     private fun stopDiscovery() {
         finishDiscovery()
         hybridSearching = false
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("nearby_service_active", false)
+            .commit()
         nearbyTransport?.stopSearching()
         val manager = wifiManager
         val activeChannel = channel
