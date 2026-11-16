@@ -12,7 +12,7 @@ internal data class StudioCustomVocalPreset(
 internal object StudioCustomVocalPresetCodec {
     const val MAX_PRESETS = 12
     private const val MAX_RAW_LENGTH = 16_384
-    private const val MAX_NAME_LENGTH = 28
+    const val MAX_NAME_LENGTH = 28
     private const val VERSION = 1
 
     fun normalizedName(raw: String): String = raw
