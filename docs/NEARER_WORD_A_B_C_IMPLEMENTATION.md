@@ -182,3 +182,8 @@ translations, books, verses, verse_search (FTS4), lexical_entries, word_occurren
 - The Android importer streams alignments, caches each verse/token list, and inserts in batches of 1,000 inside a SQLite transaction. The word-study archive is bounded to 100 MB compressed / 300 MB expanded.
 - Bible packs, lexicon packs and alignment packs remain separate downloads; none are bundled into the APK.
 - The BSB interlinear pack is generated manually through workflow_dispatch or a commit tagged [rebuild-bsb-pack], rather than downloading thousands of chapter files on every ordinary code change.
+
+## Reading-plan and audio refinements
+- Reading-plan passage references now parse the chapter and starting verse separately. Opening a plan passage opens the correct installed chapter and scrolls the reader to the referenced starting verse rather than leaving the reader at the top of the chapter.
+- Offline audio playback now remembers its last position when paused or when the screen is disposed, restores that position on the next play, and resets to the beginning after completion or an explicit stop.
+- Audio still remains user-imported only; no copyrighted recordings are bundled or automatically downloaded. Background playback, chapter-aware audio indexing and timed sleep controls remain future work.
