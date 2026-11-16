@@ -38,6 +38,9 @@ internal class VerifiedTransferReceiptStore(private val directory: File) {
             setProperty("peerId", normalized)
             setProperty("transferId", metadata.transferId)
             setProperty("itemId", metadata.item.id)
+            setProperty("relativePath", metadata.item.relativePath)
+            setProperty("displayName", metadata.item.displayName)
+            metadata.item.mimeType?.let { setProperty("mimeType", it) }
             setProperty("sha256", metadata.wholeFileSha256.lowercase())
             setProperty("sizeBytes", metadata.item.sizeBytes.toString())
             setProperty("completedPath", completedFile.canonicalPath)
@@ -73,12 +76,16 @@ internal class VerifiedTransferReceiptStore(private val directory: File) {
             val storedPeer = p.getProperty("peerId") ?: return false
             val transferId = p.getProperty("transferId") ?: return false
             val itemId = p.getProperty("itemId") ?: return false
+            val relativePath = p.getProperty("relativePath") ?: return false
+            val displayName = p.getProperty("displayName") ?: return false
+            val mimeType = p.getProperty("mimeType")
             val sha = p.getProperty("sha256") ?: return false
             val size = p.getProperty("sizeBytes")?.toLongOrNull() ?: return false
             val path = p.getProperty("completedPath") ?: return false
             if (storedPeer != normalized || transferId != metadata.transferId ||
-                itemId != metadata.item.id || !sha.equals(metadata.wholeFileSha256, true) ||
-                size != metadata.item.sizeBytes) return false
+                itemId != metadata.item.id || relativePath != metadata.item.relativePath ||
+                displayName != metadata.item.displayName || mimeType != metadata.item.mimeType ||
+                !sha.equals(metadata.wholeFileSha256, true) || size != metadata.item.sizeBytes) return false
             val file = File(path).canonicalFile
             val receivedRoot = File(directory.parentFile, "received").canonicalFile
             if (!file.path.startsWith(receivedRoot.path + File.separator) ||
