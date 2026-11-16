@@ -140,7 +140,7 @@ class NearbyTransportService : Service() {
                 replyToMessageId, replyToPreview, replyToSender, mesh = false
             )
             if (!inbox.put(entry)) {
-                nearbyTransport.releasePendingIncomingMessage(messageId)
+                nearbyTransport.releasePendingIncomingMessage(peerId, messageId)
                 uiListener?.onStatus("NeaRer could not securely save an incoming message for later delivery. The sender has not been acknowledged.")
                 return
             }
@@ -170,7 +170,7 @@ class NearbyTransportService : Service() {
                 replyToMessageId, replyToPreview, replyToSender, mesh = true
             )
             if (!inbox.put(entry)) {
-                nearbyTransport.releasePendingIncomingMessage(messageId)
+                nearbyTransport.releasePendingIncomingMessage(originPeerId, messageId)
                 uiListener?.onStatus("NeaRer could not securely save an incoming nearby message. Delivery was not acknowledged.")
                 return
             }
