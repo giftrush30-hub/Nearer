@@ -98,7 +98,8 @@ internal class OutgoingHyperTransferStore(private val directory: File) {
     @Synchronized
     fun removeRecordOnly(transferId: String) = remove(transferId, deleteSource = false)
 
-    private fun readRecord(file: File): Record? = try {
+    private fun readRecord(file: File): Record? {
+        return try {
         val p = Properties()
         FileInputStream(file).use(p::load)
         if (p.getProperty("version") != "1") return null
@@ -120,8 +121,9 @@ internal class OutgoingHyperTransferStore(private val directory: File) {
         val item = TransferBundleItem(itemId, relativePath, displayName, size, null)
         if (TransferBundleManifest(transferId, listOf(item)).validationErrors().isNotEmpty()) return null
         Record(transferId, peerId, itemId, relativePath, displayName, size, sha.lowercase(), source)
-    } catch (_: Exception) {
-        null
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun recordFile(transferId: String): File =
