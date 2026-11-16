@@ -58,6 +58,10 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    fun beginPackTransaction() { writableDatabase.beginTransaction() }
+    fun commitPackTransaction() { writableDatabase.setTransactionSuccessful(); writableDatabase.endTransaction() }
+    fun rollbackPackTransaction() { if(writableDatabase.inTransaction()) writableDatabase.endTransaction() }
+
     fun recordInstalledPack(packId:String,translationId:String,version:Int,verseCount:Int) {
         writableDatabase.insertWithOnConflict("installed_packs",null,ContentValues().apply {
             put("pack_id",packId); put("translation_id",translationId); put("version",version)
