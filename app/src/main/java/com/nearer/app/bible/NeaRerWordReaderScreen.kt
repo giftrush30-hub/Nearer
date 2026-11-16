@@ -33,7 +33,7 @@ data class BibleReaderScreenState(
 @Composable
 fun NeaRerWordReaderScreen(
     state:BibleReaderScreenState,onPreviousChapter:()->Unit,onNextChapter:()->Unit,
-    onModeChanged:(BibleReadingMode)->Unit,onWordSelected:(BibleVerse,String)->Unit,
+    onModeChanged:(BibleReadingMode)->Unit,onWordSelected:(BibleVerse,String,Int)->Unit,
     onVerseSelected:(BibleVerse)->Unit,modifier:Modifier=Modifier
 ) {
     val rotation= remember { Animatable(0f) }
@@ -95,7 +95,12 @@ fun NeaRerWordReaderScreen(
                                 val found=if(wordOffset in 0 until annotated.length)
                                     annotated.getStringAnnotations("word",wordOffset,wordOffset+1).firstOrNull()
                                 else null
-                                if(found!=null) onWordSelected(verse,found.item) else onVerseSelected(verse)
+                                if(found!=null) {
+                                    val tokenIndex=Regex("\\S+").findAll(verse.text)
+                                        .indexOfFirst { wordOffset in it.range }
+                                    if(tokenIndex>=0) onWordSelected(verse,found.item,tokenIndex)
+                                    else onVerseSelected(verse)
+                                } else onVerseSelected(verse)
                             },modifier=Modifier.fillMaxWidth()
                         )
                     }
