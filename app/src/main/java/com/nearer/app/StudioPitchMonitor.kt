@@ -2,6 +2,7 @@ package com.nearer.app
 
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
+import android.media.AudioDeviceCallback
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
@@ -21,6 +22,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,10 +31,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
@@ -144,34 +150,150 @@ internal object StudioPitchEngine {
 @Composable
 internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int? = null, preferUnprocessedInput: Boolean = false) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var appInForeground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_START -> appInForeground = true
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> appInForeground = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var reading by remember { mutableStateOf<StudioPitchReading?>(null) }
     var status by remember { mutableStateOf("Listening for a clear single vocal note…") }
     var diagnostics by remember { mutableStateOf("Audio diagnostics will appear when monitoring starts.") }
     var keyRoot by remember { mutableStateOf(0) }
     var minorScale by remember { mutableStateOf(false) }
     var monitorEnabled by remember { mutableStateOf(false) }
-    val hasHeadphoneOutput = remember(context) {
-        val manager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
-        manager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.any {
+    val audioManager = remember(context) {
+        context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
+    }
+    fun headphoneOutputConnected(): Boolean =
+        audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.any {
             it.isSink && it.type in setOf(
                 AudioDeviceInfo.TYPE_WIRED_HEADSET,
                 AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
                 AudioDeviceInfo.TYPE_USB_HEADSET,
+                AudioDeviceInfo.TYPE_USB_DEVICE,
                 AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
                 AudioDeviceInfo.TYPE_BLUETOOTH_SCO
             )
         } == true
+    var hasHeadphoneOutput by remember(context) { mutableStateOf(headphoneOutputConnected()) }
+    DisposableEffect(audioManager) {
+        val callback = object : AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
+                hasHeadphoneOutput = headphoneOutputConnected()
+            }
+            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
+                hasHeadphoneOutput = headphoneOutputConnected()
+            }
+        }
+        audioManager?.registerAudioDeviceCallback(callback, android.os.Handler(android.os.Looper.getMainLooper()))
+        onDispose { audioManager?.unregisterAudioDeviceCallback(callback) }
     }
     val keys = listOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B")
 
-    LaunchedEffect(monitorEnabled, preferredInputId) {
+    LaunchedEffect(monitorEnabled, preferredInputId, preferUnprocessedInput, hasHeadphoneOutput, appInForeground) {
+        if (!appInForeground) {
+            monitorEnabled = false
+            reading = null
+            status = "Monitoring stopped because NeaRer left the foreground. Turn it on again when you are ready."
+            diagnostics = "Monitoring paused for privacy while the app is in the background."
+            return@LaunchedEffect
+        }
         if (!monitorEnabled) {
             reading = null
             status = "Microphone monitoring is off. Turn it on when you are ready."
             diagnostics = "Monitoring is off."
             return@LaunchedEffect
         }
+        if (!hasHeadphoneOutput) {
+            status = "Connect wired, USB or Bluetooth headphones before enabling live microphone playback. Speaker monitoring is blocked to prevent feedback."
+            monitorEnabled = false
+            return@LaunchedEffect
+        }
         val frameSize = 2_048
+        val pitchFrames = StudioPcmFrameAccumulator(frameSize)
+        val nativePreferUnprocessed = StudioAudioEnginePolicy.useUnprocessedInput(android.os.Build.VERSION.SDK_INT, preferUnprocessedInput)
+        if (StudioAudioEnginePolicy.useOboe(android.os.Build.VERSION.SDK_INT, preferredInputId)) {
+            var nativeStarted = withContext(Dispatchers.IO) {
+                StudioOboeEngine.start(preferredInputId, nativePreferUnprocessed)
+            }
+            var reconnectAttempts = 0
+            while (nativeStarted && isActive) {
+                val analysisChunk = FloatArray(512)
+                val nativeRate = withContext(Dispatchers.IO) {
+                    StudioOboeEngine.diagnostics().getOrNull(0)?.toInt()?.takeIf { it > 0 } ?: 48_000
+                }
+                var statsTick = 0
+                var routeDisconnected = false
+                try {
+                    while (isActive && StudioOboeEngine.isRunning()) {
+                        val count = withContext(Dispatchers.IO) {
+                            StudioOboeEngine.readAnalysis(analysisChunk)
+                        }
+                        if (count > 0) {
+                            pitchFrames.append(analysisChunk, count) { frame ->
+                                reading = StudioPitchEngine.detect(frame, nativeRate, 70f, 1_000f)
+                                status = if (reading == null) "No stable pitch yet — sing or hold one clear note." else "Live pitch detected · Oboe native engine"
+                            }
+                        } else {
+                            delay(4)
+                        }
+                        statsTick++
+                        if (statsTick >= 20) {
+                            statsTick = 0
+                            val stats = withContext(Dispatchers.IO) { StudioOboeEngine.diagnostics() }
+                            val rate = stats.getOrNull(0)?.toInt()?.takeIf { it > 0 } ?: 48_000
+                            val burst = stats.getOrNull(1)?.toInt() ?: 0
+                            val buffer = stats.getOrNull(2)?.toInt() ?: 0
+                            val xruns = stats.getOrNull(3)?.toInt() ?: -1
+                            val underruns = stats.getOrNull(4) ?: 0L
+                            val captureDropped = stats.getOrNull(5) ?: 0L
+                            val playbackDropped = stats.getOrNull(6) ?: 0L
+                            val analysisDropped = stats.getOrNull(7) ?: 0L
+                            routeDisconnected = stats.getOrNull(8) == 1L
+                            val inputRoute = stats.getOrNull(9)?.toInt() ?: -1
+                            val outputRoute = stats.getOrNull(10)?.toInt() ?: -1
+                            val actualLowLatency = stats.getOrNull(11) == 1L
+                            val actualExclusive = stats.getOrNull(12) == 1L
+                            diagnostics = "Oboe native · $rate Hz · input ID $inputRoute → output ID $outputRoute · low-latency ${if (actualLowLatency) "active" else "not granted"} · ${if (actualExclusive) "exclusive" else "shared"} · burst $burst · buffer $buffer frames · xrun $xruns · underruns $underruns · capture drops $captureDropped · playback drops $playbackDropped · pitch drops $analysisDropped"
+                            if (routeDisconnected) status = "Audio route changed. Reconnecting the live monitor…"
+                        }
+                    }
+                    if (isActive && !StudioOboeEngine.isRunning()) {
+                        val finalStats = withContext(Dispatchers.IO) { StudioOboeEngine.diagnostics() }
+                        routeDisconnected = routeDisconnected || finalStats.getOrNull(8) == 1L
+                        if (routeDisconnected) status = "Audio route changed. Reconnecting the live monitor…"
+                    }
+                } finally {
+                    withContext(Dispatchers.IO) { StudioOboeEngine.stop() }
+                }
+                if (!isActive) return@LaunchedEffect
+                if (!routeDisconnected || reconnectAttempts >= 1 || !hasHeadphoneOutput) {
+                    nativeStarted = false
+                    break
+                }
+                reconnectAttempts++
+                pitchFrames.reset()
+                reading = null
+                delay(350)
+                nativeStarted = withContext(Dispatchers.IO) {
+                    StudioOboeEngine.start(preferredInputId, nativePreferUnprocessed)
+                }
+            }
+            if (isActive && nativeStarted) return@LaunchedEffect
+            if (!isActive) return@LaunchedEffect
+            pitchFrames.reset()
+            status = "Native audio route unavailable. Switching to Android compatibility audio…"
+        }
         val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
         val outputNativeRate = audioManager?.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
         val inputRates = if (preferredInputId == null) emptyList() else {
@@ -199,6 +321,9 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             .build()
                     )
                     .setBufferSizeInBytes(inputBufferFrames * 2)
+                    .apply {
+                        if (android.os.Build.VERSION.SDK_INT >= 30) setPrivacySensitive(true)
+                    }
                     .build()
                     .also { audioRecord ->
                         if (preferredInputId != null) {
@@ -260,8 +385,8 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         val chunkSize = 512
         val pcm = ShortArray(chunkSize)
         var diagnosticTick = 0
-        val mono = FloatArray(frameSize)
-        var pitchOffset = 0
+        val floatPcm = FloatArray(chunkSize)
+        val pitchFramesJava = pitchFrames
         try {
             while (isActive) {
                 val count = withContext(Dispatchers.IO) {
@@ -280,9 +405,12 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                     continue
                 }
                 for (i in 0 until count) {
-                    mono[pitchOffset + i] = pcm[i] / 32768f
+                    floatPcm[i] = pcm[i] / 32768f
                 }
-                pitchOffset += count
+                pitchFramesJava.append(floatPcm, count) { frame ->
+                    reading = StudioPitchEngine.detect(frame, sampleRate, 70f, 1_000f)
+                    status = if (reading == null) "No stable pitch yet — sing or hold one clear note." else "Live pitch detected"
+                }
                 diagnosticTick++
                 if (diagnosticTick >= 24) {
                     diagnosticTick = 0
@@ -293,11 +421,6 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                     val latencyMs = latencyFrames * 1000L / sampleRate
                     val mode = if (monitorTrack?.performanceMode == AudioTrack.PERFORMANCE_MODE_LOW_LATENCY) "low-latency path requested" else "standard output path"
                     diagnostics = "$sampleRate Hz · $inputDevice → $outputDevice · $mode · output buffer ~${latencyMs} ms · underruns $underruns"
-                }
-                if (pitchOffset >= frameSize) {
-                    reading = StudioPitchEngine.detect(mono, sampleRate, 70f, 1_000f)
-                    status = if (reading == null) "No stable pitch yet — sing or hold one clear note." else "Live pitch detected"
-                    pitchOffset = 0
                 }
             }
         } finally {
@@ -324,19 +447,22 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
             Text("PITCH MONITOR", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         }
         Text("Vocal pitch & key guide", color = White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
-        Text("${if (preferredInputId == null) "Phone default" else "Selected USB"} input · ${if (preferUnprocessedInput) "Unprocessed capture" else "Standard microphone path"} · No recording is saved", color = Muted, fontSize = 11.sp)
+        Text("${if (preferredInputId == null) "Phone default" else "Selected USB"} input · ${if (preferUnprocessedInput && (android.os.Build.VERSION.SDK_INT < 27 || android.os.Build.VERSION.SDK_INT >= 28)) "Unprocessed capture" else "Standard microphone path"} · No recording is saved", color = Muted, fontSize = 11.sp)
         Button(
             onClick = { monitorEnabled = !monitorEnabled },
             modifier = Modifier.fillMaxWidth(),
+            enabled = hasHeadphoneOutput || monitorEnabled,
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (monitorEnabled) Mint else Panel,
-                contentColor = if (monitorEnabled) Midnight else Gold
+                contentColor = if (monitorEnabled) Midnight else Gold,
+                disabledContainerColor = Panel,
+                disabledContentColor = Muted
             )
         ) { Text(if (monitorEnabled) "LIVE VOCAL MONITOR · ON" else "TURN ON LIVE VOCAL MONITOR") }
         Text(
             if (monitorEnabled) "Live monitor diagnostics appear below: sample rate, routed devices, estimated output-buffer time and underruns. Wired or USB headphones are strongly recommended."
             else if (hasHeadphoneOutput) "Headphone output detected. Bluetooth may still introduce noticeable delay."
-            else "Connect wired or USB headphones before monitoring. Speaker playback can feed back into the microphone.",
+            else "Connect wired, USB or Bluetooth headphones before monitoring. Speaker playback is blocked to prevent feedback.",
             color = Muted, fontSize = 10.sp, lineHeight = 15.sp
         )
         Surface(color = Panel, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {

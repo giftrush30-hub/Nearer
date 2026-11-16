@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "com.nearer.app"
     compileSdk = 35
+    ndkVersion = "27.2.12479018"
 
     defaultConfig {
         applicationId = "com.nearer.app"
@@ -15,10 +16,27 @@ android {
         versionCode = 14
         versionName = "0.5.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+        externalNativeBuild {
+            cmake {
+                arguments += "-DANDROID_STL=c++_shared"
+            }
+        }
     }
 
     buildFeatures {
         compose = true
+        prefab = true
+    }
+
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     compileOptions {
@@ -46,6 +64,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("com.google.android.gms:play-services-nearby:19.5.1")
     implementation("com.google.zxing:core:3.5.3")
     implementation("androidx.documentfile:documentfile:1.0.1")
@@ -53,6 +72,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.5.1")
     implementation("androidx.media3:media3-transformer:1.5.1")
     implementation("androidx.media3:media3-effect:1.5.1")
+    implementation("com.google.oboe:oboe:1.11.0")
 
     testImplementation("junit:junit:4.13.2")
     // JVM tests exercise Android-compatible JSON codecs without android.jar stubs.

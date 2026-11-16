@@ -267,7 +267,11 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
     LaunchedEffect(selectedVocalProfile) { vocalPreferences.edit().putString("profile", selectedVocalProfile.name).apply() }
     val vocalControlPreferences = remember(context) { context.getSharedPreferences("nearer_studio_vocal_controls", android.content.Context.MODE_PRIVATE) }
     var vocalControls by remember(context) {
-        mutableStateOf(StudioVocalControlsCodec.decode(vocalControlPreferences.getString("controls_v1", null)))
+        val savedControls = vocalControlPreferences.getString("controls_v1", null)
+        mutableStateOf(
+            if (savedControls.isNullOrBlank()) StudioVocalPresetLibrary.controlsFor(selectedVocalProfile)
+            else StudioVocalControlsCodec.decode(savedControls)
+        )
     }
     LaunchedEffect(vocalControls) {
         vocalControlPreferences.edit().putString("controls_v1", StudioVocalControlsCodec.encode(vocalControls)).apply()
@@ -478,7 +482,7 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                     }
                 }
                 Text("This offline chain adds a controlled low cut, presence, de-essing, adjustable noise gate, compression, air shelf, stereo width, soft saturation, room ambience and a linked output limiter. The live preview above remains the untouched source; the selected polish is applied during export.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
-                Text("PITCH CORRECTION / AUTO-TUNE IS A SEPARATE ENGINE MILESTONE — NOT SIMULATED BY THIS PRESET.", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text("Pitch correction is a separate stage above. When enabled, it is rendered before this Vocal Pro polish chain. These are software treatments, not a literal hardware condenser-microphone emulation; microphone and room quality still matter.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
             }
         }
         Button(onClick = {
