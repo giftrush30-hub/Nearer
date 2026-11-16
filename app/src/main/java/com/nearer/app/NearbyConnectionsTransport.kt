@@ -229,6 +229,9 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     private val streamPayloadBridge = NearbyStreamPayloadBridge(resumeCoordinator, fileIo)
     private val outgoingHyperDirectory = File(appContext.filesDir, "hypertransfer-outgoing")
     private val outgoingHyperStore = OutgoingHyperTransferStore(outgoingHyperDirectory)
+    private val verifiedTransferStore = VerifiedTransferReceiptStore(
+        File(appContext.filesDir, "hypertransfer-completed")
+    )
     // Hash large files away from the UI thread before the receiver is given the payload.
     private val transferPreparation = Executors.newFixedThreadPool(2)
     private val seenMessageIdsLock = Any()
@@ -1774,7 +1777,8 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         if (NeaRerIdentity.normalize(peerId) == null) return
         val receipt = runCatching { HyperTransferCompletionReceiptCodec.decode(raw) }.getOrNull() ?: return
         val state = outgoingHyperStreams[receipt.payloadId] ?: return
-        if (state.stablePeerId != peerId || !state.awaitingReceipt ||
+        if (state.stablePeerId != peerId ||
+            (!state.awaitingReceipt && !(receipt.saved && state.awaitingDecision)) ||
             state.transferId != receipt.transferId || state.item.id != receipt.itemId ||
             !state.sha256.equals(receipt.sha256, ignoreCase = true)) return
         state.receiptTimeout?.let(deliveryHandler::removeCallbacks)
@@ -1808,13 +1812,19 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
 
     private fun handleHyperStreamMetadata(endpointId: String, raw: ByteArray) {
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        val metadata = runCatching { TransferResumeStreamMetadataCodec.decode(raw) }.getOrNull() ?: return
+        // If the receiver committed the file but the sender died before seeing its
+        // receipt, answer the retried metadata without creating a duplicate file.
+        if (verifiedTransferStore.containsVerified(peerId, metadata)) {
+            sendHyperTransferCompletionReceipt(endpointId, metadata.payloadId, metadata, saved = true)
+            return
+        }
         val result = streamController.recordMetadata(endpointId, peerId, raw)
         if (result == NearbyStreamExchangeController.InputResult.DUPLICATE) return
         if (result != NearbyStreamExchangeController.InputResult.STORED) {
             listener.onFileStatus("A nearby stream transfer had invalid details and was rejected.")
             return
         }
-        val metadata = TransferResumeStreamMetadataCodec.decode(raw)
         incomingHyperMetadata[metadata.payloadId] = metadata
         incomingHyperEndpoints[metadata.payloadId] = endpointId
         schedulePendingHyperStreamExpiry(metadata.payloadId)
@@ -1992,6 +2002,9 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                             listener.onFileReceived(endpointId, metadata.item.displayName, completed.completedFile)
                             listener.onFileStatus("Verified transfer complete: " + metadata.item.displayName)
                         }
+                        verifiedTransferStore.record(
+                            ready.authenticatedPeerId, metadata, completed.completedFile, completed.sha256
+                        )
                         sendHyperTransferCompletionReceipt(endpointId, payloadId, metadata, saved = true)
                     } catch (error: Exception) {
                         sendHyperTransferCompletionReceipt(endpointId, payloadId, metadata, saved = false)
