@@ -62,13 +62,15 @@ internal object BusinessPhotoStorage {
             }
             val bitmap = BitmapFactory.decodeFile(temporary.absolutePath, options)
                 ?: throw IllegalArgumentException("NeaRer could not decode this image.")
-            bitmap.use { decoded ->
+            try {
                 FileOutputStream(output).use { target ->
-                    check(decoded.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, target)) {
+                    check(bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, target)) {
                         "NeaRer could not prepare the photo."
                     }
                     target.fd.sync()
                 }
+            } finally {
+                bitmap.recycle()
             }
             temporary.delete()
             FileProvider.getUriForFile(context, "${context.packageName}.files", output)
