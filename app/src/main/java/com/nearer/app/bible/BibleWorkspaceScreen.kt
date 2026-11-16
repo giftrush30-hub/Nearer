@@ -70,6 +70,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
     var selectedVerseAction by remember { mutableStateOf<BibleVerse?>(null) }
 
     LaunchedEffect(selectedTranslation?.id,selectedBook?.id,chapter) {
+        selectedVerseNumber=null
         selectedTranslation?.let{readingPrefs.edit().putString("translation_id",it.id).apply()}
         selectedBook?.let{readingPrefs.edit().putString("book_id",it.id).apply()}
         readingPrefs.edit().putInt("chapter",chapter).apply()
