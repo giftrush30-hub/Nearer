@@ -183,6 +183,36 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
         }
         return out
     }
+    fun insertLexicalEntry(entry:BibleWordStudyEntry) {
+        writableDatabase.insertWithOnConflict("lexical_entries",null,ContentValues().apply {
+            put("id",entry.id);put("language_code",entry.language.code);put("lemma",entry.lemma)
+            put("transliteration",entry.transliteration);put("pronunciation",entry.pronunciation)
+            put("strong_number",entry.strongNumber);put("part_of_speech",entry.partOfSpeech)
+            put("gloss",entry.gloss);put("definition",entry.definition);put("source_name",entry.sourceName)
+            put("source_url",entry.sourceUrl);put("license_id",entry.licenseId);put("attribution",entry.attribution)
+        },SQLiteDatabase.CONFLICT_REPLACE)
+    }
+    fun insertWordOccurrence(occurrence:BibleWordOccurrence) {
+        writableDatabase.insertWithOnConflict("word_occurrences",null,ContentValues().apply {
+            put("translation_id",occurrence.translationId);put("book_id",occurrence.bookId)
+            put("chapter",occurrence.chapter);put("verse",occurrence.verse)
+            put("token_index",occurrence.tokenIndex);put("surface_form",occurrence.surfaceForm)
+            put("lemma_id",occurrence.lemmaId);put("strong_number",occurrence.strongNumber)
+            put("morphology_code",occurrence.morphologyCode)
+        },SQLiteDatabase.CONFLICT_REPLACE)
+    }
+    fun findAlignedLexicalEntries(verse:BibleVerse,surfaceForm:String):List<BibleWordStudyEntry> {
+        val out=mutableListOf<BibleWordStudyEntry>()
+        readableDatabase.rawQuery("""SELECT DISTINCT l.* FROM word_occurrences o
+            JOIN lexical_entries l ON l.id=o.lemma_id
+            WHERE o.translation_id=? AND o.book_id=? AND o.chapter=? AND o.verse=?
+            AND o.surface_form=? COLLATE NOCASE ORDER BY o.token_index""",
+            arrayOf(verse.translationId,verse.bookId,verse.chapter.toString(),verse.verse.toString(),surfaceForm)).use { c ->
+            while(c.moveToNext()) out += c.toLexicalEntry()
+        }
+        return out
+    }
+
     fun findLexicalEntryByStrong(number:String):BibleWordStudyEntry? {
         readableDatabase.query("lexical_entries",null,"strong_number=?",arrayOf(number.trim().uppercase()),null,null,null,"1").use { c ->
             return if(c.moveToFirst()) c.toLexicalEntry() else null
