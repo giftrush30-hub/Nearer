@@ -77,6 +77,7 @@ public:
         outputUnderruns_.store(0, std::memory_order_relaxed);
         droppedCaptureFrames_.store(0, std::memory_order_relaxed);
         droppedPlaybackFrames_.store(0, std::memory_order_relaxed);
+        droppedAnalysisFrames_.store(0, std::memory_order_relaxed);
 
         auto self = shared_from_this();
         const auto dataCallback =
@@ -208,6 +209,11 @@ public:
     }
 
     uint32_t readAnalysis(float* destination, uint32_t count) noexcept {
+        const uint32_t queued = analysisRing_.available();
+        if (queued > maxAnalysisQueueFrames_) {
+            const uint32_t discarded = analysisRing_.discard(queued - maxAnalysisQueueFrames_);
+            droppedAnalysisFrames_.fetch_add(discarded, std::memory_order_relaxed);
+        }
         return analysisRing_.pop(destination, count);
     }
 
@@ -218,7 +224,7 @@ public:
             const auto xrunResult = output_->getXRunCount();
             if (xrunResult == oboe::Result::OK) xrunCount = xrunResult.value();
         }
-        jlong values[10] = {
+        jlong values[11] = {
             output_ ? output_->getSampleRate() : 0,
             output_ ? output_->getFramesPerBurst() : 0,
             output_ ? output_->getBufferSizeInFrames() : 0,
@@ -226,12 +232,13 @@ public:
             static_cast<jlong>(outputUnderruns_.load(std::memory_order_relaxed)),
             static_cast<jlong>(droppedCaptureFrames_.load(std::memory_order_relaxed)),
             static_cast<jlong>(droppedPlaybackFrames_.load(std::memory_order_relaxed)),
+            static_cast<jlong>(droppedAnalysisFrames_.load(std::memory_order_relaxed)),
             disconnected_.load(std::memory_order_acquire) ? 1 : 0,
             input_ ? input_->getDeviceId() : -1,
             output_ ? output_->getDeviceId() : -1
         };
-        jlongArray result = env->NewLongArray(10);
-        if (result != nullptr) env->SetLongArrayRegion(result, 0, 10, values);
+        jlongArray result = env->NewLongArray(11);
+        if (result != nullptr) env->SetLongArrayRegion(result, 0, 11, values);
         return result;
     }
 
@@ -260,11 +267,13 @@ private:
     FloatRing playbackRing_;
     FloatRing analysisRing_;
     uint32_t maxPlaybackQueueFrames_ = 768;
+    static constexpr uint32_t maxAnalysisQueueFrames_ = 4096;
     std::atomic<bool> running_{false};
     std::atomic<bool> disconnected_{false};
     std::atomic<uint32_t> outputUnderruns_{0};
     std::atomic<uint32_t> droppedCaptureFrames_{0};
     std::atomic<uint32_t> droppedPlaybackFrames_{0};
+    std::atomic<uint32_t> droppedAnalysisFrames_{0};
 };
 
 std::mutex gEngineMutex;
@@ -319,9 +328,9 @@ Java_com_nearer_app_StudioOboeEngine_nativeGetStats(JNIEnv* env, jobject) {
         engine = gEngine;
     }
     if (engine) return engine->stats(env);
-    jlong empty[10] = {0, 0, 0, -1, 0, 0, 0, 0, -1, -1};
-    jlongArray result = env->NewLongArray(10);
-    if (result != nullptr) env->SetLongArrayRegion(result, 0, 10, empty);
+    jlong empty[11] = {0, 0, 0, -1, 0, 0, 0, 0, 0, -1, -1};
+    jlongArray result = env->NewLongArray(11);
+    if (result != nullptr) env->SetLongArrayRegion(result, 0, 11, empty);
     return result;
 }
 
