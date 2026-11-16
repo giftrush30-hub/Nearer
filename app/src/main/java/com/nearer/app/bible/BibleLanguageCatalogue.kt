@@ -17,6 +17,9 @@ data class BibleLanguageCatalogueLead(
  * be confirmed before a NeaRer pack is published.
  */
 object BibleLanguageCatalogue {
+    const val bsnReportedCompleteNigerianLanguageCount=27
+    const val bsnReportedOngoingOrRevisionProjectCount=10
+
     val nigeriaLeads=listOf(
         BibleLanguageCatalogueLead("Efik","Nigeria","BSN/YouVersion guide"),
         BibleLanguageCatalogueLead("Yoruba","Nigeria","BSN/YouVersion guide"),
