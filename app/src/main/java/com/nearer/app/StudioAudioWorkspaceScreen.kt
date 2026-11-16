@@ -27,6 +27,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -247,7 +249,17 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
     var exportBusy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Preview your recording, set the cut points and export a new audio file.") }
     var exportedFile by remember { mutableStateOf<File?>(null) }
+    var comparisonMode by remember { mutableStateOf(false) }
     var playhead by remember { mutableStateOf(0L) }
+    var showSavePresetDialog by remember { mutableStateOf(false) }
+    var customPresetName by remember { mutableStateOf("") }
+    val customPresetPreferences = remember(context) { context.getSharedPreferences("nearer_studio_custom_vocal_presets", android.content.Context.MODE_PRIVATE) }
+    var customVocalPresets by remember(context) {
+        mutableStateOf(StudioCustomVocalPresetCodec.decode(customPresetPreferences.getString("presets_v1", null)))
+    }
+    LaunchedEffect(customVocalPresets) {
+        customPresetPreferences.edit().putString("presets_v1", StudioCustomVocalPresetCodec.encode(customVocalPresets)).apply()
+    }
     val vocalPreferences = remember(context) { context.getSharedPreferences("nearer_studio_vocal_profile", android.content.Context.MODE_PRIVATE) }
     var selectedVocalProfile by remember(context) {
         mutableStateOf(StudioVocalProfile.values().firstOrNull { it.name == vocalPreferences.getString("profile", StudioVocalProfile.WARM_CONDENSER.name) } ?: StudioVocalProfile.WARM_CONDENSER)
@@ -280,10 +292,12 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
             .putBoolean("preserve_formants", pitchCorrection.preserveFormants).apply()
     }
 
+    val latestComparisonMode = rememberUpdatedState(comparisonMode)
+    val latestExportedFile = rememberUpdatedState(exportedFile)
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY && player.duration > 0L) {
+                if (playbackState == Player.STATE_READY && player.duration > 0L && !latestComparisonMode.value && latestExportedFile.value == null) {
                     durationMs = player.duration
                     if (endMs == 0L || endMs > player.duration) endMs = player.duration
                 }
@@ -293,8 +307,15 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
         player.addListener(listener)
         onDispose { player.removeListener(listener); player.release() }
     }
-    LaunchedEffect(uri) {
-        player.setMediaItem(MediaItem.fromUri(uri))
+    LaunchedEffect(uri, exportedFile, comparisonMode) {
+        val selectedItem = if (comparisonMode) {
+            exportedFile?.let { MediaItem.fromUri(Uri.fromFile(it)) } ?: MediaItem.fromUri(uri)
+        } else if (exportedFile != null) {
+            MediaItem.Builder().setUri(uri).setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder().setStartPositionMs(startMs).setEndPositionMs(endMs).build()
+            ).build()
+        } else MediaItem.fromUri(uri)
+        player.setMediaItem(selectedItem)
         player.prepare()
         player.playWhenReady = false
     }
@@ -431,6 +452,31 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                         if (rowProfiles.size == 1) androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
                     }
                 }
+                Button(onClick = { customPresetName = ""; showSavePresetDialog = true }, modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
+                    Text("SAVE CURRENT SETTINGS AS CUSTOM PRESET")
+                }
+                if (customVocalPresets.isNotEmpty()) {
+                    Text("MY SAVED PRESETS  ·  ${customVocalPresets.size}/${StudioCustomVocalPresetCodec.MAX_PRESETS}", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    customVocalPresets.forEach { preset ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Button(onClick = {
+                                selectedVocalProfile = preset.profile
+                                vocalControls = preset.controls
+                                exportedFile = null
+                                comparisonMode = false
+                            }, modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = White)) {
+                                Text("LOAD  ${preset.name}", fontSize = 10.sp)
+                            }
+                            Button(onClick = {
+                                customVocalPresets = customVocalPresets.filterNot { it.name == preset.name }
+                            }, colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
+                                Text("DELETE", fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
                 Text("This offline chain adds a controlled low cut, presence, de-essing, adjustable noise gate, compression, air shelf, stereo width, soft saturation, room ambience and a linked output limiter. The live preview above remains the untouched source; the selected polish is applied during export.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                 Text("PITCH CORRECTION / AUTO-TUNE IS A SEPARATE ENGINE MILESTONE — NOT SIMULATED BY THIS PRESET.", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
@@ -455,7 +501,8 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                     override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                         exportBusy = false
                         exportedFile = output
-                        message = "Audio export complete · ${output.length() / 1024L} KB saved on this device."
+                        comparisonMode = true
+                        message = "Processed copy ready. Use A/B below to compare it with your untouched original."
                     }
                     override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
                         exportBusy = false
@@ -473,6 +520,22 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
         }
         Text(message, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
         exportedFile?.let { file ->
+            Surface(color = Panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("A / B LISTENING COMPARISON", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("A is your untouched original. B is the exported Vocal Pro treatment. Switching does not overwrite either file.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { comparisonMode = false }, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = if (!comparisonMode) Mint else Midnight, contentColor = if (!comparisonMode) Midnight else White)) {
+                            Text("A · ORIGINAL")
+                        }
+                        Button(onClick = { comparisonMode = true }, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = if (comparisonMode) Mint else Midnight, contentColor = if (comparisonMode) Midnight else White)) {
+                            Text("B · PROCESSED")
+                        }
+                    }
+                }
+            }
             Button(onClick = {
                 runCatching {
                     val outUri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
@@ -483,6 +546,39 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                 Text("SHARE EDITED AUDIO")
             }
         }
+    }
+    if (showSavePresetDialog) {
+        AlertDialog(
+            onDismissRequest = { showSavePresetDialog = false },
+            title = { Text("Save Vocal Pro preset") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Save the selected profile and all current slider values on this phone.", color = Muted)
+                    OutlinedTextField(
+                        value = customPresetName,
+                        onValueChange = { customPresetName = it.take(StudioCustomVocalPresetCodec.MAX_NAME_LENGTH) },
+                        label = { Text("Preset name") },
+                        singleLine = true
+                    )
+                    Text("Up to ${StudioCustomVocalPresetCodec.MAX_PRESETS} custom presets. Saving an existing name replaces it.", color = Muted, fontSize = 11.sp)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val updated = StudioCustomVocalPresetCodec.upsert(customVocalPresets, customPresetName, selectedVocalProfile, vocalControls)
+                    if (updated == null) {
+                        message = "Enter a name for your custom preset."
+                    } else {
+                        customVocalPresets = updated
+                        message = "Custom preset saved on this phone."
+                        showSavePresetDialog = false
+                    }
+                }) { Text("SAVE PRESET") }
+            },
+            dismissButton = {
+                Button(onClick = { showSavePresetDialog = false }) { Text("CANCEL") }
+            }
+        )
     }
 }
 

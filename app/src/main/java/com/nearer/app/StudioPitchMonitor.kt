@@ -146,6 +146,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
     val context = LocalContext.current
     var reading by remember { mutableStateOf<StudioPitchReading?>(null) }
     var status by remember { mutableStateOf("Listening for a clear single vocal note…") }
+    var diagnostics by remember { mutableStateOf("Audio diagnostics will appear when monitoring starts.") }
     var keyRoot by remember { mutableStateOf(0) }
     var minorScale by remember { mutableStateOf(false) }
     var monitorEnabled by remember { mutableStateOf(false) }
@@ -167,19 +168,25 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         if (!monitorEnabled) {
             reading = null
             status = "Microphone monitoring is off. Turn it on when you are ready."
+            diagnostics = "Monitoring is off."
             return@LaunchedEffect
         }
         val frameSize = 2_048
-        val supportedRate = listOf(22_050, 44_100, 48_000).firstNotNullOfOrNull { rate ->
-            val size = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-            if (size > 0) rate to size else null
+        val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
+        val outputNativeRate = audioManager?.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
+        val inputRates = if (preferredInputId == null) emptyList() else {
+            audioManager?.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                ?.firstOrNull { it.id == preferredInputId }?.sampleRates?.toList().orEmpty()
         }
-        if (supportedRate == null) {
-            status = "This device could not open a compatible microphone stream."
+        val sampleRate = StudioAudioBufferPolicy.chooseSampleRate(outputNativeRate, inputRates)
+        val minBuffer = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        if (minBuffer <= 0) {
+            status = "This device could not open a microphone stream at its native output rate ($sampleRate Hz). Reconnect the mic or use Phone Default."
             return@LaunchedEffect
         }
-        val sampleRate = supportedRate.first
-        val minBuffer = supportedRate.second
+        val framesPerBurst = audioManager?.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)?.toIntOrNull()
+            ?.takeIf { it > 0 } ?: 256
+        val inputBufferFrames = StudioAudioBufferPolicy.bufferFrames(minBuffer, framesPerBurst, frameSize)
         val recorder = withContext(Dispatchers.IO) {
             runCatching {
                 AudioRecord.Builder()
@@ -191,7 +198,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                             .build()
                     )
-                    .setBufferSizeInBytes(maxOf(minBuffer, frameSize * 2 * 2))
+                    .setBufferSizeInBytes(inputBufferFrames * 2)
                     .build()
                     .also { audioRecord ->
                         if (preferredInputId != null) {
@@ -217,6 +224,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                     sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT
                 )
                 check(minOutputBuffer > 0) { "No compatible audio output is available." }
+                val outputBufferFrames = StudioAudioBufferPolicy.bufferFrames(minOutputBuffer, framesPerBurst, 512)
                 AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()
@@ -232,11 +240,15 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             .build()
                     )
                     .setTransferMode(AudioTrack.MODE_STREAM)
-                    .setBufferSizeInBytes(maxOf(minOutputBuffer, 512 * 2 * 2))
+                    .setBufferSizeInBytes(outputBufferFrames * 2)
                     .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                     .build()
                     .also { track ->
                         check(track.state == AudioTrack.STATE_INITIALIZED) { "Android could not initialise the monitoring output." }
+                        val targetFrames = maxOf(framesPerBurst * 3, 512)
+                        if (android.os.Build.VERSION.SDK_INT >= 24) {
+                            runCatching { track.setBufferSizeInFrames(targetFrames.coerceAtMost(track.bufferSizeInFrames)) }
+                        }
                         track.play()
                     }
             }.getOrElse {
@@ -247,6 +259,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
 
         val chunkSize = 512
         val pcm = ShortArray(chunkSize)
+        var diagnosticTick = 0
         val mono = FloatArray(frameSize)
         var pitchOffset = 0
         try {
@@ -270,6 +283,17 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                     mono[pitchOffset + i] = pcm[i] / 32768f
                 }
                 pitchOffset += count
+                diagnosticTick++
+                if (diagnosticTick >= 24) {
+                    diagnosticTick = 0
+                    val outputDevice = monitorTrack?.routedDevice?.productName?.toString() ?: "Android output"
+                    val inputDevice = recorder.routedDevice?.productName?.toString() ?: if (preferredInputId == null) "Phone default input" else "Selected input"
+                    val underruns = monitorTrack?.underrunCount ?: 0
+                    val latencyFrames = monitorTrack?.bufferSizeInFrames ?: (framesPerBurst * 3)
+                    val latencyMs = latencyFrames * 1000L / sampleRate
+                    val mode = if (monitorTrack?.performanceMode == AudioTrack.PERFORMANCE_MODE_LOW_LATENCY) "low-latency path requested" else "standard output path"
+                    diagnostics = "$sampleRate Hz · $inputDevice → $outputDevice · $mode · output buffer ~${latencyMs} ms · underruns $underruns"
+                }
                 if (pitchOffset >= frameSize) {
                     reading = StudioPitchEngine.detect(mono, sampleRate, 70f, 1_000f)
                     status = if (reading == null) "No stable pitch yet — sing or hold one clear note." else "Live pitch detected"
@@ -310,7 +334,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
             )
         ) { Text(if (monitorEnabled) "LIVE VOCAL MONITOR · ON" else "TURN ON LIVE VOCAL MONITOR") }
         Text(
-            if (monitorEnabled) "Monitoring is playing the microphone through Android's low-latency AudioTrack mode. Wired or USB headphones are strongly recommended to prevent speaker feedback."
+            if (monitorEnabled) "Live monitor diagnostics appear below: sample rate, routed devices, estimated output-buffer time and underruns. Wired or USB headphones are strongly recommended."
             else if (hasHeadphoneOutput) "Headphone output detected. Bluetooth may still introduce noticeable delay."
             else "Connect wired or USB headphones before monitoring. Speaker playback can feed back into the microphone.",
             color = Muted, fontSize = 10.sp, lineHeight = 15.sp
@@ -356,7 +380,8 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                     color = Muted, fontSize = 10.sp)
             }
         }
-        Text(status, color = Muted, fontSize = 11.sp)
+        Text(diagnostics, color = Gold, fontSize = 10.sp, lineHeight = 15.sp)
+        Text(status, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
         Button(onClick = onBack, modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) { Text("BACK TO RECORDER") }
     }
