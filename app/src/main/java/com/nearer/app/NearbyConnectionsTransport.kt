@@ -219,6 +219,8 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         TransferResumeStreamWriter(resumeStore, HyperTransferTuning.receiveBufferBytes(appContext))
     )
     private val streamPayloadBridge = NearbyStreamPayloadBridge(resumeCoordinator, fileIo)
+    private val outgoingHyperDirectory = File(appContext.filesDir, "hypertransfer-outgoing")
+    private val outgoingHyperStore = OutgoingHyperTransferStore(outgoingHyperDirectory)
     // Hash large files away from the UI thread before the receiver is given the payload.
     private val transferPreparation = Executors.newFixedThreadPool(2)
     private val seenMessageIdsLock = Any()
@@ -1772,7 +1774,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
             state.retentionTimeout = null
             if (outgoingHyperStreams.remove(receipt.payloadId, state)) {
                 state.prepared.close()
-                state.sourceFile.delete()
+                outgoingHyperStore.remove(state.transferId)
                 transferSpeedMeters.remove(receipt.payloadId)
                 listener.onFileStatus("Verified and saved on the recipient's phone: " + state.name)
             }
@@ -2598,8 +2600,10 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                     prepared.close()
                     return@execute
                 }
-                val staging = File(appContext.cacheDir, "nearer-transfer-staging").apply { mkdirs() }
-                staged = File.createTempFile("nearer-hyper-", ".bin", staging)
+                if (!outgoingHyperDirectory.exists() && !outgoingHyperDirectory.mkdirs()) {
+                    throw IllegalStateException("Could not create durable transfer storage")
+                }
+                staged = File.createTempFile("nearer-hyper-", ".bin", outgoingHyperDirectory)
                 val input = appContext.contentResolver.openInputStream(uri)
                     ?: throw IllegalStateException("The selected file could not be opened")
                 val copied = input.use { source ->
@@ -2638,6 +2642,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                     staged!!.delete()
                     return@execute
                 }
+                outgoingHyperStore.persist(transferId, peerId, item, copied.sha256, staged!!)
                 val state = OutgoingHyperStream(
                     endpointId, peerId, name, staged!!, item, transferId, copied.sha256, prepared
                 )
@@ -2685,8 +2690,9 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         state.retentionTimeout = null
         transferSpeedMeters.remove(payloadId)
         state.prepared.close()
+        outgoingHyperStore.removeRecordOnly(state.transferId)
         val filePayload = try { Payload.fromFile(state.sourceFile) } catch (_: Exception) {
-            state.sourceFile.delete()
+            outgoingHyperStore.remove(state.transferId)
             listener.onFileStatus("The stream could not start and the standard file fallback was unavailable.")
             return
         }
@@ -2795,6 +2801,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (authenticatedEndpoints.contains(endpointId) && NeaRerIdentity.normalize(peerId) != null) {
             streamCapablePeers.add(peerId)
+            restoreOutgoingHyperTransfers(peerId, endpointId)
             resumeHyperStreamsForPeer(peerId, endpointId)
         }
     }
@@ -3002,7 +3009,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
             state.receiptTimeout?.let(deliveryHandler::removeCallbacks)
             state.retentionTimeout?.let(deliveryHandler::removeCallbacks)
             state.prepared.close()
-            state.sourceFile.delete()
+            outgoingHyperStore.remove(state.transferId)
         }
         pendingIncomingHyperPayloads.remove(payloadId)?.let { runCatching { it.close() } }
         val activeIncoming = activeIncomingHyperPayloads.remove(payloadId)
@@ -3072,7 +3079,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
             it.receiptTimeout?.let(deliveryHandler::removeCallbacks)
             it.retentionTimeout?.let(deliveryHandler::removeCallbacks)
             it.prepared.close()
-            it.sourceFile.delete()
+            outgoingHyperStore.remove(it.transferId)
         }
         outgoingHyperStreams.clear()
         pendingIncomingHyperPayloads.values.forEach { runCatching { it.close() } }
