@@ -43,6 +43,7 @@ class MoviesLibraryCodecTest {
         assertEquals(MoviesLibraryCodec.MAX_TITLE_LENGTH, normalized.title.length)
         assertEquals(MoviesLibraryCodec.MAX_RESUME_POSITION_MS, normalized.resumePositionMs)
         assertTrue(MoviesLibraryCodec.normalize(movie(6).copy(uri = "file:///private/video.mp4")) == null)
+        assertTrue(MoviesLibraryCodec.normalize(movie(7).copy(uri = "content://" + "x".repeat(MoviesLibraryCodec.MAX_URI_LENGTH + 1))) == null)
     }
 
     @Test fun skipsMalformedAndDuplicateUris() {
