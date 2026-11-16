@@ -112,10 +112,11 @@ class BiblePackImporter(
         val allowed=setOf("manifest.json","scripture.ndjson")
         val outputs=linkedMapOf<String,File>()
         var total=0L
-        ZipInputStream(zipFile.inputStream().buffered()).use { zip ->
-            var entry:ZipEntry?=zip.nextEntry
-            var entries=0
-            while(entry!=null) {
+        try {
+            ZipInputStream(zipFile.inputStream().buffered()).use { zip ->
+                var entry:ZipEntry?=zip.nextEntry
+                var entries=0
+                while(entry!=null) {
                 entries++
                 require(entries<=maxEntries) { "Pack contains too many archive entries." }
                 val name=entry.name
@@ -135,10 +136,14 @@ class BiblePackImporter(
                 }
                 outputs[name]=out
                 zip.closeEntry()
-                entry=zip.nextEntry
+                    entry=zip.nextEntry
+                }
             }
+            return outputs
+        } catch(error:Throwable) {
+            outputs.values.forEach { it.delete() }
+            throw error
         }
-        return outputs
     }
 
     private fun parseManifest(file:File):BiblePackManifest {
