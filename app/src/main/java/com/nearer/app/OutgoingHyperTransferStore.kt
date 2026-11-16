@@ -90,9 +90,20 @@ internal class OutgoingHyperTransferStore(private val directory: File) {
     @Synchronized
     fun remove(transferId: String, deleteSource: Boolean = true) {
         val file = recordFile(transferId)
-        val record = if (file.isFile) readRecord(file) else null
+        val sourceName = if (file.isFile) {
+            runCatching {
+                val properties = Properties()
+                FileInputStream(file).use { input -> properties.load(input) }
+                properties.getProperty("sourceName")
+            }.getOrNull()
+        } else null
         if (file.exists()) file.delete()
-        if (deleteSource) record?.sourceFile?.delete()
+        if (deleteSource && !sourceName.isNullOrBlank() && sourceName == File(sourceName).name) {
+            runCatching {
+                val source = File(directory, sourceName).canonicalFile
+                if (source.parentFile == directory.canonicalFile) source.delete()
+            }
+        }
     }
 
     @Synchronized
