@@ -28,10 +28,12 @@ internal data class TransferBenchmarkSummary(
 ) {
     /** Values above 1.0 mean this summary was faster than the comparison summary. */
     fun speedupOver(other: TransferBenchmarkSummary): Double {
-        require(medianElapsedMillis > 0L && other.medianElapsedMillis > 0L) {
-            "Speed comparison requires non-zero median durations"
+        require(medianMibPerSecond > 0.0 && other.medianMibPerSecond > 0.0) {
+            "Speed comparison requires non-zero median throughput"
         }
-        return other.medianElapsedMillis.toDouble() / medianElapsedMillis.toDouble()
+        // Normalize by bytes: comparing raw durations is misleading when the
+        // competitor runs used different file sizes.
+        return medianMibPerSecond / other.medianMibPerSecond
     }
 }
 
