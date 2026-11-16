@@ -52,7 +52,6 @@ internal object FolderArchiveExtractor {
         val seen = HashMap<String, EntryKind>()
         val folded = HashMap<String, String>()
         val explicitEntries = HashSet<String>()
-        val topLevelNames = LinkedHashSet<String>()
         val buffer = ByteArray(BUFFER_BYTES)
 
         try {
@@ -60,7 +59,6 @@ internal object FolderArchiveExtractor {
                 while (true) {
                     val entry = zip.nextEntry ?: break
                     val normalized = validateEntryPath(entry.name, entry.isDirectory)
-                    topLevelNames.add(normalized.substringBefore('/'))
                     val kind = if (entry.isDirectory) EntryKind.DIRECTORY else EntryKind.FILE
                     val parts = normalized.split('/')
                     for (index in 1 until parts.size) {
@@ -134,7 +132,7 @@ internal object FolderArchiveExtractor {
                 }
             }
             if (fileCount == 0) throw IOException("The archive contains no files")
-            val displayName = topLevelNames.singleOrNull() ?: "Restored folder"
+            val displayName = staging.listFiles()?.singleOrNull()?.takeIf { it.isDirectory }?.name ?: "Restored folder"
             val destination = File(
                 canonicalRoot,
                 "Folder-${TransferFileName.safeLeafName(displayName)}-${System.currentTimeMillis()}-${UUID.randomUUID().toString().take(8)}"
