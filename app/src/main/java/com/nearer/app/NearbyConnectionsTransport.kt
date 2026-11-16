@@ -191,6 +191,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         @Volatile var retentionTimeout: Runnable? = null
     )
     private val outgoingHyperStreams = ConcurrentHashMap<Long, OutgoingHyperStream>()
+    private val restoringHyperTransfers = ConcurrentHashMap.newKeySet<String>()
     private val preparingHyperStreams = ConcurrentHashMap.newKeySet<Long>()
     private val cancelledOutgoingPreparations = ConcurrentHashMap.newKeySet<Long>()
     private val incomingHyperMetadata = ConcurrentHashMap<Long, TransferResumeStreamMetadataCodec.Metadata>()
@@ -706,7 +707,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                                     pending.value.receiptTimeout = null
                                     pending.value.retentionTimeout = null
                                     pending.value.prepared.close()
-                                    pending.value.sourceFile.delete()
+                                    outgoingHyperStore.remove(pending.value.transferId)
                                     transferSpeedMeters.remove(pending.key)
                                     listener.onFileStatus(
                                         "The recipient did not confirm the save in time. The temporary retry copy was cleared; please send the file again."
@@ -2803,6 +2804,59 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
             streamCapablePeers.add(peerId)
             restoreOutgoingHyperTransfers(peerId, endpointId)
             resumeHyperStreamsForPeer(peerId, endpointId)
+        }
+    }
+
+    /**
+     * Rehydrates sender-side transfers after process death. The durable store
+     * re-hashes each staged source before exposing it; restored payload IDs are
+     * newly allocated because Nearby payload IDs are process/session scoped.
+     */
+    private fun restoreOutgoingHyperTransfers(peerId: String, endpointId: String) {
+        if (!authenticatedEndpoints.contains(endpointId) ||
+            !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) return
+        if (!restoringHyperTransfers.add(peerId)) return
+        try {
+            transferPreparation.execute {
+                try {
+                    outgoingHyperStore.restoreForPeer(peerId).forEach { record ->
+                        if (!authenticatedEndpoints.contains(endpointId) ||
+                            synchronized(names) { stableIds[endpointId] } != peerId) return@forEach
+                        if (outgoingHyperStreams.values.any { it.transferId == record.transferId }) return@forEach
+                        val item = TransferBundleItem(
+                            record.itemId, record.relativePath, record.displayName,
+                            record.sizeBytes, null
+                        )
+                        val prepared = runCatching { streamPayloadBridge.prepareOutgoingPayload() }.getOrNull()
+                            ?: return@forEach
+                        prepared.payload.setSensitive(true)
+                        val state = OutgoingHyperStream(
+                            endpointId, record.peerId, record.displayName, record.sourceFile,
+                            item, record.transferId, record.sha256, prepared
+                        )
+                        outgoingHyperStreams[prepared.payloadId] = state
+                        val metadata = TransferResumeStreamMetadataCodec.Metadata(
+                            prepared.payloadId, state.transferId, state.item, null, state.sha256
+                        )
+                        try {
+                            sendHyperTransferControl(
+                                endpointId,
+                                TransferResumeStreamMetadataCodec.encode(metadata),
+                                onFailure = { fallbackHyperStreamToFile(state) }
+                            )
+                            armHyperStreamTimeout(state)
+                            listener.onFileStatus("Restored a pending transfer to " + state.name + ". Reconnecting safely…")
+                        } catch (_: Exception) {
+                            state.endpointId = ""
+                            state.prepared.close()
+                        }
+                    }
+                } finally {
+                    restoringHyperTransfers.remove(peerId)
+                }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            restoringHyperTransfers.remove(peerId)
         }
     }
 
