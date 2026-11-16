@@ -80,3 +80,8 @@ Before moving production code, choose the first low-risk seam from the ownership
 ## First extraction completed on the working branch
 
 The initial baseline map included `AppInstallResultActivity` in the final lines of `MainActivity.kt`. That Android package-install result activity has now been moved into `AppInstallResultActivity.kt` on `chore/architecture-quality-foundation`. Its manifest registration and logic were retained; this is a small responsibility-boundary extraction, not a broader MainActivity refactor. The baseline line counts above intentionally describe the pre-refactor main commit.
+
+
+## Second extraction: nearby presence model
+
+The small `NearbyPerson` model and `seenAgo` presentation formatter have been moved from the end of `MainActivity.kt` into `NearbyPerson.kt`. The formatter accepts an optional `nowMillis` value (defaulting to the system clock) so its minute/hour/day boundaries and future-timestamp clamping can be tested deterministically. `NearbyPersonTest.kt` covers those cases. No discovery protocol, storage format, presence expiry policy, or UI wording was changed.
