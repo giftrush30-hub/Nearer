@@ -72,7 +72,7 @@ class DuplexEngine final : public oboe::AudioStreamDataCallback,
                            public oboe::AudioStreamErrorCallback,
                            public std::enable_shared_from_this<DuplexEngine> {
 public:
-    bool start(int32_t inputDeviceId, bool preferUnprocessedInput) {
+    bool start(int32_t inputDeviceId, bool preferUnprocessedInput, bool privacySensitiveCapture) {
         playbackRing_.reset();
         analysisRing_.reset();
         disconnected_.store(false, std::memory_order_relaxed);
@@ -134,6 +134,11 @@ public:
                 ->setPackageName("com.nearer.app")
                 ->setDataCallback(dataCallback)
                 ->setErrorCallback(errorCallback);
+            // AAudio added explicit privacy-sensitive capture in Android 11 / API 30.
+            // Apply it only when the Kotlin caller has verified the runtime API level.
+            if (privacySensitiveCapture) {
+                builder.setPrivacySensitiveMode(oboe::PrivacySensitiveMode::Enabled);
+            }
             if (inputDeviceId >= 0) builder.setDeviceId(inputDeviceId);
             builder.setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium);
             return builder.openStream(input_);
@@ -340,11 +345,14 @@ std::shared_ptr<DuplexEngine> gEngine;
 } // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_nearer_app_StudioOboeEngine_nativeStart(JNIEnv*, jobject, jint inputDeviceId, jboolean preferUnprocessedInput) {
+Java_com_nearer_app_StudioOboeEngine_nativeStart(
+    JNIEnv*, jobject, jint inputDeviceId, jboolean preferUnprocessedInput,
+    jboolean privacySensitiveCapture) {
     std::lock_guard<std::mutex> lock(gEngineMutex);
     if (gEngine) gEngine->stop();
     auto engine = std::make_shared<DuplexEngine>();
-    if (!engine->start(inputDeviceId, preferUnprocessedInput == JNI_TRUE)) {
+    if (!engine->start(inputDeviceId, preferUnprocessedInput == JNI_TRUE,
+                       privacySensitiveCapture == JNI_TRUE)) {
         gEngine.reset();
         return JNI_FALSE;
     }
