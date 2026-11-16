@@ -18,6 +18,14 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Set up Python for Bible pack tooling tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Test Bible USFM pack builder
+        run: python -m unittest discover -s tools -p "test_*.py"
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
