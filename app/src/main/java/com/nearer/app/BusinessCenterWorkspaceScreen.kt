@@ -52,12 +52,12 @@ import kotlinx.coroutines.launch
 internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("nearer_business_center", Context.MODE_PRIVATE) }
-    var businessName by remember { mutableStateOf(prefs.getString("business_name", "").orEmpty()) }
-    var tagline by remember { mutableStateOf(prefs.getString("tagline", "").orEmpty()) }
-    var contact by remember { mutableStateOf(prefs.getString("contact", "").orEmpty()) }
-    var businessCategory by remember { mutableStateOf(prefs.getString("business_category", "General").orEmpty()) }
-    var serviceArea by remember { mutableStateOf(prefs.getString("service_area", "").orEmpty()) }
-    var businessHours by remember { mutableStateOf(prefs.getString("business_hours", "").orEmpty()) }
+    var businessName by remember { mutableStateOf(prefs.getString("business_name", "").orEmpty().take(80)) }
+    var tagline by remember { mutableStateOf(prefs.getString("tagline", "").orEmpty().take(120)) }
+    var contact by remember { mutableStateOf(prefs.getString("contact", "").orEmpty().take(40)) }
+    var businessCategory by remember { mutableStateOf(prefs.getString("business_category", "General").orEmpty().take(40)) }
+    var serviceArea by remember { mutableStateOf(prefs.getString("service_area", "").orEmpty().take(100)) }
+    var businessHours by remember { mutableStateOf(prefs.getString("business_hours", "").orEmpty().take(100)) }
     var statusMessage by remember { mutableStateOf("") }
     var photoMessage by remember { mutableStateOf("") }
     var photoImportToken by remember { mutableStateOf(0) }
