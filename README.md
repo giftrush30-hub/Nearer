@@ -27,7 +27,7 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - This is not yet a public marketplace, direct NeaRer Nearby catalogue delivery, online ordering or payment processing. See [Business Center implementation and roadmap](docs/business-center-roadmap.md).
 
 ### Movies / Video Center
-- Offline local video library with favourites, search, continue-watching filters, periodic resume checkpoints, playback-speed controls and cached video thumbnails.
+- Offline local video library with favourites, search, continue-watching filters, periodic resume checkpoints, playback-speed controls and cached thumbnails for known local Android providers.
 - Uses Android document permissions and Media3 for supported local formats; shared URI grants are checked against Library and Studio Video before revocation.
 - This is not yet public creator publishing, licensed movie streaming, online discovery, hosting, transcoding or payments. See [Movies / Video Center implementation and roadmap](docs/movies-video-center-roadmap.md).
 
