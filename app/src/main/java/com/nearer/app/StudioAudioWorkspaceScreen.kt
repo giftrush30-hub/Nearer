@@ -416,11 +416,11 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
         Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("CONDENSER STUDIO  ·  VOCAL POLISH", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Text("Choose a vocal finish for the exported copy. The original take stays untouched.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Text("Choose a one-touch starting mix. Each preset loads a matching profile and safe manual-control values; fine-tune any slider afterwards. Export always creates a new copy and leaves the original take untouched.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                 StudioVocalProfile.values().toList().chunked(2).forEach { rowProfiles ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         rowProfiles.forEach { profile ->
-                            Button(onClick = { selectedVocalProfile = profile; exportedFile = null }, modifier = Modifier.weight(1f),
+                            Button(onClick = { selectedVocalProfile = profile; vocalControls = StudioVocalPresetLibrary.controlsFor(profile); exportedFile = null }, modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = if (selectedVocalProfile == profile) Mint else Midnight,
                                     contentColor = if (selectedVocalProfile == profile) Midnight else White

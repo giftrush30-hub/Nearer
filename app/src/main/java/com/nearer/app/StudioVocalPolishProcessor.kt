@@ -22,7 +22,9 @@ internal enum class StudioVocalProfile(
     CLEAN("Clean Studio", 75f, 0.10f, 0.18f, 0.42f, 2.2f, 0.0018f, 0.025f, 1.02f),
     WARM_CONDENSER("Warm Condenser", 82f, 0.16f, 0.24f, 0.34f, 3.0f, 0.0024f, 0.055f, 1.08f),
     BRIGHT_POP("Bright Pop", 95f, 0.24f, 0.38f, 0.30f, 3.6f, 0.0028f, 0.075f, 1.12f),
-    PODCAST("Podcast Voice", 90f, 0.20f, 0.30f, 0.28f, 3.2f, 0.0035f, 0.018f, 1.06f)
+    PODCAST("Podcast Voice", 90f, 0.20f, 0.30f, 0.28f, 3.2f, 0.0035f, 0.018f, 1.06f),
+    CLEAN_NARRATION("Clean Narration", 78f, 0.12f, 0.22f, 0.38f, 2.4f, 0.0016f, 0.012f, 1.015f),
+    LEAD_VOCAL("Lead Vocal", 85f, 0.19f, 0.28f, 0.31f, 3.4f, 0.0022f, 0.045f, 1.075f)
 }
 
 /**
