@@ -142,7 +142,8 @@ class NearbyTransportService : Service() {
             }
             // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
             val dedupeCommitted = runCatching { acknowledge() }.getOrDefault(false)
-            dispatchInboxEntry(entry, dedupeCommitted)
+            val acknowledgementAllowed = NearbyInboxCommitPolicy.canAcknowledge(inboxCommitted = true, dedupeCommitted = dedupeCommitted)
+            dispatchInboxEntry(entry, acknowledgementAllowed)
         }
 
         override fun onMeshMessage(
@@ -282,7 +283,9 @@ class NearbyTransportService : Service() {
         val removeAfterUiCommit: () -> Boolean = {
             // A durable dedupe record must exist before the inbox copy can be
             // retired. If that write failed, keep the event for a later replay.
-            val removed = dedupeCommitted && inbox.remove(entry.peerId, entry.messageId)
+            val removed = NearbyInboxCommitPolicy.canRetireInbox(
+                inboxCommitted = true, dedupeCommitted = dedupeCommitted, chatStoreCommitted = true
+            ) && inbox.remove(entry.peerId, entry.messageId)
             inFlightMessageIds.remove(key)
             removed
         }
