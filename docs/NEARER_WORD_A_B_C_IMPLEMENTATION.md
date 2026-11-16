@@ -41,7 +41,7 @@ Target: native Kotlin + Jetpack Compose; offline-first; Android API 26+; no mand
 - Candidate: STEPBible-Data. Its repository states CC BY 4.0, allows reuse and adaptation with changes recorded, and asks users to credit “STEP Bible” linked to STEP Bible. It contains Hebrew OT and Greek NT morphology/lexical resources; inspect individual dataset formats and provenance before mapping to the importer.
 
 ## Local schema
-translations, books, verses, verse_search (FTS4), lexical_entries, word_occurrences, bookmarks, study_notes, installed_packs. Database v5 migrations preserve personal notes/bookmarks, add unique source-token alignment indexing and persist publisher attribution. Personal notes/bookmarks must survive content-pack refresh and database migrations.
+translations, books, verses, verse_search (FTS4), lexical_entries, word_occurrences, bookmarks, study_notes, verse_highlights, installed_packs. Database v5 migrations preserve personal notes/bookmarks, add unique source-token alignment indexing, persist publisher attribution and add verse highlights. Personal notes/bookmarks must survive content-pack refresh and database migrations.
 
 ## Integration contract
 1. Add a Word destination to the existing navigation model without removing or reordering existing destinations.
@@ -62,19 +62,19 @@ translations, books, verses, verse_search (FTS4), lexical_entries, word_occurren
 - Bible destination is connected to the existing More menu without changing the existing bottom navigation.
 - A user can select a publisher-supplied ZIP pack, install it in the background, and read installed chapters offline.
 - The pack importer validates the manifest, named canon book count, checksum, declared verse count, safe archive entry names, archive size, expanded size, and translation ownership; database writes are transactional.
-- Reader includes translation selection, book/chapter navigation, full-text verse search, verse tap to bookmark, word tap to an original-language detail surface, and a local notes/bookmarks journal.
+- Reader includes translation selection, book/chapter navigation, full-text verse search, local reading-position restoration, RTL layout, side-by-side edition comparison, verse action sheet (bookmark/highlight/note), word tap to original-language detail, and a private study journal.
 - Lexical dataset importer accepts Hebrew, Aramaic and Koine Greek records with source URL, licence and attribution; it validates every verse/token alignment against the installed translation before linking a word to a lemma.
 - Search query is tokenized and quoted to avoid user-supplied FTS operators.
-- The page transition remains a simple 3D turn, not a true paper-curl shader.
+- The page transition has directional 3D hinge and shadow treatment; it is still not a true paper-curl shader.
 
 ## Remaining work before calling Bible complete
 - No Scripture text is bundled in the APK. The Android validation workflow now has a separate job configured to fetch the official World English Bible (WEBP) USFM source from eBible.org, run the pack builder, and publish the generated ZIP as a separate artifact. This artifact is not considered validated until that workflow job passes and the pack imports successfully on a device. eBible.org identifies the text as public domain; its name is trademarked, so the text must remain faithful and the naming conditions must be respected.
 - BSN reports 27 complete Nigerian-language Bibles, while its public Bible-app download guides list a smaller subset; the app shows discovery leads only and does not imply NeaRer has distribution permission. The installer expects publisher-approved pack files; it does not fetch copyrighted translations from the web.
 - The lexicon importer exists, but no lexical corpus is bundled and no automatic downloadable lexical catalogue is connected yet.
-- The WEBP pack workflow job has been added, but the latest run has not yet been confirmed successful.
+- The first WEBP pack workflow downloaded the official USFM source and exposed a ZIP filename-regex bug; that bug has been fixed. The Python parser tests passed in the same run. A fresh run must confirm the fix and the Android build.
 - Original-language study detail is live only where trusted alignment records have been imported.
-- Add audio Bible playback, side-by-side translation comparison, reading plans, highlights, pronunciation audio, and robust reading-position restoration.
-- Run CI on this exact branch, resolve any compile/test errors, and conduct airplane-mode and low-end-device tests.
+- Add audio Bible playback, reading plans, pronunciation audio, a true paper-curl page animation and a rights-cleared global translation catalogue.
+- Run CI on the latest exact branch head, resolve any compile/test errors, validate the generated WEBP pack through the Android importer, and conduct airplane-mode and low-end-device tests.
 - Confirm per-translation distribution, offline caching and monetization rights in writing before publishing any pack.
 
 ## Acceptance gates
