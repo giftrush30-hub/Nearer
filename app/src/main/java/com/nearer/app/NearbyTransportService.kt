@@ -69,7 +69,6 @@ class NearbyTransportService : Service() {
     @Volatile private var uiListener: NearbyConnectionsTransport.Listener? = null
     @Volatile private var lastStatus: String? = null
     private val inFlightMessageIds = ConcurrentHashMap.newKeySet<String>()
-    private val acknowledgementCallbacks = ConcurrentHashMap<String, () -> Unit>()
 
     private fun inboxKey(peerId: String, messageId: String): String = "$peerId|$messageId"
 
@@ -133,7 +132,8 @@ class NearbyTransportService : Service() {
                 uiListener?.onStatus("NeaRer could not securely save an incoming message for later delivery. The sender has not been acknowledged.")
                 return
             }
-            acknowledgementCallbacks[inboxKey(peerId, messageId)] = acknowledge
+            // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
+            runCatching { acknowledge() }
             dispatchInboxEntry(entry)
         }
 
@@ -161,7 +161,8 @@ class NearbyTransportService : Service() {
                 uiListener?.onStatus("NeaRer could not securely save an incoming nearby message. Delivery was not acknowledged.")
                 return
             }
-            acknowledgementCallbacks[inboxKey(originPeerId, messageId)] = acknowledge
+            // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
+            runCatching { acknowledge() }
             dispatchInboxEntry(entry)
         }
 
@@ -250,17 +251,10 @@ class NearbyTransportService : Service() {
         val listener = uiListener ?: return
         val key = inboxKey(entry.peerId, entry.messageId)
         if (!inFlightMessageIds.add(key)) return
-        val acknowledgeAfterUiCommit: () -> Unit = {
-            val key = inboxKey(entry.peerId, entry.messageId)
-            val removed = inbox.remove(entry.peerId, entry.messageId)
-            if (removed) {
-                val originalAck = acknowledgementCallbacks.remove(key)
-                if (originalAck != null) {
-                    originalAck()
-                } else {
-                    nearbyTransport.acknowledgePersistedIncomingMessage(entry.peerId, entry.messageId)
-                }
-            }
+        val removeAfterUiCommit: () -> Unit = {
+            // The sender has already been acknowledged after the encrypted inbox
+            // commit. Keep the inbox copy until the chat/community store commits.
+            inbox.remove(entry.peerId, entry.messageId)
             inFlightMessageIds.remove(key)
             Unit
         }
@@ -269,7 +263,7 @@ class NearbyTransportService : Service() {
                 listener.onMeshMessageWithReply(
                     entry.peerId, entry.senderName, entry.messageId, entry.body,
                     entry.replyToMessageId, entry.replyToPreview, entry.replyToSender,
-                    acknowledgeAfterUiCommit
+                    removeAfterUiCommit
                 )
             } else {
                 // Passing the stable ID is intentional: stableIdentityForEndpoint()
@@ -303,7 +297,6 @@ class NearbyTransportService : Service() {
     override fun onDestroy() {
         uiListener = null
         inFlightMessageIds.clear()
-        acknowledgementCallbacks.clear()
         nearbyTransport.stop()
         super.onDestroy()
     }
