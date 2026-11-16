@@ -60,6 +60,9 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
     var busy by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("Import a licensed NeaRer Bible pack to begin reading offline.") }
     var selectedWord by remember { mutableStateOf<Pair<BibleVerse,String>?>(null) }
+    var lexiconQuery by remember { mutableStateOf<String?>(null) }
+    var lexiconLanguage by remember { mutableStateOf(BiblicalLanguage.GREEK) }
+    var selectedLexicalEntry by remember { mutableStateOf<BibleWordStudyEntry?>(null) }
     var showJournal by remember { mutableStateOf(false) }
     var selectedVerseNumber by remember { mutableStateOf<Int?>(null) }
 
@@ -127,6 +130,27 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
         return
     }
 
+    if(lexiconQuery!=null) {
+        NeaRerWordLexiconSearchScreen(
+            engine=BibleWordStudyEngine(database),initialQuery=lexiconQuery!!,language=lexiconLanguage,
+            onSelect={selectedLexicalEntry=it;lexiconQuery=null},
+            onBack={lexiconQuery=null}
+        )
+        return
+    }
+    if(selectedLexicalEntry!=null) {
+        val entry=selectedLexicalEntry!!
+        Dialog(onDismissRequest={selectedLexicalEntry=null}) {
+            NeaRerWordStudyDetail(
+                surfaceWord=entry.gloss,entry=entry,passageReference="Original-language lexicon",
+                onSearchOriginalLanguage={language,query->
+                    lexiconLanguage=language;lexiconQuery=query;selectedLexicalEntry=null
+                },
+                onClose={selectedLexicalEntry=null}
+            )
+        }
+    }
+
     if(selectedWord!=null) {
         val selected=selectedWord!!
         val entry=BibleWordStudyEngine(database).findForVerseWord(selected.first,selected.second)
@@ -134,7 +158,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
             NeaRerWordStudyDetail(
                 surfaceWord=selected.second,entry=entry,passageReference=selected.first.reference,
                 onSearchOriginalLanguage={language,query->
-                    notice="Search " + language.displayName + " for " + query + " in the installed lexical library."
+                    lexiconLanguage=language;lexiconQuery=query;selectedWord=null
                 },
                 onClose={selectedWord=null}
             )
