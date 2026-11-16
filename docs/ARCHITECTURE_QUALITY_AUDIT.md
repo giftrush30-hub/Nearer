@@ -151,3 +151,9 @@ The Android guidance recommends clear separation of concerns, UI/data layers, re
 ## First refactoring batch completed on the working branch
 
 The architecture-quality branch has now moved eight small responsibilities out of `MainActivity.kt`: the app-install result Activity, the local nearby-person model/last-seen formatter, the shared transfer-byte formatter, Wi-Fi Direct peer-status labels, and the NeaRer app-bundle structure validator. Seven of these extracted helpers have focused JVM tests. The validator tests cover valid and malformed ZIP structures but do not establish APK signature trust or installation safety. These extractions are deliberately small; the larger lifecycle, messaging, community, game and transfer coordinators remain mapped for later work rather than being split without adequate seams.
+
+## Integration and validation note — 16 November 2026
+
+The architecture pull request is intentionally still a draft. Its latest recorded validation attempt (run 43825252477) compiled the PR merge ref and failed in the Studio custom-vocal-preset test because that merge snapshot exposed MAX_NAME_LENGTH as private. The current main source has since changed the constant to module-visible const val in StudioCustomVocalPresets.kt (main head at the time of this note: 0892c0e6ee30905e52ae87c8acec2cc3fec2ea63). This is a base-branch timing issue to be revalidated against a newly generated PR merge ref; it is not evidence that the architecture extraction tests passed or failed.
+
+The working branch and main have diverged. Do not force-update or merge this branch blindly: review overlapping Activity/transport changes and feature commits first. A green validation result must be recorded against the exact current PR head and merge base before the draft is considered ready. No physical-device verification is implied by CI.
