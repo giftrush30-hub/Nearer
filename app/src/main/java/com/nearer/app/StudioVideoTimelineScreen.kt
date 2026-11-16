@@ -418,12 +418,23 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                                     Text("${formatStudioTimelineTime(clip.outMs - clip.inMs)} selected / ${formatStudioTimelineTime(clip.durationMs)} source", color = Mint, fontSize = 9.sp)
                                 }
                                 Text("↑", color = Mint, modifier = Modifier.clickable(enabled = index > 0) {
-                                    val item = clips.removeAt(index); clips.add(index - 1, item); exported = null
+                                    val item = clips.removeAt(index); clips.add(index - 1, item)
+                                    val remapped = remapStudioCaptionLayersForClipMove(captionLayers.toList(), index, index - 1)
+                                    captionLayers.clear(); captionLayers.addAll(remapped)
+                                    exported = null
                                 }.padding(5.dp))
                                 Text("↓", color = Mint, modifier = Modifier.clickable(enabled = index < clips.lastIndex) {
-                                    val item = clips.removeAt(index); clips.add(index + 1, item); exported = null
+                                    val item = clips.removeAt(index); clips.add(index + 1, item)
+                                    val remapped = remapStudioCaptionLayersForClipMove(captionLayers.toList(), index, index + 1)
+                                    captionLayers.clear(); captionLayers.addAll(remapped)
+                                    exported = null
                                 }.padding(5.dp))
-                                Text("×", color = Gold, modifier = Modifier.clickable { clips.removeAt(index); exported = null }.padding(5.dp))
+                                Text("×", color = Gold, modifier = Modifier.clickable {
+                                    clips.removeAt(index)
+                                    val remapped = removeStudioCaptionLayersForClip(captionLayers.toList(), index)
+                                    captionLayers.clear(); captionLayers.addAll(remapped)
+                                    exported = null
+                                }.padding(5.dp))
                             }
                             Text("IN  ·  ${formatStudioTimelineTime(clip.inMs)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = clip.inMs.toFloat(), onValueChange = { value ->
