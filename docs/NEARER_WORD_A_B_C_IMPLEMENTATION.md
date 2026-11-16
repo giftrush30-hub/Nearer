@@ -74,7 +74,8 @@ translations, books, verses, verse_search (FTS4), lexical_entries, word_occurren
 - The first WEBP pack workflow downloaded the official USFM source and exposed a ZIP filename-regex bug; that bug has been fixed. The Python parser tests passed in the same run. A fresh run must confirm the fix and the Android build.
 - Original-language study detail is live only where trusted alignment records have been imported.
 - Add audio Bible playback, reading plans, pronunciation audio, a true paper-curl page animation and a rights-cleared global translation catalogue.
-- Run CI on the latest exact branch head, resolve any compile/test errors, validate the generated WEBP pack through the Android importer, and conduct airplane-mode and low-end-device tests.
+- The latest Android compile is blocked by errors in `NearbyTransportService.kt` on the updated main/PR merge ref: it calls listener/snapshot/acknowledgement APIs not present in `NearbyConnectionsTransport`. These errors are in the separate messaging workstream; this Bible branch deliberately does not modify messaging. Re-run Android tests/APK build after that API integration is reconciled.
+- Validate the generated WEBP pack through the Android importer on a physical device and conduct airplane-mode and low-end-device tests.
 - Confirm per-translation distribution, offline caching and monetization rights in writing before publishing any pack.
 
 ## Acceptance gates
