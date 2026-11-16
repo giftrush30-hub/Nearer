@@ -46,3 +46,13 @@ data class BibleWordOccurrence(
     val strongNumber:String?,
     val morphologyCode:String?
 )
+
+data class BibleVerseHighlight(
+    val id:String,
+    val translationId:String,
+    val bookId:String,
+    val chapter:Int,
+    val verse:Int,
+    val colorArgb:Long,
+    val createdAt:Long
+)
