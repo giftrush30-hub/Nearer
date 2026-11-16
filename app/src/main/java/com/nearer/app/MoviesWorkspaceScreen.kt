@@ -84,7 +84,8 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
     val movies = remember(context) {
         mutableStateListOf<NearerMovie>().apply {
             addAll(restoredMovies.filter { it.uri in persistedUris }.map { movie ->
-                movie.copy(resumePositionMs = maxOf(movie.resumePositionMs, prefs.getLong("resume_${movie.uri}", 0L)))
+                val legacyResume = runCatching { prefs.getLong("resume_${movie.uri}", 0L) }.getOrDefault(0L)
+                movie.copy(resumePositionMs = maxOf(movie.resumePositionMs, legacyResume))
             })
         }
     }
@@ -221,7 +222,8 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
             return@LaunchedEffect
         }
         statusMessage = ""
-        val resumeAt = maxOf(movie.resumePositionMs, prefs.getLong("resume_${movie.uri}", 0L))
+        val legacyResume = runCatching { prefs.getLong("resume_${movie.uri}", 0L) }.getOrDefault(0L)
+        val resumeAt = maxOf(movie.resumePositionMs, legacyResume)
         player.setMediaItem(MediaItem.fromUri(Uri.parse(movie.uri)), resumeAt)
         player.setPlaybackSpeed(playbackSpeed)
         player.prepare()
@@ -455,8 +457,9 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
                                         }
                                         movies.remove(movie)
                                         saveMovies()
+                                        prefs.edit().remove("resume_${movie.uri}").apply()
                                         MediaUriGrantRegistry.releaseIfUnreferenced(context, Uri.parse(movie.uri))
-                                        statusMessage = "Removed from your Movies library. Shared file access is kept if another NeaRer feature still uses it."
+                                        statusMessage = "Removed from your Movies library."
                                     }.padding(5.dp)
                                 )
                             }
