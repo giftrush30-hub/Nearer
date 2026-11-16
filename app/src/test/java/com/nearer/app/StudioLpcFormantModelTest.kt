@@ -26,8 +26,9 @@ class StudioLpcFormantModelTest {
             (0.6 * sin(2.0 * Math.PI * 220.0 * index / 44_100.0) +
                 0.25 * sin(2.0 * Math.PI * 900.0 * index / 44_100.0)).toFloat()
         })
-        val inputHistory = FloatArray(model.order)
-        val outputHistory = FloatArray(model.order)
+        val history = FloatArray(model.order) { index -> (index + 1) * 0.025f }
+        val inputHistory = history.copyOf()
+        val outputHistory = history.copyOf()
         val sample = 0.37f
         val residual = model.whiten(sample, inputHistory)
         val restored = model.restore(residual, outputHistory)
