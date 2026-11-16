@@ -433,7 +433,7 @@ internal object IncomingFilePayloadPolicy {
     /** Drop stale endpoint bindings as soon as their authenticated peer disconnects. */
     private fun releaseOutgoingMessagesForEndpoint(endpointId: String, stablePeerId: String) {
         if (endpointId.isBlank() || stablePeerId.isBlank()) return
-        var changed = false
+        val releasedMessageIds = mutableListOf<String>()
         pendingOutgoingMessages.forEach { (messageId, pending) ->
             if (OutgoingAckPolicy.matchesExpectedRecipient(
                     expectedEndpointId = pending.endpointId,
@@ -446,11 +446,14 @@ internal object IncomingFilePayloadPolicy {
                 pending.endpointId = ""
                 pending.attempts = 0
                 outgoingMessageTargets.remove(messageId, endpointId)
-                changed = true
+                releasedMessageIds += messageId
             }
         }
-        if (changed && !persistPendingOutbox()) {
-            listener.onStatus("A queued message remains protected, but its disconnected route could not be refreshed on disk.")
+        if (releasedMessageIds.isNotEmpty()) {
+            if (!persistPendingOutbox()) {
+                listener.onStatus("A queued message remains protected, but its disconnected route could not be refreshed on disk.")
+            }
+            releasedMessageIds.forEach { messageId -> listener.onMessageStatus(messageId, "Queued") }
         }
     }
 
