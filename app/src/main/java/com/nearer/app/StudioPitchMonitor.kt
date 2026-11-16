@@ -21,9 +21,11 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.onDispose
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -151,9 +153,11 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
     var keyRoot by remember { mutableStateOf(0) }
     var minorScale by remember { mutableStateOf(false) }
     var monitorEnabled by remember { mutableStateOf(false) }
-    val hasHeadphoneOutput = remember(context) {
-        val manager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
-        manager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.any {
+    val audioManager = remember(context) {
+        context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
+    }
+    fun headphoneOutputConnected(): Boolean =
+        audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.any {
             it.isSink && it.type in setOf(
                 AudioDeviceInfo.TYPE_WIRED_HEADSET,
                 AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
@@ -162,24 +166,41 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                 AudioDeviceInfo.TYPE_BLUETOOTH_SCO
             )
         } == true
+    var hasHeadphoneOutput by remember(context) { mutableStateOf(headphoneOutputConnected()) }
+    DisposableEffect(audioManager) {
+        val callback = object : AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
+                hasHeadphoneOutput = headphoneOutputConnected()
+            }
+            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
+                hasHeadphoneOutput = headphoneOutputConnected()
+            }
+        }
+        audioManager?.registerAudioDeviceCallback(callback, android.os.Handler(android.os.Looper.getMainLooper()))
+        onDispose { audioManager?.unregisterAudioDeviceCallback(callback) }
     }
     val keys = listOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B")
 
-    LaunchedEffect(monitorEnabled, preferredInputId) {
+    LaunchedEffect(monitorEnabled, preferredInputId, preferUnprocessedInput, hasHeadphoneOutput) {
         if (!monitorEnabled) {
             reading = null
             status = "Microphone monitoring is off. Turn it on when you are ready."
             diagnostics = "Monitoring is off."
             return@LaunchedEffect
         }
+        if (!hasHeadphoneOutput) {
+            status = "Connect wired, USB or Bluetooth headphones before enabling live microphone playback. Speaker monitoring is blocked to prevent feedback."
+            monitorEnabled = false
+            return@LaunchedEffect
+        }
         val frameSize = 2_048
+        val pitchFrames = StudioPcmFrameAccumulator(frameSize)
         if (StudioAudioEnginePolicy.useOboe(android.os.Build.VERSION.SDK_INT, preferredInputId)) {
             val nativeStarted = withContext(Dispatchers.IO) {
                 StudioOboeEngine.start(preferredInputId, preferUnprocessedInput)
             }
             if (nativeStarted) {
                 val analysisChunk = FloatArray(512)
-                val monoNative = FloatArray(frameSize)
                 val nativeRate = withContext(Dispatchers.IO) {
                     StudioOboeEngine.diagnostics().getOrNull(0)?.toInt()?.takeIf { it > 0 } ?: 48_000
                 }
@@ -191,14 +212,9 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             StudioOboeEngine.readAnalysis(analysisChunk)
                         }
                         if (count > 0) {
-                            for (i in 0 until count) {
-                                monoNative[nativeOffset + i] = analysisChunk[i]
-                            }
-                            nativeOffset += count
-                            if (nativeOffset >= frameSize) {
-                                reading = StudioPitchEngine.detect(monoNative, nativeRate, 70f, 1_000f)
+                            pitchFrames.append(analysisChunk, count) { frame ->
+                                reading = StudioPitchEngine.detect(frame, nativeRate, 70f, 1_000f)
                                 status = if (reading == null) "No stable pitch yet — sing or hold one clear note." else "Live pitch detected · Oboe native engine"
-                                nativeOffset = 0
                             }
                         } else {
                             delay(4)
@@ -318,8 +334,8 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         val chunkSize = 512
         val pcm = ShortArray(chunkSize)
         var diagnosticTick = 0
-        val mono = FloatArray(frameSize)
-        var pitchOffset = 0
+        val floatPcm = FloatArray(chunkSize)
+        val pitchFramesJava = StudioPcmFrameAccumulator(frameSize)
         try {
             while (isActive) {
                 val count = withContext(Dispatchers.IO) {
@@ -338,9 +354,12 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                     continue
                 }
                 for (i in 0 until count) {
-                    mono[pitchOffset + i] = pcm[i] / 32768f
+                    floatPcm[i] = pcm[i] / 32768f
                 }
-                pitchOffset += count
+                pitchFramesJava.append(floatPcm, count) { frame ->
+                    reading = StudioPitchEngine.detect(frame, sampleRate, 70f, 1_000f)
+                    status = if (reading == null) "No stable pitch yet — sing or hold one clear note." else "Live pitch detected"
+                }
                 diagnosticTick++
                 if (diagnosticTick >= 24) {
                     diagnosticTick = 0
@@ -351,11 +370,6 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                     val latencyMs = latencyFrames * 1000L / sampleRate
                     val mode = if (monitorTrack?.performanceMode == AudioTrack.PERFORMANCE_MODE_LOW_LATENCY) "low-latency path requested" else "standard output path"
                     diagnostics = "$sampleRate Hz · $inputDevice → $outputDevice · $mode · output buffer ~${latencyMs} ms · underruns $underruns"
-                }
-                if (pitchOffset >= frameSize) {
-                    reading = StudioPitchEngine.detect(mono, sampleRate, 70f, 1_000f)
-                    status = if (reading == null) "No stable pitch yet — sing or hold one clear note." else "Live pitch detected"
-                    pitchOffset = 0
                 }
             }
         } finally {
@@ -386,15 +400,18 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         Button(
             onClick = { monitorEnabled = !monitorEnabled },
             modifier = Modifier.fillMaxWidth(),
+            enabled = hasHeadphoneOutput || monitorEnabled,
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (monitorEnabled) Mint else Panel,
-                contentColor = if (monitorEnabled) Midnight else Gold
+                contentColor = if (monitorEnabled) Midnight else Gold,
+                disabledContainerColor = Panel,
+                disabledContentColor = Muted
             )
         ) { Text(if (monitorEnabled) "LIVE VOCAL MONITOR · ON" else "TURN ON LIVE VOCAL MONITOR") }
         Text(
             if (monitorEnabled) "Live monitor diagnostics appear below: sample rate, routed devices, estimated output-buffer time and underruns. Wired or USB headphones are strongly recommended."
             else if (hasHeadphoneOutput) "Headphone output detected. Bluetooth may still introduce noticeable delay."
-            else "Connect wired or USB headphones before monitoring. Speaker playback can feed back into the microphone.",
+            else "Connect wired, USB or Bluetooth headphones before monitoring. Speaker playback is blocked to prevent feedback.",
             color = Muted, fontSize = 10.sp, lineHeight = 15.sp
         )
         Surface(color = Panel, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
