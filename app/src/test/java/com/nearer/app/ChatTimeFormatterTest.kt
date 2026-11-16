@@ -13,7 +13,7 @@ class ChatTimeFormatterTest {
         try {
             TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
             Locale.setDefault(Locale.US)
-            assertEquals("13:05", formatChatTime(1_700_000_000_000L))
+            assertEquals("13:05", formatChatTime(1_699_967_100_000L))
         } finally {
             TimeZone.setDefault(previousZone)
             Locale.setDefault(previousLocale)
