@@ -3260,6 +3260,41 @@ class MainActivity : ComponentActivity() {
             chatNotice = "NeaRer could not access the selected file(s). Choose them again from a location that allows sharing."
             return
         }
+        if (readable.size > 1) {
+            val endpoint = hybridConnectedEndpoint
+            if (endpoint != null) {
+                val usedNames = HashSet<String>()
+                val bundleSources = readable.mapIndexed { index, uri ->
+                    var originalName = "shared-file-" + (index + 1)
+                    runCatching {
+                        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) originalName = cursor.getString(0) ?: originalName
+                        }
+                    }
+                    val safeName = TransferFileNamePolicy.safeName(originalName)
+                    var relativePath = safeName
+                    var suffix = 2
+                    while (!usedNames.add(relativePath)) {
+                        val dot = safeName.lastIndexOf('.')
+                        relativePath = if (dot > 0) {
+                            safeName.substring(0, dot) + " (" + suffix + ")" + safeName.substring(dot)
+                        } else safeName + " (" + suffix + ")"
+                        suffix++
+                    }
+                    NearbyBundleSource(uri, relativePath, contentResolver.getType(uri))
+                }
+                if (nearbyTransport?.sendBundle(endpoint, "Shared files", bundleSources) == true) {
+                    nearbyQueueTotal = 0
+                    nearbyQueueCompleted = 0
+                    currentNearbyQueuedFile = null
+                    nearbyQueuePeerStableId = null
+                    pendingNearbyFileQueue.clear()
+                    persistNearbyFileQueue()
+                    chatNotice = "Preparing one resumable bundle with " + bundleSources.size + " files…"
+                    return
+                }
+            }
+        }
         readable.forEach { pendingNearbyFileQueue.addLast(it) }
         currentNearbyQueuedFile = null
         nearbyQueuePeerStableId = peerStableId
