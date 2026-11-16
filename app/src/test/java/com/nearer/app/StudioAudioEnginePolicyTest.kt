@@ -14,12 +14,12 @@ class StudioAudioEnginePolicyTest {
         assertTrue(StudioAudioEnginePolicy.useOboe(35, null))
     }
 
-    @Test fun preservesExplicitUsbRoutingOnVersionsBeforeDeviceIdRouting() {
-        assertFalse(StudioAudioEnginePolicy.useOboe(27, 12))
+    @Test fun preservesJavaFallbackOnAndroid26ForExplicitUsbInput() {
         assertFalse(StudioAudioEnginePolicy.useOboe(26, 12))
     }
 
-    @Test fun allowsExplicitUsbRoutingFromAndroid28() {
+    @Test fun allowsExplicitUsbRoutingFromAndroid27() {
+        assertTrue(StudioAudioEnginePolicy.useOboe(27, 12))
         assertTrue(StudioAudioEnginePolicy.useOboe(28, 12))
     }
 }
