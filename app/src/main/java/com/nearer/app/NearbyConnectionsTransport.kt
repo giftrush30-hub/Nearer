@@ -152,14 +152,8 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     }
 
     private fun encodedName(): String = "${localName.take(23)}|$localStableId"
-    private fun decodeName(value: String): Pair<String, String> {
-        val split = value.lastIndexOf('|')
-        if (split in 1 until value.lastIndex) {
-            val identity = NeaRerIdentity.normalize(value.substring(split + 1))
-            if (identity != null) return value.substring(0, split).take(23) to identity
-        }
-        return value.take(23) to ""
-    }
+    private fun decodeName(value: String): Pair<String, String> =
+        NearbyEndpointNameCodec.decode(value)
 
     private data class FileMeta(val endpointId: String, val name: String, val size: Long, val sha256: String = "")
     private data class OutgoingFile(
