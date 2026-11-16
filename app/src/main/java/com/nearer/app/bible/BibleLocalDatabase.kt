@@ -215,7 +215,7 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
     fun findAlignedLexicalEntries(verse:BibleVerse,surfaceForm:String,tokenIndex:Int?=null):List<BibleWordStudyEntry> {
         val out=mutableListOf<BibleWordStudyEntry>()
         readableDatabase.rawQuery("""SELECT DISTINCT l.* FROM word_occurrences o
-            JOIN lexical_entries l ON l.id=o.lemma_id
+            JOIN lexical_entries l ON (l.id=o.lemma_id OR (o.lemma_id IS NULL AND l.strong_number=o.strong_number))
             WHERE o.translation_id=? AND o.book_id=? AND o.chapter=? AND o.verse=?
             AND o.surface_form=? COLLATE NOCASE AND (? IS NULL OR o.token_index=?) ORDER BY o.token_index""",
             arrayOf(verse.translationId,verse.bookId,verse.chapter.toString(),verse.verse.toString(),
