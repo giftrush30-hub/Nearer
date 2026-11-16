@@ -213,7 +213,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
                             .build()
                     )
                     .setTransferMode(AudioTrack.MODE_STREAM)
-                    .setBufferSizeInBytes(maxOf(minOutputBuffer, frameSize * 2 * 2))
+                    .setBufferSizeInBytes(maxOf(minOutputBuffer, 512 * 2 * 2))
                     .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                     .build()
                     .also { track ->
@@ -226,27 +226,35 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
             }
         } else null
 
-        val pcm = ShortArray(frameSize)
+        val chunkSize = 512
+        val pcm = ShortArray(chunkSize)
         val mono = FloatArray(frameSize)
+        var pitchOffset = 0
         try {
             while (isActive) {
                 val count = withContext(Dispatchers.IO) {
-                    recorder.read(pcm, 0, pcm.size, AudioRecord.READ_BLOCKING)
+                    val read = recorder.read(pcm, 0, pcm.size, AudioRecord.READ_BLOCKING)
+                    if (read > 0 && monitorTrack != null) {
+                        val written = monitorTrack.write(pcm, 0, read, AudioTrack.WRITE_BLOCKING)
+                        if (written < 0) -2 else read
+                    } else read
                 }
-                if (count > 0 && monitorTrack != null) {
-                    val written = withContext(Dispatchers.IO) {
-                        monitorTrack.write(pcm, 0, count, AudioTrack.WRITE_BLOCKING)
-                    }
-                    if (written < 0) status = "Live monitor output was interrupted."
+                if (count == -2) {
+                    status = "Live monitor output was interrupted."
+                    continue
                 }
                 if (count <= 0) {
                     status = "Microphone read interrupted."
                     continue
                 }
-                for (i in 0 until count) mono[i] = pcm[i] / 32768f
-                if (count == frameSize) {
+                for (i in 0 until count) {
+                    mono[pitchOffset + i] = pcm[i] / 32768f
+                }
+                pitchOffset += count
+                if (pitchOffset >= frameSize) {
                     reading = StudioPitchEngine.detect(mono, sampleRate, 70f, 1_000f)
                     status = if (reading == null) "No stable pitch yet — sing or hold one clear note." else "Live pitch detected"
+                    pitchOffset = 0
                 }
             }
         } finally {
