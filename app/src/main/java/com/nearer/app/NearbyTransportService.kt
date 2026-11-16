@@ -36,7 +36,7 @@ class NearbyTransportService : Service() {
                 listener.onConnected(peer.endpointId, peer.displayName, peer.stablePeerId)
             }
             lastStatus?.let(listener::onStatus)
-            inbox.snapshot().forEach(::dispatchInboxEntry)
+            replayInboxEntries()
         }
 
         fun detachUiListener(listener: NearbyConnectionsTransport.Listener) {
@@ -47,11 +47,7 @@ class NearbyTransportService : Service() {
         }
 
         fun replayPendingMessages() {
-            val pending = inbox.snapshot()
-            // A previous UI persistence attempt may have failed without invoking
-            // its success callback. Resume is a safe point to retry those entries.
-            pending.forEach { inFlightMessageIds.remove(inboxKey(it.peerId, it.messageId)) }
-            pending.forEach(::dispatchInboxEntry)
+            replayInboxEntries()
         }
     }
 
@@ -258,6 +254,25 @@ class NearbyTransportService : Service() {
                 .onFailure { lastStatus = "Nearby background service could not start discovery: ${it.localizedMessage ?: "check permissions"}" }
         }
         return START_STICKY
+    }
+
+    /**
+     * Re-establishes the durable dedupe boundary before replaying an inbox event.
+     * Direct messages also retry their ACK when the peer is currently connected.
+     * Mesh messages persist the origin-scoped dedupe record; their final receipt
+     * remains owned by the mesh receipt queue.
+     */
+    private fun replayInboxEntries() {
+        val pending = inbox.snapshot()
+        pending.forEach { inFlightMessageIds.remove(inboxKey(it.peerId, it.messageId)) }
+        pending.forEach { entry ->
+            val dedupeCommitted = if (entry.mesh) {
+                nearbyTransport.persistIncomingMessageDedupe(entry.peerId, entry.messageId)
+            } else {
+                nearbyTransport.acknowledgePersistedIncomingMessage(entry.peerId, entry.messageId)
+            }
+            dispatchInboxEntry(entry, dedupeCommitted)
+        }
     }
 
     private fun dispatchInboxEntry(entry: NearbyIncomingMessageInbox.Entry, dedupeCommitted: Boolean = false) {
