@@ -47,30 +47,55 @@ internal object FolderArchiveExtractor {
         var fileCount = 0
         var directoryCount = 0
         var totalBytes = 0L
+        // Include implicit parent folders in the entry budget and path-conflict map.
+        // This keeps deeply nested archives bounded and avoids quadratic descendant scans.
         val seen = HashMap<String, EntryKind>()
-        val folded = HashSet<String>()
+        val folded = HashMap<String, String>()
+        val explicitEntries = HashSet<String>()
         val buffer = ByteArray(BUFFER_BYTES)
 
         try {
             ZipInputStream(BufferedInputStream(FileInputStream(archive))).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
-                    if (seen.size >= MAX_ENTRIES) throw IOException("The archive contains too many entries")
                     val normalized = validateEntryPath(entry.name, entry.isDirectory)
-                    val foldedPath = normalized.lowercase(Locale.ROOT)
-                    if (!folded.add(foldedPath)) throw IOException("The archive contains duplicate or conflicting paths")
                     val kind = if (entry.isDirectory) EntryKind.DIRECTORY else EntryKind.FILE
                     val parts = normalized.split('/')
                     for (index in 1 until parts.size) {
                         val parent = parts.take(index).joinToString("/")
+                        val parentFolded = parent.lowercase(Locale.ROOT)
+                        val previousParent = folded.putIfAbsent(parentFolded, parent)
+                        if (previousParent != null && previousParent != parent) {
+                            throw IOException("The archive contains case-conflicting folder paths")
+                        }
                         if (seen[parent] == EntryKind.FILE) {
                             throw IOException("A file entry cannot be used as a folder")
                         }
+                        if (seen[parent] == null) {
+                            if (seen.size >= MAX_ENTRIES) throw IOException("The archive contains too many entries")
+                            seen[parent] = EntryKind.DIRECTORY
+                        }
                     }
-                    if (kind == EntryKind.FILE && seen.keys.any { it.startsWith("$normalized/") }) {
-                        throw IOException("A folder cannot be replaced by a file")
+                    val foldedPath = normalized.lowercase(Locale.ROOT)
+                    val previousPath = folded.putIfAbsent(foldedPath, normalized)
+                    if (previousPath != null && previousPath != normalized) {
+                        throw IOException("The archive contains case-conflicting paths")
                     }
-                    seen[normalized] = kind
+                    val existingKind = seen[normalized]
+                    if (!explicitEntries.add(normalized)) {
+                        throw IOException("The archive contains duplicate paths")
+                    }
+                    if (kind == EntryKind.FILE) {
+                        if (existingKind != null) throw IOException("A folder cannot be replaced by a file")
+                        if (seen.size >= MAX_ENTRIES) throw IOException("The archive contains too many entries")
+                        seen[normalized] = EntryKind.FILE
+                    } else {
+                        if (existingKind == EntryKind.FILE) throw IOException("A file cannot be replaced by a folder")
+                        if (existingKind == null) {
+                            if (seen.size >= MAX_ENTRIES) throw IOException("The archive contains too many entries")
+                            seen[normalized] = EntryKind.DIRECTORY
+                        }
+                    }
 
                     val output = File(staging, normalized).canonicalFile
                     val stagingPath = staging.canonicalPath + File.separator
@@ -93,8 +118,8 @@ internal object FolderArchiveExtractor {
                                     throw IOException("Not enough free storage to safely extract this folder")
                                 }
                                 target.write(buffer, 0, read)
-                                entryBytes += read.toLong()
-                                totalBytes += read.toLong()
+                                entryBytes = Math.addExact(entryBytes, read.toLong())
+                                totalBytes = Math.addExact(totalBytes, read.toLong())
                             }
                             target.flush()
                         }
