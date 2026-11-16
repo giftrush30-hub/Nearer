@@ -9,8 +9,12 @@ internal object OutgoingAckPolicy {
         incomingPeerId: String?
     ): Boolean {
         if (expectedEndpointId.isNullOrBlank() || incomingEndpointId.isBlank()) return false
+        return expectedEndpointId == incomingEndpointId && sameStablePeer(expectedPeerId, incomingPeerId)
+    }
+
+    fun sameStablePeer(expectedPeerId: String?, incomingPeerId: String?): Boolean {
         val expectedPeer = NeaRerIdentity.normalize(expectedPeerId) ?: return false
         val incomingPeer = NeaRerIdentity.normalize(incomingPeerId) ?: return false
-        return expectedEndpointId == incomingEndpointId && expectedPeer == incomingPeer
+        return expectedPeer == incomingPeer
     }
 }
