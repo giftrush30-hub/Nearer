@@ -85,3 +85,8 @@ The initial baseline map included `AppInstallResultActivity` in the final lines 
 ## Second extraction: nearby presence model
 
 The small `NearbyPerson` model and `seenAgo` presentation formatter have been moved from the end of `MainActivity.kt` into `NearbyPerson.kt`. The formatter accepts an optional `nowMillis` value (defaulting to the system clock) so its minute/hour/day boundaries and future-timestamp clamping can be tested deterministically. `NearbyPersonTest.kt` covers those cases. No discovery protocol, storage format, presence expiry policy, or UI wording was changed.
+
+
+## Third extraction: transfer byte formatter
+
+The pure `formatTransferBytes` helper now lives in `TransferByteFormatter.kt` rather than at the bottom of `MainActivity.kt`. Its binary 1024-based thresholds, US-locale decimal formatting, and labels are unchanged. `TransferByteFormatterTest.kt` covers byte/KB/MB/GB thresholds and decimal formatting. This is a shared presentation utility, not transfer protocol logic.
