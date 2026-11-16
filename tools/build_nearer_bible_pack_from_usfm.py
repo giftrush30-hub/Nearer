@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""Build a NeaRer Word ZIP pack from a publisher-authorised USFM ZIP."""
+
+import argparse
+import hashlib
+import json
+import re
+import sys
+import zipfile
+from pathlib import Path
+
+BOOKS = [
+    ("GEN","Genesis","OT"),("EXO","Exodus","OT"),("LEV","Leviticus","OT"),
+    ("NUM","Numbers","OT"),("DEU","Deuteronomy","OT"),("JOS","Joshua","OT"),
+    ("JDG","Judges","OT"),("RUT","Ruth","OT"),("1SA","1 Samuel","OT"),
+    ("2SA","2 Samuel","OT"),("1KI","1 Kings","OT"),("2KI","2 Kings","OT"),
+    ("1CH","1 Chronicles","OT"),("2CH","2 Chronicles","OT"),("EZR","Ezra","OT"),
+    ("NEH","Nehemiah","OT"),("EST","Esther","OT"),("JOB","Job","OT"),
+    ("PSA","Psalms","OT"),("PRO","Proverbs","OT"),("ECC","Ecclesiastes","OT"),
+    ("SNG","Song of Solomon","OT"),("ISA","Isaiah","OT"),("JER","Jeremiah","OT"),
+    ("LAM","Lamentations","OT"),("EZK","Ezekiel","OT"),("DAN","Daniel","OT"),
+    ("HOS","Hosea","OT"),("JOL","Joel","OT"),("AMO","Amos","OT"),
+    ("OBA","Obadiah","OT"),("JON","Jonah","OT"),("MIC","Micah","OT"),
+    ("NAM","Nahum","OT"),("HAB","Habakkuk","OT"),("ZEP","Zephaniah","OT"),
+    ("HAG","Haggai","OT"),("ZEC","Zechariah","OT"),("MAL","Malachi","OT"),
+    ("MAT","Matthew","NT"),("MRK","Mark","NT"),("LUK","Luke","NT"),
+    ("JHN","John","NT"),("ACT","Acts","NT"),("ROM","Romans","NT"),
+    ("1CO","1 Corinthians","NT"),("2CO","2 Corinthians","NT"),("GAL","Galatians","NT"),
+    ("EPH","Ephesians","NT"),("PHP","Philippians","NT"),("COL","Colossians","NT"),
+    ("1TH","1 Thessalonians","NT"),("2TH","2 Thessalonians","NT"),
+    ("1TI","1 Timothy","NT"),("2TI","2 Timothy","NT"),("TIT","Titus","NT"),
+    ("PHM","Philemon","NT"),("HEB","Hebrews","NT"),("JAS","James","NT"),
+    ("1PE","1 Peter","NT"),("2PE","2 Peter","NT"),("1JN","1 John","NT"),
+    ("2JN","2 John","NT"),("3JN","3 John","NT"),("JUD","Jude","NT"),("REV","Revelation","NT")
+]
+BOOK_MAP = {code: (i + 1, name, testament) for i, (code, name, testament) in enumerate(BOOKS)}
+
+def clean_inline(text: str) -> str:
+    text = re.sub(r"\\f\b.*?\\f\*", " ", text)
+    text = re.sub(r"\\x\b.*?\\x\*", " ", text)
+    text = re.sub(r"\\fig\b.*?\\fig\*", " ", text)
+    text = re.sub(r"\\[a-zA-Z0-9]+\*?", " ", text)
+    text = re.sub(r"\|[^\s]+", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+def parse_usfm(raw: str, expected_code: str):
+    code_match = re.search(r"(?m)^\\id\s+([A-Z0-9]{3})\b", raw)
+    code = code_match.group(1) if code_match else expected_code
+    if code not in BOOK_MAP:
+        raise ValueError(f"Unsupported or unknown USFM book code: {code}")
+    verses = {}
+    chapter = 0
+    current_verse = None
+    chunks = []
+
+    def flush():
+        nonlocal chunks, current_verse
+        if chapter > 0 and current_verse is not None:
+            text = clean_inline(" ".join(chunks))
+            if text:
+                key = (chapter, current_verse)
+                verses[key] = (verses.get(key, "") + " " + text).strip()
+        chunks = []
+        current_verse = None
+
+    for line in raw.replace("\r", "").split("\n"):
+        chapter_match = re.match(r"^\s*\\c\s+(\d+)", line)
+        if chapter_match:
+            flush()
+            chapter = int(chapter_match.group(1))
+            continue
+        verse_match = re.match(r"^\s*\\v\s+(\d+[a-z]?(?:-\d+[a-z]?)?)\s*(.*)$", line)
+        if verse_match:
+            flush()
+            verse_token = verse_match.group(1)
+            if "-" in verse_token:
+                raise ValueError(f"Verse bridge {verse_token} needs manual versification review in {code}")
+            current_verse = int(re.match(r"\d+", verse_token).group(0))
+            chunks = [verse_match.group(2)]
+            continue
+        if current_verse is not None:
+            if re.match(r"^\s*\\(?:s\d*|ms\d*|r|d|sp|cl|cp|qa|qc|qac|mt\d*)\b", line):
+                continue
+            cleaned = clean_inline(line)
+            if cleaned:
+                chunks.append(cleaned)
+    flush()
+    if not verses:
+        raise ValueError(f"No Scripture verses parsed from {code}")
+    return code, verses
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("usfm_zip", type=Path)
+    parser.add_argument("output_zip", type=Path)
+    parser.add_argument("--translation-id", required=True)
+    parser.add_argument("--translation-name", required=True)
+    parser.add_argument("--language-tag", required=True)
+    parser.add_argument("--language-name", required=True)
+    parser.add_argument("--abbreviation", required=True)
+    parser.add_argument("--source-id", required=True)
+    parser.add_argument("--license-id", required=True)
+    parser.add_argument("--attribution", required=True)
+    parser.add_argument("--copyright-notice", default="")
+    parser.add_argument("--canon-id", default="protestant-66")
+    parser.add_argument("--pack-id", required=True)
+    args = parser.parse_args()
+
+    if not args.usfm_zip.is_file():
+        parser.error("Input USFM ZIP does not exist.")
+    if not args.attribution.strip() or not args.license_id.strip():
+        parser.error("Attribution and licence ID are mandatory.")
+
+    parsed_books = {}
+    with zipfile.ZipFile(args.usfm_zip) as archive:
+        for info in archive.infolist():
+            if info.is_dir() or not info.filename.lower().endswith((".usfm", ".sfm")):
+                continue
+            if ".." in Path(info.filename).parts:
+                raise ValueError("Unsafe path in source USFM archive.")
+            raw = archive.read(info).decode("utf-8-sig")
+            id_match = re.search(r"(?m)^\\id\s+([A-Z0-9]{3})\b", raw)
+            if not id_match:
+                continue
+            code = id_match.group(1)
+            if code in BOOK_MAP:
+                _, verses = parse_usfm(raw, code)
+                parsed_books[code] = verses
+
+    missing = [code for code, _, _ in BOOKS if code not in parsed_books]
+    if missing:
+        raise ValueError("Incomplete Protestant canon; missing books: " + ", ".join(missing))
+    books_lines = []
+    verse_lines = []
+    for code, name, testament in BOOKS:
+        canonical_number = BOOK_MAP[code][0]
+        chapters = sorted({chapter for chapter, _ in parsed_books[code]})
+        if not chapters or chapters != list(range(1, max(chapters) + 1)):
+            raise ValueError(f"Missing chapter(s) in {name}")
+        books_lines.append(json.dumps({
+            "bookId": code, "canonicalNumber": canonical_number, "name": name,
+            "testament": testament, "chapterCount": max(chapters)
+        }, ensure_ascii=False, separators=(",", ":")))
+        for (chapter, verse), text in sorted(parsed_books[code].items()):
+            verse_lines.append(json.dumps({
+                "translationId": args.translation_id, "bookId": code, "bookName": name,
+                "chapter": chapter, "verse": verse, "text": text
+            }, ensure_ascii=False, separators=(",", ":")))
+
+    books_bytes = ("\n".join(books_lines) + "\n").encode("utf-8")
+    scripture_bytes = ("\n".join(verse_lines) + "\n").encode("utf-8")
+    manifest = {
+        "packId": args.pack_id, "version": 1,
+        "translationId": args.translation_id, "translationName": args.translation_name,
+        "languageTag": args.language_tag, "languageName": args.language_name,
+        "abbreviation": args.abbreviation, "canonId": args.canon_id,
+        "sourceId": args.source_id, "licenseId": args.license_id,
+        "copyrightNotice": args.copyright_notice or None,
+        "coverage": "COMPLETE_BIBLE", "bookCount": len(BOOKS),
+        "verseCount": len(verse_lines),
+        "sha256": hashlib.sha256(scripture_bytes).hexdigest(),
+        "minimumReaderVersion": 1, "attribution": args.attribution,
+        "packFileName": args.output_zip.name
+    }
+    manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    with zipfile.ZipFile(args.output_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as out:
+        out.writestr("manifest.json", manifest_bytes)
+        out.writestr("books.ndjson", books_bytes)
+        out.writestr("scripture.ndjson", scripture_bytes)
+    print(f"Created {args.output_zip} — {len(BOOKS)} books, {len(verse_lines)} verses.")
+    print("Verify the output and publisher rights before distributing it.")
+    return 0
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        print(f"Bible pack build failed: {exc}", file=sys.stderr)
+        raise SystemExit(2)
