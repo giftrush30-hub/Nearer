@@ -73,6 +73,11 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
             }
         }
     }
+    var showCreator by remember { mutableStateOf(false) }
+    if (showCreator) {
+        MoviesCreatorWorkspaceScreen(onBack = { showCreator = false })
+        return
+    }
     var query by remember { mutableStateOf("") }
     var favouritesOnly by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<NearerMovie?>(null) }
@@ -135,7 +140,8 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text(if (selected == null) "‹  MORE" else "‹  MOVIES", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable { if (selected != null) { prefs.edit().putLong("resume_" + selected!!.uri.toString(), player.currentPosition).apply(); player.pause(); selected = null } else onBack() }.padding(vertical = 8.dp))
-            Text("OFFLINE FIRST", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text("CREATOR STUDIO ↗", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
+                modifier = Modifier.clickable { showCreator = true }.padding(8.dp))
         }
 
         if (selected != null) {
