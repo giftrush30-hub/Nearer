@@ -153,8 +153,7 @@ internal class StudioPitchCorrectionProcessor(settings: StudioPitchCorrectionSet
         smoothedRatio = if (smoothing <= 0f) targetRatio else smoothing * smoothedRatio + (1f - smoothing) * targetRatio
     }
 
-    private fun delayForPhase(value: Float): Float =
-        ((1f - cos(2f * PI.toFloat() * value)) * 0.5f) * grainSamples
+    private fun delayForPhase(value: Float): Float = wrapPhase(value + 0.5f) * grainSamples
 
     private fun readDelayed(channel: Int, delay: Float): Float {
         val whole = delay.toInt()
