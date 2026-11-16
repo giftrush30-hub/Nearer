@@ -54,27 +54,42 @@ internal class StudioTrackToneProcessor(
         if (frames <= 0) return
         val output = replaceOutputBuffer(frames * 4)
         repeat(frames) {
-            for (channel in 0..1) {
-                val input = inputBuffer.short / 32768f
-                lowState[channel] += lowCoefficient * (input - lowState[channel])
-                upperState[channel] += upperCoefficient * (input - upperState[channel])
-                val low = lowState[channel]
-                val mid = upperState[channel] - lowState[channel]
-                val high = input - upperState[channel]
-                val equalized = low * lowGain + mid * midGain + high * highGain
-
-                val delayedA = delayA[channel][delayIndexA]
-                val delayedB = delayB[channel][delayIndexB]
-                delayA[channel][delayIndexA] = (input + delayedA * feedbackA).coerceIn(-1.5f, 1.5f)
-                delayB[channel][delayIndexB] = (input + delayedB * feedbackB).coerceIn(-1.5f, 1.5f)
-                val reverb = (delayedA + delayedB) * 0.5f
-                val mixed = (equalized * (1f - wetMix) + reverb * wetMix).coerceIn(-1f, 1f)
-                output.putShort((mixed * 32767f).roundToInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort())
-            }
-            delayIndexA = (delayIndexA + 1) % delayA[0].size
-            delayIndexB = (delayIndexB + 1) % delayB[0].size
+            val left = inputBuffer.short / 32768f
+            val right = inputBuffer.short / 32768f
+            processFrame(left, right, output)
         }
         output.flip()
+    }
+
+    override fun onQueueEndOfStream() {
+        if (wetMix <= 0f) return
+        // Let the short feedback delays decay instead of cutting the reverb at the source boundary.
+        val tailFrames = maxOf(delayA[0].size, delayB[0].size) * 4
+        val output = replaceOutputBuffer(tailFrames * 4)
+        repeat(tailFrames) { processFrame(0f, 0f, output) }
+        output.flip()
+    }
+
+    private fun processFrame(left: Float, right: Float, output: ByteBuffer) {
+        for (channel in 0..1) {
+            val input = if (channel == 0) left else right
+            lowState[channel] += lowCoefficient * (input - lowState[channel])
+            upperState[channel] += upperCoefficient * (input - upperState[channel])
+            val low = lowState[channel]
+            val mid = upperState[channel] - lowState[channel]
+            val high = input - upperState[channel]
+            val equalized = low * lowGain + mid * midGain + high * highGain
+
+            val delayedA = delayA[channel][delayIndexA]
+            val delayedB = delayB[channel][delayIndexB]
+            delayA[channel][delayIndexA] = (input + delayedA * feedbackA).coerceIn(-1.5f, 1.5f)
+            delayB[channel][delayIndexB] = (input + delayedB * feedbackB).coerceIn(-1.5f, 1.5f)
+            val reverb = (delayedA + delayedB) * 0.5f
+            val mixed = (equalized * (1f - wetMix) + reverb * wetMix).coerceIn(-1f, 1f)
+            output.putShort((mixed * 32767f).roundToInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort())
+        }
+        delayIndexA = (delayIndexA + 1) % delayA[0].size
+        delayIndexB = (delayIndexB + 1) % delayB[0].size
     }
 
     override fun onFlush() = resetDsp()
