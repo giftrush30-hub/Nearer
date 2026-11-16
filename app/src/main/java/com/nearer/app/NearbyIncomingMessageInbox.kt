@@ -31,22 +31,24 @@ internal class NearbyIncomingMessageInbox(context: Context) {
 
     fun put(entry: Entry): Boolean = synchronized(lock) {
         if (restoreFailed || !isValid(entry)) return false
-        val existing = entries[entry.messageId]
+        val entryKey = key(entry.peerId, entry.messageId)
+        val existing = entries[entryKey]
         if (existing != null) return existing == entry
         if (entries.size >= MAX_ENTRIES) return false
-        entries[entry.messageId] = entry
+        entries[entryKey] = entry
         if (persistLocked()) true else {
-            entries.remove(entry.messageId)
+            entries.remove(entryKey)
             false
         }
     }
 
     fun snapshot(): List<Entry> = synchronized(lock) { entries.values.toList() }
 
-    fun remove(messageId: String): Boolean = synchronized(lock) {
-        val removed = entries.remove(messageId) ?: return true
+    fun remove(peerId: String, messageId: String): Boolean = synchronized(lock) {
+        val entryKey = key(peerId, messageId)
+        val removed = entries.remove(entryKey) ?: return true
         if (persistLocked()) true else {
-            entries[messageId] = removed
+            entries[entryKey] = removed
             false
         }
     }
@@ -80,13 +82,15 @@ internal class NearbyIncomingMessageInbox(context: Context) {
                     replyToSender = item.optString("replyToSender").takeIf { it.isNotBlank() },
                     mesh = item.optBoolean("mesh", false)
                 )
-                if (isValid(entry) && entries.size < MAX_ENTRIES) entries.putIfAbsent(entry.messageId, entry)
+                if (isValid(entry) && entries.size < MAX_ENTRIES) entries.putIfAbsent(key(entry.peerId, entry.messageId), entry)
             }
         } catch (_: Exception) {
             // Keep unreadable ciphertext intact; never replace it with an empty inbox.
             restoreFailed = true
         }
     }
+
+    private fun key(peerId: String, messageId: String): String = "$peerId|$messageId"
 
     private fun persistLocked(): Boolean = try {
         val array = JSONArray()
