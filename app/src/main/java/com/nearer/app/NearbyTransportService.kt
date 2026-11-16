@@ -271,7 +271,7 @@ class NearbyTransportService : Service() {
                 listener.onMessageWithReply(
                     entry.peerId, entry.senderName, entry.messageId, entry.body,
                     entry.replyToMessageId, entry.replyToPreview, entry.replyToSender,
-                    acknowledgeAfterUiCommit
+                    removeAfterUiCommit
                 )
             }
         } catch (_: Exception) {
