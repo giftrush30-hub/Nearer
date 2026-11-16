@@ -2,6 +2,8 @@ package com.nearer.app
 
 import android.Manifest
 import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.ServiceConnection
 import android.content.ClipData
 import android.content.Context
 import android.app.AlertDialog
@@ -31,6 +33,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.os.Handler
+import android.os.IBinder
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
@@ -129,6 +132,63 @@ class MainActivity : ComponentActivity() {
     private var receiverRegistered = false
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
+    private var nearbyServiceBinder: NearbyTransportService.LocalBinder? = null
+    private var nearbyServiceBound = false
+    private var nearbyServiceBinding = false
+    private var nearbyServiceStarted = false
+    private val nearbyServiceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val local = service as? NearbyTransportService.LocalBinder
+            if (local == null) {
+                nearbyServiceBinding = false
+                statusMessage = "NeaRer could not attach to its nearby connection service."
+                return
+            }
+            nearbyServiceBinder = local
+            nearbyServiceBound = true
+            nearbyServiceBinding = false
+            nearbyTransport = local.transport()
+            local.attachUiListener(nearbyListener)
+            runCatching { nearbyTransport?.setDisplayName(displayName) }
+            runCatching { nearbyTransport?.setMeshTransitEnabled(false) }
+            runCatching { restoreReceivedFiles() }
+            reconcileNearbyStateAfterServiceAttach()
+            startAlwaysReadyDiscovery()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            nearbyServiceBinder = null
+            nearbyServiceBound = false
+            nearbyServiceBinding = false
+            nearbyServiceStarted = false
+            nearbyTransport = null
+            hybridSearching = false
+            hybridConnected = false
+            hybridConnectedEndpoint = null
+            hybridConnectedStableId = null
+            chatReady = false
+            connectionMessage = "Nearby service is restarting. NeaRer will reconnect automatically."
+            statusMessage = connectionMessage
+        }
+
+        override fun onBindingDied(name: ComponentName?) {
+            nearbyServiceBinder = null
+            nearbyServiceBound = false
+            nearbyServiceBinding = false
+            nearbyServiceStarted = false
+            nearbyTransport = null
+            hybridSearching = false
+            runCatching { unbindService(this) }
+            ensureNearbyServiceBound()
+        }
+
+        override fun onNullBinding(name: ComponentName?) {
+            nearbyServiceBinding = false
+            nearbyServiceStarted = false
+            statusMessage = "Android did not provide the nearby service. Reopen NeaRer and try again."
+        }
+    }
+
     private var ultraSpeedMode by mutableStateOf(false)
     private var ultraSpeedRestartRequired by mutableStateOf(false)
     private val hybridPeers = mutableStateMapOf<String, String>()
@@ -138,204 +198,8 @@ class MainActivity : ComponentActivity() {
     // Endpoint IDs are temporary; the tracker prevents duplicate reconnects
     // without ever treating a transient endpoint as a person's identity.
     private val trustedPeerReconnectTracker = TrustedPeerReconnectTracker()
-    private var displayName by mutableStateOf("NeaRer User")
-    private var onboardingComplete by mutableStateOf(false)
-    private var profileAvatarId by mutableStateOf("orbit")
-    private var profilePhotoPath by mutableStateOf<String?>(null)
-    private var hybridSearching by mutableStateOf(false)
-    private var pendingHybridEndpoint: String? = null
-    private var hybridConnected = false
-    private var hybridConnectedEndpoint: String? = null
-    private var hybridConnectedStableId: String? = null
-    private var nearbyQueuePeerStableId: String? = null
-    private var meshRelayEnabled by mutableStateOf(false)
-    private val discoveryHandler = Handler(Looper.getMainLooper())
-    private var discoveryTimeout: Runnable? = null
-    private var discoveryGeneration = 0
-    private var connectingAddress by mutableStateOf<String?>(null)
-    private var connectedDeviceName by mutableStateOf<String?>(null)
-    private var connectionMessage by mutableStateOf("Not connected")
-    private var incomingRequesterName by mutableStateOf<String?>(null)
-    private var approvalMessage by mutableStateOf("Waiting for app approval")
-    private var pairingCode by mutableStateOf<String?>(null)
-    private var chatReady by mutableStateOf(false)
-    private var transportStarted = false
-    private var serverSocket: ServerSocket? = null
-    private var peerSocket: Socket? = null
-    private var peerWriter: PrintWriter? = null
-    private val writerLock = Any()
-    private val receivedMessageIds = ConcurrentHashMap.newKeySet<String>()
-    private val io = Executors.newCachedThreadPool()
-    private val approvalDecision = LinkedBlockingQueue<Boolean>()
-    private val chatMessages = mutableStateListOf<ChatMessage>()
-    private val communityGroups = mutableStateListOf<CommunityGroup>()
-    private val communityMessages = mutableStateListOf<CommunityChatMessage>()
-    // Maps durable transport copies back to their group bubble and stable recipient.
-    // This survives process restart so late ACKs update the correct group message.
-    private val communityDeliveryRefs = ConcurrentHashMap<String, CommunityDeliveryRef>()
-    private var communityDataDirty = false
-    private var selectedCommunityCode by mutableStateOf<String?>(null)
-    private var communityNotice by mutableStateOf("Create or join a nearby group.")
-    private var incomingGameInvite by mutableStateOf<GameInvite?>(null)
-    private var activeGame by mutableStateOf<LudoNetworkMatch?>(null)
-    private val gameChatMessages = mutableStateListOf<String>()
-    private val receivedFiles = mutableStateListOf<ReceivedFile>()
-    private val nearbyTransferHistory = mutableStateListOf<NearbyTransferRecord>()
-    private var activeOutgoingFileName = "shared-file"
-    private var activeOutgoingFileBytes = 0L
-    private val pendingDirectOutgoing = ConcurrentHashMap<String, DirectOutgoingTransfer>()
-    // Legacy Wi-Fi Direct sends multi-select baskets sequentially to bound memory and receiver load.
-    private val directFileQueue = SequentialTransferQueue<Uri>()
-    private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
-    private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
-    private var outgoingTransferId by mutableStateOf<String?>(null)
-    private var outgoingProgress by mutableStateOf(0f)
-    // Nearby multi-file jobs are sent one file at a time to protect slower phones.
-    private val pendingNearbyFileQueue = java.util.ArrayDeque<Uri>()
-    // Keep the active item separate so a dropped connection or app restart can retry it.
-    private var currentNearbyQueuedFile: Uri? = null
-    private var nearbyQueueTotal = 0
-    private var nearbyQueueCompleted = 0
-    private var incomingTransferName by mutableStateOf<String?>(null)
-    private var incomingProgress by mutableStateOf(0f)
-    // These rates come from the transport's monotonic rolling-window meter.
-    private var outgoingRateBytesPerSecond = 0L
-    private var incomingRateBytesPerSecond = 0L
-    private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
-    private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
-    private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
-    private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
 
-    private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> {
-                    val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1)
-                    if (state == WifiP2pManager.WIFI_P2P_STATE_DISABLED) {
-                        scanning = false
-                        statusMessage = "Turn on Wi-Fi to discover nearby phones."
-                    } else {
-                        statusMessage = "Wi-Fi Direct is ready. Tap Find people nearby."
-                    }
-                }
-                WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
-                    if (hasDiscoveryPermission()) {
-                        wifiManager?.requestPeers(channel) { peers ->
-                            nearbyDevices.clear()
-                            nearbyDevices.addAll(peers.deviceList)
-                            finishDiscovery()
-                            statusMessage = if (nearbyDevices.isEmpty()) {
-                                "No nearby Wi-Fi Direct devices found yet. Keep both phones nearby and scan again."
-                            } else {
-                                "${nearbyDevices.size} nearby device(s) found. Select one to request a connection."
-                            }
-                        }
-                    }
-                }
-                WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION -> {
-                    val state = intent.getIntExtra(WifiP2pManager.EXTRA_DISCOVERY_STATE, -1)
-                    if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STARTED) {
-                        scanning = true
-                        statusMessage = "Searching nearby…"
-                    } else if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STOPPED && scanning) {
-                        if (hasDiscoveryPermission()) {
-                            wifiManager?.requestPeers(channel) { peers ->
-                                nearbyDevices.clear()
-                                nearbyDevices.addAll(peers.deviceList)
-                                finishDiscovery()
-                                if (nearbyDevices.isEmpty() && hybridPeers.isEmpty()) {
-                                    statusMessage = "No nearby phones found yet. Keep Bluetooth and Wi-Fi ON on both phones, then search again."
-                                } else {
-                                    statusMessage = "Nearby search finished. Select a phone below to connect."
-                                }
-                            }
-                        } else {
-                            finishDiscovery()
-                            statusMessage = "Nearby search finished. Check the Nearby devices permission if no phones appear."
-                        }
-                    }
-                }
-                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
-                    if (hasDiscoveryPermission()) {
-                        wifiManager?.requestConnectionInfo(channel) { info ->
-                            updateConnectionState(info)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val diagnosticPreferences = getSharedPreferences("nearer_diagnostics", Context.MODE_PRIVATE)
-        val startupCrash = runCatching {
-            diagnosticPreferences.getString("nearer_startup_crash", null)
-        }.getOrNull()
-        if (!startupCrash.isNullOrBlank()) {
-            // Do not immediately retry a known-crashing startup path. Show the saved
-            // exception first so a phone-only tester can share the actual stack trace.
-            window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
-            window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
-            setContent {
-                MaterialTheme(colorScheme = darkColorScheme(
-                    background = Midnight, surface = Panel, primary = Mint,
-                    secondary = Gold, onBackground = White, onSurface = White
-                )) {
-                    Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
-                        Column(
-                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Text("NeaRer found a startup error", color = Gold, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                            Text("The previous launch crashed. This report records the real error so it can be repaired.", color = White)
-                            Text(startupCrash.take(12000), color = Muted, fontSize = 12.sp)
-                            Button(
-                                onClick = {
-                                    val reportIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, "NeaRer startup crash report")
-                                        putExtra(Intent.EXTRA_TEXT, startupCrash)
-                                    }
-                                    startActivity(Intent.createChooser(reportIntent, "Share NeaRer crash report"))
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Share crash report") }
-                            Button(
-                                onClick = {
-                                    diagnosticPreferences.edit().remove("nearer_startup_crash").apply()
-                                    recreate()
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
-                            ) { Text("Try opening NeaRer again") }
-                        }
-                    }
-                }
-            }
-            return
-        }
-        captureExternalShareIntent(intent)
-        window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
-        window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
-        window.decorView.systemUiVisibility = 0
-        try {
-            wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
-            channel = wifiManager?.initialize(this, mainLooper, null)
-        } catch (error: Exception) {
-            wifiManager = null
-            channel = null
-            statusMessage = "Wi-Fi Direct could not initialise on this phone. Bluetooth nearby features can still be used."
-        }
-        // SmartConnect uses the flexible multi-peer strategy by default.
-        // Do not require both people to find and enable a matching speed mode.
-        ultraSpeedMode = false
-        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
-            .putBoolean("ultra_speed_mode", false)
-            .apply()
-        ultraSpeedRestartRequired = false
-        nearbyTransport = try {
-            NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
+    private val nearbyListener = object : NearbyConnectionsTransport.Listener {
             override fun onStatus(message: String) {
                 runOnUiThread {
                     statusMessage = message
@@ -731,11 +595,205 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            })
-        } catch (error: Exception) {
-            statusMessage = "Nearby services could not initialise: ${error.javaClass.simpleName}. NeaRer opened in safe mode."
-            null
+    }
+
+    private var displayName by mutableStateOf("NeaRer User")
+    private var onboardingComplete by mutableStateOf(false)
+    private var profileAvatarId by mutableStateOf("orbit")
+    private var profilePhotoPath by mutableStateOf<String?>(null)
+    private var hybridSearching by mutableStateOf(false)
+    private var pendingHybridEndpoint: String? = null
+    private var hybridConnected = false
+    private var hybridConnectedEndpoint: String? = null
+    private var hybridConnectedStableId: String? = null
+    private var nearbyQueuePeerStableId: String? = null
+    private var meshRelayEnabled by mutableStateOf(false)
+    private val discoveryHandler = Handler(Looper.getMainLooper())
+    private var discoveryTimeout: Runnable? = null
+    private var discoveryGeneration = 0
+    private var connectingAddress by mutableStateOf<String?>(null)
+    private var connectedDeviceName by mutableStateOf<String?>(null)
+    private var connectionMessage by mutableStateOf("Not connected")
+    private var incomingRequesterName by mutableStateOf<String?>(null)
+    private var approvalMessage by mutableStateOf("Waiting for app approval")
+    private var pairingCode by mutableStateOf<String?>(null)
+    private var chatReady by mutableStateOf(false)
+    private var transportStarted = false
+    private var serverSocket: ServerSocket? = null
+    private var peerSocket: Socket? = null
+    private var peerWriter: PrintWriter? = null
+    private val writerLock = Any()
+    private val receivedMessageIds = ConcurrentHashMap.newKeySet<String>()
+    private val io = Executors.newCachedThreadPool()
+    private val approvalDecision = LinkedBlockingQueue<Boolean>()
+    private val chatMessages = mutableStateListOf<ChatMessage>()
+    private val communityGroups = mutableStateListOf<CommunityGroup>()
+    private val communityMessages = mutableStateListOf<CommunityChatMessage>()
+    // Maps durable transport copies back to their group bubble and stable recipient.
+    // This survives process restart so late ACKs update the correct group message.
+    private val communityDeliveryRefs = ConcurrentHashMap<String, CommunityDeliveryRef>()
+    private var communityDataDirty = false
+    private var selectedCommunityCode by mutableStateOf<String?>(null)
+    private var communityNotice by mutableStateOf("Create or join a nearby group.")
+    private var incomingGameInvite by mutableStateOf<GameInvite?>(null)
+    private var activeGame by mutableStateOf<LudoNetworkMatch?>(null)
+    private val gameChatMessages = mutableStateListOf<String>()
+    private val receivedFiles = mutableStateListOf<ReceivedFile>()
+    private val nearbyTransferHistory = mutableStateListOf<NearbyTransferRecord>()
+    private var activeOutgoingFileName = "shared-file"
+    private var activeOutgoingFileBytes = 0L
+    private val pendingDirectOutgoing = ConcurrentHashMap<String, DirectOutgoingTransfer>()
+    // Legacy Wi-Fi Direct sends multi-select baskets sequentially to bound memory and receiver load.
+    private val directFileQueue = SequentialTransferQueue<Uri>()
+    private val incomingTransfers = ConcurrentHashMap<String, IncomingTransfer>()
+    private val cancelledOutgoingTransfers = ConcurrentHashMap.newKeySet<String>()
+    private var outgoingTransferId by mutableStateOf<String?>(null)
+    private var outgoingProgress by mutableStateOf(0f)
+    // Nearby multi-file jobs are sent one file at a time to protect slower phones.
+    private val pendingNearbyFileQueue = java.util.ArrayDeque<Uri>()
+    // Keep the active item separate so a dropped connection or app restart can retry it.
+    private var currentNearbyQueuedFile: Uri? = null
+    private var nearbyQueueTotal = 0
+    private var nearbyQueueCompleted = 0
+    private var incomingTransferName by mutableStateOf<String?>(null)
+    private var incomingProgress by mutableStateOf(0f)
+    // These rates come from the transport's monotonic rolling-window meter.
+    private var outgoingRateBytesPerSecond = 0L
+    private var incomingRateBytesPerSecond = 0L
+    private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
+    private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
+    private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
+    private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
+
+    private val receiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> {
+                    val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1)
+                    if (state == WifiP2pManager.WIFI_P2P_STATE_DISABLED) {
+                        scanning = false
+                        statusMessage = "Turn on Wi-Fi to discover nearby phones."
+                    } else {
+                        statusMessage = "Wi-Fi Direct is ready. Tap Find people nearby."
+                    }
+                }
+                WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
+                    if (hasDiscoveryPermission()) {
+                        wifiManager?.requestPeers(channel) { peers ->
+                            nearbyDevices.clear()
+                            nearbyDevices.addAll(peers.deviceList)
+                            finishDiscovery()
+                            statusMessage = if (nearbyDevices.isEmpty()) {
+                                "No nearby Wi-Fi Direct devices found yet. Keep both phones nearby and scan again."
+                            } else {
+                                "${nearbyDevices.size} nearby device(s) found. Select one to request a connection."
+                            }
+                        }
+                    }
+                }
+                WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION -> {
+                    val state = intent.getIntExtra(WifiP2pManager.EXTRA_DISCOVERY_STATE, -1)
+                    if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STARTED) {
+                        scanning = true
+                        statusMessage = "Searching nearby…"
+                    } else if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STOPPED && scanning) {
+                        if (hasDiscoveryPermission()) {
+                            wifiManager?.requestPeers(channel) { peers ->
+                                nearbyDevices.clear()
+                                nearbyDevices.addAll(peers.deviceList)
+                                finishDiscovery()
+                                if (nearbyDevices.isEmpty() && hybridPeers.isEmpty()) {
+                                    statusMessage = "No nearby phones found yet. Keep Bluetooth and Wi-Fi ON on both phones, then search again."
+                                } else {
+                                    statusMessage = "Nearby search finished. Select a phone below to connect."
+                                }
+                            }
+                        } else {
+                            finishDiscovery()
+                            statusMessage = "Nearby search finished. Check the Nearby devices permission if no phones appear."
+                        }
+                    }
+                }
+                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
+                    if (hasDiscoveryPermission()) {
+                        wifiManager?.requestConnectionInfo(channel) { info ->
+                            updateConnectionState(info)
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val diagnosticPreferences = getSharedPreferences("nearer_diagnostics", Context.MODE_PRIVATE)
+        val startupCrash = runCatching {
+            diagnosticPreferences.getString("nearer_startup_crash", null)
+        }.getOrNull()
+        if (!startupCrash.isNullOrBlank()) {
+            // Do not immediately retry a known-crashing startup path. Show the saved
+            // exception first so a phone-only tester can share the actual stack trace.
+            window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
+            window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
+            setContent {
+                MaterialTheme(colorScheme = darkColorScheme(
+                    background = Midnight, surface = Panel, primary = Mint,
+                    secondary = Gold, onBackground = White, onSurface = White
+                )) {
+                    Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text("NeaRer found a startup error", color = Gold, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                            Text("The previous launch crashed. This report records the real error so it can be repaired.", color = White)
+                            Text(startupCrash.take(12000), color = Muted, fontSize = 12.sp)
+                            Button(
+                                onClick = {
+                                    val reportIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "NeaRer startup crash report")
+                                        putExtra(Intent.EXTRA_TEXT, startupCrash)
+                                    }
+                                    startActivity(Intent.createChooser(reportIntent, "Share NeaRer crash report"))
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Share crash report") }
+                            Button(
+                                onClick = {
+                                    diagnosticPreferences.edit().remove("nearer_startup_crash").apply()
+                                    recreate()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
+                            ) { Text("Try opening NeaRer again") }
+                        }
+                    }
+                }
+            }
+            return
+        }
+        captureExternalShareIntent(intent)
+        window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
+        window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
+        window.decorView.systemUiVisibility = 0
+        try {
+            wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
+            channel = wifiManager?.initialize(this, mainLooper, null)
+        } catch (error: Exception) {
+            wifiManager = null
+            channel = null
+            statusMessage = "Wi-Fi Direct could not initialise on this phone. Bluetooth nearby features can still be used."
+        }
+        // SmartConnect uses the flexible multi-peer strategy by default.
+        // Do not require both people to find and enable a matching speed mode.
+        ultraSpeedMode = false
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("ultra_speed_mode", false)
+            .apply()
+        ultraSpeedRestartRequired = false
+        nearbyTransport = null
         nearbyTransport?.setMeshTransitEnabled(false)
         if (wifiManager == null && statusMessage == "Ready to find nearby Android phones.") {
             statusMessage = "Wi-Fi Direct is unavailable. Bluetooth nearby features may still work."
@@ -745,22 +803,7 @@ class MainActivity : ComponentActivity() {
         }
         runCatching { restoreNearbyTransferHistory() }
         runCatching { restoreNearbyFileQueue() }
-        val queuedAfterRestart = runCatching { nearbyTransport?.pendingMessageIds().orEmpty() }.getOrDefault(emptySet())
-        val deliveredAfterRestart = runCatching { nearbyTransport?.completedMessageIds().orEmpty() }.getOrDefault(emptySet())
-        val recoveredChatStates = runCatching {
-            ChatRestartRecoveryPolicy.reconcile(chatMessages, queuedAfterRestart, deliveredAfterRestart)
-        }.getOrDefault(false)
-        if (recoveredChatStates) {
-            runCatching { persistMessages() }
-            chatNotice = when {
-                queuedAfterRestart.isNotEmpty() -> "Some messages are safely queued. NeaRer will retry when those people reconnect."
-                chatMessages.any { it.outgoing && it.delivery == "Interrupted" } ->
-                    "A message was interrupted when NeaRer closed before its delivery could be confirmed. Check with the recipient before sending it again."
-                else -> chatNotice
-            }
-        }
         runCatching { restoreCommunityData() }
-        runCatching { reconcileCommunityDeliveryReceipts(deliveredAfterRestart) }
         displayName = runCatching {
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
@@ -925,6 +968,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        nearbyServiceBinder?.replayPendingMessages()
         val filter = IntentFilter().apply {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
@@ -956,7 +1000,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         finishDiscovery()
-        nearbyTransport?.stop()
+        nearbyServiceBinder?.detachUiListener(nearbyListener)
+        nearbyServiceBinder = null
+        if (nearbyServiceBound) runCatching { unbindService(nearbyServiceConnection) }
+        nearbyServiceBound = false
+        nearbyServiceBinding = false
+        // NearbyConnectionsTransport is service-owned; Activity recreation must not stop it.
+        nearbyTransport = null
         closePeerTransport()
         io.shutdownNow()
         super.onDestroy()
@@ -969,6 +1019,48 @@ class MainActivity : ComponentActivity() {
             receiverRegistered = false
         }
         super.onPause()
+    }
+
+    private fun ensureNearbyServiceBound(startForeground: Boolean = true) {
+        if (startForeground && !nearbyServiceStarted) {
+            NearbyTransportService.start(this)
+            nearbyServiceStarted = true
+        }
+        if (nearbyServiceBound || nearbyServiceBinding) return
+        nearbyServiceBinding = true
+        try {
+            val bound = bindService(
+                Intent(this, NearbyTransportService::class.java),
+                nearbyServiceConnection,
+                Context.BIND_AUTO_CREATE
+            )
+            if (!bound) {
+                nearbyServiceBinding = false
+                statusMessage = "NeaRer could not bind to its nearby connection service."
+            }
+        } catch (error: Exception) {
+            nearbyServiceBinding = false
+            statusMessage = "Nearby service could not start: ${error.localizedMessage ?: error.javaClass.simpleName}"
+        }
+    }
+
+    private fun reconcileNearbyStateAfterServiceAttach() {
+        val transport = nearbyTransport ?: return
+        val queued = runCatching { transport.pendingMessageIds() }.getOrDefault(emptySet())
+        val delivered = runCatching { transport.completedMessageIds() }.getOrDefault(emptySet())
+        val recovered = runCatching {
+            ChatRestartRecoveryPolicy.reconcile(chatMessages, queued, delivered)
+        }.getOrDefault(false)
+        if (recovered) {
+            runCatching { persistMessages() }
+            chatNotice = when {
+                queued.isNotEmpty() -> "Some messages are safely queued. NeaRer will retry when those people reconnect."
+                chatMessages.any { it.outgoing && it.delivery == "Interrupted" } ->
+                    "A message was interrupted before delivery could be confirmed. Check with the recipient before retrying."
+                else -> chatNotice
+            }
+        }
+        runCatching { reconcileCommunityDeliveryReceipts(delivered) }
     }
 
     /**
@@ -989,13 +1081,19 @@ class MainActivity : ComponentActivity() {
             if (onboardingComplete && hasNearbyPermissions() && !bluetoothOn && !wifiOn) {
                 statusMessage = "NeaRer is ready. Turn on Bluetooth or Wi-Fi to discover nearby people; mobile data is not needed."
             }
+            if (onboardingComplete) ensureNearbyServiceBound(startForeground = false)
             return
         }
         val transport = nearbyTransport
         if (transport == null) {
-            statusMessage = "Nearby services are unavailable on this phone right now. Reopen NeaRer and try again."
+            statusMessage = "Starting NeaRer's background nearby service…"
+            ensureNearbyServiceBound(startForeground = true)
             return
         }
+        ensureNearbyServiceBound(startForeground = true)
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("nearby_service_active", true)
+            .commit()
         transport.start()
         hybridSearching = true
         statusMessage = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R && !isLocationEnabled()) {
