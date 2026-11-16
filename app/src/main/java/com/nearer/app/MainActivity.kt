@@ -3122,7 +3122,22 @@ class MainActivity : ComponentActivity() {
                 val stagingDirectory = File(cacheDir, "nearer-folder-shares").apply { mkdirs() }
                 archive = File.createTempFile("nearer-folder-", ".zip", stagingDirectory)
                 val visited = HashSet<String>()
+                val seenArchivePaths = HashSet<String>()
+                var archiveEntryCount = 0
                 var fileCount = 0
+                fun recordArchiveEntry(rawPath: String) {
+                    val normalized = rawPath.removeSuffix("/")
+                    if (normalized.isBlank() || normalized.length > FolderArchiveExtractor.MAX_PATH_LENGTH) {
+                        throw IllegalStateException("A folder path is too long or invalid to share safely")
+                    }
+                    if (!seenArchivePaths.add(normalized.lowercase())) {
+                        throw IllegalStateException("The selected folder contains duplicate names after safe-path normalization")
+                    }
+                    archiveEntryCount += 1
+                    if (archiveEntryCount > FolderArchiveExtractor.MAX_ENTRIES) {
+                        throw IllegalStateException("The selected folder contains too many files and folders for one safe archive")
+                    }
+                }
                 ZipOutputStream(FileOutputStream(archive!!).buffered()).use { zip ->
                     fun addChildren(parentId: String, parentPath: String) {
                         if (!visited.add(parentId)) return
@@ -3142,10 +3157,12 @@ class MainActivity : ComponentActivity() {
                                 val childPath = parentPath + childName
                                 val childMime = cursor.getString(mimeColumn)
                                 if (childMime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                                    recordArchiveEntry(childPath + "/")
                                     zip.putNextEntry(ZipEntry(childPath + "/"))
                                     zip.closeEntry()
                                     addChildren(childId, childPath + "/")
                                 } else {
+                                    recordArchiveEntry(childPath)
                                     val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
                                     val input = contentResolver.openInputStream(childUri)
                                         ?: throw IllegalStateException("Could not read " + childName)
@@ -3158,6 +3175,7 @@ class MainActivity : ComponentActivity() {
                         } ?: throw IllegalStateException("The selected folder could not be listed")
                     }
                     val safeRootName = safeSegment(rootName)
+                    recordArchiveEntry(safeRootName + "/")
                     zip.putNextEntry(ZipEntry(safeRootName + "/"))
                     zip.closeEntry()
                     addChildren(rootId, safeRootName + "/")
