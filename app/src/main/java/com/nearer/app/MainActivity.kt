@@ -3053,6 +3053,77 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {
             // Some document providers grant access only for the current app session.
         }
+        if (hybridConnected) {
+            val endpoint = hybridConnectedEndpoint
+            if (endpoint == null) {
+                chatNotice = "Reconnect to the nearby phone before sending this folder."
+                return
+            }
+            chatNotice = "Scanning the selected folder and preparing a resumable bundle…"
+            io.execute {
+                try {
+                    val rootId = DocumentsContract.getTreeDocumentId(treeUri)
+                    val rootUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId)
+                    var rootName = "Shared folder"
+                    contentResolver.query(rootUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) rootName = cursor.getString(0)?.takeIf { it.isNotBlank() } ?: rootName
+                    }
+                    fun safeSegment(value: String): String {
+                        val cleaned = value.replace("/", "_").replace("\\", "_").trim().trim('.')
+                        return cleaned.ifBlank { "folder-item" }
+                    }
+                    val visited = HashSet<String>()
+                    val bundleSources = mutableListOf<NearbyBundleSource>()
+                    fun addChildren(parentId: String, parentPath: String) {
+                        if (!visited.add(parentId)) return
+                        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
+                        val projection = arrayOf(
+                            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                            DocumentsContract.Document.COLUMN_MIME_TYPE
+                        )
+                        contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                            val idColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                            val nameColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                            val mimeColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                            while (cursor.moveToNext()) {
+                                val childId = cursor.getString(idColumn) ?: continue
+                                val childName = safeSegment(cursor.getString(nameColumn).orEmpty())
+                                val childPath = parentPath + childName
+                                val childMime = cursor.getString(mimeColumn)
+                                if (childMime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                                    addChildren(childId, childPath + "/")
+                                } else {
+                                    val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
+                                    bundleSources += NearbyBundleSource(childUri, childPath, childMime)
+                                    if (bundleSources.size > TransferBundleManifest.MAX_ITEMS) {
+                                        throw IllegalStateException("This folder contains too many files for one transfer")
+                                    }
+                                }
+                            }
+                        } ?: throw IllegalStateException("The selected folder could not be listed")
+                    }
+                    addChildren(rootId, safeSegment(rootName) + "/")
+                    if (bundleSources.isEmpty()) {
+                        throw IllegalStateException("The selected folder is empty or contains no readable files")
+                    }
+                    runOnUiThread {
+                        if (nearbyTransport?.sendBundle(endpoint, rootName, bundleSources) != true) {
+                            chatNotice = "The folder bundle could not be queued. Keep both phones connected and try again."
+                        } else {
+                            chatNotice = "Preparing a resumable folder transfer with " +
+                                bundleSources.size + " files…"
+                        }
+                    }
+                } catch (error: Exception) {
+                    runOnUiThread {
+                        chatNotice = "Could not prepare this folder: " +
+                            (error.localizedMessage ?: "check folder access and try again")
+                    }
+                }
+            }
+            return
+        }
         chatNotice = "Preparing the folder archive. Large folders are streamed to storage; they are not loaded into memory."
         io.execute {
             var archive: File? = null
