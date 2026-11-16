@@ -31,8 +31,10 @@ internal enum class StudioVocalProfile(
  */
 @androidx.media3.common.util.UnstableApi
 internal class StudioVocalPolishProcessor(
-    private val profile: StudioVocalProfile
+    private val profile: StudioVocalProfile,
+    controls: StudioVocalControls = StudioVocalControls()
 ) : BaseAudioProcessor() {
+    private val controls = controls.normalized()
     private var frameCursor = 0L
     private var previousInput = FloatArray(2)
     private var previousHighPass = FloatArray(2)
@@ -54,7 +56,8 @@ internal class StudioVocalPolishProcessor(
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
         val sampleRate = inputAudioFormat.sampleRate.coerceAtLeast(8_000)
-        highPassCoefficient = rcCoefficient(profile.lowCutHz, sampleRate)
+        val adjustedLowCut = (profile.lowCutHz * (1f - controls.warmth * 0.3f)).coerceIn(50f, 180f)
+        highPassCoefficient = rcCoefficient(adjustedLowCut, sampleRate)
         presenceCoefficient = rcCoefficient(2_400f, sampleRate)
         essCoefficient = rcCoefficient(5_800f, sampleRate)
         delayFrames = (sampleRate * 0.055f).toInt().coerceAtLeast(1)
@@ -73,6 +76,11 @@ internal class StudioVocalPolishProcessor(
         val gateAttack = exp(-1f / (sampleRate * 0.004f))
         val gateRelease = exp(-1f / (sampleRate * 0.080f))
         val driveNorm = tanh(profile.drive.toDouble()).toFloat().coerceAtLeast(0.001f)
+        val presenceAmount = (profile.presence + controls.presence).coerceIn(0f, 0.5f)
+        val deEssAmount = (profile.deEssAmount + controls.deEss).coerceIn(0f, 0.85f)
+        val compressorRatio = (profile.compressorRatio + controls.compression).coerceIn(1.5f, 8f)
+        val roomMix = (profile.roomMix + controls.ambience).coerceIn(0f, 0.25f)
+        val outputGain = controls.outputGain
 
         repeat(frames) {
             val left = inputBuffer.short / 32768f
@@ -89,13 +97,13 @@ internal class StudioVocalPolishProcessor(
 
                 lowPassPresence[channel] += (highPass - lowPassPresence[channel]) * (1f - presenceCoefficient)
                 val presence = highPass - lowPassPresence[channel]
-                val present = highPass + presence * profile.presence
+                val present = highPass + presence * presenceAmount
 
                 lowPassEss[channel] += (present - lowPassEss[channel]) * (1f - essCoefficient)
                 val sibilance = present - lowPassEss[channel]
                 val essLevel = abs(sibilance)
                 val essReduction = if (essLevel > 0.075f) {
-                    (1f - profile.deEssAmount * ((essLevel - 0.075f) / 0.35f).coerceIn(0f, 1f))
+                    (1f - deEssAmount * ((essLevel - 0.075f) / 0.35f).coerceIn(0f, 1f))
                 } else 1f
                 processedScratch[channel] = present - sibilance * (1f - essReduction)
                 framePeak = maxOf(framePeak, abs(processedScratch[channel]))
@@ -111,19 +119,19 @@ internal class StudioVocalPolishProcessor(
             compressorEnvelope = compressorCoefficient * compressorEnvelope + (1f - compressorCoefficient) * framePeak
             val compressedLevel = if (compressorEnvelope > profile.compressorThreshold) {
                 profile.compressorThreshold +
-                    (compressorEnvelope - profile.compressorThreshold) / profile.compressorRatio
+                    (compressorEnvelope - profile.compressorThreshold) / compressorRatio
             } else compressorEnvelope
             val compressorGain = if (compressorEnvelope > 0.0001f) {
                 (compressedLevel / compressorEnvelope).coerceIn(0.35f, 1.5f)
             } else 1f
 
             for (channel in 0..1) {
-                val driven = processedScratch[channel] * gateGain * compressorGain * profile.drive
+                val driven = processedScratch[channel] * gateGain * compressorGain * profile.drive * outputGain
                 val saturated = tanh(driven.toDouble()).toFloat() / driveNorm
                 val delayPosition = delayIndex * 2 + channel
                 val delayed = delay[delayPosition]
                 delay[delayPosition] = (saturated + delayed * 0.16f).coerceIn(-1f, 1f)
-                val polished = (saturated * (1f - profile.roomMix) + delayed * profile.roomMix)
+                val polished = (saturated * (1f - roomMix) + delayed * roomMix)
                     .coerceIn(-1f, 1f)
                 val pcm = (polished * 32767f).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
                 output.putShort(pcm.toShort())
