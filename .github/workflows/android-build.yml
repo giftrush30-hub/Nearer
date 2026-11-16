@@ -84,6 +84,9 @@ jobs:
             --license-id public-domain \
             --attribution "World English Bible text from eBible.org; public domain; preserve the text faithfully and observe trademark conditions."
 
+      - name: Verify complete Bible pack data and text
+        run: python tools/verify_nearer_bible_pack.py build/nearer-word-webp.zip
+
       - name: Upload installable Bible pack
         uses: actions/upload-artifact@v4
         with:
