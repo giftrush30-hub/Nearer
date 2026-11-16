@@ -2339,6 +2339,15 @@ internal object IncomingFilePayloadPolicy {
         }
     }
 
+    fun discoveredPeersSnapshot(): List<ConnectedPeerSnapshot> = synchronized(names) {
+        names.keys.mapNotNull { endpoint ->
+            val peerId = stableIds[endpoint].orEmpty()
+            val name = names[endpoint].orEmpty()
+            if (NeaRerIdentity.normalize(peerId) == null) null
+            else ConnectedPeerSnapshot(endpoint, name.ifBlank { "Nearby member" }, peerId)
+        }
+    }
+
     /**
      * Commits an inbox event after its Activity has safely saved it. If the
      * original transport callback was lost during process death, this method
