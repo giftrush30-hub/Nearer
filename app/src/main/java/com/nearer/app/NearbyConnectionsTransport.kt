@@ -2361,12 +2361,16 @@ internal object IncomingFilePayloadPolicy {
      * still restores duplicate protection and acknowledges a currently active
      * authenticated endpoint when one exists.
      */
-    fun acknowledgePersistedIncomingMessage(peerId: String, messageId: String): Boolean {
+    fun persistIncomingMessageDedupe(peerId: String, messageId: String): Boolean {
         if (messageId.isBlank() || messageId.length > 80) return false
         val pendingKey = NearbyMessageDedupePolicy.key(peerId, messageId) ?: return false
         val saved = rememberMessageId(peerId, messageId)
         pendingIncomingMessageIds.remove(pendingKey)
-        if (!saved) return false
+        return saved
+    }
+
+    fun acknowledgePersistedIncomingMessage(peerId: String, messageId: String): Boolean {
+        if (!persistIncomingMessageDedupe(peerId, messageId)) return false
         endpointForStablePeer(NeaRerIdentity.normalize(peerId).orEmpty())?.let { sendAcknowledgement(it, messageId) }
         return true
     }
