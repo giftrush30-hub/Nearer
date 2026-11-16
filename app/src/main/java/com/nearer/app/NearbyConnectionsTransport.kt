@@ -1436,6 +1436,30 @@ internal object IncomingFilePayloadPolicy {
         return true
     }
 
+    /**
+     * Idempotently completes destination receipt creation. Reuse a previously
+     * persisted receipt for this packet ID: a fresh timestamp/signature would be
+     * a different receipt and the outbox correctly rejects that ID collision.
+     */
+    private fun ensureFinalMeshReceipt(packet: MeshRelayPacketV1): Boolean {
+        val now = System.currentTimeMillis()
+        if (packet.destinationId != localStableId || !packet.verifyEmbeddedOrigin(now)) return false
+        val originKey = TrustedPeerKeyStore.pinnedSigningKey(appContext, packet.originId) ?: return false
+        if (!java.security.MessageDigest.isEqual(originKey, packet.originSigningPublicKey) ||
+            !packet.verify(originKey, now)) return false
+
+        val existing = meshReceiptOutbox.pending()
+            .firstOrNull { it.receipt.packetId == packet.packetId }?.receipt
+        val receipt = existing ?: MeshDeliveryReceipt.create(
+            packet.packetId, packet.originId, packet.destinationId, now
+        ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+
+        if (receipt.originId != packet.originId || receipt.destinationId != packet.destinationId ||
+            receipt.packetId != packet.packetId) return false
+        if (!queueMeshReceipt(receipt)) return false
+        return deadDropStore.markLocallyDelivered(packet.packetId)
+    }
+
     private fun flushPendingMeshReceipts() {
         if (!meshRouteWithdrawalStoreHealthy) return
         val now = System.currentTimeMillis()
@@ -1532,10 +1556,9 @@ internal object IncomingFilePayloadPolicy {
             return
         }
         if (hasSeenMessageId(packet.originId, packet.packetId)) {
-            val duplicateReceipt = MeshDeliveryReceipt.create(
-                packet.packetId, packet.originId, packet.destinationId, System.currentTimeMillis()
-            ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
-            if (queueMeshReceipt(duplicateReceipt)) deadDropStore.markLocallyDelivered(packet.packetId)
+            // A prior process may have persisted the receipt but died before
+            // retiring the packet. Reuse that exact receipt on every replay.
+            ensureFinalMeshReceipt(packet)
             return
         }
         val pendingKey = NearbyMessageDedupePolicy.key(packet.originId, packet.packetId) ?: return
@@ -1561,19 +1584,11 @@ internal object IncomingFilePayloadPolicy {
                 if (pendingKey !in pendingIncomingMessageIds) return@onMeshMessageWithReply false
                 val saved = rememberMessageId(packet.originId, packet.packetId)
                 pendingIncomingMessageIds.remove(pendingKey)
-                if (saved) {
-                    val receipt = MeshDeliveryReceipt.create(
-                        packet.packetId, packet.originId, packet.destinationId, System.currentTimeMillis()
-                    ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
-                    // Persist the final receipt before deleting the locally delivered packet.
-                    // If receipt storage fails, keep the packet so a retry can regenerate it.
-                    if (queueMeshReceipt(receipt)) {
-                        deadDropStore.markLocallyDelivered(packet.packetId)
-                    } else {
-                        listener.onStatus("Message saved here. Its encrypted packet is retained until the final receipt can be saved.")
-                    }
+                val receiptCommitted = saved && ensureFinalMeshReceipt(packet)
+                if (saved && !receiptCommitted) {
+                    listener.onStatus("Message saved here. Its encrypted packet is retained until the final receipt can be saved.")
                 }
-                saved
+                saved && receiptCommitted
             }
         } catch (_: Exception) {
             pendingIncomingMessageIds.remove(pendingKey)
@@ -2394,11 +2409,7 @@ internal object IncomingFilePayloadPolicy {
         if (!java.security.MessageDigest.isEqual(trustedOriginKey, packet.originSigningPublicKey) ||
             !packet.verify(trustedOriginKey, now)) return false
 
-        val receipt = MeshDeliveryReceipt.create(
-            packet.packetId, packet.originId, packet.destinationId, now
-        ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
-        if (!queueMeshReceipt(receipt)) return false
-        return deadDropStore.markLocallyDelivered(packet.packetId)
+        return ensureFinalMeshReceipt(packet)
     }
 
     /** Release a message whose durable inbox write failed so a sender retry is not suppressed. */
