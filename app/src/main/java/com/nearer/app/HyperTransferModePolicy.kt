@@ -52,7 +52,7 @@ internal object HyperTransferModePolicy {
      * A missing peer profile safely falls back to FAST rather than guessing.
      */
     fun negotiate(local: DeviceProfile, remote: DeviceProfile?): Mode {
-        if (remote == null) return Mode.FAST
+        if (remote == null) return minMode(localSafeMode(local), Mode.FAST)
         val localMode = localSafeMode(local)
         val remoteMode = localSafeMode(remote)
         return minMode(localMode, remoteMode)
