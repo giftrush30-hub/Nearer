@@ -2,6 +2,8 @@ package com.nearer.app
 
 import android.Manifest
 import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.ServiceConnection
 import android.content.ClipData
 import android.content.Context
 import android.app.AlertDialog
@@ -31,6 +33,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.os.Handler
+import android.os.IBinder
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
@@ -129,6 +132,56 @@ class MainActivity : ComponentActivity() {
     private var receiverRegistered = false
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
+    private var nearbyServiceBinder: NearbyTransportService.LocalBinder? = null
+    private var nearbyServiceBound = false
+    private var nearbyServiceBinding = false
+    private val nearbyServiceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val local = service as? NearbyTransportService.LocalBinder
+            if (local == null) {
+                nearbyServiceBinding = false
+                statusMessage = "NeaRer could not attach to its nearby connection service."
+                return
+            }
+            nearbyServiceBinder = local
+            nearbyServiceBound = true
+            nearbyServiceBinding = false
+            nearbyTransport = local.transport()
+            local.attachUiListener(nearbyListener)
+            runCatching { nearbyTransport?.setDisplayName(displayName) }
+            runCatching { nearbyTransport?.setMeshTransitEnabled(false) }
+            runCatching { restoreReceivedFiles() }
+            reconcileNearbyStateAfterServiceAttach()
+            startAlwaysReadyDiscovery()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            nearbyServiceBinder = null
+            nearbyServiceBound = false
+            nearbyServiceBinding = false
+            nearbyTransport = null
+            hybridConnected = false
+            hybridConnectedEndpoint = null
+            hybridConnectedStableId = null
+            chatReady = false
+            connectionMessage = "Nearby service is restarting. NeaRer will reconnect automatically."
+            statusMessage = connectionMessage
+        }
+
+        override fun onBindingDied(name: ComponentName?) {
+            nearbyServiceBinder = null
+            nearbyServiceBound = false
+            nearbyServiceBinding = false
+            nearbyTransport = null
+            runCatching { unbindService(this) }
+            ensureNearbyServiceBound()
+        }
+
+        override fun onNullBinding(name: ComponentName?) {
+            nearbyServiceBinding = false
+            statusMessage = "Android did not provide the nearby service. Reopen NeaRer and try again."
+        }
+    }
     private var ultraSpeedMode by mutableStateOf(false)
     private var ultraSpeedRestartRequired by mutableStateOf(false)
     private val hybridPeers = mutableStateMapOf<String, String>()
@@ -266,79 +319,76 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val diagnosticPreferences = getSharedPreferences("nearer_diagnostics", Context.MODE_PRIVATE)
-        val startupCrash = runCatching {
-            diagnosticPreferences.getString("nearer_startup_crash", null)
-        }.getOrNull()
-        if (!startupCrash.isNullOrBlank()) {
-            // Do not immediately retry a known-crashing startup path. Show the saved
-            // exception first so a phone-only tester can share the actual stack trace.
-            window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
-            window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
-            setContent {
-                MaterialTheme(colorScheme = darkColorScheme(
-                    background = Midnight, surface = Panel, primary = Mint,
-                    secondary = Gold, onBackground = White, onSurface = White
-                )) {
-                    Surface(modifier = Modifier.fillMaxSize(), color = Midnight) {
-                        Column(
-                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Text("NeaRer found a startup error", color = Gold, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                            Text("The previous launch crashed. This report records the real error so it can be repaired.", color = White)
-                            Text(startupCrash.take(12000), color = Muted, fontSize = 12.sp)
-                            Button(
-                                onClick = {
-                                    val reportIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, "NeaRer startup crash report")
-                                        putExtra(Intent.EXTRA_TEXT, startupCrash)
-                                    }
-                                    startActivity(Intent.createChooser(reportIntent, "Share NeaRer crash report"))
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Share crash report") }
-                            Button(
-                                onClick = {
-                                    diagnosticPreferences.edit().remove("nearer_startup_crash").apply()
-                                    recreate()
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight)
-                            ) { Text("Try opening NeaRer again") }
-                        }
-                    }
-                }
-            }
-            return
-        }
-        captureExternalShareIntent(intent)
-        window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
-        window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
-        window.decorView.systemUiVisibility = 0
-        try {
-            wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
-            channel = wifiManager?.initialize(this, mainLooper, null)
-        } catch (error: Exception) {
-            wifiManager = null
-            channel = null
-            statusMessage = "Wi-Fi Direct could not initialise on this phone. Bluetooth nearby features can still be used."
-        }
-        // SmartConnect uses the flexible multi-peer strategy by default.
-        // Do not require both people to find and enable a matching speed mode.
-        ultraSpeedMode = false
-        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
-            .putBoolean("ultra_speed_mode", false)
-            .apply()
-        ultraSpeedRestartRequired = false
-        nearbyTransport = try {
-            NearbyConnectionsTransport(this, ultraSpeedMode, object : NearbyConnectionsTransport.Listener {
+    private val nearbyListener = object : NearbyConnectionsTransport.Listener {
             override fun onStatus(message: String) {
                 runOnUiThread {
                     statusMessage = message
+                    if (message.startsWith("Nearby advertising could not start") ||
+                        message.startsWith("Nearby discovery could not start")) {
+                        hybridSearching = false
+                    }
+                }
+            }
+            override fun onMeshRoutesChanged(recipients: List<MeshRecipient>) {
+                runOnUiThread {
+                    meshRecipients.clear()
+                    recipients.forEach { meshRecipients[it.peerId] = it }
+                    // Keep an unreachable selection as an explicit target. Never silently
+                    // switch the recipient to another nearby person after route loss.
+                    if (selectedMeshRecipientId == null) {
+                        selectedMeshRecipientId = hybridConnectedStableId?.takeIf { it in meshRecipients.keys }
+                    }
+                }
+            }
+            override fun onFound(id: String, name: String, stableId: String) { runOnUiThread {
+                hybridPeers[id] = name
+                if (stableId.isNotBlank()) {
+                    recentlySeenPeers.remove(stableId)
+                    // Only identities whose cryptographic key was trusted in an
+                    // earlier in-person pairing are reconnected automatically.
+                    // First-time peers still require the existing comparison/approval.
+                    val alreadyTrusted = TrustedPeerKeyStore.hasPinnedPeer(this@MainActivity, stableId)
+                    if (trustedPeerReconnectTracker.shouldRequest(id, stableId, alreadyTrusted, hybridConnected)) {
+                        statusMessage = "Reconnecting securely to $name…"
+                        val transport = nearbyTransport
+                        if (transport != null) {
+                            transport.request(id) { trustedPeerReconnectTracker.clear(id) }
+                        } else {
+                            trustedPeerReconnectTracker.clear(id)
+                        }
+                    }
+                }
+            } }
+            override fun onLost(id: String, stableId: String) { runOnUiThread {
+                trustedPeerReconnectTracker.clear(id)
+                val name = hybridPeers.remove(id)
+                if (name != null) recordRecentlySeen(stableId.ifBlank { id }, name)
+                if (hybridConnectedEndpoint == id) {
+                    hybridConnected = false
+                    hybridConnectedEndpoint = null
+                    hybridConnectedStableId = null
+                    chatReady = false
+                    connectedDeviceName = null
+                    connectionMessage = "Direct link lost. Checking available mesh routes…"
+                }
+            } }
+            override fun onRequest(id: String, name: String, token: String) {
+                runOnUiThread {
+                    val advertisedStableId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                    // Returning peers with both pinned keys reconnect without
+                    // repeating first-contact approval. The handshake still verifies
+                    // key continuity before accepting application data.
+                    if (TrustedPeerKeyStore.hasPinnedPeer(this@MainActivity, advertisedStableId)) {
+                        nearbyTransport?.accept(id)
+                        statusMessage = "Reconnecting securely to $name…"
+                        return@runOnUiThread
+                    }
+                    pendingHybridEndpoint = id
+                    incomingRequesterName = name
+                    pairingCode = token
+                    approvalMessage = "FIRST-TIME TRUST CHECK: compare the code on both phones in person. Accept only if it matches and you expected this person."
+                    statusMessage = "$name is         nearbyTransport = null
+= message
                     if (message.startsWith("Nearby advertising could not start") ||
                         message.startsWith("Nearby discovery could not start")) {
                         hybridSearching = false
@@ -956,7 +1006,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         finishDiscovery()
-        nearbyTransport?.stop()
+        nearbyServiceBinder?.detachUiListener(nearbyListener)
+        nearbyServiceBinder = null
+        if (nearbyServiceBound) runCatching { unbindService(nearbyServiceConnection) }
+        nearbyServiceBound = false
+        nearbyServiceBinding = false
+        // NearbyConnectionsTransport belongs to NearbyTransportService. Activity
+        // recreation or leaving the app must not tear down authenticated sessions.
+        nearbyTransport = null
         closePeerTransport()
         io.shutdownNow()
         super.onDestroy()
@@ -975,6 +1032,45 @@ class MainActivity : ComponentActivity() {
      * Starts the primary Nearby Connections engine without requiring a manual
      * Wi-Fi Direct peer scan. The SDK selects the available nearby transports.
      */
+    private fun ensureNearbyServiceBound() {
+        if (nearbyServiceBound || nearbyServiceBinding) return
+        nearbyServiceBinding = true
+        try {
+            NearbyTransportService.start(this)
+            val bound = bindService(
+                Intent(this, NearbyTransportService::class.java),
+                nearbyServiceConnection,
+                Context.BIND_AUTO_CREATE
+            )
+            if (!bound) {
+                nearbyServiceBinding = false
+                statusMessage = "NeaRer could not bind to its nearby connection service."
+            }
+        } catch (error: Exception) {
+            nearbyServiceBinding = false
+            statusMessage = "Nearby service could not start: ${error.localizedMessage ?: error.javaClass.simpleName}"
+        }
+    }
+
+    private fun reconcileNearbyStateAfterServiceAttach() {
+        val transport = nearbyTransport ?: return
+        val queued = runCatching { transport.pendingMessageIds() }.getOrDefault(emptySet())
+        val delivered = runCatching { transport.completedMessageIds() }.getOrDefault(emptySet())
+        val recovered = runCatching {
+            ChatRestartRecoveryPolicy.reconcile(chatMessages, queued, delivered)
+        }.getOrDefault(false)
+        if (recovered) {
+            runCatching { persistMessages() }
+            chatNotice = when {
+                queued.isNotEmpty() -> "Some messages are safely queued. NeaRer will retry when those people reconnect."
+                chatMessages.any { it.outgoing && it.delivery == "Interrupted" } ->
+                    "A message was interrupted before delivery could be confirmed. Check with the recipient before sending it again."
+                else -> chatNotice
+            }
+        }
+        runCatching { reconcileCommunityDeliveryReceipts(delivered) }
+    }
+
     private fun startAlwaysReadyDiscovery() {
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val bluetoothOn = try { bluetoothManager?.adapter?.isEnabled == true } catch (_: SecurityException) { false }
@@ -993,9 +1089,13 @@ class MainActivity : ComponentActivity() {
         }
         val transport = nearbyTransport
         if (transport == null) {
-            statusMessage = "Nearby services are unavailable on this phone right now. Reopen NeaRer and try again."
+            statusMessage = "Starting NeaRer's background nearby service…"
+            ensureNearbyServiceBound()
             return
         }
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("nearby_service_active", true)
+            .commit()
         transport.start()
         hybridSearching = true
         statusMessage = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R && !isLocationEnabled()) {
@@ -1036,6 +1136,9 @@ class MainActivity : ComponentActivity() {
     private fun stopDiscovery() {
         finishDiscovery()
         hybridSearching = false
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("nearby_service_active", false)
+            .commit()
         nearbyTransport?.stopSearching()
         val manager = wifiManager
         val activeChannel = channel
