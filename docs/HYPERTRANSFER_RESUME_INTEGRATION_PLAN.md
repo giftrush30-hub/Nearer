@@ -1,3 +1,18 @@
+> **Implementation status update — 16 November 2026**
+>
+> The single-file Nearby HyperTransfer STREAM path is now wired in `NearbyConnectionsTransport`; the earlier "not wired" statements below describe the pre-integration boundary and should be read as historical design context, not the current state. The active path:
+>
+> - Advertises version-1 STREAM capability after the authenticated Nearby handshake and retains the existing FILE path for peers that do not advertise it.
+> - Stages the selected source, calculates its SHA-256, and derives stable transfer/item identities before sending.
+> - Exchanges encrypted metadata and resume proposal/decision records, correlating BYTES and STREAM callbacks by payload ID and authenticated stable peer identity.
+> - Receives STREAM data on a bounded I/O executor, writes peer-bound durable checkpoints, verifies the full-file SHA-256, and publishes only after verification.
+> - Sends a completion receipt so the sender can retire its temporary retry copy only after the receiver confirms the verified save.
+> - Reconnects and retries within the live process from the last verified checkpoint. Receiver-side journal discovery supports revalidating partials after receiver process death when the sender starts the same logical transfer again.
+>
+> **Still not complete / not proven:** automatic restoration of the sender's temporary staged copy after sender process death; native folder/bundle transfer through this HyperTransfer STREAM path; exhaustive end-to-end fault injection for every callback ordering and shutdown edge; and two-physical-device acceptance testing. The sender staging copy currently lives under the app cache, so process-death recovery on the sender is not guaranteed. Do not advertise folder resume or fully automatic sender-process recovery until those are implemented and tested.
+>
+> The receive writer now selects its buffer from the device's available-memory, low-RAM, and Android thermal state at transport initialization. This tunes local disk I/O only; it does not change the radio transport or guarantee higher wireless throughput.
+>
 # HyperTransfer: live resume integration blueprint
 
 Status: engineering plan grounded in the current transport and Google Nearby Connections API. Resume remains experimental until the end-to-end acceptance tests below pass on two physical Android devices.
