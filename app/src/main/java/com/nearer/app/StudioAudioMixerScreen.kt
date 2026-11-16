@@ -93,6 +93,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     var message by remember { mutableStateOf("Build a layered mix from voice, music and sound effects stored on your phone.") }
     var exported by remember { mutableStateOf<File?>(null) }
     var previewUri by remember { mutableStateOf<Uri?>(null) }
+    var expandedTrackEffects by remember { mutableStateOf(setOf<String>()) }
     val previewPlayer = remember(context) { ExoPlayer.Builder(context).build() }
 
     DisposableEffect(previewPlayer) { onDispose { previewPlayer.release() } }
@@ -180,15 +181,28 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 tracks[index] = track.copy(pan = it); exported = null
                             }, valueRange = -1f..1f)
                             Text("PAN IS APPLIED TO THE EXPORTED MIX", color = Muted, fontSize = 8.sp)
-                            Text("LOW EQ  ·  ${track.lowGainDb.toInt()} dB", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                            Slider(value = track.lowGainDb, onValueChange = { tracks[index] = track.copy(lowGainDb = it); exported = null }, valueRange = -12f..12f)
-                            Text("MID EQ  ·  ${track.midGainDb.toInt()} dB", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                            Slider(value = track.midGainDb, onValueChange = { tracks[index] = track.copy(midGainDb = it); exported = null }, valueRange = -12f..12f)
-                            Text("HIGH EQ  ·  ${track.highGainDb.toInt()} dB", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                            Slider(value = track.highGainDb, onValueChange = { tracks[index] = track.copy(highGainDb = it); exported = null }, valueRange = -12f..12f)
-                            Text("ROOM REVERB  ·  ${(track.reverbMix * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                            Slider(value = track.reverbMix, onValueChange = { tracks[index] = track.copy(reverbMix = it); exported = null }, valueRange = 0f..0.35f)
-                            Text("SOURCE PREVIEW IS UNPROCESSED; EQ, REVERB, PAN AND FADES ARE HEARD IN THE EXPORTED MIX.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
+                            val trackKey = track.uri.toString()
+                            val effectsExpanded = trackKey in expandedTrackEffects
+                            Text(
+                                if (effectsExpanded) "HIDE TRACK EFFECTS  ▴" else "SHOW TRACK EFFECTS  ▾",
+                                color = Mint,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable {
+                                    expandedTrackEffects = if (effectsExpanded) expandedTrackEffects - trackKey else expandedTrackEffects + trackKey
+                                }.padding(vertical = 5.dp)
+                            )
+                            if (effectsExpanded) {
+                                Text("LOW EQ  ·  ${track.lowGainDb.toInt()} dB", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Slider(value = track.lowGainDb, onValueChange = { tracks[index] = track.copy(lowGainDb = it); exported = null }, valueRange = -12f..12f)
+                                Text("MID EQ  ·  ${track.midGainDb.toInt()} dB", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Slider(value = track.midGainDb, onValueChange = { tracks[index] = track.copy(midGainDb = it); exported = null }, valueRange = -12f..12f)
+                                Text("HIGH EQ  ·  ${track.highGainDb.toInt()} dB", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Slider(value = track.highGainDb, onValueChange = { tracks[index] = track.copy(highGainDb = it); exported = null }, valueRange = -12f..12f)
+                                Text("ROOM REVERB  ·  ${(track.reverbMix * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Slider(value = track.reverbMix, onValueChange = { tracks[index] = track.copy(reverbMix = it); exported = null }, valueRange = 0f..0.35f)
+                                Text("SOURCE PREVIEW IS UNPROCESSED; EQ, REVERB, PAN AND FADES ARE HEARD IN THE EXPORTED MIX.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
+                            }
                             Text("FADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = (track.fadeInMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
                                 tracks[index] = track.copy(fadeInMs = (it * 1000f).toLong()); exported = null
