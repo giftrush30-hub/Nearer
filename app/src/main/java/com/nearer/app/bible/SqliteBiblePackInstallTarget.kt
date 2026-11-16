@@ -22,7 +22,7 @@ class SqliteBiblePackInstallTarget(private val database:BibleLocalDatabase):Bibl
             id=manifest.translationId,name=manifest.translationName,languageTag=manifest.languageTag,
             languageName=manifest.languageName,abbreviation=manifest.abbreviation,
             canonId=manifest.canonId,sourceId=manifest.sourceId,licenseId=manifest.licenseId,
-            copyrightNotice=manifest.copyrightNotice,isDownloaded=true
+            copyrightNotice=manifest.copyrightNotice,isDownloaded=true,attribution=manifest.attribution
         ))
     }
     override fun putBook(book:BibleBook) {
