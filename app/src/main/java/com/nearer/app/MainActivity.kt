@@ -847,6 +847,7 @@ class MainActivity : ComponentActivity() {
                     incomingTransferName = incomingTransferName,
                     incomingProgress = incomingProgress,
                     onOpenFile = ::openReceivedFile,
+                    onExtractFolder = ::extractReceivedFolder,
                     onForwardReceivedFile = ::forwardReceivedFile,
                     onSaveReceivedFile = ::saveReceivedFileToDownloads,
                     onInstallAppBundle = ::installReceivedAppBundle,
@@ -1605,6 +1606,16 @@ class MainActivity : ComponentActivity() {
             repairedEntries.add(entry)
             receivedFiles.add(ReceivedFile(entry.displayName, canonical, entry.isAppBundle))
         }
+        canonicalFolder.listFiles()
+            ?.filter { it.isDirectory && it.name.startsWith("Folder-") }
+            ?.sortedByDescending { it.lastModified() }
+            ?.take(30)
+            ?.forEach { directory ->
+                val canonical = runCatching { directory.canonicalFile }.getOrNull() ?: return@forEach
+                if (canonical.parentFile == canonicalFolder && canonical.isDirectory) {
+                    receivedFiles.add(0, ReceivedFile(canonical.name, canonical, isFolder = true))
+                }
+            }
         // Rebuild from files that really exist; stale catalog entries never create phantom items.
         preferences.edit()
             .putString("received_file_catalog_v1", ReceivedFileCatalogPolicy.encode(repairedEntries))
@@ -2935,6 +2946,37 @@ class MainActivity : ComponentActivity() {
         captureExternalShareIntent(intent)
     }
 
+    private fun extractReceivedFolder(item: ReceivedFile) {
+        if (item.isFolder || !item.file.extension.equals("zip", ignoreCase = true)) {
+            chatNotice = "Choose a received ZIP archive to restore as a folder."
+            return
+        }
+        val receivedRoot = File(filesDir, "received").canonicalFile
+        val archive = runCatching { item.file.canonicalFile }.getOrNull()
+        if (archive == null || archive.parentFile != receivedRoot || !archive.isFile) {
+            chatNotice = "This archive is not in NeaRer's received-files folder."
+            return
+        }
+        chatNotice = "Restoring the folder. Files are extracted safely in the background…"
+        io.execute {
+            try {
+                val result = FolderArchiveExtractor.extract(archive, receivedRoot)
+                runOnUiThread {
+                    receivedFiles.removeAll { existing ->
+                        existing.isFolder && runCatching { existing.file.canonicalFile == result.directory.canonicalFile }.getOrDefault(false)
+                    }
+                    receivedFiles.add(0, ReceivedFile(result.directory.name, result.directory, isFolder = true))
+                    recordNearbyTransfer("Received", result.directory.name, result.bytesExtracted, "Folder restored")
+                    chatNotice = "Folder restored: ${result.fileCount} files in ${result.directory.name}. Open it in the received-files list."
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    chatNotice = "Could not restore this folder: ${error.localizedMessage ?: "the archive is invalid or storage is low"}"
+                }
+            }
+        }
+    }
+
     private fun openReceivedFile(item: ReceivedFile) {
         try {
             val uri = FileProvider.getUriForFile(this, "${packageName}.files", item.file)
@@ -3720,6 +3762,7 @@ private fun NeaRerHome(
     incomingTransferName: String?,
     incomingProgress: Float,
     onOpenFile: (ReceivedFile) -> Unit,
+    onExtractFolder: (ReceivedFile) -> Unit,
     onForwardReceivedFile: (ReceivedFile) -> Unit,
     onSaveReceivedFile: (ReceivedFile) -> Unit,
     onInstallAppBundle: (ReceivedFile) -> Unit,
@@ -4437,6 +4480,7 @@ private fun NeaRerHome(
                     onChooseFiles = { chatAttachmentPicker.launch(arrayOf("*/*")) },
                     receivedFiles = receivedFiles,
                     onOpenFile = onOpenFile,
+                    onExtractFolder = onExtractFolder,
                     transferHistory = transferHistory,
                     outgoingTransferId = outgoingTransferId,
                     outgoingProgress = outgoingProgress,
@@ -5010,7 +5054,7 @@ private fun isNeaRerAppBundle(file: File): Boolean {
     }.getOrDefault(false)
 }
 
-internal data class ReceivedFile(val displayName: String, val file: File, val isAppBundle: Boolean = false)
+internal data class ReceivedFile(val displayName: String, val file: File, val isAppBundle: Boolean = false, val isFolder: Boolean = false)
 
 private data class UnifiedTransferHistoryEntry(
     val direction: String,
