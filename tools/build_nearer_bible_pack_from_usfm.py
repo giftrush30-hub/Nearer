@@ -111,14 +111,23 @@ def main():
         parser.error("Input USFM ZIP does not exist.")
     if not args.attribution.strip() or not args.license_id.strip():
         parser.error("Attribution and licence ID are mandatory.")
+    if args.canon_id != "protestant-66":
+        parser.error("This builder currently validates only the Protestant 66-book canon.")
 
     parsed_books = {}
     with zipfile.ZipFile(args.usfm_zip) as archive:
-        for info in archive.infolist():
+        infos = archive.infolist()
+        if len(infos) > 100:
+            raise ValueError("Source archive contains too many files.")
+        if sum(info.file_size for info in infos) > 300 * 1024 * 1024:
+            raise ValueError("Expanded source archive exceeds the permitted size.")
+        for info in infos:
             if info.is_dir() or not info.filename.lower().endswith((".usfm", ".sfm")):
                 continue
-            if ".." in Path(info.filename).parts:
+            if ".." in Path(info.filename).parts or "\\" in info.filename:
                 raise ValueError("Unsafe path in source USFM archive.")
+            if info.file_size > 12 * 1024 * 1024:
+                raise ValueError("An individual USFM file exceeds the permitted size.")
             raw = archive.read(info).decode("utf-8-sig")
             id_match = re.search(r"(?m)^\\id\s+([A-Z0-9]{3})\b", raw)
             if not id_match:
