@@ -11,6 +11,8 @@ import java.util.zip.ZipInputStream
 
 interface BiblePackInstallTarget {
     fun begin()
+    fun installTranslation(manifest:BiblePackManifest)
+    fun putBook(book:BibleBook)
     fun putVerse(verse:BibleVerse)
     fun commit()
     fun rollback()
@@ -39,6 +41,7 @@ class BiblePackImporter(
         val extracted=extractSafely(zipFile)
         try {
             val manifestFile=extracted["manifest.json"] ?: error("Pack manifest is missing.")
+            val booksFile=extracted["books.ndjson"] ?: error("Book catalogue is missing.")
             val scriptureFile=extracted["scripture.ndjson"] ?: error("Scripture data is missing.")
             val manifest=parseManifest(manifestFile)
             val validation=BiblePackManifestValidator.validate(manifest,readerVersion)
@@ -51,6 +54,25 @@ class BiblePackImporter(
             var count=0
             target.begin()
             try {
+                target.installTranslation(manifest)
+                var booksImported=0
+                BufferedReader(InputStreamReader(booksFile.inputStream(),Charsets.UTF_8)).use { reader ->
+                    reader.forEachLine { line ->
+                        if(line.isBlank()) return@forEachLine
+                        val json=JSONObject(line)
+                        target.putBook(BibleBook(
+                            id=json.getString("bookId"),
+                            translationId=manifest.translationId,
+                            canonicalNumber=json.getInt("canonicalNumber"),
+                            name=json.getString("name"),
+                            testament=json.getString("testament"),
+                            chapterCount=json.getInt("chapterCount")
+                        ))
+                        booksImported++
+                        require(booksImported<=manifest.bookCount) { "Pack contains more books than declared." }
+                    }
+                }
+                require(booksImported==manifest.bookCount) { "Book count does not match manifest." }
                 BufferedReader(InputStreamReader(scriptureFile.inputStream(),Charsets.UTF_8)).use { reader ->
                     reader.forEachLine { line ->
                         if(line.isBlank()) return@forEachLine
@@ -123,7 +145,9 @@ class BiblePackImporter(
         val json=JSONObject(file.readText(Charsets.UTF_8))
         return BiblePackManifest(
             packId=json.getString("packId"), version=json.getInt("version"),
-            translationId=json.getString("translationId"), languageTag=json.getString("languageTag"),
+            translationId=json.getString("translationId"), translationName=json.getString("translationName"),
+            languageTag=json.getString("languageTag"), languageName=json.getString("languageName"),
+            abbreviation=json.getString("abbreviation"),
             canonId=json.getString("canonId"), sourceId=json.getString("sourceId"),
             licenseId=json.getString("licenseId"),
             copyrightNotice=json.optString("copyrightNotice").takeIf { it.isNotBlank() },
