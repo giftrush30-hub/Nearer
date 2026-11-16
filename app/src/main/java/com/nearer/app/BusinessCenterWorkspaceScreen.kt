@@ -60,6 +60,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
     var businessHours by remember { mutableStateOf(prefs.getString("business_hours", "").orEmpty()) }
     var statusMessage by remember { mutableStateOf("") }
     var photoMessage by remember { mutableStateOf("") }
+    var photoImportToken by remember { mutableStateOf(0) }
     var showEditor by remember { mutableStateOf(false) }
     var editingDraftId by remember { mutableStateOf<Long?>(null) }
     var searchQuery by remember { mutableStateOf("") }
@@ -113,6 +114,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
     }
 
     fun resetEditor() {
+        photoImportToken += 1
         releaseImageIfUnused(imageUri)
         title = ""
         price = ""
@@ -132,15 +134,21 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             val previous = imageUri
+            val requestToken = photoImportToken + 1
+            photoImportToken = requestToken
             photoMessage = "Importing and preparing your photo…"
             scope.launch {
                 val imported = BusinessPhotoStorage.import(context, uri)
-                if (imported != null) {
-                    imageUri = imported
-                    photoMessage = "Photo copied into NeaRer's private business storage."
-                    if (previous != imported) releaseImageIfUnused(previous)
-                } else {
-                    photoMessage = "NeaRer could not import that image. Choose a readable image file up to 30 MB."
+                if (requestToken == photoImportToken && showEditor) {
+                    if (imported != null) {
+                        imageUri = imported
+                        photoMessage = "Photo copied into NeaRer's private business storage."
+                        if (previous != imported) releaseImageIfUnused(previous)
+                    } else {
+                        photoMessage = "NeaRer could not import that image. Choose a readable image file up to 30 MB."
+                    }
+                } else if (imported != null) {
+                    BusinessPhotoStorage.deleteIfManaged(context, imported)
                 }
             }
         }
@@ -267,6 +275,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                         itemCategory = "General"
                         availability = "AVAILABLE"
                         photoMessage = ""
+                        photoImportToken += 1
                         showEditor = true
                     }
                 }
