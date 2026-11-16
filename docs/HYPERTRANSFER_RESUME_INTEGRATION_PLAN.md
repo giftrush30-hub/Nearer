@@ -1,3 +1,5 @@
+> - A sender transfer restored from disk is marked as durable-recovery work. Repeated timeout/reconnect attempts keep its staged source and retry with a newly allocated Nearby payload ID rather than silently downgrading to a non-resumable legacy send. The retry backs off after repeated failures and can resume when the same authenticated peer returns.
+>
 > - A receiver-side verified-completion journal now records the authenticated source peer, transfer/item identity, digest, size and app-private published file. If the sender restarts after the receiver saved the file but before the sender received the ACK, the receiver can answer the retried metadata with the saved receipt instead of publishing a duplicate. The sender accepts a matching authenticated saved receipt even if Nearby's payload-completion callback arrives later.
 >
 > **Implementation status update — 16 November 2026 (expanded recovery and bundle integration)**
