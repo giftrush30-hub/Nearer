@@ -18,7 +18,7 @@ class NearbyServiceStartPolicyTest {
         assertTrue(NearbyServiceStartPolicy.requiresLocationServices(30))
         assertFalse(NearbyServiceStartPolicy.requiresLocationServices(31))
         assertFalse(NearbyServiceStartPolicy.requiresLocationServices(35))
-        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, true, 31, false))
+        assertTrue(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, true, 31, false))
     }
 
     @Test fun radioAndPermissionRecoveryCanReenableDiscovery() {
