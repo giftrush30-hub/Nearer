@@ -56,7 +56,6 @@ internal object HyperTransferModePolicy {
         if (remote == null) return Mode.FAST
         val localMode = localSafeMode(local)
         val remoteMode = localSafeMode(remote)
-        if (!local.streamCapable || !remote.streamCapable) return minMode(localMode, remoteMode, Mode.FAST)
         return minMode(localMode, remoteMode)
     }
 
