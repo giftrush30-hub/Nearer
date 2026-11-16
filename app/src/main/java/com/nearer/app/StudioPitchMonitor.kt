@@ -142,7 +142,7 @@ internal object StudioPitchEngine {
 }
  
 @Composable
-internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int? = null) {
+internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int? = null, preferUnprocessedInput: Boolean = false) {
     val context = LocalContext.current
     var reading by remember { mutableStateOf<StudioPitchReading?>(null) }
     var status by remember { mutableStateOf("Listening for a clear single vocal note…") }
@@ -183,7 +183,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         val recorder = withContext(Dispatchers.IO) {
             runCatching {
                 AudioRecord.Builder()
-                    .setAudioSource(MediaRecorder.AudioSource.MIC)
+                    .setAudioSource(if (preferUnprocessedInput) MediaRecorder.AudioSource.UNPROCESSED else MediaRecorder.AudioSource.MIC)
                     .setAudioFormat(
                         AudioFormat.Builder()
                             .setSampleRate(sampleRate)
@@ -300,7 +300,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
             Text("PITCH MONITOR", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         }
         Text("Vocal pitch & key guide", color = White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
-        Text(if (preferredInputId == null) "Live microphone analysis · Phone default input · No recording is saved" else "Live microphone analysis · Selected USB input · No recording is saved", color = Muted, fontSize = 11.sp)
+        Text("${if (preferredInputId == null) "Phone default" else "Selected USB"} input · ${if (preferUnprocessedInput) "Unprocessed capture" else "Standard microphone path"} · No recording is saved", color = Muted, fontSize = 11.sp)
         Button(
             onClick = { monitorEnabled = !monitorEnabled },
             modifier = Modifier.fillMaxWidth(),
