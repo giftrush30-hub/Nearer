@@ -31,11 +31,13 @@ internal class NearbyIncomingMessageInbox(context: Context) {
 
     fun put(entry: Entry): Boolean = synchronized(lock) {
         if (restoreFailed || !isValid(entry)) return false
-        val entryKey = key(entry.peerId, entry.messageId)
+        val normalizedPeerId = NeaRerIdentity.normalize(entry.peerId) ?: return false
+        val normalizedEntry = entry.copy(peerId = normalizedPeerId)
+        val entryKey = key(normalizedPeerId, entry.messageId)
         val existing = entries[entryKey]
-        if (existing != null) return existing == entry
+        if (existing != null) return existing == normalizedEntry
         if (entries.size >= MAX_ENTRIES) return false
-        entries[entryKey] = entry
+        entries[entryKey] = normalizedEntry
         if (persistLocked()) true else {
             entries.remove(entryKey)
             false
@@ -74,7 +76,7 @@ internal class NearbyIncomingMessageInbox(context: Context) {
                 val item = array.optJSONObject(index) ?: continue
                 val entry = Entry(
                     messageId = item.optString("messageId"),
-                    peerId = item.optString("peerId"),
+                    peerId = NeaRerIdentity.normalize(item.optString("peerId")).orEmpty(),
                     senderName = item.optString("senderName"),
                     body = item.optString("body"),
                     replyToMessageId = item.optString("replyToMessageId").takeIf { it.isNotBlank() },
@@ -90,7 +92,7 @@ internal class NearbyIncomingMessageInbox(context: Context) {
         }
     }
 
-    private fun key(peerId: String, messageId: String): String = "$peerId|$messageId"
+    private fun key(peerId: String, messageId: String): String = "${NeaRerIdentity.normalize(peerId).orEmpty()}|$messageId"
 
     private fun persistLocked(): Boolean = try {
         val array = JSONArray()
