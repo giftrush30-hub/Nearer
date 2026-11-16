@@ -78,13 +78,12 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
             onOpenReading={reference ->
                 showExtras=false
                 val current=selectedTranslation
-                val separator=reference.lastIndexOf(' ')
-                val requestedBook=if(separator>0) reference.substring(0,separator).let { if(it.equals("Psalm",true)) "Psalms" else it } else ""
-                val passagePart=if(separator>0) reference.substring(separator+1) else ""
-                val requestedChapter=passagePart.takeWhile { it.isDigit() }.toIntOrNull()
-                val versePart=passagePart.substringAfter(':',"").takeWhile { it.isDigit() }
-                val requestedVerse=versePart.toIntOrNull()
-                val targetBook=books.firstOrNull { it.name.equals(requestedBook,true) }
+                val parsedReference=parseBibleReadingReference(reference)
+                val requestedChapter=parsedReference?.chapter
+                val requestedVerse=parsedReference?.startingVerse
+                val targetBook=parsedReference?.let { parsed ->
+                    books.firstOrNull { it.name.equals(parsed.bookName,true) }
+                }
                 if(current==null) {
                     notice="Install a Bible translation before opening this reading-plan passage."
                 } else if(targetBook==null || requestedChapter==null || requestedChapter !in 1..targetBook.chapterCount) {
