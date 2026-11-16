@@ -50,7 +50,7 @@ fun NeaRerWordStudyJournalScreen(
         verticalArrangement=Arrangement.spacedBy(10.dp)) {
         Text("MY WORD JOURNAL",color=Color(0xFFFFD12D),fontSize=11.sp,fontWeight=FontWeight.Bold)
         Text("Keep what you learn",color=Color.White,fontSize=24.sp,fontWeight=FontWeight.Bold)
-        Text("Your notes and bookmarks stay on this device.",color=Color(0xFFA8B6C9),fontSize=12.sp)
+        Text("Your notes, bookmarks and highlights stay on this device.",color=Color(0xFFA8B6C9),fontSize=12.sp)
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             TextButton(onClick={filter="NOTES"}) { Text("STUDY NOTES",color=if(filter=="NOTES") Color(0xFF69E0C0) else Color.White) }
             TextButton(onClick={filter="BOOKMARKS"}) { Text("BOOKMARKS",color=if(filter=="BOOKMARKS") Color(0xFF69E0C0) else Color.White) }
