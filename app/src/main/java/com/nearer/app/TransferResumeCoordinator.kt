@@ -240,8 +240,10 @@ internal class TransferResumeCoordinator(
         input: InputStream,
         destination: File,
         expectedWholeFileSha256: String,
-        isCancelled: () -> Boolean = { false }
+        isCancelled: () -> Boolean = { false },
+        receiveBufferBytes: Int = HyperTransferModePolicy.receiveBufferBytes(HyperTransferModePolicy.Mode.FAST)
     ): ReceiveResult {
+        require(receiveBufferBytes in 4 * 1024..1024 * 1024) { "Invalid receive buffer size" }
         val key = "${transferId.length}:$transferId${item.id}"
         val lock = acquireReceiveLock(key)
         try {
@@ -254,7 +256,8 @@ internal class TransferResumeCoordinator(
                 input = input,
                 destination = destination,
                 expectedWholeFileSha256 = expectedWholeFileSha256,
-                isCancelled = isCancelled
+                isCancelled = isCancelled,
+                receiveBufferBytes = receiveBufferBytes
             )
         } finally {
             releaseReceiveLock(key, lock)
@@ -270,7 +273,8 @@ internal class TransferResumeCoordinator(
         input: InputStream,
         destination: File,
         expectedWholeFileSha256: String,
-        isCancelled: () -> Boolean = { false }
+        isCancelled: () -> Boolean = { false },
+        receiveBufferBytes: Int
     ): ReceiveResult {
         val peerId = NeaRerIdentity.normalize(authenticatedSourcePeerId)
             ?: throw SecurityException("The sender identity is not authenticated")
@@ -301,7 +305,8 @@ internal class TransferResumeCoordinator(
             sourceModifiedAtMillis = sourceModifiedAtMillis,
             input = input,
             sourcePeerId = peerId,
-            isCancelled = isCancelled
+            isCancelled = isCancelled,
+            bufferBytesOverride = receiveBufferBytes
         )
         if (written.resumedFromBytes != acceptedOffsetBytes) {
             store.discard(transferId, item.id)
