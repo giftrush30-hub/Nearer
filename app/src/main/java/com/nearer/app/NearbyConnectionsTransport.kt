@@ -1558,22 +1558,22 @@ internal object IncomingFilePayloadPolicy {
             val hasReplyFields = replyId != null || replyPreview != null || replySender != null
             require(!hasReplyFields || ChatReplyPolicy.isValidIncomingQuote(replyId, replyPreview, replySender))
             listener.onMeshMessageWithReply(packet.originId, senderName, packet.packetId, body, replyId, replyPreview, replySender) {
-                if (pendingKey in pendingIncomingMessageIds) {
-                    val saved = rememberMessageId(packet.originId, packet.packetId)
-                    pendingIncomingMessageIds.remove(pendingKey)
-                    if (saved) {
-                        val receipt = MeshDeliveryReceipt.create(
-                            packet.packetId, packet.originId, packet.destinationId, System.currentTimeMillis()
-                        ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
-                        // Persist the final receipt before deleting the locally delivered packet.
-                        // If receipt storage fails, keep the packet so a retry can regenerate it.
-                        if (queueMeshReceipt(receipt)) {
-                            deadDropStore.markLocallyDelivered(packet.packetId)
-                        } else {
-                            listener.onStatus("Message saved here. Its encrypted packet is retained until the final receipt can be saved.")
-                        }
+                if (pendingKey !in pendingIncomingMessageIds) return@onMeshMessageWithReply false
+                val saved = rememberMessageId(packet.originId, packet.packetId)
+                pendingIncomingMessageIds.remove(pendingKey)
+                if (saved) {
+                    val receipt = MeshDeliveryReceipt.create(
+                        packet.packetId, packet.originId, packet.destinationId, System.currentTimeMillis()
+                    ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+                    // Persist the final receipt before deleting the locally delivered packet.
+                    // If receipt storage fails, keep the packet so a retry can regenerate it.
+                    if (queueMeshReceipt(receipt)) {
+                        deadDropStore.markLocallyDelivered(packet.packetId)
+                    } else {
+                        listener.onStatus("Message saved here. Its encrypted packet is retained until the final receipt can be saved.")
                     }
                 }
+                saved
             }
         } catch (_: Exception) {
             pendingIncomingMessageIds.remove(pendingKey)
