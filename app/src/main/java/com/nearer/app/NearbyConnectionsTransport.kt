@@ -1971,7 +1971,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                             completed.totalBytes, completed.totalBytes, true,
                             meter.record(completed.totalBytes, completed.totalBytes))
                         if (metadata.item.mimeType == BUNDLE_MIME_TYPE) {
-                            val folderName = metadata.item.displayName.removeSuffix(".nearerbundle")
+                            val folderName = metadata.item.displayName.removeSuffix(".zip")
                             val bundleDirectory = File(
                                 File(appContext.filesDir, "received"),
                                 System.currentTimeMillis().toString() + "-" +
@@ -1983,9 +1983,11 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                                 completed.completedFile.delete()
                                 throw error
                             }
-                            completed.completedFile.delete()
-                            listener.onFileReceived(endpointId, folderName, bundleDirectory)
-                            listener.onFileStatus("Verified folder transfer complete: " + folderName)
+                            // Keep the verified ZIP visible in the received-files list so
+                            // Android's archive apps can open/extract it. The validated
+                            // folder tree is also retained in NeaRer's private received area.
+                            listener.onFileReceived(endpointId, metadata.item.displayName, completed.completedFile)
+                            listener.onFileStatus("Verified folder bundle received: " + folderName)
                         } else {
                             listener.onFileReceived(endpointId, metadata.item.displayName, completed.completedFile)
                             listener.onFileStatus("Verified transfer complete: " + metadata.item.displayName)
@@ -2983,7 +2985,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                     stagedInputs.clear()
                     val uri = Uri.fromFile(archive!!)
                     val payloadId = sendHyperTransferStream(
-                        endpointId, uri, "$safeBundleName.nearerbundle",
+                        endpointId, uri, "$safeBundleName.zip",
                         BUNDLE_MIME_TYPE, deleteSourceAfterStaging = true,
                         allowLegacyFallback = false
                     )
