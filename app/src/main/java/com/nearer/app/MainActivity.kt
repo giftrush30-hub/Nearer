@@ -162,6 +162,7 @@ class MainActivity : ComponentActivity() {
             nearbyServiceBinding = false
             nearbyServiceStarted = false
             nearbyTransport = null
+            hybridSearching = false
             hybridConnected = false
             hybridConnectedEndpoint = null
             hybridConnectedStableId = null
@@ -176,6 +177,7 @@ class MainActivity : ComponentActivity() {
             nearbyServiceBinding = false
             nearbyServiceStarted = false
             nearbyTransport = null
+            hybridSearching = false
             runCatching { unbindService(this) }
             ensureNearbyServiceBound()
         }
