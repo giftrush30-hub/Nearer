@@ -2,6 +2,13 @@ package com.nearer.app
 
 import android.content.Intent
 import android.media.MediaMetadataRetriever
+import android.graphics.Color
+import android.graphics.Typeface
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -44,6 +51,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.effect.Brightness
 import androidx.media3.effect.Contrast
 import androidx.media3.effect.HslAdjustment
+import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.StaticOverlaySettings
+import androidx.media3.effect.TextOverlay
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
@@ -91,19 +101,37 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
     var brightness by remember(context) { mutableStateOf(restoredGrade.brightness) }
     var contrast by remember(context) { mutableStateOf(restoredGrade.contrast) }
     var saturation by remember(context) { mutableStateOf(restoredGrade.saturation) }
-    fun videoGradeEffects() = buildList<androidx.media3.common.Effect> {
+    val textPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_text", android.content.Context.MODE_PRIVATE) }
+    var textOverlay by remember(context) { mutableStateOf(StudioVideoTextOverlayCodec.decode(textPreferences.getString("overlay_v1", null))) }
+    fun videoEffects() = buildList<androidx.media3.common.Effect> {
         if (brightness != 0f) add(Brightness(brightness))
         if (contrast != 0f) add(Contrast(contrast))
         if (saturation != 0f) add(HslAdjustment.Builder().adjustSaturation(saturation).build())
+        if (textOverlay.text.isNotBlank()) {
+            val caption = SpannableString(textOverlay.text)
+            caption.setSpan(ForegroundColorSpan(textOverlay.colorArgb), 0, caption.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            caption.setSpan(BackgroundColorSpan(Color.argb(150, 8, 14, 22)), 0, caption.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            caption.setSpan(StyleSpan(Typeface.BOLD), 0, caption.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            val anchorY = when (textOverlay.verticalPosition) { 0 -> 0.78f; 1 -> 0f; else -> -0.78f }
+            val settings = StaticOverlaySettings.Builder()
+                .setOverlayFrameAnchor(0f, 0f)
+                .setBackgroundFrameAnchor(0f, anchorY)
+                .setScale(0.85f, 0.85f)
+                .build()
+            add(OverlayEffect(listOf(TextOverlay.createStaticTextOverlay(caption, settings))))
+        }
     }
     LaunchedEffect(brightness, contrast, saturation) {
         gradePreferences.edit().putString("grade_v1", StudioVideoGradeCodec.encode(StudioVideoGrade(brightness, contrast, saturation))).apply()
     }
+    LaunchedEffect(textOverlay) {
+        textPreferences.edit().putString("overlay_v1", StudioVideoTextOverlayCodec.encode(textOverlay)).apply()
+    }
     val player = remember(context) { ExoPlayer.Builder(context).build() }
 
     DisposableEffect(player) { onDispose { player.release() } }
-    LaunchedEffect(clips.toList(), brightness, contrast, saturation) {
-        player.setVideoEffects(videoGradeEffects())
+    LaunchedEffect(clips.toList(), brightness, contrast, saturation, textOverlay) {
+        player.setVideoEffects(videoEffects())
         if (clips.isNotEmpty()) {
             val previewItems = clips.map { clip ->
                 MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
@@ -167,6 +195,52 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                 Text("SATURATION  ·  ${saturation.toInt()}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                 Slider(value = saturation, onValueChange = { saturation = it; exported = null }, valueRange = -50f..50f)
                 Button(onClick = { brightness = 0f; contrast = 0f; saturation = 0f; exported = null }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("RESET COLOUR") }
+            }
+        }
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("TEXT & CAPTION OVERLAY", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.7.sp)
+                Text("Add a title, subtitle or creator tag. It appears in both the live preview and the exported clips.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                androidx.compose.material3.OutlinedTextField(
+                    value = textOverlay.text,
+                    onValueChange = { textOverlay = textOverlay.copy(text = it.take(80)); exported = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Type your video text") },
+                    singleLine = true
+                )
+                Text("TEXT COLOUR", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    listOf(
+                        "WHITE" to 0xFFFFFFFF.toInt(),
+                        "GOLD" to 0xFFFFD166.toInt(),
+                        "MINT" to 0xFF67E8C5.toInt()
+                    ).forEach { (label, color) ->
+                        Button(onClick = { textOverlay = textOverlay.copy(colorArgb = color); exported = null },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (textOverlay.colorArgb == color) Mint else Midnight,
+                                contentColor = if (textOverlay.colorArgb == color) Midnight else White
+                            )) { Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+                Text("PLACEMENT", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    listOf("TOP", "CENTRE", "BOTTOM").forEachIndexed { index, label ->
+                        Button(onClick = { textOverlay = textOverlay.copy(verticalPosition = index); exported = null },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (textOverlay.verticalPosition == index) Mint else Midnight,
+                                contentColor = if (textOverlay.verticalPosition == index) Midnight else White
+                            )) { Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+                if (textOverlay.text.isNotBlank()) {
+                    Button(onClick = { textOverlay = StudioVideoTextOverlay(); exported = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
+                        Text("REMOVE TEXT OVERLAY")
+                    }
+                }
             }
         }
         if (clips.isNotEmpty()) {
@@ -237,7 +311,7 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                     val item = MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
                         MediaItem.ClippingConfiguration.Builder().setStartPositionMs(clip.inMs).setEndPositionMs(clip.outMs).build()
                     ).build()
-                    EditedMediaItem.Builder(item).setEffects(Effects(emptyList(), videoGradeEffects())).build()
+                    EditedMediaItem.Builder(item).setEffects(Effects(emptyList(), videoEffects())).build()
                 }
                 val videoSequence = EditedMediaItemSequence.Builder(videoItems).build()
                 val sequences = mutableListOf(videoSequence)
@@ -279,7 +353,7 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                 Text("SHARE EXPORTED VIDEO")
             }
         }
-        Text("The timeline and trim points are saved locally so you can return to your edit. This first timeline joins clips in sequence and can mix a looping music bed. It does not yet include crossfades, captions, stickers, speed ramps or frame-accurate waveform editing.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
+        Text("The timeline, trims, colour grade and text overlay are saved locally. Text currently spans the full edited sequence; timed caption tracks, multiple text layers, animations, crossfades and speed ramps are future editor milestones.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
 }
 
