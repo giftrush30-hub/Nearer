@@ -179,7 +179,12 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 val movie = selected ?: return
-                if (playbackState == Player.STATE_ENDED) persistPosition(movie.uri, 0L)
+                if (playbackState == Player.STATE_ENDED) {
+                    persistPosition(movie.uri, 0L)
+                } else if (playbackState == Player.STATE_READY && player.duration > 0L && player.currentPosition >= player.duration) {
+                    player.seekTo(0L)
+                    persistPosition(movie.uri, 0L)
+                }
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
