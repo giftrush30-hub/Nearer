@@ -20,11 +20,15 @@ The native diagnostics report the negotiated sample rate, output burst and buffe
 
 ## Lifecycle and recovery
 
-A route disconnect triggers Oboe's error callback and marks the engine disconnected. The Kotlin screen stops the native session and asks the user to reconnect and restart. Automatic route reopen is not enabled yet; a safe reopen needs a serialized control-thread state machine that handles both streams and re-queries device properties. The Java fallback remains available when initial native stream creation fails.
+A route disconnect triggers Oboe's error callback and marks the engine disconnected. The Kotlin control coroutine stops and closes both streams outside the real-time callback, then makes one bounded native reopen attempt when a headphone output is still present. If native restart fails, it falls back to the Java compatibility path. A selected USB input is re-verified by device ID on every native open. USB input removal is also observed by the parent recorder's Android device callback, which updates the selected input and restarts the monitor with the new selection.
+
+The monitor now observes headphone add/remove events while it is open. It refuses to start mic-to-output monitoring without a detected headset/headphone/USB audio output, and stops if that output disappears, preventing speaker-to-microphone feedback. This is a device-class check rather than a guarantee that every connected accessory is physically worn or acoustically isolated.
+
+The Java capture path is marked privacy-sensitive on Android 11/API 30+; microphone capture still starts only after the user's explicit in-screen opt-in and is never saved by the pitch monitor. Oboe's current builder API does not expose the same privacy-sensitive switch, so this is not claimed for the native backend.
 
 ## Validation still required
 
-The code is integrated into the Android build and automated checks will compile the NDK target as well as run JVM tests and build the APK. This does not prove physical-device performance. Required device testing includes:
+The code is integrated into the Android build. Automated checks compile the NDK target, run JVM tests (including PCM frame assembly and signal-level vocal processor tests), and build/upload the debug APK. This does not prove physical-device performance. Required device testing includes:
 
 1. Phone built-in microphone and speaker/headphones.
 2. USB microphone plus wired/USB headphones on Android API 27+; verify the displayed input device ID matches the selected device.
