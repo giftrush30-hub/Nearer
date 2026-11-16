@@ -82,7 +82,15 @@ This branch introduces `NearbyMessageDedupePolicy` and JVM tests for:
 
 The legacy fallback is temporary compatibility behavior: old records did not retain sender identity, so they cannot be retroactively attributed with certainty. New records must always be peer-scoped.
 
-## 5. Completion order
+## 5. Crash-safe mesh final-receipt recovery
+
+- Destination replay checks the encrypted dead-drop queue for a still-pending packet and completes the final receipt path before retiring the inbox event.
+- Final receipt creation is idempotent by packet ID: if the receipt outbox already contains a signed receipt, retries reuse that exact receipt rather than creating a new timestamp/signature for the same packet ID.
+- The destination retires its local encrypted packet only after the final receipt has been durably enqueued.
+- If receipt persistence fails, the packet and durable inbox event remain available for retry.
+- This closes the crash window between receipt persistence and local packet retirement. It does not replace multi-device or real-radio testing.
+
+## 6. Completion order
 
 1. Reconcile service-owned transport with current main and review startup/stop/bind/rebind lifecycle.
 2. Verify incoming durable inbox commit, acknowledgement ordering, retry and dedupe semantics.
@@ -94,7 +102,7 @@ The legacy fallback is temporary compatibility behavior: old records did not ret
 8. Run JVM tests without building an APK; add instrumentation/physical-device acceptance checks separately.
 9. Review and merge to main only after all required gates pass.
 
-## 6. Required test matrix
+## 7. Required test matrix
 
 | Scenario | Expected behavior |
 |---|---|
@@ -110,6 +118,6 @@ The legacy fallback is temporary compatibility behavior: old records did not ret
 | Group message to several peers | Each recipient's delivery/read state is tracked independently |
 | Old app version sends a legacy message | Compatibility behavior is explicit and tested |
 
-## 7. No-APK rule
+## 8. No-APK rule
 
 Do not run `assembleDebug`, `assembleRelease`, or any workflow that packages/uploads an APK during this workstream unless the owner explicitly authorizes it. Prefer code review, static inspection and JVM-only validation. The existing repository workflow currently runs both JVM tests and `assembleDebug` on selected PR targets, so do not open a PR against a triggering target until the APK workflow has been adjusted or the owner approves it.
