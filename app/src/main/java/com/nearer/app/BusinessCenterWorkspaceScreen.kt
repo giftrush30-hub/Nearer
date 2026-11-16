@@ -472,7 +472,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
 @Composable
 private fun BusinessDraftPhoto(uri: Uri, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val bitmap by produceState<Bitmap?>(initialValue = null, uri, context) {
+    val bitmap by produceState<Bitmap?>(null, uri, context) {
         value = withContext(Dispatchers.IO) {
             runCatching {
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
