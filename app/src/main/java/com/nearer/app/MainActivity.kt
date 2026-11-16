@@ -716,9 +716,14 @@ class MainActivity : ComponentActivity() {
                             activeOutgoingFileName = "shared-file"
                             activeOutgoingFileBytes = 0L
                             currentNearbyQueuedFile = null
-                            nearbyQueueCompleted += 1
-                            persistNearbyFileQueue()
-                            if (nearbyQueueTotal > 0) startNextNearbyQueuedFile()
+                            if (nearbyQueueTotal > 0) {
+                                nearbyQueueCompleted += 1
+                                persistNearbyFileQueue()
+                                startNextNearbyQueuedFile()
+                            } else {
+                                nearbyQueueCompleted = 0
+                                persistNearbyFileQueue()
+                            }
                         } else if (nearbyQueueTotal > 0) {
                             // Keep the active file and remaining queue for retry after reconnect.
                             persistNearbyFileQueue()
