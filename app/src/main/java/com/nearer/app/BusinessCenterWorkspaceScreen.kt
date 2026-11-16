@@ -6,7 +6,6 @@ import android.graphics.BitmapFactory
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.provider.OpenableColumns
 import android.widget.ImageView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,7 +19,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -205,12 +203,12 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                 Button(onClick = {
                     val card = buildString {
                         append(businessName.trim())
-                        if (tagline.isNotBlank()) append("\\n$tagline")
-                        if (businessCategory.isNotBlank()) append("\\nCategory: $businessCategory")
-                        if (serviceArea.isNotBlank()) append("\\nArea: $serviceArea")
-                        if (businessHours.isNotBlank()) append("\\nHours: $businessHours")
-                        if (contact.isNotBlank()) append("\\nContact: $contact")
-                        append("\\nShared via NeaRer Business")
+                        if (tagline.isNotBlank()) append("\n$tagline")
+                        if (businessCategory.isNotBlank()) append("\nCategory: $businessCategory")
+                        if (serviceArea.isNotBlank()) append("\nArea: $serviceArea")
+                        if (businessHours.isNotBlank()) append("\nHours: $businessHours")
+                        if (contact.isNotBlank()) append("\nContact: $contact")
+                        append("\nShared via NeaRer Business")
                     }
                     runCatching {
                         context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, card), "Share business card"))
@@ -247,7 +245,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                     runCatching {
                         context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, catalogueText), "Share business catalogue"))
                     }.onFailure { statusMessage = "Could not share catalogue: ${it.message ?: "unknown error"}" }
-                }, enabled = drafts.isNotEmpty(), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
+                }, enabled = drafts.isNotEmpty() && profileSaved, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
                     Text("Share catalogue", fontSize = 10.sp)
                 }
                 Button(onClick = {
@@ -405,7 +403,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                                     }
                                     context.startActivity(Intent.createChooser(shareIntent, "Share business listing"))
                                 }
-                            }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
+                            }, enabled = profileSaved, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                                 Text("Share listing", fontWeight = FontWeight.Bold)
                             }
                             Text("EDIT", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editDraft(draft) }.padding(10.dp))
