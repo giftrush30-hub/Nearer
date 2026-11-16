@@ -259,7 +259,11 @@ class NearbyTransportService : Service() {
             }.getOrDefault(false)
         } else true
         val readyForDiscovery = NearbyServiceStartPolicy.shouldStartDiscovery(
-            onboardingComplete, permissionsGranted, SmartConnectPolicy.hasUsableRadio(bluetoothEnabled, wifiEnabled), locationServicesEnabled
+            onboardingComplete = onboardingComplete,
+            permissionsGranted = permissionsGranted,
+            radioAvailable = SmartConnectPolicy.hasUsableRadio(bluetoothEnabled, wifiEnabled),
+            sdkInt = Build.VERSION.SDK_INT,
+            locationServicesEnabled = locationServicesEnabled
         )
         val notificationText = if (readyForDiscovery) "Nearby discovery and message recovery can continue while you use other apps." else "Nearby discovery is paused. Open NeaRer to review permissions, Bluetooth and Wi-Fi."
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
@@ -278,6 +282,9 @@ class NearbyTransportService : Service() {
                 lastStatus = "Nearby background service could not start discovery: " + (error.localizedMessage ?: "check permissions")
             }
         } else if (!readyForDiscovery) {
+            // A permission/radio change must stop new advertisements/discovery,
+            // while already-authenticated peer connections can finish safely.
+            nearbyTransport.stopSearching()
             lastStatus = when {
                 !onboardingComplete -> "Complete NeaRer setup before starting nearby discovery."
                 !permissionsGranted -> "Nearby discovery is paused until the required nearby-device permissions are granted."
