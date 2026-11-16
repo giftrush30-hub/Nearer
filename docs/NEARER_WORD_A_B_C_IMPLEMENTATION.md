@@ -68,9 +68,10 @@ translations, books, verses, verse_search (FTS4), lexical_entries, word_occurren
 - The page transition remains a simple 3D turn, not a true paper-curl shader.
 
 ## Remaining work before calling Bible complete
-- No Scripture pack has been bundled or distributed in this branch. The World English Bible (WEBP) is a viable first global seed because eBible.org identifies its text as public domain; its name is trademarked, so the text must remain faithful and the naming conditions must be respected. A source USFM ZIP still needs to be processed into a NeaRer pack.
+- No Scripture text is bundled in the APK. The Android validation workflow now has a separate job configured to fetch the official World English Bible (WEBP) USFM source from eBible.org, run the pack builder, and publish the generated ZIP as a separate artifact. This artifact is not considered validated until that workflow job passes and the pack imports successfully on a device. eBible.org identifies the text as public domain; its name is trademarked, so the text must remain faithful and the naming conditions must be respected.
 - BSN reports 27 complete Nigerian-language Bibles, while its public Bible-app download guides list a smaller subset; the app shows discovery leads only and does not imply NeaRer has distribution permission. The installer expects publisher-approved pack files; it does not fetch copyrighted translations from the web.
 - The lexicon importer exists, but no lexical corpus is bundled and no automatic downloadable lexical catalogue is connected yet.
+- The WEBP pack workflow job has been added, but the latest run has not yet been confirmed successful.
 - Original-language study detail is live only where trusted alignment records have been imported.
 - Add audio Bible playback, side-by-side translation comparison, reading plans, highlights, pronunciation audio, and robust reading-position restoration.
 - Run CI on this exact branch, resolve any compile/test errors, and conduct airplane-mode and low-end-device tests.
@@ -89,6 +90,7 @@ translations, books, verses, verse_search (FTS4), lexical_entries, word_occurren
 10. Physical-device storage, memory and performance test on a low-end phone.
 
 ## Research sources
+- WEBP public-domain status, trademark notice and official USFM file listing: https://ebible.org/details.php?id=engwebp
 - World English Bible public-domain and trademark conditions: https://ebible.org/engwebp/copyright.htm
 - World English Bible official USFM download listing: https://ebible.org/details.php?id=engwebp
 - BSN current Nigerian-language Bible downloads and YouVersion edition list: https://www.biblesociety-nigeria.org/bible-downloads/
