@@ -25,7 +25,7 @@ data class MeshRecipient(
     val isDirect: Boolean
 )
 
-class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = false, private val listener: Listener) {
+class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = false, listener: Listener) {\n    @Volatile private var listener: Listener = listener
     interface Listener {
         fun onStatus(message: String)
         fun onFound(id: String, name: String, stableId: String)
@@ -69,6 +69,25 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         }
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
+    }
+
+    /** Convenience base for service-owned listeners that override only selected events. */
+    open class ListenerAdapter : Listener {
+        override fun onStatus(message: String) {}
+        override fun onFound(id: String, name: String, stableId: String) {}
+        override fun onLost(id: String, stableId: String) {}
+        override fun onRequest(id: String, name: String, token: String) {}
+        override fun onConnected(id: String, name: String, stableId: String) {}
+        override fun onDisconnected(id: String, stableId: String, name: String) {}
+        override fun onMessage(id: String, senderName: String, messageId: String, body: String, acknowledge: () -> Unit) {}
+        override fun onMessageStatus(messageId: String, status: String) {}
+        override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {}
+        override fun onFileReceived(id: String, name: String, file: File) {}
+        override fun onFileStatus(message: String) {}
+    }
+
+    fun setListener(listener: Listener) {
+        this.listener = listener
     }
 
     private val appContext = context.applicationContext
@@ -2303,9 +2322,37 @@ internal object IncomingFilePayloadPolicy {
 
     fun stableIdentityForEndpoint(endpointId: String): String =
         synchronized(names) { stableIds[endpointId].orEmpty() }
+            .ifBlank { NeaRerIdentity.normalize(endpointId).orEmpty() }
 
     fun displayNameForEndpoint(endpointId: String): String =
         synchronized(names) { names[endpointId].orEmpty() }
+
+    data class ConnectedPeerSnapshot(val endpointId: String, val displayName: String, val stablePeerId: String)
+
+    fun connectedPeersSnapshot(): List<ConnectedPeerSnapshot> = synchronized(activeEndpoints) {
+        activeEndpoints.mapNotNull { endpoint ->
+            if (!authenticatedEndpoints.contains(endpoint)) return@mapNotNull null
+            val peerId = synchronized(names) { stableIds[endpoint].orEmpty() }
+            val name = synchronized(names) { names[endpoint].orEmpty() }
+            if (NeaRerIdentity.normalize(peerId) == null) null
+            else ConnectedPeerSnapshot(endpoint, name.ifBlank { "Nearby member" }, peerId)
+        }
+    }
+
+    /**
+     * Commits an inbox event after its Activity has safely saved it. If the
+     * original transport callback was lost during process death, this method
+     * still restores duplicate protection and acknowledges a currently active
+     * authenticated endpoint when one exists.
+     */
+    fun acknowledgePersistedIncomingMessage(peerId: String, messageId: String): Boolean {
+        if (messageId.isBlank() || messageId.length > 80) return false
+        val saved = rememberMessageId(messageId)
+        pendingIncomingMessageIds.remove(messageId)
+        if (!saved) return false
+        endpointForStablePeer(NeaRerIdentity.normalize(peerId).orEmpty())?.let { sendAcknowledgement(it, messageId) }
+        return true
+    }
 
     fun setDisplayName(name: String) {
         val clean = name.trim().replace("|", " ").take(23).ifBlank { "NeaRer User" }
