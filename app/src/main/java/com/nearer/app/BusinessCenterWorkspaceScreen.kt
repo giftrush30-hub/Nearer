@@ -1,6 +1,8 @@
 package com.nearer.app
 
 import android.content.ClipData
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -32,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,17 +45,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import org.json.JSONArray
-import org.json.JSONObject
-
-private data class BusinessDraft(
-    val id: Long,
-    val title: String,
-    val price: String,
-    val category: String,
-    val description: String,
-    val imageUri: String
-)
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
@@ -61,6 +55,11 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
     var businessName by remember { mutableStateOf(prefs.getString("business_name", "").orEmpty()) }
     var tagline by remember { mutableStateOf(prefs.getString("tagline", "").orEmpty()) }
     var contact by remember { mutableStateOf(prefs.getString("contact", "").orEmpty()) }
+    var businessCategory by remember { mutableStateOf(prefs.getString("business_category", "General").orEmpty()) }
+    var serviceArea by remember { mutableStateOf(prefs.getString("service_area", "").orEmpty()) }
+    var businessHours by remember { mutableStateOf(prefs.getString("business_hours", "").orEmpty()) }
+    var statusMessage by remember { mutableStateOf("") }
+    var photoMessage by remember { mutableStateOf("") }
     var showEditor by remember { mutableStateOf(false) }
     var editingDraftId by remember { mutableStateOf<Long?>(null) }
     var searchQuery by remember { mutableStateOf("") }
@@ -69,22 +68,25 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
     var price by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("PRODUCT") }
+    var itemCategory by remember { mutableStateOf("General") }
+    var availability by remember { mutableStateOf("AVAILABLE") }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var profileSaved by remember { mutableStateOf(businessName.isNotBlank()) }
     val drafts = remember(context) {
         mutableStateListOf<BusinessDraft>().apply {
-            val array = runCatching { JSONArray(prefs.getString("drafts", "[]")) }.getOrNull()
-            if (array != null) for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
-                add(BusinessDraft(item.optLong("id"), item.optString("title"), item.optString("price"), item.optString("category", "PRODUCT"), item.optString("description"), item.optString("image")))
-            }
+            addAll(BusinessDraftCodec.decode(prefs.getString("drafts", "[]")))
         }
     }
 
 
     val visibleDrafts = drafts.filter { draft ->
-        val matchesSearch = searchQuery.isBlank() || draft.title.contains(searchQuery, true) || draft.description.contains(searchQuery, true)
-        val matchesFilter = catalogueFilter == "ALL" || draft.category == catalogueFilter
+        val matchesSearch = searchQuery.isBlank() ||
+            draft.title.contains(searchQuery, true) ||
+            draft.itemCategory.contains(searchQuery, true) ||
+            draft.price.contains(searchQuery, true) ||
+            draft.description.contains(searchQuery, true) ||
+            draft.availability.contains(searchQuery, true)
+        val matchesFilter = catalogueFilter == "ALL" || draft.kind == catalogueFilter
         matchesSearch && matchesFilter
     }
 
@@ -93,23 +95,53 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
         title = draft.title
         price = draft.price
         description = draft.description
-        category = draft.category
+        category = draft.kind
+        itemCategory = draft.itemCategory
+        availability = draft.availability
         imageUri = draft.imageUri.takeIf { it.isNotBlank() }?.let(Uri::parse)
         showEditor = true
     }
 
     fun saveDrafts() {
-        val array = JSONArray()
-        drafts.forEach { item ->
-            array.put(JSONObject().put("id", item.id).put("title", item.title).put("price", item.price).put("category", item.category).put("description", item.description).put("image", item.imageUri))
-        }
-        prefs.edit().putString("drafts", array.toString()).apply()
+        prefs.edit().putString("drafts", BusinessDraftCodec.encode(drafts)).apply()
     }
 
+    fun releaseImageIfUnused(uri: Uri?) {
+        if (uri != null && drafts.none { it.imageUri == uri.toString() }) {
+            runCatching {
+                context.contentResolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+    }
+
+    fun resetEditor() {
+        releaseImageIfUnused(imageUri)
+        title = ""
+        price = ""
+        description = ""
+        category = "PRODUCT"
+        itemCategory = "General"
+        availability = "AVAILABLE"
+        imageUri = null
+        editingDraftId = null
+        photoMessage = ""
+        showEditor = false
+    }
+
+    fun nextDraftId(): Long = maxOf(System.currentTimeMillis(), (drafts.maxOfOrNull { it.id } ?: 0L) + 1L)
+
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) runCatching {
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            imageUri = uri
+        if (uri != null) {
+            val previous = imageUri
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }.onSuccess {
+                imageUri = uri
+                photoMessage = "Photo attached. It remains on this phone until you share the listing."
+                if (previous != uri) releaseImageIfUnused(previous)
+            }.onFailure {
+                photoMessage = "NeaRer could not keep access to that photo. Choose another image or grant access again."
+            }
         }
     }
 
