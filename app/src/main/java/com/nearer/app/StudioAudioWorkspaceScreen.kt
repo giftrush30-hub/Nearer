@@ -260,6 +260,23 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
     LaunchedEffect(vocalControls) {
         vocalControlPreferences.edit().putString("controls_v1", StudioVocalControlsCodec.encode(vocalControls)).apply()
     }
+    val pitchPreferences = remember(context) { context.getSharedPreferences("nearer_studio_pitch_correction", android.content.Context.MODE_PRIVATE) }
+    var pitchCorrection by remember(context) {
+        mutableStateOf(
+            StudioPitchCorrectionSettings(
+                keyRoot = pitchPreferences.getInt("key_root", 0),
+                minor = pitchPreferences.getBoolean("minor", false),
+                style = runCatching { StudioTuningStyle.valueOf(pitchPreferences.getString("style", StudioTuningStyle.NATURAL.name)!!) }.getOrDefault(StudioTuningStyle.NATURAL),
+                retuneSpeedMs = pitchPreferences.getInt("retune_speed_ms", 90),
+                enabled = pitchPreferences.getBoolean("enabled", false)
+            )
+        )
+    }
+    LaunchedEffect(pitchCorrection) {
+        pitchPreferences.edit().putInt("key_root", pitchCorrection.keyRoot).putBoolean("minor", pitchCorrection.minor)
+            .putString("style", pitchCorrection.style.name).putInt("retune_speed_ms", pitchCorrection.retuneSpeedMs)
+            .putBoolean("enabled", pitchCorrection.enabled).apply()
+    }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -339,6 +356,50 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
         }
         Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("KEY-AWARE PITCH CORRECTION", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("Correct a single lead vocal towards notes in your song key. The original recording remains untouched; correction is rendered only into the exported copy.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Button(onClick = { pitchCorrection = pitchCorrection.copy(enabled = !pitchCorrection.enabled); exportedFile = null }, modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (pitchCorrection.enabled) Mint else Midnight, contentColor = if (pitchCorrection.enabled) Midnight else White)) {
+                    Text(if (pitchCorrection.enabled) "PITCH CORRECTION · ON" else "ENABLE PITCH CORRECTION")
+                }
+                Text("SONG KEY", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                listOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B").chunked(6).forEachIndexed { rowIndex, rowKeys ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        rowKeys.forEachIndexed { columnIndex, key ->
+                            val keyIndex = rowIndex * 6 + columnIndex
+                            Button(onClick = { pitchCorrection = pitchCorrection.copy(keyRoot = keyIndex); exportedFile = null }, modifier = Modifier.weight(1f),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp, vertical = 7.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = if (pitchCorrection.keyRoot == keyIndex) Mint else Midnight, contentColor = if (pitchCorrection.keyRoot == keyIndex) Midnight else White)) {
+                                Text(key, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(false, true).forEach { minor ->
+                        Button(onClick = { pitchCorrection = pitchCorrection.copy(minor = minor); exportedFile = null }, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = if (pitchCorrection.minor == minor) Mint else Midnight, contentColor = if (pitchCorrection.minor == minor) Midnight else White)) {
+                            Text(if (minor) "MINOR" else "MAJOR", fontSize = 10.sp)
+                        }
+                    }
+                }
+                Text("TUNING CHARACTER", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StudioTuningStyle.values().forEach { style ->
+                        Button(onClick = { pitchCorrection = pitchCorrection.copy(style = style); exportedFile = null }, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = if (pitchCorrection.style == style) Mint else Midnight, contentColor = if (pitchCorrection.style == style) Midnight else White)) {
+                            Text(style.title, fontSize = 10.sp)
+                        }
+                    }
+                }
+                Text("RETUNE SPEED · ${pitchCorrection.retuneSpeedMs} ms", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Slider(value = pitchCorrection.retuneSpeedMs.toFloat(), onValueChange = { pitchCorrection = pitchCorrection.copy(retuneSpeedMs = it.toInt()); exportedFile = null }, valueRange = 0f..500f, steps = 49)
+                Text("Natural uses gentler correction; Hard Tune snaps more firmly to the selected scale. This first version targets monophonic lead vocals. Formant preservation and polyphonic correction are not yet included.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+            }
+        }
+
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("CONDENSER STUDIO  ·  VOCAL POLISH", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Text("Choose a vocal finish for the exported copy. The original take stays untouched.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                 StudioVocalProfile.values().toList().chunked(2).forEach { rowProfiles ->
@@ -369,10 +430,11 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                 val clip = MediaItem.Builder().setUri(uri).setClippingConfiguration(
                     MediaItem.ClippingConfiguration.Builder().setStartPositionMs(startMs).setEndPositionMs(endMs).build()
                 ).build()
-                val vocalEffects = Effects(
-                    listOf(ToInt16PcmAudioProcessor(), StudioVocalPolishProcessor(selectedVocalProfile, vocalControls)),
-                    emptyList()
-                )
+                val audioProcessors = mutableListOf<androidx.media3.common.audio.AudioProcessor>()
+                audioProcessors += ToInt16PcmAudioProcessor()
+                if (pitchCorrection.enabled) audioProcessors += StudioPitchCorrectionProcessor(pitchCorrection)
+                audioProcessors += StudioVocalPolishProcessor(selectedVocalProfile, vocalControls)
+                val vocalEffects = Effects(audioProcessors, emptyList())
                 val edited = EditedMediaItem.Builder(clip).setEffects(vocalEffects).build()
                 val transformer = Transformer.Builder(context).addListener(object : Transformer.Listener {
                     override fun onCompleted(composition: Composition, exportResult: ExportResult) {
