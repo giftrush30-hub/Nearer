@@ -54,6 +54,7 @@ import androidx.media3.effect.HslAdjustment
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.OverlaySettings
 import androidx.media3.effect.TextOverlay
+import androidx.media3.effect.TimestampWrapper
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
@@ -103,7 +104,26 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
     var saturation by remember(context) { mutableStateOf(restoredGrade.saturation) }
     val textPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_text", android.content.Context.MODE_PRIVATE) }
     var textOverlay by remember(context) { mutableStateOf(StudioVideoTextOverlayCodec.decode(textPreferences.getString("overlay_v1", null))) }
-    fun videoEffects() = buildList<androidx.media3.common.Effect> {
+    val captionPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_captions", android.content.Context.MODE_PRIVATE) }
+    val captionLayers = remember(context) {
+        mutableStateListOf<StudioVideoCaptionLayer>().apply {
+            addAll(StudioVideoCaptionCodec.decode(captionPreferences.getString("captions_v1", null)))
+        }
+    }
+    LaunchedEffect(captionLayers.toList()) {
+        captionPreferences.edit().putString("captions_v1", StudioVideoCaptionCodec.encode(captionLayers.toList())).apply()
+    }
+    val transitionPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_transitions", android.content.Context.MODE_PRIVATE) }
+    var transitionStyle by remember(context) {
+        mutableStateOf(runCatching {
+            StudioVideoTransitionStyle.valueOf(transitionPreferences.getString("style", StudioVideoTransitionStyle.CUT.name)!!)
+        }.getOrDefault(StudioVideoTransitionStyle.CUT))
+    }
+    var transitionDurationMs by remember(context) { mutableStateOf(transitionPreferences.getInt("duration_ms", 350).coerceIn(200, 1_000)) }
+    LaunchedEffect(transitionStyle, transitionDurationMs) {
+        transitionPreferences.edit().putString("style", transitionStyle.name).putInt("duration_ms", transitionDurationMs).apply()
+    }
+    fun videoEffects(clipIndex: Int = 0) = buildList<androidx.media3.common.Effect> {
         if (brightness != 0f) add(Brightness(brightness))
         if (contrast != 0f) add(Contrast(contrast))
         if (saturation != 0f) add(HslAdjustment.Builder().adjustSaturation(saturation).build())
@@ -120,6 +140,21 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                 .build()
             add(OverlayEffect(listOf(TextOverlay.createStaticTextOverlay(caption, settings))))
         }
+        val timedLayers = captionLayers.filter { it.clipIndex == clipIndex && it.text.isNotBlank() }
+        if (timedLayers.isNotEmpty()) add(OverlayEffect(timedLayers.map { StudioTimedTextOverlay(it) }))
+        if (transitionStyle == StudioVideoTransitionStyle.FADE_TO_BLACK && clips.size > 1) {
+            val clip = clips.getOrNull(clipIndex)
+            if (clip != null) {
+                StudioVideoTransitionPlanner.plan(
+                    clipDurationMs = (clip.outMs - clip.inMs).coerceAtLeast(0L),
+                    transitionDurationMs = transitionDurationMs,
+                    includeFadeIn = clipIndex > 0,
+                    includeFadeOut = clipIndex < clips.lastIndex
+                ).forEach { segment ->
+                    add(TimestampWrapper(Brightness(segment.brightness), segment.startUs, segment.endUs))
+                }
+            }
+        }
     }
     LaunchedEffect(brightness, contrast, saturation) {
         gradePreferences.edit().putString("grade_v1", StudioVideoGradeCodec.encode(StudioVideoGrade(brightness, contrast, saturation))).apply()
@@ -130,8 +165,8 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
     val player = remember(context) { ExoPlayer.Builder(context).build() }
 
     DisposableEffect(player) { onDispose { player.release() } }
-    LaunchedEffect(clips.toList(), brightness, contrast, saturation, textOverlay) {
-        player.setVideoEffects(videoEffects())
+    LaunchedEffect(clips.toList(), brightness, contrast, saturation, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
+        player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
         if (clips.isNotEmpty()) {
             val previewItems = clips.map { clip ->
                 MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
@@ -142,6 +177,16 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
             player.prepare()
             player.playWhenReady = false
         } else player.clearMediaItems()
+    }
+
+    DisposableEffect(player, clips.size, brightness, contrast, saturation, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
+        val captionListener = object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
+            }
+        }
+        player.addListener(captionListener)
+        onDispose { player.removeListener(captionListener) }
     }
 
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { selected ->
@@ -243,12 +288,120 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                 }
             }
         }
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("TIMED CAPTION LAYERS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("${captionLayers.size}/4", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+                Text("Build captions that appear only during selected moments of a clip. Each layer has its own clip, in/out timing, colour and screen position.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                if (clips.isEmpty()) Text("Add video clips first to create timed captions.", color = Muted, fontSize = 10.sp)
+                captionLayers.forEachIndexed { layerIndex, layer ->
+                    val selectedClip = clips.getOrNull(layer.clipIndex)
+                    val layerDuration = selectedClip?.let { (it.outMs - it.inMs).coerceAtLeast(250L) } ?: 2_000L
+                    Surface(color = Midnight, shape = RoundedCornerShape(13.dp)) {
+                        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("LAYER ${layerIndex + 1}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Text("REMOVE", color = Gold, fontSize = 9.sp, modifier = Modifier.clickable { captionLayers.removeAt(layerIndex); exported = null }.padding(4.dp))
+                            }
+                            androidx.compose.material3.OutlinedTextField(
+                                value = layer.text,
+                                onValueChange = { captionLayers[layerIndex] = layer.copy(text = it.take(120)); exported = null },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Caption text") },
+                                singleLine = false,
+                                maxLines = 2
+                            )
+                            Text("APPLY TO CLIP", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                clips.forEachIndexed { clipIndex, clip ->
+                                    Button(onClick = {
+                                        val duration = (clip.outMs - clip.inMs).coerceAtLeast(250L)
+                                        captionLayers[layerIndex] = layer.copy(clipIndex = clipIndex, startMs = 0L, endMs = minOf(2_000L, duration))
+                                        exported = null
+                                    }, modifier = Modifier.weight(1f),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp, vertical = 6.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = if (layer.clipIndex == clipIndex) Mint else Panel, contentColor = if (layer.clipIndex == clipIndex) Midnight else White)) {
+                                        Text("CLIP ${clipIndex + 1}", fontSize = 8.sp)
+                                    }
+                                }
+                            }
+                            Text("IN · ${formatStudioTimelineTime(layer.startMs)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Slider(value = layer.startMs.toFloat().coerceIn(0f, (layerDuration - 250L).coerceAtLeast(0L).toFloat()),
+                                onValueChange = { value ->
+                                    captionLayers[layerIndex] = layer.copy(startMs = value.toLong().coerceAtMost(layer.endMs - 250L))
+                                    exported = null
+                                }, valueRange = 0f..(layerDuration - 250L).coerceAtLeast(0L).toFloat())
+                            Text("OUT · ${formatStudioTimelineTime(layer.endMs)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Slider(value = layer.endMs.toFloat().coerceIn((layer.startMs + 250L).toFloat(), layerDuration.toFloat()),
+                                onValueChange = { value ->
+                                    captionLayers[layerIndex] = layer.copy(endMs = value.toLong().coerceAtLeast(layer.startMs + 250L).coerceAtMost(layerDuration))
+                                    exported = null
+                                }, valueRange = (layer.startMs + 250L).coerceAtMost(layerDuration).toFloat()..layerDuration.toFloat())
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                listOf("WHITE" to 0xFFFFFFFF.toInt(), "GOLD" to 0xFFFFD166.toInt(), "MINT" to 0xFF67E8C5.toInt()).forEach { (label, color) ->
+                                    Button(onClick = { captionLayers[layerIndex] = layer.copy(colorArgb = color); exported = null },
+                                        modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(2.dp, 6.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = if (layer.colorArgb == color) Mint else Panel, contentColor = if (layer.colorArgb == color) Midnight else White)) {
+                                        Text(label, fontSize = 8.sp)
+                                    }
+                                }
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                listOf("TOP", "CENTRE", "BOTTOM").forEachIndexed { position, label ->
+                                    Button(onClick = { captionLayers[layerIndex] = layer.copy(verticalPosition = position); exported = null },
+                                        modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(2.dp, 6.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = if (layer.verticalPosition == position) Mint else Panel, contentColor = if (layer.verticalPosition == position) Midnight else White)) {
+                                        Text(label, fontSize = 8.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Button(onClick = {
+                    if (clips.isNotEmpty() && captionLayers.size < 4) {
+                        val firstDuration = (clips.first().outMs - clips.first().inMs).coerceAtLeast(250L)
+                        captionLayers.add(StudioVideoCaptionLayer(System.currentTimeMillis().toString(), "", 0, 0L, minOf(2_000L, firstDuration)))
+                        exported = null
+                    }
+                }, enabled = clips.isNotEmpty() && captionLayers.size < 4, modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
+                    Text("＋ ADD CAPTION LAYER")
+                }
+            }
+        }
+
         if (clips.isNotEmpty()) {
             AndroidView(factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true } },
                 update = { it.player = player }, modifier = Modifier.fillMaxWidth().height(190.dp))
         } else Surface(color = Panel, shape = RoundedCornerShape(16.dp)) {
             Text("Your preview will appear here after you add video clips.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(18.dp))
         }
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("CLIP TRANSITIONS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Choose a clean cut or a fade through black between clips. Fade-through-black dims the end of one clip and brings in the next; it does not overlap the clips.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(StudioVideoTransitionStyle.CUT, StudioVideoTransitionStyle.FADE_TO_BLACK).forEach { style ->
+                        Button(onClick = { transitionStyle = style; exported = null }, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (transitionStyle == style) Mint else Midnight,
+                                contentColor = if (transitionStyle == style) Midnight else White
+                            )) {
+                            Text(if (style == StudioVideoTransitionStyle.CUT) "CLEAN CUT" else "FADE TO BLACK", fontSize = 9.sp)
+                        }
+                    }
+                }
+                if (transitionStyle == StudioVideoTransitionStyle.FADE_TO_BLACK) {
+                    Text("TRANSITION LENGTH · ${transitionDurationMs} ms", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Slider(value = transitionDurationMs.toFloat(), onValueChange = { transitionDurationMs = it.toInt(); exported = null }, valueRange = 200f..1_000f, steps = 7)
+                    Text("The fade is applied to the outgoing and incoming edges of each middle clip. Very short clips automatically shorten the fade to fit.", color = Muted, fontSize = 9.sp, lineHeight = 14.sp)
+                }
+            }
+        }
+
         Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -307,11 +460,11 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                 exporting = true
                 exported = null
                 message = "Rendering ${clips.size} clip(s)… Keep NeaRer open until export finishes."
-                val videoItems = clips.map { clip ->
+                val videoItems = clips.mapIndexed { clipIndex, clip ->
                     val item = MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
                         MediaItem.ClippingConfiguration.Builder().setStartPositionMs(clip.inMs).setEndPositionMs(clip.outMs).build()
                     ).build()
-                    EditedMediaItem.Builder(item).setEffects(Effects(emptyList(), videoEffects())).build()
+                    EditedMediaItem.Builder(item).setEffects(Effects(emptyList(), videoEffects(clipIndex))).build()
                 }
                 val videoSequence = EditedMediaItemSequence.Builder(videoItems).build()
                 val sequences = mutableListOf(videoSequence)
@@ -353,7 +506,7 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
                 Text("SHARE EXPORTED VIDEO")
             }
         }
-        Text("The timeline, trims, colour grade and text overlay are saved locally. Text currently spans the full edited sequence; timed caption tracks, multiple text layers, animations, crossfades and speed ramps are future editor milestones.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
+        Text("The timeline, trims, colour grade, title and timed caption layers are saved locally. Timed captions are attached to individual clips. Crossfades remain unsupported by the current Media3 composition pipeline; fade-through-black and timed caption layers are now available in the editor.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
 }
 
