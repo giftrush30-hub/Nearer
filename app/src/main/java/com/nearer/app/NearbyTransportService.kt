@@ -280,7 +280,7 @@ class NearbyTransportService : Service() {
                 )
             }
         } catch (_: Exception) {
-            inFlightMessageIds.remove(entry.messageId)
+            inFlightMessageIds.remove(key)
         }
     }
 
