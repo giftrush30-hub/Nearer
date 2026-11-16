@@ -1022,13 +1022,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun ensureNearbyServiceBound(startForeground: Boolean = true) {
-        if (startForeground && !nearbyServiceStarted) {
-            NearbyTransportService.start(this)
-            nearbyServiceStarted = true
-        }
         if (nearbyServiceBound || nearbyServiceBinding) return
         nearbyServiceBinding = true
         try {
+            if (startForeground && !nearbyServiceStarted) {
+                NearbyTransportService.start(this)
+                nearbyServiceStarted = true
+            }
             val bound = bindService(
                 Intent(this, NearbyTransportService::class.java),
                 nearbyServiceConnection,
@@ -1040,10 +1040,11 @@ class MainActivity : ComponentActivity() {
             }
         } catch (error: Exception) {
             nearbyServiceBinding = false
-            statusMessage = "Nearby service could not start: ${error.localizedMessage ?: error.javaClass.simpleName}"
+            nearbyServiceStarted = false
+            statusMessage = "Nearby service could not start: " +
+                (error.localizedMessage ?: error.javaClass.simpleName)
         }
     }
-
     private fun reconcileNearbyStateAfterServiceAttach() {
         val transport = nearbyTransport ?: return
         val queued = runCatching { transport.pendingMessageIds() }.getOrDefault(emptySet())
