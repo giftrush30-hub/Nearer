@@ -75,6 +75,26 @@ class HyperTransferModePolicyTest {
         )
     }
 
+    @Test fun negotiationIsSymmetricRegardlessOfWhichPeerStarts() {
+        val constrained = profile(lowRam = true)
+        val capable = profile()
+        assertEquals(
+            HyperTransferModePolicy.negotiate(constrained, capable),
+            HyperTransferModePolicy.negotiate(capable, constrained)
+        )
+    }
+
+    @Test fun minimumModeIsCommutativeAndNeverExceedsEitherPeer() {
+        for (first in HyperTransferModePolicy.Mode.values()) {
+            for (second in HyperTransferModePolicy.Mode.values()) {
+                val forward = HyperTransferModePolicy.minMode(first, second)
+                val reverse = HyperTransferModePolicy.minMode(second, first)
+                assertEquals(forward, reverse)
+                assertEquals(if (first.rank <= second.rank) first else second, forward)
+            }
+        }
+    }
+
     @Test fun receiveBuffersAreStrictlyBoundedByMode() {
         assertEquals(32 * 1024, HyperTransferModePolicy.receiveBufferBytes(HyperTransferModePolicy.Mode.LITE))
         assertEquals(128 * 1024, HyperTransferModePolicy.receiveBufferBytes(HyperTransferModePolicy.Mode.FAST))
