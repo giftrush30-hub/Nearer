@@ -39,6 +39,9 @@ class UsfmParserTests(unittest.TestCase):
         self.assertEqual(len(BUILDER.BOOKS), 66)
         self.assertEqual(BUILDER.BOOK_MAP["GEN"][0], 1)
         self.assertEqual(BUILDER.BOOK_MAP["REV"][0], 66)
+        self.assertEqual(BUILDER.EXPECTED_CHAPTERS["PSA"], 150)
+        self.assertEqual(BUILDER.EXPECTED_CHAPTERS["REV"], 22)
+        self.assertEqual(len(BUILDER.EXPECTED_CHAPTERS), 66)
 
 
 if __name__ == "__main__":
