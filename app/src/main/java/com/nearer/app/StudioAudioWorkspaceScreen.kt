@@ -58,6 +58,7 @@ import java.io.File
 @Composable
 internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, String) -> Unit) {
     val context = LocalContext.current
+    var showPitchMonitor by remember { mutableStateOf(false) }
     var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
     var recording by remember { mutableStateOf(false) }
     var elapsedSeconds by remember { mutableStateOf(0) }
@@ -85,6 +86,9 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
         }
     }
 
+    if (showPitchMonitor) {
+        StudioPitchMonitorScreen(onBack = { showPitchMonitor = false })
+    } else {
     Column(Modifier.fillMaxSize().background(Midnight).padding(20.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text(if (recording) "● RECORDING" else "‹  STUDIO", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(enabled = !recording, onClick = onBack).padding(vertical = 8.dp))
@@ -92,6 +96,13 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
         }
         Text("Capture the moment.", color = White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Text("Offline recording · AAC audio · Original take preserved", color = Mint, fontSize = 12.sp)
+        Button(onClick = {
+            if (permissionGranted) showPitchMonitor = true
+            else permission.launch(Manifest.permission.RECORD_AUDIO)
+        }, enabled = !recording, modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Gold)) {
+            Text("OPEN LIVE PITCH & KEY MONITOR")
+        }
         Surface(color = Panel, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().weight(1f)) {
             Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(if (recording) "● RECORDING" else "READY TO RECORD", color = if (recording) Gold else Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
@@ -151,6 +162,7 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
         }
         Text(message, color = Muted, fontSize = 11.sp, lineHeight = 17.sp)
         if (!recording) Button(onClick = onBack, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)) { Text("BACK TO STUDIO") }
+    }
     }
 }
 
