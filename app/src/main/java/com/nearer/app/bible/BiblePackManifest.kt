@@ -51,8 +51,21 @@ object BiblePackManifestValidator {
             errors += "Unsafe pack filename."
         if(manifest.licenseId.startsWith("copyright",ignoreCase=true) && manifest.copyrightNotice.isNullOrBlank())
             errors += "Copyrighted translations require a copyright notice."
-        if(manifest.coverage==BibleCoverage.COMPLETE_BIBLE && manifest.bookCount<24)
-            errors += "A complete Bible pack must contain at least 24 books."
+        if(manifest.coverage==BibleCoverage.COMPLETE_BIBLE) {
+            val expectedBooks=when(manifest.canonId.lowercase()) {
+                "protestant-66" -> 66
+                "catholic-73" -> 73
+                "ethiopian-81" -> 81
+                else -> null
+            }
+            if(expectedBooks==null) errors += "Complete coverage requires a recognized, explicitly identified canon."
+            else if(manifest.bookCount!=expectedBooks)
+                errors += "The " + manifest.canonId + " canon requires exactly " + expectedBooks + " books."
+        }
+        if(manifest.coverage==BibleCoverage.OLD_TESTAMENT && manifest.bookCount !in 1..50)
+            errors += "Old Testament pack book count is outside the supported range."
+        if(manifest.coverage==BibleCoverage.NEW_TESTAMENT && manifest.bookCount !in 1..40)
+            errors += "New Testament pack book count is outside the supported range."
         return BiblePackValidation(errors.isEmpty(),errors)
     }
 }
