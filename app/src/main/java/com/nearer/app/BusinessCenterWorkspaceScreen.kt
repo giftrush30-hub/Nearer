@@ -175,6 +175,9 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text(if (businessName.isBlank()) "YOUR BUSINESS PROFILE" else businessName, color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                         Text(if (tagline.isBlank()) "Add a short introduction to your business" else tagline, color = Muted, fontSize = 11.sp)
+                        if (businessCategory.isNotBlank()) Text(businessCategory, color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        if (serviceArea.isNotBlank()) Text("Area · $serviceArea", color = Muted, fontSize = 10.sp)
+                        if (businessHours.isNotBlank()) Text("Hours · $businessHours", color = Muted, fontSize = 10.sp)
                         Text(if (profileSaved) "PROFILE SAVED ON THIS DEVICE" else "PROFILE NOT SAVED YET", color = if (profileSaved) Mint else Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -223,7 +226,31 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                 Text("YOUR CATALOGUE", color = White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Text("${drafts.size}/${BusinessDraftCodec.MAX_DRAFTS} local listings", color = Muted, fontSize = 10.sp)
             }
-            Button(onClick = {
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Button(onClick = {
+                    val catalogueText = buildString {
+                        append(businessName.ifBlank { "NeaRer Business Catalogue" })
+                        if (tagline.isNotBlank()) append("\n$tagline")
+                        if (businessCategory.isNotBlank()) append("\nCategory: $businessCategory")
+                        if (serviceArea.isNotBlank()) append("\nArea: $serviceArea")
+                        if (contact.isNotBlank()) append("\nContact: $contact")
+                        append("\n\nCATALOGUE")
+                        drafts.forEach { item ->
+                            append("\n\n• ${item.title}")
+                            if (item.itemCategory.isNotBlank()) append(" · ${item.itemCategory}")
+                            if (item.price.isNotBlank()) append("\nPrice: ${item.price}")
+                            append("\nStatus: ${item.availability.replace('_', ' ').lowercase()}")
+                            if (item.description.isNotBlank()) append("\n${item.description.take(240)}")
+                        }
+                        append("\n\nShared via NeaRer Business")
+                    }
+                    runCatching {
+                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, catalogueText), "Share business catalogue"))
+                    }.onFailure { statusMessage = "Could not share catalogue: ${it.message ?: "unknown error"}" }
+                }, enabled = drafts.isNotEmpty(), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
+                    Text("Share catalogue", fontSize = 10.sp)
+                }
+                Button(onClick = {
                 if (showEditor) {
                     resetEditor()
                 } else {
@@ -244,6 +271,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                 }
             }, enabled = showEditor || drafts.size < BusinessDraftCodec.MAX_DRAFTS, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                 Text(if (showEditor) "Close" else "+ Add listing", fontWeight = FontWeight.Bold)
+                }
             }
         }
 
@@ -339,12 +367,11 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                 Surface(color = Panel, shape = RoundedCornerShape(17.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                            Text(draft.category, color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                            Text("LOCAL DRAFT", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text("${draft.kind} · ${draft.itemCategory}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                            Text(draft.availability.replace('_', ' '), color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                         }
                         if (draft.imageUri.isNotBlank()) {
-                            val uri = Uri.parse(draft.imageUri)
-                            AndroidView(factory = { ImageView(it).apply { scaleType = ImageView.ScaleType.CENTER_CROP } }, update = { it.setImageURI(uri) }, modifier = Modifier.fillMaxWidth().height(145.dp).clip(RoundedCornerShape(12.dp)))
+                            BusinessDraftPhoto(uri = Uri.parse(draft.imageUri), modifier = Modifier.fillMaxWidth().height(145.dp).clip(RoundedCornerShape(12.dp)))
                         }
                         Text(draft.title, color = White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         if (draft.price.isNotBlank()) Text(draft.price, color = Mint, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -353,9 +380,15 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                             Button(onClick = {
                                 val shareText = buildString {
                                     append(draft.title)
+                                    append("\nType: ${draft.kind}")
+                                    if (draft.itemCategory.isNotBlank()) append("\nCategory: ${draft.itemCategory}")
                                     if (draft.price.isNotBlank()) append("\nPrice: ${draft.price}")
+                                    append("\nAvailability: ${draft.availability.replace('_', ' ').lowercase()}")
                                     if (draft.description.isNotBlank()) append("\n${draft.description}")
                                     if (businessName.isNotBlank()) append("\nFrom: ${businessName}")
+                                    if (businessCategory.isNotBlank()) append("\nBusiness category: ${businessCategory}")
+                                    if (serviceArea.isNotBlank()) append("\nArea: ${serviceArea}")
+                                    if (businessHours.isNotBlank()) append("\nHours: ${businessHours}")
                                     if (contact.isNotBlank()) append("\nContact: ${contact}")
                                     append("\nShared via NeaRer Business")
                                 }
@@ -377,8 +410,10 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                             }
                             Text("EDIT", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editDraft(draft) }.padding(10.dp))
                             Text("DELETE", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
-                                drafts.remove(draft); saveDrafts()
-                                if (draft.imageUri.isNotBlank()) runCatching { context.contentResolver.releasePersistableUriPermission(Uri.parse(draft.imageUri), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                                drafts.remove(draft)
+                                saveDrafts()
+                                if (draft.imageUri.isNotBlank()) releaseImageIfUnused(Uri.parse(draft.imageUri))
+                                statusMessage = "Listing deleted from this phone."
                             }.padding(10.dp))
                         }
                     }
