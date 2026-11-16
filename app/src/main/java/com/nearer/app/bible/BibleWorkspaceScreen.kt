@@ -71,6 +71,12 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
     var readerFocusVerse by remember { mutableStateOf<Int?>(null) }
     var selectedVerseAction by remember { mutableStateOf<BibleVerse?>(null) }
     var showExtras by remember { mutableStateOf(false) }
+    var showCatalogue by remember { mutableStateOf(false) }
+
+    if(showCatalogue) {
+        NeaRerWordCatalogueScreen(onBack={showCatalogue=false})
+        return
+    }
 
     if(showExtras) {
         NeaRerWordExtrasScreen(
@@ -271,9 +277,10 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                 enabled=!busy) { Text("＋ Install Bible pack") }
             OutlinedButton(onClick={wordStudyImporterPicker.launch(arrayOf("application/zip","application/x-zip-compressed"))},enabled=!busy) { Text("Word-study data") }
         }
-        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
             OutlinedButton(onClick={showJournal=true}) { Text("My notes") }
             OutlinedButton(onClick={showExtras=true}) { Text("Plans & audio") }
+            OutlinedButton(onClick={showCatalogue=true}) { Text("Languages") }
         }
         Text("Original-language meanings appear only where a verified word-alignment pack is installed.",color=Color(0xFFA8B6C9),fontSize=10.sp)
         if(busy) CircularProgressIndicator(color=Color(0xFF69E0C0))
