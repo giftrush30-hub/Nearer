@@ -195,7 +195,8 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         @Volatile var resumedFromBytes: Long = 0L,
         @Volatile var awaitingReceipt: Boolean = false,
         @Volatile var receiptTimeout: Runnable? = null,
-        @Volatile var retentionTimeout: Runnable? = null
+        @Volatile var retentionTimeout: Runnable? = null,
+        val durableRecovery: Boolean = false
     )
     private val outgoingHyperStreams = ConcurrentHashMap<Long, OutgoingHyperStream>()
     private val restoringHyperTransfers = ConcurrentHashMap.newKeySet<String>()
@@ -2778,7 +2779,9 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
             if (!state.awaitingDecision || outgoingHyperStreams[state.prepared.payloadId] !== state) return@Runnable
             val connected = authenticatedEndpoints.contains(state.endpointId) &&
                 synchronized(activeEndpoints) { activeEndpoints.contains(state.endpointId) }
-            if (connected) fallbackHyperStreamToFile(state)
+            if (state.durableRecovery) {
+                scheduleHyperStreamRetry(state)
+            } else if (connected) fallbackHyperStreamToFile(state)
             else {
                 state.endpointId = ""
                 state.prepared.close()
@@ -2794,6 +2797,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         state.endpointId = ""
         state.awaitingDecision = true
         state.prepared.close()
+        val retryDelay = if (state.durableRecovery && state.retryCount >= 3) 15_000L else 1_500L
         deliveryHandler.postDelayed({
             val endpoint = synchronized(activeEndpoints) {
                 activeEndpoints.firstOrNull { candidate ->
@@ -2802,7 +2806,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                 }
             }
             if (endpoint != null) resumeHyperStreamsForPeer(state.stablePeerId, endpoint)
-        }, 1500L)
+        }, retryDelay)
     }
 
     private fun resumeHyperStreamsForPeer(peerId: String, endpointId: String) {
@@ -2811,9 +2815,15 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
             it.stablePeerId == peerId && it.endpointId.isBlank() && !it.awaitingReceipt
         }.forEach { previous ->
             if (previous.retryCount >= 3) {
-                previous.endpointId = endpointId
-                fallbackHyperStreamToFile(previous)
-                return@forEach
+                if (previous.durableRecovery) {
+                    // Keep app-private durable sources queued instead of silently
+                    // downgrading and losing resumability after repeated reconnects.
+                    previous.retryCount = 0
+                } else {
+                    previous.endpointId = endpointId
+                    fallbackHyperStreamToFile(previous)
+                    return@forEach
+                }
             }
             if (!outgoingHyperStreams.remove(previous.prepared.payloadId, previous)) return@forEach
             val prepared = runCatching { streamPayloadBridge.prepareOutgoingPayload() }.getOrNull()
@@ -2896,7 +2906,8 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                         prepared.payload.setSensitive(true)
                         val state = OutgoingHyperStream(
                             endpointId, record.peerId, record.displayName, record.sourceFile,
-                            item, record.transferId, record.sha256, prepared
+                            item, record.transferId, record.sha256, prepared,
+                            durableRecovery = true
                         )
                         outgoingHyperStreams[prepared.payloadId] = state
                         val metadata = TransferResumeStreamMetadataCodec.Metadata(
