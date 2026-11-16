@@ -172,11 +172,16 @@ public:
     }
 
     jlongArray stats(JNIEnv* env) const {
+        int32_t xrunCount = -1;
+        if (output_ && !disconnected_.load(std::memory_order_acquire)) {
+            const auto xrunResult = output_->getXRunCount();
+            if (xrunResult == oboe::Result::OK) xrunCount = xrunResult.value();
+        }
         jlong values[7] = {
             output_ ? output_->getSampleRate() : 0,
             output_ ? output_->getFramesPerBurst() : 0,
             output_ ? output_->getBufferSizeInFrames() : 0,
-            output_ ? output_->getXRunCount().value() : -1,
+            xrunCount,
             static_cast<jlong>(outputUnderruns_.load(std::memory_order_relaxed)),
             static_cast<jlong>(droppedCaptureFrames_.load(std::memory_order_relaxed)),
             disconnected_.load(std::memory_order_acquire) ? 1 : 0
