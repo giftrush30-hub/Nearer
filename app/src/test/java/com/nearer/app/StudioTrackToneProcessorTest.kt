@@ -29,13 +29,12 @@ class StudioTrackToneProcessorTest {
         samples.forEach { input.putShort(it) }
         input.flip()
         processor.queueInput(input)
-        val output = processor.output
-        val rendered = ShortArray(output.remaining() / 2) { output.short }
+        // Queue EOS before draining the last input output to verify pending PCM is preserved.
         processor.queueEndOfStream()
-        val tailBuffer = processor.output
-        val tail = ShortArray(tailBuffer.remaining() / 2) { tailBuffer.short }
+        val output = processor.output
+        val result = ShortArray(output.remaining() / 2) { output.short }
         processor.reset()
-        return rendered + tail
+        return result
     }
 
     private fun tone(frequencyHz: Double, frames: Int = 8_192): ShortArray =
