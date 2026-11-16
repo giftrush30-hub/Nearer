@@ -160,6 +160,7 @@ class MainActivity : ComponentActivity() {
             nearbyServiceBinder = null
             nearbyServiceBound = false
             nearbyServiceBinding = false
+            nearbyServiceStarted = false
             nearbyTransport = null
             hybridConnected = false
             hybridConnectedEndpoint = null
@@ -173,6 +174,7 @@ class MainActivity : ComponentActivity() {
             nearbyServiceBinder = null
             nearbyServiceBound = false
             nearbyServiceBinding = false
+            nearbyServiceStarted = false
             nearbyTransport = null
             runCatching { unbindService(this) }
             ensureNearbyServiceBound()
@@ -180,6 +182,7 @@ class MainActivity : ComponentActivity() {
 
         override fun onNullBinding(name: ComponentName?) {
             nearbyServiceBinding = false
+            nearbyServiceStarted = false
             statusMessage = "Android did not provide the nearby service. Reopen NeaRer and try again."
         }
     }
