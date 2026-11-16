@@ -2713,6 +2713,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                 preparingHyperStreams.remove(payloadId)
                 if (cancelledOutgoingPreparations.remove(payloadId) || outgoingHyperStreams[payloadId] !== state) {
                     outgoingHyperStreams.remove(payloadId, state)
+                    outgoingHyperStore.remove(transferId)
                     prepared.close()
                     staged!!.delete()
                     return@execute
@@ -2730,9 +2731,30 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                 )
                 armHyperStreamTimeout(state)
             } catch (error: Exception) {
-                outgoingHyperStreams.remove(payloadId)
                 preparingHyperStreams.remove(payloadId)
                 val wasCancelled = cancelledOutgoingPreparations.remove(payloadId)
+                val existingState = outgoingHyperStreams[payloadId]
+                if (existingState != null) {
+                    if (wasCancelled) {
+                        outgoingHyperStreams.remove(payloadId, existingState)
+                        outgoingHyperStore.remove(existingState.transferId)
+                        existingState.prepared.close()
+                        existingState.sourceFile.delete()
+                        return@execute
+                    }
+                    if (allowLegacyFallback) {
+                        fallbackHyperStreamToFile(existingState)
+                    } else {
+                        // A transient control/session error must not destroy the
+                        // durable source or its record. Retry this same transfer.
+                        existingState.endpointId = ""
+                        existingState.awaitingDecision = true
+                        existingState.prepared.close()
+                        scheduleHyperStreamRetry(existingState)
+                        listener.onFileStatus("The folder bundle is safely staged. NeaRer will retry when the nearby connection is ready.")
+                    }
+                    return@execute
+                }
                 prepared.close()
                 staged?.delete()
                 if (deleteSourceAfterStaging) runCatching { File(uri.path.orEmpty()).delete() }
