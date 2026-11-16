@@ -76,9 +76,12 @@ class BusinessDraftCodecTest {
         assertEquals(BusinessDraftCodec.MAX_DRAFTS, decoded.size)
     }
 
-    @Test fun unknownVersionAndMalformedJsonFailSafely() {
-        assertTrue(BusinessDraftCodec.decode("""{"version":999,"items":[]}""").isEmpty())
+    @Test fun unknownVersionAndMalformedJsonAreNotMarkedSafeToOverwrite() {
+        val unknown = """{"version":999,"items":[]}"""
+        assertTrue(!BusinessDraftCodec.canDecode(unknown))
+        assertTrue(!BusinessDraftCodec.canDecode("{broken"))
+        assertTrue(BusinessDraftCodec.canDecode(null))
+        assertTrue(BusinessDraftCodec.decode(unknown).isEmpty())
         assertTrue(BusinessDraftCodec.decode("{broken").isEmpty())
-        assertTrue(BusinessDraftCodec.decode(null).isEmpty())
     }
 }
