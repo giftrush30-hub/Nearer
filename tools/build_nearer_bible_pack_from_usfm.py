@@ -163,6 +163,7 @@ def main():
                 "chapter": chapter, "verse": verse, "text": text
             }, ensure_ascii=False, separators=(",", ":")))
 
+    args.output_zip.parent.mkdir(parents=True, exist_ok=True)
     books_bytes = ("\n".join(books_lines) + "\n").encode("utf-8")
     scripture_bytes = ("\n".join(verse_lines) + "\n").encode("utf-8")
     manifest = {
