@@ -2981,7 +2981,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                     TransferBundleArchive.pack(bundleId, bundleSources, archive!!)
                     stagedInputs.forEach { it.delete() }
                     stagedInputs.clear()
-                    val uri = Uri.fromFile(archive)
+                    val uri = Uri.fromFile(archive!!)
                     val payloadId = sendHyperTransferStream(
                         endpointId, uri, "$safeBundleName.nearerbundle",
                         BUNDLE_MIME_TYPE, deleteSourceAfterStaging = true,
