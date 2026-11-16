@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
@@ -172,6 +173,55 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
             return@LaunchedEffect
         }
         val frameSize = 2_048
+        if (StudioAudioEnginePolicy.useOboe(android.os.Build.VERSION.SDK_INT, preferredInputId)) {
+            val nativeStarted = withContext(Dispatchers.IO) {
+                StudioOboeEngine.start(preferredInputId)
+            }
+            if (nativeStarted) {
+                val analysisChunk = FloatArray(512)
+                val monoNative = FloatArray(frameSize)
+                var nativeOffset = 0
+                var statsTick = 0
+                try {
+                    while (isActive && StudioOboeEngine.isRunning()) {
+                        val count = withContext(Dispatchers.IO) {
+                            StudioOboeEngine.readAnalysis(analysisChunk)
+                        }
+                        if (count > 0) {
+                            for (i in 0 until count) {
+                                monoNative[nativeOffset + i] = analysisChunk[i]
+                            }
+                            nativeOffset += count
+                            if (nativeOffset >= frameSize) {
+                                val nativeRate = StudioOboeEngine.diagnostics().getOrNull(0)?.toInt()?.takeIf { it > 0 } ?: 48_000
+                                reading = StudioPitchEngine.detect(monoNative, nativeRate, 70f, 1_000f)
+                                status = if (reading == null) "No stable pitch yet — sing or hold one clear note." else "Live pitch detected · Oboe native engine"
+                                nativeOffset = 0
+                            }
+                        } else {
+                            delay(4)
+                        }
+                        statsTick++
+                        if (statsTick >= 20) {
+                            statsTick = 0
+                            val stats = withContext(Dispatchers.IO) { StudioOboeEngine.diagnostics() }
+                            val rate = stats.getOrNull(0)?.toInt()?.takeIf { it > 0 } ?: 48_000
+                            val burst = stats.getOrNull(1)?.toInt() ?: 0
+                            val buffer = stats.getOrNull(2)?.toInt() ?: 0
+                            val xruns = stats.getOrNull(3)?.toInt() ?: -1
+                            val underruns = stats.getOrNull(4) ?: 0L
+                            val dropped = stats.getOrNull(5) ?: 0L
+                            val disconnected = stats.getOrNull(6) == 1L
+                            diagnostics = "Oboe native · $rate Hz · burst $burst · output buffer $buffer frames · xrun $xruns · callback underruns $underruns · dropped capture $dropped"
+                            if (disconnected) status = "Audio route disconnected. Turn monitoring off, reconnect the device, then try again."
+                        }
+                    }
+                } finally {
+                    withContext(Dispatchers.IO) { StudioOboeEngine.stop() }
+                }
+                return@LaunchedEffect
+            }
+        }
         val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
         val outputNativeRate = audioManager?.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
         val inputRates = if (preferredInputId == null) emptyList() else {
