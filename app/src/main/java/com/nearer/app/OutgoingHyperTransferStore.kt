@@ -21,6 +21,7 @@ internal class OutgoingHyperTransferStore(private val directory: File) {
         val relativePath: String,
         val displayName: String,
         val sizeBytes: Long,
+        val mimeType: String?,
         val sha256: String,
         val sourceFile: File
     )
@@ -48,7 +49,7 @@ internal class OutgoingHyperTransferStore(private val directory: File) {
 
         val record = Record(
             transferId, peerId, item.id, item.relativePath, item.displayName,
-            item.sizeBytes, sha256.lowercase(), source
+            item.sizeBytes, item.mimeType, sha256.lowercase(), source
         )
         val properties = Properties().apply {
             setProperty("version", "1")
@@ -58,6 +59,7 @@ internal class OutgoingHyperTransferStore(private val directory: File) {
             setProperty("relativePath", record.relativePath)
             setProperty("displayName", record.displayName)
             setProperty("sizeBytes", record.sizeBytes.toString())
+            record.mimeType?.let { setProperty("mimeType", it) }
             setProperty("sha256", record.sha256)
             setProperty("sourceName", record.sourceFile.name)
         }
@@ -120,6 +122,7 @@ internal class OutgoingHyperTransferStore(private val directory: File) {
         val relativePath = p.getProperty("relativePath") ?: return null
         val displayName = p.getProperty("displayName") ?: return null
         val size = p.getProperty("sizeBytes")?.toLongOrNull() ?: return null
+        val mimeType = p.getProperty("mimeType")
         val sha = p.getProperty("sha256") ?: return null
         val sourceName = p.getProperty("sourceName") ?: return null
         if (file.name != recordFile(transferId).name ||
@@ -129,9 +132,9 @@ internal class OutgoingHyperTransferStore(private val directory: File) {
         val source = File(directory, sourceName).canonicalFile
         if (source.parentFile != directory.canonicalFile || !source.isFile || source.length() != size) return null
         if (!hash(source).equals(sha, ignoreCase = true)) return null
-        val item = TransferBundleItem(itemId, relativePath, displayName, size, null)
+        val item = TransferBundleItem(itemId, relativePath, displayName, size, mimeType)
         if (TransferBundleManifest(transferId, listOf(item)).validationErrors().isNotEmpty()) return null
-        Record(transferId, peerId, itemId, relativePath, displayName, size, sha.lowercase(), source)
+        Record(transferId, peerId, itemId, relativePath, displayName, size, mimeType, sha.lowercase(), source)
         } catch (_: Exception) {
             null
         }
