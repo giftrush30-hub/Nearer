@@ -75,4 +75,15 @@ class StudioVocalPolishProcessorTest {
         val peak = output.maxOf { abs(it.toInt()) } / 32767f
         assertTrue("Processed PCM should remain within full scale", peak <= 1f)
     }
+
+    @Test fun warmthControlAddsLowFrequencyBodyWithoutChangingTheOriginal() {
+        val input = FloatArray(8_192) { index ->
+            (0.12 * sin(2.0 * PI * 110.0 * index / 48_000.0)).toFloat()
+        }
+        val neutral = process(1, input, StudioVocalControls(warmth = 0f))
+        val warm = process(1, input, StudioVocalControls(warmth = 1f))
+        fun rms(samples: ShortArray): Double =
+            kotlin.math.sqrt(samples.map { it.toDouble() * it }.average()) / 32767.0
+        assertTrue("Warmth should add controlled low-frequency body", rms(warm) > rms(neutral) * 1.03)
+    }
 }
