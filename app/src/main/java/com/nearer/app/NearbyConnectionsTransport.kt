@@ -1769,7 +1769,7 @@ internal object IncomingFilePayloadPolicy {
             .takeIf { it.isFinite() && it > 0.0 }
             ?.toLong()
             ?: return
-        peerMeasuredThroughput.merge(peerId, measured, ::maxOf)
+        peerMeasuredThroughput.merge(peerId, measured) { previous, current -> maxOf(previous, current) }
     }
 
     private fun handleHyperTransferControl(endpointId: String, controlBytes: ByteArray) {
