@@ -25,6 +25,13 @@ data class MeshRecipient(
     val isDirect: Boolean
 )
 
+/** One file within a folder or multi-file transfer. Paths are relative to the bundle root. */
+data class NearbyBundleSource(
+    val uri: Uri,
+    val relativePath: String,
+    val mimeType: String? = null
+)
+
 class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = false, private val listener: Listener) {
     interface Listener {
         fun onStatus(message: String)
@@ -72,6 +79,9 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     }
 
     private val appContext = context.applicationContext
+    private companion object {
+        const val BUNDLE_MIME_TYPE = "application/vnd.nearer.bundle"
+    }
     private val client = Nearby.getConnectionsClient(appContext)
     // Both peers must choose the same mode before discovery. The distinct service ID
     // prevents automatic-mode peers from accidentally matching Ultra Speed peers.
@@ -1972,8 +1982,21 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                 listener.onFileTransferUpdate(endpointId, payloadId, metadata.item.displayName,
                     completed.totalBytes, completed.totalBytes, true,
                     meter.record(completed.totalBytes, completed.totalBytes))
-                listener.onFileReceived(endpointId, metadata.item.displayName, completed.completedFile)
-                listener.onFileStatus("Verified transfer complete: " + metadata.item.displayName)
+                if (metadata.item.mimeType == BUNDLE_MIME_TYPE) {
+                    val folderName = metadata.item.displayName.removeSuffix(".nearerbundle")
+                    val bundleDirectory = File(
+                        File(appContext.filesDir, "received"),
+                        System.currentTimeMillis().toString() + "-" +
+                            TransferFileNamePolicy.safeName(folderName)
+                    )
+                    TransferBundleArchive.extract(completed.completedFile, bundleDirectory)
+                    completed.completedFile.delete()
+                    listener.onFileReceived(endpointId, folderName, bundleDirectory)
+                    listener.onFileStatus("Verified folder transfer complete: " + folderName)
+                } else {
+                    listener.onFileReceived(endpointId, metadata.item.displayName, completed.completedFile)
+                    listener.onFileStatus("Verified transfer complete: " + metadata.item.displayName)
+                }
             }.onFailure { error ->
                 runCatching {
                     sendHyperTransferControl(
@@ -2582,7 +2605,13 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         return sent
     }
 
-    private fun sendHyperTransferStream(endpointId: String, uri: Uri, displayName: String): Long? {
+    private fun sendHyperTransferStream(
+        endpointId: String,
+        uri: Uri,
+        displayName: String,
+        mimeType: String? = null,
+        deleteSourceAfterStaging: Boolean = false
+    ): Long? {
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (NeaRerIdentity.normalize(peerId) == null) return null
         val prepared = try { streamPayloadBridge.prepareOutgoingPayload() } catch (_: Exception) {
@@ -2632,7 +2661,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                 }
                 val name = safeFileName(displayName)
                 val item = TransferBundleItem(
-                    copied.sha256.take(32), name, name, copied.bytesCopied, null
+                    copied.sha256.take(32), name, name, copied.bytesCopied, mimeType
                 )
                 val transferId = HyperTransferIdentity.createTransferId(
                     localStableId, peerId, item, copied.sha256
@@ -2643,6 +2672,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                     staged!!.delete()
                     return@execute
                 }
+                if (deleteSourceAfterStaging) runCatching { File(uri.path.orEmpty()).delete() }
                 outgoingHyperStore.persist(transferId, peerId, item, copied.sha256, staged!!)
                 val state = OutgoingHyperStream(
                     endpointId, peerId, name, staged!!, item, transferId, copied.sha256, prepared
@@ -2673,6 +2703,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                 val wasCancelled = cancelledOutgoingPreparations.remove(payloadId)
                 prepared.close()
                 staged?.delete()
+                if (deleteSourceAfterStaging) runCatching { File(uri.path.orEmpty()).delete() }
                 if (wasCancelled) return@execute
                 listener.onFileStatus("The fast resumable stream could not be prepared. Using standard file transfer instead.")
                 sendFileLegacy(endpointId, uri, displayName)
@@ -2875,6 +2906,82 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
             if (streamId != null) return streamId
         }
         return sendFileLegacy(endpointId, uri, displayName)
+    }
+
+    /**
+     * Queues a folder/multi-file transfer as one resumable archive stream.
+     * The caller supplies every file and its safe path relative to the bundle root;
+     * parent folders are reconstructed from those paths on the receiving phone.
+     */
+    fun sendBundle(endpointId: String, bundleName: String, sources: List<NearbyBundleSource>): Boolean {
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (!authenticatedEndpoints.contains(endpointId) ||
+            !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) } ||
+            !streamCapablePeers.contains(peerId) ||
+            NeaRerIdentity.normalize(peerId) == null) {
+            listener.onFileStatus("Folder transfers require a securely connected phone with HyperTransfer support.")
+            return false
+        }
+        if (sources.isEmpty() || sources.size > TransferBundleManifest.MAX_ITEMS) {
+            listener.onFileStatus("Choose a valid set of files for the folder transfer.")
+            return false
+        }
+        val safeBundleName = safeFileName(bundleName).removeSuffix(".nearerbundle").ifBlank { "NeaRer bundle" }
+        try {
+            transferPreparation.execute {
+                val stagedInputs = mutableListOf<File>()
+                var archive: File? = null
+                try {
+                    if (!outgoingHyperDirectory.exists() && !outgoingHyperDirectory.mkdirs()) {
+                        throw IllegalStateException("Could not create durable bundle staging storage")
+                    }
+                    val bundleSources = sources.map { source ->
+                        val stagedInput = File.createTempFile("nearer-bundle-item-", ".bin", outgoingHyperDirectory)
+                        stagedInputs += stagedInput
+                        val input = appContext.contentResolver.openInputStream(source.uri)
+                            ?: throw IllegalStateException("A selected folder item could not be opened")
+                        input.use { stream ->
+                            FileOutputStream(stagedInput).use { output ->
+                                val buffer = ByteArray(256 * 1024)
+                                while (true) {
+                                    if (!authenticatedEndpoints.contains(endpointId) ||
+                                        !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) } ||
+                                        synchronized(names) { stableIds[endpointId] } != peerId) {
+                                        throw java.io.InterruptedIOException("Nearby connection ended while preparing the bundle")
+                                    }
+                                    val count = stream.read(buffer)
+                                    if (count < 0) break
+                                    if (count > 0) output.write(buffer, 0, count)
+                                }
+                                output.fd.sync()
+                            }
+                        }
+                        TransferBundleArchive.Source(stagedInput, source.relativePath, source.mimeType)
+                    }
+                    archive = File.createTempFile("nearer-bundle-", ".nearerbundle", outgoingHyperDirectory)
+                    val bundleId = UUID.randomUUID().toString()
+                    TransferBundleArchive.pack(bundleId, bundleSources, archive!!)
+                    stagedInputs.forEach { it.delete() }
+                    stagedInputs.clear()
+                    val uri = Uri.fromFile(archive)
+                    val payloadId = sendHyperTransferStream(
+                        endpointId, uri, "$safeBundleName.nearerbundle",
+                        BUNDLE_MIME_TYPE, deleteSourceAfterStaging = true
+                    )
+                    if (payloadId == null) throw IllegalStateException("The bundle could not be queued for transfer")
+                    listener.onFileStatus("Folder bundle prepared. Sending ${sources.size} files as one resumable transfer…")
+                } catch (error: Exception) {
+                    stagedInputs.forEach { it.delete() }
+                    archive?.delete()
+                    listener.onFileStatus("Folder transfer could not be prepared: " +
+                        (error.localizedMessage ?: "please try again"))
+                }
+            }
+            return true
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            listener.onFileStatus("NeaRer is busy preparing another transfer. Please try again shortly.")
+            return false
+        }
     }
 
     private fun sendFileLegacy(endpointId: String, uri: Uri, displayName: String): Long? {
