@@ -122,11 +122,18 @@ internal class StudioVocalPolishProcessor(
                 processedScratch[channel] = present - sibilance * (1f - essReduction) + airBand * airAmount
                 framePeak = maxOf(framePeak, abs(processedScratch[channel]))
             }
+            if (inputChannels == 2 && stereoWidth != 1f) {
+                val mid = (processedScratch[0] + processedScratch[1]) * 0.5f
+                val side = (processedScratch[0] - processedScratch[1]) * 0.5f * stereoWidth
+                processedScratch[0] = mid + side
+                processedScratch[1] = mid - side
+                framePeak = maxOf(abs(processedScratch[0]), abs(processedScratch[1]))
+            }
 
             val gateCoefficient = if (framePeak > gateEnvelope) gateAttack else gateRelease
             gateEnvelope = gateCoefficient * gateEnvelope + (1f - gateCoefficient) * framePeak
-            val gateGain = if (gateEnvelope < profile.gateThreshold) {
-                (gateEnvelope / profile.gateThreshold).coerceIn(0.12f, 1f)
+            val gateGain = if (gateEnvelope < gateThreshold) {
+                (gateEnvelope / gateThreshold).coerceIn(0.12f * (1f - noiseReduction), 1f)
             } else 1f
 
             val compressorCoefficient = if (framePeak > compressorEnvelope) compressorAttack else compressorRelease
