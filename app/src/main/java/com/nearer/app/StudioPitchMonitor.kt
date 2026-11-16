@@ -142,7 +142,7 @@ internal object StudioPitchEngine {
 }
  
 @Composable
-internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
+internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int? = null, preferUnprocessedInput: Boolean = false) {
     val context = LocalContext.current
     var reading by remember { mutableStateOf<StudioPitchReading?>(null) }
     var status by remember { mutableStateOf("Listening for a clear single vocal note…") }
@@ -163,7 +163,12 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
     }
     val keys = listOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B")
 
-    LaunchedEffect(monitorEnabled) {
+    LaunchedEffect(monitorEnabled, preferredInputId) {
+        if (!monitorEnabled) {
+            reading = null
+            status = "Microphone monitoring is off. Turn it on when you are ready."
+            return@LaunchedEffect
+        }
         val frameSize = 2_048
         val supportedRate = listOf(22_050, 44_100, 48_000).firstNotNullOfOrNull { rate ->
             val size = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
@@ -177,13 +182,27 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
         val minBuffer = supportedRate.second
         val recorder = withContext(Dispatchers.IO) {
             runCatching {
-                AudioRecord(
-                    MediaRecorder.AudioSource.MIC,
-                    sampleRate,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    maxOf(minBuffer, frameSize * 2 * 3)
-                ).also { if (it.state == AudioRecord.STATE_INITIALIZED) it.startRecording() }
+                AudioRecord.Builder()
+                    .setAudioSource(if (preferUnprocessedInput) MediaRecorder.AudioSource.UNPROCESSED else MediaRecorder.AudioSource.MIC)
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setSampleRate(sampleRate)
+                            .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .build()
+                    )
+                    .setBufferSizeInBytes(maxOf(minBuffer, frameSize * 2 * 2))
+                    .build()
+                    .also { audioRecord ->
+                        if (preferredInputId != null) {
+                            val preferred = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
+                            val device = preferred?.getDevices(AudioManager.GET_DEVICES_INPUTS)?.firstOrNull { it.id == preferredInputId }
+                            check(device != null && audioRecord.setPreferredDevice(device)) {
+                                "Android could not route the live monitor to the selected USB microphone. Reconnect it or choose Phone Default."
+                            }
+                        }
+                        if (audioRecord.state == AudioRecord.STATE_INITIALIZED) audioRecord.startRecording()
+                    }
             }.getOrNull()
         }
         if (recorder == null || recorder.state != AudioRecord.STATE_INITIALIZED || recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
@@ -281,7 +300,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
             Text("PITCH MONITOR", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         }
         Text("Vocal pitch & key guide", color = White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
-        Text("Live microphone analysis · Offline · No recording is saved", color = Muted, fontSize = 11.sp)
+        Text("${if (preferredInputId == null) "Phone default" else "Selected USB"} input · ${if (preferUnprocessedInput) "Unprocessed capture" else "Standard microphone path"} · No recording is saved", color = Muted, fontSize = 11.sp)
         Button(
             onClick = { monitorEnabled = !monitorEnabled },
             modifier = Modifier.fillMaxWidth(),
