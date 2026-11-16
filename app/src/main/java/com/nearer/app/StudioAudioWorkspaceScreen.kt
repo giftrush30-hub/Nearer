@@ -121,7 +121,7 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
     }
 
     if (showPitchMonitor) {
-        StudioPitchMonitorScreen(onBack = { showPitchMonitor = false })
+        StudioPitchMonitorScreen(onBack = { showPitchMonitor = false }, preferredInputId = selectedUsbInputId, preferUnprocessedInput = supportsUnprocessedInput)
     } else {
     Column(Modifier.fillMaxSize().background(Midnight).padding(20.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
