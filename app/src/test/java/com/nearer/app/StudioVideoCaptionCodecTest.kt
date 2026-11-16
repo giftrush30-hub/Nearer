@@ -29,6 +29,30 @@ class StudioVideoCaptionCodecTest {
         assertEquals(2, safe.verticalPosition)
     }
 
+
+    @Test fun movingClipsKeepsCaptionAssignmentsAttachedToMovedClips() {
+        val layers = listOf(
+            StudioVideoCaptionLayer("a", "First", 0, 0L, 1_000L),
+            StudioVideoCaptionLayer("b", "Second", 1, 0L, 1_000L),
+            StudioVideoCaptionLayer("c", "Third", 2, 0L, 1_000L)
+        )
+        val movedDown = remapStudioCaptionLayersForClipMove(layers, 0, 2)
+        assertEquals(listOf(2, 0, 1), movedDown.map { it.clipIndex })
+        val movedUp = remapStudioCaptionLayersForClipMove(movedDown, 2, 0)
+        assertEquals(listOf(0, 1, 2), movedUp.map { it.clipIndex })
+    }
+
+    @Test fun deletingClipRemovesItsCaptionsAndShiftsLaterAssignments() {
+        val layers = listOf(
+            StudioVideoCaptionLayer("a", "First", 0, 0L, 1_000L),
+            StudioVideoCaptionLayer("b", "Second", 1, 0L, 1_000L),
+            StudioVideoCaptionLayer("c", "Third", 2, 0L, 1_000L)
+        )
+        val remaining = removeStudioCaptionLayersForClip(layers, 1)
+        assertEquals(listOf("a", "c"), remaining.map { it.id })
+        assertEquals(listOf(0, 1), remaining.map { it.clipIndex })
+    }
+
     @Test fun malformedAndUnknownVersionsDecodeEmpty() {
         assertTrue(StudioVideoCaptionCodec.decode("{broken").isEmpty())
         assertTrue(StudioVideoCaptionCodec.decode("{\"version\":99}").isEmpty())
