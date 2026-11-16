@@ -1,7 +1,7 @@
 package com.nearer.app
 
 /** One completed run from a controlled, same-device-pair transfer benchmark. */
-internal data class TransferBenchmarkRun(
+data class TransferBenchmarkRun(
     val bytesTransferred: Long,
     val elapsedMillis: Long,
     val firstByteMillis: Long,
@@ -17,7 +17,7 @@ internal data class TransferBenchmarkRun(
     }
 }
 
-internal data class TransferBenchmarkSummary(
+data class TransferBenchmarkSummary(
     val successfulRuns: Int,
     val failedRuns: Int,
     val medianElapsedMillis: Long,
