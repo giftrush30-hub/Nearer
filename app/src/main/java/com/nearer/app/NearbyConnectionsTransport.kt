@@ -418,7 +418,16 @@ internal object IncomingFilePayloadPolicy {
 
     private fun retryQueuedMessagesForPeer(peerId: String, endpointId: String) {
         if (peerId.isBlank()) return
-        pendingOutgoingMessages.forEach { (id, p) -> if (p.stablePeerId == peerId) { p.retryTask?.let(deliveryHandler::removeCallbacks); p.endpointId = endpointId; p.attempts = 0; outgoingMessageTargets[id] = endpointId; persistPendingOutbox(); attemptOutgoingMessage(id) } }
+        pendingOutgoingMessages.forEach { (id, pending) ->
+            if (OutgoingAckPolicy.sameStablePeer(pending.stablePeerId, peerId)) {
+                pending.retryTask?.let(deliveryHandler::removeCallbacks)
+                pending.endpointId = endpointId
+                pending.attempts = 0
+                outgoingMessageTargets[id] = endpointId
+                persistPendingOutbox()
+                attemptOutgoingMessage(id)
+            }
+        }
     }
 
     /** Drop stale endpoint bindings as soon as their authenticated peer disconnects. */
