@@ -75,6 +75,16 @@ class HyperTransferModePolicyTest {
         )
     }
 
+    @Test(expected = IllegalArgumentException::class)
+    fun negativeMemoryIsRejected() {
+        profile(memory = -1L)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun unsupportedThermalStatusIsRejected() {
+        profile(thermal = 7)
+    }
+
     @Test fun negotiationIsSymmetricRegardlessOfWhichPeerStarts() {
         val constrained = profile(lowRam = true)
         val capable = profile()
