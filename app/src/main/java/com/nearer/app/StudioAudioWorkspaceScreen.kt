@@ -292,10 +292,11 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
             .putBoolean("preserve_formants", pitchCorrection.preserveFormants).apply()
     }
 
+    val latestComparisonMode = rememberUpdatedState(comparisonMode)
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY && player.duration > 0L && !comparisonMode) {
+                if (playbackState == Player.STATE_READY && player.duration > 0L && !latestComparisonMode.value) {
                     durationMs = player.duration
                     if (endMs == 0L || endMs > player.duration) endMs = player.duration
                 }
@@ -306,8 +307,14 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
         onDispose { player.removeListener(listener); player.release() }
     }
     LaunchedEffect(uri, exportedFile, comparisonMode) {
-        val selectedUri = if (comparisonMode) exportedFile?.let { Uri.fromFile(it) } ?: uri else uri
-        player.setMediaItem(MediaItem.fromUri(selectedUri))
+        val selectedItem = if (comparisonMode) {
+            exportedFile?.let { MediaItem.fromUri(Uri.fromFile(it)) } ?: MediaItem.fromUri(uri)
+        } else if (exportedFile != null) {
+            MediaItem.Builder().setUri(uri).setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder().setStartPositionMs(startMs).setEndPositionMs(endMs).build()
+            ).build()
+        } else MediaItem.fromUri(uri)
+        player.setMediaItem(selectedItem)
         player.prepare()
         player.playWhenReady = false
     }
