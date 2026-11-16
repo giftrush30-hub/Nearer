@@ -57,7 +57,7 @@ class MoviesLibraryCodecTest {
     }
 
     @Test fun enforcesMaximumLibrarySize() {
-        val items = (1..(MoviesLibraryCodec.MAX_MOVIES + 10)).map(::movie)
+        val items = (1..(MoviesLibraryCodec.MAX_MOVIES + 10)).map { movie(it) }
         assertEquals(MoviesLibraryCodec.MAX_MOVIES, MoviesLibraryCodec.decode(MoviesLibraryCodec.encode(items)).size)
     }
 
