@@ -2963,9 +2963,8 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
         if (!authenticatedEndpoints.contains(endpointId) ||
             !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) } ||
-            !streamCapablePeers.contains(peerId) ||
             NeaRerIdentity.normalize(peerId) == null) {
-            listener.onFileStatus("Folder transfers require a securely connected phone with HyperTransfer support.")
+            listener.onFileStatus("Folder transfers require a securely connected nearby phone.")
             return false
         }
         if (sources.isEmpty() || sources.size > TransferBundleManifest.MAX_ITEMS) {
@@ -3010,6 +3009,13 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                     stagedInputs.forEach { it.delete() }
                     stagedInputs.clear()
                     val uri = Uri.fromFile(archive!!)
+                    if (!streamCapablePeers.contains(peerId)) {
+                        val legacyId = sendFileLegacy(endpointId, uri, "$safeBundleName.zip")
+                        archive?.delete()
+                        if (legacyId == null) throw IllegalStateException("The folder archive could not be sent to this older nearby phone")
+                        listener.onFileStatus("Folder archive sent using standard file transfer. Its ZIP keeps the folder structure.")
+                        return@execute
+                    }
                     val payloadId = sendHyperTransferStream(
                         endpointId, uri, "$safeBundleName.zip",
                         BUNDLE_MIME_TYPE, deleteSourceAfterStaging = true,
