@@ -96,19 +96,33 @@ internal fun PremiumChatsScreen(
     var reactingToMessageId by remember { mutableStateOf<String?>(null) }
     var pendingDeleteMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var folderToBrowse by remember { mutableStateOf<ReceivedFile?>(null) }
+    var folderBrowseLocation by remember { mutableStateOf<File?>(null) }
     val context = LocalContext.current
     folderToBrowse?.let { folder ->
-        val entries = remember(folder.file) {
-            folder.file.listFiles()?.sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase(Locale.ROOT) })).orEmpty()
+        val currentDirectory = folderBrowseLocation ?: folder.file
+        val entries = remember(currentDirectory) {
+            currentDirectory.listFiles()?.sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase(Locale.ROOT) })).orEmpty()
         }
+        val isRoot = runCatching { currentDirectory.canonicalFile == folder.file.canonicalFile }.getOrDefault(true)
         AlertDialog(
-            onDismissRequest = { folderToBrowse = null },
-            title = { Text(folder.displayName) },
+            onDismissRequest = { folderToBrowse = null; folderBrowseLocation = null },
+            title = { Text(if (isRoot) folder.displayName else currentDirectory.name) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("${entries.size} items in this folder", color = Muted, fontSize = 11.sp)
                     entries.take(100).forEach { entry ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable {
+                                if (entry.isDirectory) {
+                                    folderBrowseLocation = entry
+                                } else {
+                                    folderToBrowse = null
+                                    folderBrowseLocation = null
+                                    onOpenFile(ReceivedFile(entry.name, entry))
+                                }
+                            }.padding(vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(if (entry.isDirectory) "▰" else "•", color = Gold, modifier = Modifier.padding(end = 8.dp))
                             Text(entry.name, color = White, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
@@ -116,7 +130,14 @@ internal fun PremiumChatsScreen(
                     if (entries.size > 100) Text("Showing the first 100 items.", color = Muted, fontSize = 10.sp)
                 }
             },
-            confirmButton = { TextButton(onClick = { folderToBrowse = null }) { Text("Close") } }
+            confirmButton = {
+                Row {
+                    if (!isRoot) {
+                        TextButton(onClick = { folderBrowseLocation = currentDirectory.parentFile ?: folder.file }) { Text("Up") }
+                    }
+                    TextButton(onClick = { folderToBrowse = null; folderBrowseLocation = null }) { Text("Close") }
+                }
+            }
         )
     }
     pendingDeleteMessage?.let { target ->
@@ -597,7 +618,7 @@ internal fun PremiumChatsScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).clickable {
-                                    if (fileItem.isFolder) folderToBrowse = fileItem else onOpenFile(fileItem)
+                                    if (fileItem.isFolder) { folderToBrowse = fileItem; folderBrowseLocation = fileItem.file } else onOpenFile(fileItem)
                                 },
                                 shape = RoundedCornerShape(13.dp),
                                 color = NeaRerPalette.Panel
