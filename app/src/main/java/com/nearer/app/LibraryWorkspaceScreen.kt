@@ -244,9 +244,9 @@ internal fun LibraryWorkspaceScreen(onBack: () -> Unit) {
                             }
                         }.padding(5.dp))
                         Text("×", color = Muted, fontSize = 17.sp, modifier = Modifier.clickable {
-                            runCatching { context.contentResolver.releasePersistableUriPermission(entry.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                             entries.removeAll { it.uri == entry.uri }
                             saveCollection()
+                            MediaUriGrantRegistry.releaseIfUnreferenced(context, entry.uri)
                         }.padding(5.dp))
                     }
                 }
