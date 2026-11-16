@@ -34,15 +34,15 @@ internal object HyperTransferPeerProfileCodec {
 
     fun isEnvelope(bytes: ByteArray): Boolean =
         bytes.size == ENCODED_BYTES &&
-            ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN).int == MAGIC
+            ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN).getInt() == MAGIC
 
     fun decode(bytes: ByteArray): HyperTransferModePolicy.DeviceProfile {
         require(bytes.size == ENCODED_BYTES) { "Invalid resource profile size" }
         val input = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
-        require(input.int == MAGIC) { "Unexpected resource profile kind" }
-        require(input.short == VERSION) { "Unsupported resource profile version" }
+        require(input.getInt() == MAGIC) { "Unexpected resource profile kind" }
+        require(input.getShort() == VERSION) { "Unsupported resource profile version" }
         val flags = input.get().toInt() and 0xff
-        require(flags and KNOWN_FLAGS.inv() == 0) { "Unknown resource profile flags" }
+        require((flags and KNOWN_FLAGS.inv()) == 0) { "Unknown resource profile flags" }
         val thermal = input.get().toInt() and 0xff
         val memory = input.long
         val storage = input.long
@@ -51,9 +51,9 @@ internal object HyperTransferPeerProfileCodec {
             availableMemoryBytes = memory,
             availableStorageBytes = storage,
             thermalStatus = thermal,
-            lowMemory = flags and FLAG_LOW_MEMORY != 0,
-            lowRamDevice = flags and FLAG_LOW_RAM != 0,
-            streamCapable = flags and FLAG_STREAM_CAPABLE != 0,
+            lowMemory = (flags and FLAG_LOW_MEMORY) != 0,
+            lowRamDevice = (flags and FLAG_LOW_RAM) != 0,
+            streamCapable = (flags and FLAG_STREAM_CAPABLE) != 0,
             measuredBytesPerSecond = throughput
         )
     }
