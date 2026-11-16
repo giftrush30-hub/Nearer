@@ -31,6 +31,16 @@ class TransferBenchmarkMetricsTest {
         assertEquals(2.0, faster.speedupOver(slower), 0.0001)
     }
 
+    @Test fun comparesThroughputWhenBenchmarkFileSizesDiffer() {
+        val nearer = TransferBenchmarkMetrics.summarize(listOf(
+            TransferBenchmarkRun(200L * 1024 * 1024, 20_000L, 200L, true)
+        ))
+        val reference = TransferBenchmarkMetrics.summarize(listOf(
+            TransferBenchmarkRun(100L * 1024 * 1024, 20_000L, 200L, true)
+        ))
+        assertEquals(2.0, nearer.speedupOver(reference), 0.0001)
+    }
+
     @Test fun rejectsEmptyOrAllFailedSamples() {
         assertThrows(IllegalArgumentException::class.java) {
             TransferBenchmarkMetrics.summarize(emptyList())
