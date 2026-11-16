@@ -232,8 +232,8 @@ class BibleLocalDatabase(context: Context) : SQLiteOpenHelper(
     fun findLexicalEntries(languageCode:String,query:String,limit:Int=50):List<BibleWordStudyEntry> {
         val out=mutableListOf<BibleWordStudyEntry>()
         readableDatabase.query("lexical_entries",null,
-            "language_code=? AND (lemma LIKE ? OR transliteration LIKE ? OR gloss LIKE ?)",
-            arrayOf(languageCode,"%$query%","%$query%","%$query%"),null,null,"lemma",
+            "language_code=? AND (lemma LIKE ? OR transliteration LIKE ? OR gloss LIKE ? OR strong_number LIKE ?)",
+            arrayOf(languageCode,"%$query%","%$query%","%$query%","%$query%"),null,null,"lemma",
             limit.coerceIn(1,200).toString()).use { c -> while(c.moveToNext()) out += c.toLexicalEntry() }
         return out
     }
