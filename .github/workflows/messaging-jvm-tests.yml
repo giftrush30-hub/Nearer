@@ -39,4 +39,4 @@ jobs:
           gradle-version: "8.9"
 
       - name: Run JVM tests and validate Android manifest (no APK)
-        run: gradle --no-daemon --stacktrace testDebugUnitTest processDebugManifest
+        run: gradle --no-daemon --stacktrace testDebugUnitTest processDebugManifest lintDebug
