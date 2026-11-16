@@ -1006,7 +1006,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         finishDiscovery()
-        nearbyTransport?.stop()
+        nearbyServiceBinder?.detachUiListener(nearbyListener)
+        nearbyServiceBinder = null
+        if (nearbyServiceBound) runCatching { unbindService(nearbyServiceConnection) }
+        nearbyServiceBound = false
+        nearbyServiceBinding = false
+        // NearbyConnectionsTransport belongs to NearbyTransportService. Activity
+        // recreation or leaving the app must not tear down authenticated sessions.
+        nearbyTransport = null
         closePeerTransport()
         io.shutdownNow()
         super.onDestroy()
