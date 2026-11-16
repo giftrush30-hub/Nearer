@@ -1963,61 +1963,74 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
             activeIncomingHyperPayloads.remove(payloadId)
             cancelledStreamPayloads.remove(payloadId)
             transferSpeedMeters.remove(payloadId)
-            result.onSuccess { completed ->
-                runCatching {
-                    sendHyperTransferControl(
-                        endpointId,
-                        HyperTransferCompletionReceiptCodec.encode(
-                            HyperTransferCompletionReceiptCodec.Receipt(
-                                payloadId = payloadId,
-                                transferId = metadata.transferId,
-                                itemId = metadata.item.id,
-                                sha256 = metadata.wholeFileSha256,
-                                saved = true
+            result.fold(
+                onSuccess = { completed ->
+                    try {
+                        val meter = TransferSpeedMeter()
+                        listener.onFileTransferUpdate(endpointId, payloadId, metadata.item.displayName,
+                            completed.totalBytes, completed.totalBytes, true,
+                            meter.record(completed.totalBytes, completed.totalBytes))
+                        if (metadata.item.mimeType == BUNDLE_MIME_TYPE) {
+                            val folderName = metadata.item.displayName.removeSuffix(".nearerbundle")
+                            val bundleDirectory = File(
+                                File(appContext.filesDir, "received"),
+                                System.currentTimeMillis().toString() + "-" +
+                                    TransferFileNamePolicy.safeName(folderName)
                             )
+                            try {
+                                TransferBundleArchive.extract(completed.completedFile, bundleDirectory)
+                            } catch (error: Exception) {
+                                completed.completedFile.delete()
+                                throw error
+                            }
+                            completed.completedFile.delete()
+                            listener.onFileReceived(endpointId, folderName, bundleDirectory)
+                            listener.onFileStatus("Verified folder transfer complete: " + folderName)
+                        } else {
+                            listener.onFileReceived(endpointId, metadata.item.displayName, completed.completedFile)
+                            listener.onFileStatus("Verified transfer complete: " + metadata.item.displayName)
+                        }
+                        sendHyperTransferCompletionReceipt(endpointId, payloadId, metadata, saved = true)
+                    } catch (error: Exception) {
+                        sendHyperTransferCompletionReceipt(endpointId, payloadId, metadata, saved = false)
+                        listener.onFileStatus(
+                            if (error.message.orEmpty().contains("Not enough free storage", ignoreCase = true))
+                                error.message.orEmpty()
+                            else "The received file or folder could not be safely published."
                         )
+                    }
+                },
+                onFailure = { error ->
+                    sendHyperTransferCompletionReceipt(endpointId, payloadId, metadata, saved = false)
+                    val reason = error.message.orEmpty()
+                    listener.onFileStatus(
+                        if (reason.contains("Not enough free storage", ignoreCase = true)) reason
+                        else "The received file was not published because verification failed."
                     )
                 }
-                val meter = TransferSpeedMeter()
-                listener.onFileTransferUpdate(endpointId, payloadId, metadata.item.displayName,
-                    completed.totalBytes, completed.totalBytes, true,
-                    meter.record(completed.totalBytes, completed.totalBytes))
-                if (metadata.item.mimeType == BUNDLE_MIME_TYPE) {
-                    val folderName = metadata.item.displayName.removeSuffix(".nearerbundle")
-                    val bundleDirectory = File(
-                        File(appContext.filesDir, "received"),
-                        System.currentTimeMillis().toString() + "-" +
-                            TransferFileNamePolicy.safeName(folderName)
+            )
+        }
+    }
+
+    private fun sendHyperTransferCompletionReceipt(
+        endpointId: String,
+        payloadId: Long,
+        metadata: TransferResumeStreamMetadataCodec.Metadata,
+        saved: Boolean
+    ) {
+        runCatching {
+            sendHyperTransferControl(
+                endpointId,
+                HyperTransferCompletionReceiptCodec.encode(
+                    HyperTransferCompletionReceiptCodec.Receipt(
+                        payloadId = payloadId,
+                        transferId = metadata.transferId,
+                        itemId = metadata.item.id,
+                        sha256 = metadata.wholeFileSha256,
+                        saved = saved
                     )
-                    TransferBundleArchive.extract(completed.completedFile, bundleDirectory)
-                    completed.completedFile.delete()
-                    listener.onFileReceived(endpointId, folderName, bundleDirectory)
-                    listener.onFileStatus("Verified folder transfer complete: " + folderName)
-                } else {
-                    listener.onFileReceived(endpointId, metadata.item.displayName, completed.completedFile)
-                    listener.onFileStatus("Verified transfer complete: " + metadata.item.displayName)
-                }
-            }.onFailure { error ->
-                runCatching {
-                    sendHyperTransferControl(
-                        endpointId,
-                        HyperTransferCompletionReceiptCodec.encode(
-                            HyperTransferCompletionReceiptCodec.Receipt(
-                                payloadId = payloadId,
-                                transferId = metadata.transferId,
-                                itemId = metadata.item.id,
-                                sha256 = metadata.wholeFileSha256,
-                                saved = false
-                            )
-                        )
-                    )
-                }
-                val reason = error.message.orEmpty()
-                listener.onFileStatus(
-                    if (reason.contains("Not enough free storage", ignoreCase = true)) reason
-                    else "The received file was not published because verification failed."
                 )
-            }
+            )
         }
     }
 
