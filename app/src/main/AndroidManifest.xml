@@ -50,6 +50,7 @@
         </provider>
         <activity android:name=".AppInstallResultActivity" android:exported="false" />
         <receiver android:name=".AppShareInstallReceiver" android:exported="false" />
+        <service android:name=".NearbyTransportService" android:exported="false" android:foregroundServiceType="connectedDevice" />
         <service android:name=".OpenSendForegroundService" android:exported="false" android:foregroundServiceType="connectedDevice" />
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter>
