@@ -161,28 +161,6 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         return value.take(23) to ""
     }
 
-internal object IncomingFilePayloadPolicy {
-    /**
-     * A file payload must come from the peer that supplied its metadata (or the
-     * peer that first supplied the payload). Stable identities survive reconnects;
-     * legacy peers are restricted to the original endpoint.
-     */
-    fun canAccept(
-        expectedEndpointId: String?,
-        expectedPeerId: String?,
-        incomingEndpointId: String,
-        incomingPeerId: String
-    ): Boolean {
-        if (incomingEndpointId.isBlank()) return false
-        // Once metadata establishes a stable sender, an empty identity is not
-        // a legacy fallback: it is an unidentified sender and must be rejected.
-        if (!expectedPeerId.isNullOrBlank()) {
-            return incomingPeerId.isNotBlank() && expectedPeerId == incomingPeerId
-        }
-        return expectedEndpointId == null || expectedEndpointId == incomingEndpointId
-    }
-}
-
     private data class FileMeta(val endpointId: String, val name: String, val size: Long, val sha256: String = "")
     private data class OutgoingFile(
         @Volatile var endpointId: String,
