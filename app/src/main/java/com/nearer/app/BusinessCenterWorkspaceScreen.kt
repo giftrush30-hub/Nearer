@@ -367,7 +367,14 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
                 }
             }
         }
-        if (drafts.isEmpty()) {
+        if (catalogueReadOnly) {
+            Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+                Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("Catalogue protected", color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Text("Update NeaRer to a compatible version before changing these saved listings.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                }
+            }
+        } else if (drafts.isEmpty()) {
             Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
                 Column(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("Your storefront is waiting", color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
