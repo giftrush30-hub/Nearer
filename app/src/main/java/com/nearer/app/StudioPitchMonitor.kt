@@ -287,7 +287,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                     val outputDevice = monitorTrack?.routedDevice?.productName?.toString() ?: "Android output"
                     val inputDevice = recorder.routedDevice?.productName?.toString() ?: if (preferredInputId == null) "Phone default input" else "Selected input"
                     val underruns = monitorTrack?.underrunCount ?: 0
-                    val latencyFrames = monitorTrack?.bufferSizeInFrames ?: outputBufferFrames
+                    val latencyFrames = monitorTrack?.bufferSizeInFrames ?: (framesPerBurst * 3)
                     val latencyMs = latencyFrames * 1000L / sampleRate
                     status = "$sampleRate Hz · $inputDevice → $outputDevice · output buffer ~${latencyMs} ms · underruns $underruns"
                 }
