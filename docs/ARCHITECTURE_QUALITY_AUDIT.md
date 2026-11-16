@@ -17,7 +17,7 @@ The recursive Git tree at the audit baseline contained:
 - All 192 production Kotlin files are under the `com.nearer.app` package root, except the Ludo package subtree. This is a strong sign that package ownership has not kept pace with product growth.
 - One Gradle module: `:app`.
 - Two GitHub Actions workflows.
-- More than 100 JVM test source files (exact count should be regenerated as tests are added).
+- 148 JVM test source files at this baseline (counted from the recursive Git tree).
 
 Largest inspected source files:
 
@@ -146,3 +146,8 @@ These are the primary standards used for this audit:
 - Android Developers — [Domain layer guidance](https://developer.android.com/topic/architecture/domain-layer)
 
 The Android guidance recommends clear separation of concerns, UI/data layers, repositories, unidirectional data flow, lifecycle-aware state, testing and modularisation where it improves maintainability. NeaRer should apply these principles in a way that protects its offline-first transport and device constraints.
+
+
+## First refactoring batch completed on the working branch
+
+The architecture-quality branch has now moved three small responsibilities out of `MainActivity.kt`: the app-install result Activity, the local nearby-person model/last-seen formatter, and the shared transfer-byte formatter. The latter two have focused JVM tests. These extractions are deliberately small; the larger lifecycle, messaging, community, game and transfer coordinators remain mapped for later work rather than being split without adequate seams.
