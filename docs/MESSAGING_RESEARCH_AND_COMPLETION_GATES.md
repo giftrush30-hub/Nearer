@@ -161,6 +161,14 @@ Messaging findings:
 - Google Nearby Connections requires its platform permissions at runtime; if required permissions are denied, advertising/discovery cannot start.
 - Android's background Bluetooth guidance recommends an appropriately declared `connectedDevice` foreground service when an app must keep a device connection alive while the user switches apps. This does not promise survival after force-stop or every OEM process-kill policy.
 
+### Foreground-service type selection
+
+The service uses `connectedDevice`, not `remoteMessaging`. Android describes `connectedDevice` for interactions with external devices over Bluetooth or network connections. Android's `remoteMessaging` type is described more narrowly as messaging use cases that host a local server to relay messages across devices. NeaRer uses Google Nearby Connections to discover and communicate directly with nearby peer devices; it does not host a local relay server. Revisit this decision if the transport architecture changes to a local-server relay model.
+
+Sources:
+- Android foreground-service type descriptions: https://developer.android.com/develop/background-work/services/fgs/service-types
+- Android ServiceInfo API reference: https://developer.android.com/reference/android/content/pm/ServiceInfo
+
 Additional official sources:
 - Android foreground-service type requirements: https://developer.android.com/about/versions/14/changes/fgs-types-required
 - Google Nearby Connections Android setup and permissions: https://developers.google.com/nearby/connections/android/get-started
