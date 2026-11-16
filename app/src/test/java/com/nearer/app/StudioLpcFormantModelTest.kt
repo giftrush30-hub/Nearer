@@ -35,6 +35,16 @@ class StudioLpcFormantModelTest {
         assertEquals(sample, restored, 0.00001f)
     }
 
+    @Test fun voiceLikePredictorsRemainFiniteForACompositeSpectrum() {
+        val voiceLike = FloatArray(2048) { index ->
+            (0.22 * sin(2.0 * Math.PI * 140.0 * index / 48_000.0) +
+                0.08 * sin(2.0 * Math.PI * 720.0 * index / 48_000.0) +
+                0.035 * sin(2.0 * Math.PI * 1_850.0 * index / 48_000.0)).toFloat()
+        }
+        val model = StudioLpcFormantModel.estimate(voiceLike, 12)
+        assertTrue(model.predictor.all { it.isFinite() && kotlin.math.abs(it) <= 0.95f })
+    }
+
     @Test fun historyPushKeepsNewestSampleFirst() {
         val history = floatArrayOf(1f, 2f, 3f)
         pushLpcHistory(history, 9f)
