@@ -56,6 +56,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
     var notice by remember { mutableStateOf("Import a licensed NeaRer Bible pack to begin reading offline.") }
     var selectedWord by remember { mutableStateOf<Pair<BibleVerse,String>?>(null) }
     var showJournal by remember { mutableStateOf(false) }
+    var selectedVerseNumber by remember { mutableStateOf<Int?>(null) }
 
     fun refresh() {
         translations=database.listTranslations()
@@ -106,6 +107,10 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                 verses=database.readChapter(translationId,bookId,chapterNo)
                 showJournal=false
             },
+            defaultTranslationId=selectedTranslation?.id,
+            defaultBookId=selectedBook?.id,
+            defaultChapter=chapter,
+            defaultVerse=selectedVerseNumber,
             modifier=Modifier.fillMaxSize()
         )
         return
@@ -240,6 +245,7 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
                     onModeChanged={},
                     onWordSelected={verse,word->selectedWord=verse to word},
                     onVerseSelected={verse->
+                        selectedVerseNumber=verse.verse
                         database.saveBookmark(BibleBookmark(
                             java.util.UUID.randomUUID().toString(),verse.translationId,verse.bookId,
                             verse.chapter,verse.verse,System.currentTimeMillis()))
