@@ -127,17 +127,21 @@ class NearbyTransportService : Service() {
             acknowledge: () -> Unit
         ) {
             val peerId = nearbyTransport.stableIdentityForEndpoint(id)
-            if (peerId.isBlank()) return
+            if (peerId.isBlank()) {
+                nearbyTransport.releasePendingIncomingMessage(messageId)
+                return
+            }
             val entry = NearbyIncomingMessageInbox.Entry(
                 messageId, peerId, senderName, body,
                 replyToMessageId, replyToPreview, replyToSender, mesh = false
             )
             if (!inbox.put(entry)) {
+                nearbyTransport.releasePendingIncomingMessage(messageId)
                 uiListener?.onStatus("NeaRer could not securely save an incoming message for later delivery. The sender has not been acknowledged.")
                 return
             }
             // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
-            runCatching { acknowledge() }
+            if (runCatching { acknowledge() }.isFailure) nearbyTransport.releasePendingIncomingMessage(messageId)
             dispatchInboxEntry(entry)
         }
 
@@ -162,11 +166,12 @@ class NearbyTransportService : Service() {
                 replyToMessageId, replyToPreview, replyToSender, mesh = true
             )
             if (!inbox.put(entry)) {
+                nearbyTransport.releasePendingIncomingMessage(messageId)
                 uiListener?.onStatus("NeaRer could not securely save an incoming nearby message. Delivery was not acknowledged.")
                 return
             }
             // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
-            runCatching { acknowledge() }
+            if (runCatching { acknowledge() }.isFailure) nearbyTransport.releasePendingIncomingMessage(messageId)
             dispatchInboxEntry(entry)
         }
 
