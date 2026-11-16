@@ -39,7 +39,7 @@ class StudioPitchEngineTest {
 
     @Test
     fun mapsChromaticPitchToNearestNoteInSelectedScale() {
-        val chromatic = StudioPitchEngine.detect(sine(466.16f), 22_050)
+        val chromatic = StudioPitchEngine.detect(sine(466.0f), 22_050)
         assertNotNull(chromatic)
         val target = StudioPitchEngine.scaleTarget(chromatic!!, rootSemitone = 0, isMinor = false)
         assertEquals("A4", target.noteName)
