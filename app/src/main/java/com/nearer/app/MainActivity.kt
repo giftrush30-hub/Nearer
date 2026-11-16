@@ -2,6 +2,8 @@ package com.nearer.app
 
 import android.Manifest
 import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.ServiceConnection
 import android.content.ClipData
 import android.content.Context
 import android.app.AlertDialog
@@ -31,6 +33,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.os.Handler
+import android.os.IBinder
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
@@ -129,6 +132,56 @@ class MainActivity : ComponentActivity() {
     private var receiverRegistered = false
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
+    private var nearbyServiceBinder: NearbyTransportService.LocalBinder? = null
+    private var nearbyServiceBound = false
+    private var nearbyServiceBinding = false
+    private val nearbyServiceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val local = service as? NearbyTransportService.LocalBinder
+            if (local == null) {
+                nearbyServiceBinding = false
+                statusMessage = "NeaRer could not attach to its nearby connection service."
+                return
+            }
+            nearbyServiceBinder = local
+            nearbyServiceBound = true
+            nearbyServiceBinding = false
+            nearbyTransport = local.transport()
+            local.attachUiListener(nearbyListener)
+            runCatching { nearbyTransport?.setDisplayName(displayName) }
+            runCatching { nearbyTransport?.setMeshTransitEnabled(false) }
+            runCatching { restoreReceivedFiles() }
+            reconcileNearbyStateAfterServiceAttach()
+            startAlwaysReadyDiscovery()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            nearbyServiceBinder = null
+            nearbyServiceBound = false
+            nearbyServiceBinding = false
+            nearbyTransport = null
+            hybridConnected = false
+            hybridConnectedEndpoint = null
+            hybridConnectedStableId = null
+            chatReady = false
+            connectionMessage = "Nearby service is restarting. NeaRer will reconnect automatically."
+            statusMessage = connectionMessage
+        }
+
+        override fun onBindingDied(name: ComponentName?) {
+            nearbyServiceBinder = null
+            nearbyServiceBound = false
+            nearbyServiceBinding = false
+            nearbyTransport = null
+            runCatching { unbindService(this) }
+            ensureNearbyServiceBound()
+        }
+
+        override fun onNullBinding(name: ComponentName?) {
+            nearbyServiceBinding = false
+            statusMessage = "Android did not provide the nearby service. Reopen NeaRer and try again."
+        }
+    }
     private var ultraSpeedMode by mutableStateOf(false)
     private var ultraSpeedRestartRequired by mutableStateOf(false)
     private val hybridPeers = mutableStateMapOf<String, String>()
