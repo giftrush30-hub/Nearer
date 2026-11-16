@@ -20,8 +20,8 @@ internal object MoviesLibraryCodec {
     const val MAX_RESUME_POSITION_MS = 7L * 24L * 60L * 60L * 1_000L
 
     fun normalize(movie: NearerMovie): NearerMovie? {
-        val uri = movie.uri.trim().take(MAX_URI_LENGTH)
-        if (!uri.startsWith("content://", ignoreCase = true)) return null
+        val uri = movie.uri.trim()
+        if (uri.length > MAX_URI_LENGTH || !uri.startsWith("content://", ignoreCase = true)) return null
         val title = movie.title.trim().take(MAX_TITLE_LENGTH).ifBlank { "Untitled video" }
         return NearerMovie(
             uri = uri,
