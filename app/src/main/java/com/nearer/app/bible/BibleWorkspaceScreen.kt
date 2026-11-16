@@ -111,10 +111,11 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
 
     if(showJournal) {
         NeaRerWordStudyJournalScreen(
-            notes=database.listNotes(),bookmarks=database.listBookmarks(),
+            notes=database.listNotes(),bookmarks=database.listBookmarks(),highlights=database.listHighlights(),
             onSaveNote={database.saveNote(it);notice="Private study note saved."},
             onDeleteNote={database.deleteNote(it);notice="Note deleted."},
             onDeleteBookmark={database.deleteBookmark(it);notice="Bookmark removed."},
+            onDeleteHighlight={database.deleteHighlight(it);notice="Highlight removed."},
             onOpenReference={translationId,bookId,chapterNo,verseNo->
                 selectedTranslation=translations.firstOrNull{it.id==translationId}
                 books=database.listBooks(translationId)
