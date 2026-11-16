@@ -119,10 +119,10 @@ internal fun MoviesWorkspaceScreen(onBack: () -> Unit) {
     }
 
     val player = remember(context) {
-        ExoPlayer.Builder(context).build().apply {
-            setAudioAttributes(AudioAttributes.DEFAULT, true)
-            setHandleAudioBecomingNoisy(true)
-        }
+        ExoPlayer.Builder(context)
+            .setAudioAttributes(AudioAttributes.DEFAULT, true)
+            .setHandleAudioBecomingNoisy(true)
+            .build()
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
