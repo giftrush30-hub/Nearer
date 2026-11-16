@@ -146,6 +146,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
     val context = LocalContext.current
     var reading by remember { mutableStateOf<StudioPitchReading?>(null) }
     var status by remember { mutableStateOf("Listening for a clear single vocal note…") }
+    var diagnostics by remember { mutableStateOf("Audio diagnostics will appear when monitoring starts.") }
     var keyRoot by remember { mutableStateOf(0) }
     var minorScale by remember { mutableStateOf(false) }
     var monitorEnabled by remember { mutableStateOf(false) }
@@ -289,7 +290,8 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                     val underruns = monitorTrack?.underrunCount ?: 0
                     val latencyFrames = monitorTrack?.bufferSizeInFrames ?: (framesPerBurst * 3)
                     val latencyMs = latencyFrames * 1000L / sampleRate
-                    status = "$sampleRate Hz · $inputDevice → $outputDevice · output buffer ~${latencyMs} ms · underruns $underruns"
+                    val mode = if (monitorTrack?.performanceMode == AudioTrack.PERFORMANCE_MODE_LOW_LATENCY) "low-latency path requested" else "standard output path"
+                    diagnostics = "$sampleRate Hz · $inputDevice → $outputDevice · $mode · output buffer ~${latencyMs} ms · underruns $underruns"
                 }
                 if (pitchOffset >= frameSize) {
                     reading = StudioPitchEngine.detect(mono, sampleRate, 70f, 1_000f)
@@ -377,6 +379,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                     color = Muted, fontSize = 10.sp)
             }
         }
+        Text(diagnostics, color = Gold, fontSize = 10.sp, lineHeight = 15.sp)
         Text(status, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
         Button(onClick = onBack, modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) { Text("BACK TO RECORDER") }
