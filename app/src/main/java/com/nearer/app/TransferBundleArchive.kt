@@ -1,6 +1,7 @@
 package com.nearer.app
 
 import java.io.File
+import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.UUID
@@ -89,6 +90,19 @@ internal object TransferBundleArchive {
      * is allowed to choose an arbitrary output path or overwrite another item.
      * On any failure, the incomplete destination tree is removed.
      */
+    private fun readBounded(input: java.io.InputStream, maximumBytes: Int): ByteArray {
+        val output = ByteArrayOutputStream(minOf(maximumBytes, 8 * 1024))
+        val buffer = ByteArray(8 * 1024)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            if (count == 0) continue
+            require(output.size() <= maximumBytes - count) { "Bundle manifest exceeds its maximum size" }
+            output.write(buffer, 0, count)
+        }
+        return output.toByteArray()
+    }
+
     fun extract(archive: File, destinationDirectory: File): TransferBundleManifest {
         require(archive.isFile) { "Bundle archive is unavailable" }
         require(!destinationDirectory.exists()) { "Bundle destination already exists" }
@@ -103,7 +117,7 @@ internal object TransferBundleArchive {
                     "Bundle manifest size is invalid"
                 }
                 val manifest = zip.getInputStream(manifestEntry).use { input ->
-                    TransferBundleManifestCodec.decode(input.readBytes())
+                    TransferBundleManifestCodec.decode(readBounded(input, TransferBundleManifestCodec.MAX_ENCODED_BYTES))
                 }
                 val expectedNames = linkedSetOf(MANIFEST_ENTRY)
                 manifest.items.forEach { item ->
