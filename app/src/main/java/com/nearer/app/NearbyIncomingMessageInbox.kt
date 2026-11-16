@@ -94,6 +94,8 @@ internal class NearbyIncomingMessageInbox(context: Context) {
 
     private fun key(peerId: String, messageId: String): String = "${NeaRerIdentity.normalize(peerId).orEmpty()}|$messageId"
 
+    // Synchronous commit is intentional: incoming ACKs must not precede durable inbox storage.
+    @Suppress("ApplySharedPref")
     private fun persistLocked(): Boolean = try {
         val array = JSONArray()
         entries.values.forEach { entry ->
