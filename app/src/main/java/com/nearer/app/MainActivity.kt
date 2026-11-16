@@ -1614,7 +1614,9 @@ class MainActivity : ComponentActivity() {
             ?.forEach { directory ->
                 val canonical = runCatching { directory.canonicalFile }.getOrNull() ?: return@forEach
                 if (canonical.parentFile == canonicalFolder && canonical.isDirectory) {
-                    receivedFiles.add(0, ReceivedFile(canonical.name, canonical, isFolder = true))
+                    val topLevelEntries = canonical.listFiles().orEmpty()
+                    val displayName = topLevelEntries.singleOrNull()?.name ?: "Restored folder"
+                    receivedFiles.add(0, ReceivedFile(displayName, canonical, isFolder = true))
                 }
             }
         // Rebuild from files that really exist; stale catalog entries never create phantom items.
@@ -2966,9 +2968,9 @@ class MainActivity : ComponentActivity() {
                     receivedFiles.removeAll { existing ->
                         existing.isFolder && runCatching { existing.file.canonicalFile == result.directory.canonicalFile }.getOrDefault(false)
                     }
-                    receivedFiles.add(0, ReceivedFile(result.directory.name, result.directory, isFolder = true))
+                    receivedFiles.add(0, ReceivedFile(result.displayName, result.directory, isFolder = true))
                     recordNearbyTransfer("Received", result.directory.name, result.bytesExtracted, "Folder restored")
-                    chatNotice = "Folder restored: ${result.fileCount} files in ${result.directory.name}. Open it in the received-files list."
+                    chatNotice = "Folder restored: ${result.displayName} • ${result.fileCount} files. Open it in the received-files list."
                 }
             } catch (error: Exception) {
                 runOnUiThread {
