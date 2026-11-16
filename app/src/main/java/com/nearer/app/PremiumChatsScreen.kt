@@ -91,6 +91,7 @@ internal fun PremiumChatsScreen(
     }
 
     var recipientMenuExpanded by remember { mutableStateOf(false) }
+    var xenderReferenceMibps by remember { mutableStateOf("") }
     var replyingTo by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
     var editingMessage by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
     var expandedMessageActions by remember { mutableStateOf<String?>(null) }
@@ -658,6 +659,28 @@ internal fun PremiumChatsScreen(
                             )
                             Text(
                                 "Measured from preparation through recipient verification; not a Wi-Fi link-rate claim.",
+                                color = Muted, fontSize = 9.sp
+                            )
+                            OutlinedTextField(
+                                value = xenderReferenceMibps,
+                                onValueChange = { value ->
+                                    xenderReferenceMibps = value.filter { it.isDigit() || it == '.' }.take(12)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text("Xender reference speed (MiB/s)") }
+                            )
+                            val xenderRate = xenderReferenceMibps.toDoubleOrNull()?.takeIf { it > 0.0 }
+                            if (xenderRate != null) {
+                                val ratio = benchmarkSummary.medianMibPerSecond / xenderRate
+                                Text(
+                                    if (ratio >= 1.0) String.format(java.util.Locale.US, "NeaRer measured %.2f× the reference throughput", ratio)
+                                    else String.format(java.util.Locale.US, "NeaRer measured %.2f× the reference throughput", ratio),
+                                    color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(
+                                "For a fair comparison, use the same file, phone pair, radios and test conditions.",
                                 color = Muted, fontSize = 9.sp
                             )
                         }
