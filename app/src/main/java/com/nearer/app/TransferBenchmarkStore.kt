@@ -24,15 +24,18 @@ internal class TransferBenchmarkStore(context: Context) {
                 .put("bytes", it.bytesTransferred)
                 .put("elapsedMs", it.elapsedMillis)
                 .put("firstByteMs", it.firstByteMillis)
-                .put("succeeded", it.succeeded))
+                .put("succeeded", it.succeeded)
+                .put("peerId", it.peerId))
         }
         preferences.edit().putString(KEY, array.toString()).apply()
     }
 
     fun recentRuns(): List<TransferBenchmarkRun> = synchronized(lock) { readLocked() }
 
-    fun summary(): TransferBenchmarkSummary? = synchronized(lock) {
-        val history = readLocked()
+    fun summary(peerId: String? = null): TransferBenchmarkSummary? = synchronized(lock) {
+        val history = readLocked().let { runs ->
+            if (peerId == null) runs else runs.filter { it.peerId == peerId }
+        }
         runCatching { TransferBenchmarkMetrics.summarize(history) }.getOrNull()
     }
 
@@ -52,7 +55,8 @@ internal class TransferBenchmarkStore(context: Context) {
                             bytesTransferred = item.getLong("bytes"),
                             elapsedMillis = item.getLong("elapsedMs"),
                             firstByteMillis = item.getLong("firstByteMs"),
-                            succeeded = item.getBoolean("succeeded")
+                            succeeded = item.getBoolean("succeeded"),
+                            peerId = item.optString("peerId", "")
                         )
                     }.getOrNull() ?: continue
                     add(run)
