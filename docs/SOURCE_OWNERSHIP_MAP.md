@@ -77,7 +77,7 @@ Approx. 3,111 lines; 124 function declarations found by source scan. The class i
 
 Before moving production code, choose the first low-risk seam from the ownership map and inspect its complete call graph. Preferred starting candidates are pure formatters and small transfer queue persistence policies. Avoid extracting the transport's cryptographic handshake or Activity lifecycle first.
 
-## Third extraction: Wi-Fi Direct peer status labels
+## Fourth extraction: Wi-Fi Direct peer status labels
 
 The pure deviceStatus mapping has been moved into WifiDirectDeviceStatus.kt without changing its call site or user-facing labels. WifiDirectDeviceStatusTest.kt covers all five Android peer states and the unknown-state fallback. This does not alter discovery, permission handling, or Wi-Fi Direct connection behaviour.
 
@@ -94,3 +94,8 @@ The small `NearbyPerson` model and `seenAgo` presentation formatter have been mo
 ## Third extraction: transfer byte formatter
 
 The pure `formatTransferBytes` helper now lives in `TransferByteFormatter.kt` rather than at the bottom of `MainActivity.kt`. Its binary 1024-based thresholds, US-locale decimal formatting, and labels are unchanged. `TransferByteFormatterTest.kt` covers byte/KB/MB/GB thresholds and decimal formatting. This is a shared presentation utility, not transfer protocol logic.
+
+
+## Fifth extraction: app-bundle structure validator
+
+The pure `isNeaRerAppBundle` archive-structure check now lives in `NeaRerAppBundleValidator.kt`. Its accepted extensions and required ZIP entries are unchanged. `NeaRerAppBundleValidatorTest.kt` covers valid `.zip` and `.nearerapp` archives, each missing required entry, a wrong extension, a missing file and a malformed archive. This is only a structural check; it does not verify APK signatures, publisher identity or installation safety.
