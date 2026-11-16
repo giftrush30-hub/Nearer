@@ -328,7 +328,7 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> disconnected_{false};
     std::atomic<uint32_t> outputUnderruns_{0};
-    std::atomic<int32_t> lastXrunCount_{-1};
+    mutable std::atomic<int32_t> lastXrunCount_{-1};
     std::atomic<uint32_t> droppedCaptureFrames_{0};
     std::atomic<uint32_t> droppedPlaybackFrames_{0};
     std::atomic<uint32_t> droppedAnalysisFrames_{0};
