@@ -3239,8 +3239,17 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
     }
 
     fun cancelFile(payloadId: Long) {
-        if (preparingHyperStreams.remove(payloadId)) cancelledOutgoingPreparations.add(payloadId)
-        outgoingHyperStreams.remove(payloadId)?.let { state ->
+        val wasPreparingHyperStream = preparingHyperStreams.remove(payloadId)
+        val outgoingHyperState = outgoingHyperStreams.remove(payloadId)
+        if (wasPreparingHyperStream || outgoingHyperState != null) {
+            // Also covers the narrow race where cancellation lands just after
+            // preparation leaves its set but before its final control send returns.
+            cancelledOutgoingPreparations.add(payloadId)
+            deliveryHandler.postDelayed(
+                { cancelledOutgoingPreparations.remove(payloadId) }, 60_000L
+            )
+        }
+        outgoingHyperState?.let { state ->
             state.timeout?.let(deliveryHandler::removeCallbacks)
             state.receiptTimeout?.let(deliveryHandler::removeCallbacks)
             state.retentionTimeout?.let(deliveryHandler::removeCallbacks)
