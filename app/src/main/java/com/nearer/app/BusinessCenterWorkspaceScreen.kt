@@ -34,6 +34,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
@@ -106,9 +108,7 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
 
     fun releaseImageIfUnused(uri: Uri?) {
         if (uri != null && drafts.none { it.imageUri == uri.toString() }) {
-            runCatching {
-                context.contentResolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
+            BusinessPhotoStorage.deleteIfManaged(context, uri)
         }
     }
 
@@ -128,17 +128,20 @@ internal fun BusinessCenterWorkspaceScreen(onBack: () -> Unit) {
 
     fun nextDraftId(): Long = maxOf(System.currentTimeMillis(), (drafts.maxOfOrNull { it.id } ?: 0L) + 1L)
 
+    val scope = rememberCoroutineScope()
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             val previous = imageUri
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }.onSuccess {
-                imageUri = uri
-                photoMessage = "Photo attached. It remains on this phone until you share the listing."
-                if (previous != uri) releaseImageIfUnused(previous)
-            }.onFailure {
-                photoMessage = "NeaRer could not keep access to that photo. Choose another image or grant access again."
+            photoMessage = "Importing and preparing your photo…"
+            scope.launch {
+                val imported = BusinessPhotoStorage.import(context, uri)
+                if (imported != null) {
+                    imageUri = imported
+                    photoMessage = "Photo copied into NeaRer's private business storage."
+                    if (previous != imported) releaseImageIfUnused(previous)
+                } else {
+                    photoMessage = "NeaRer could not import that image. Choose a readable image file up to 30 MB."
+                }
             }
         }
     }
