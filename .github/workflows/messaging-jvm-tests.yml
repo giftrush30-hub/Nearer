@@ -11,6 +11,7 @@ on:
       - "app/src/main/java/com/nearer/app/**"
       - "app/src/test/java/com/nearer/app/**"
       - ".github/workflows/messaging-jvm-tests.yml"
+      - ".github/workflows/android-build.yml"
   workflow_dispatch:
 
 permissions:
