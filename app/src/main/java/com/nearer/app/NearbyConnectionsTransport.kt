@@ -1466,9 +1466,11 @@ internal object IncomingFilePayloadPolicy {
         // enqueue. A fresh timestamp/signature for the same packet ID is a conflict.
         val existing = meshReceiptOutbox.pending()
             .firstOrNull { it.receipt.packetId == packetId }?.receipt
-        val receipt = existing ?: MeshDeliveryReceipt.create(
-            packetId, originId, destinationId, now
-        ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+        val receipt = MeshReceiptRecoveryPolicy.reuseOrCreate(existing) {
+            MeshDeliveryReceipt.create(
+                packetId, originId, destinationId, now
+            ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
+        }
 
         if (receipt.originId != originId || receipt.destinationId != destinationId ||
             receipt.packetId != packetId) return false
