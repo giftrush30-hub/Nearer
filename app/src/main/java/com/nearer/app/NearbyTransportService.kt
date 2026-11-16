@@ -74,7 +74,7 @@ class NearbyTransportService : Service() {
     @Volatile private var lastStatus: String? = null
     private val inFlightMessageIds = ConcurrentHashMap.newKeySet<String>()
 
-    private fun inboxKey(peerId: String, messageId: String): String = "$peerId|$messageId"
+    private fun inboxKey(peerId: String, messageId: String): String = "${NeaRerIdentity.normalize(peerId).orEmpty()}|$messageId"
 
     private val serviceListener = object : NearbyConnectionsTransport.ListenerAdapter() {
         override fun onStatus(message: String) {
