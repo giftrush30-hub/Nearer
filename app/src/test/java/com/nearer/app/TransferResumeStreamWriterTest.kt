@@ -288,4 +288,52 @@ class TransferResumeStreamWriterTest {
         }
     }
 
+
+    @Test fun adaptiveBufferOverrideControlsTheActualReadBuffer() {
+        val root = Files.createTempDirectory("nearer-resume-writer-adaptive-buffer").toFile()
+        try {
+            val data = ByteArray(96 * 1024) { (it % 227).toByte() }
+            val delegate = ByteArrayInputStream(data)
+            var largestRequestedRead = 0
+            val trackingInput = object : java.io.InputStream() {
+                override fun read(): Int = delegate.read()
+                override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                    largestRequestedRead = maxOf(largestRequestedRead, length)
+                    return delegate.read(buffer, offset, length)
+                }
+            }
+            val result = TransferResumeStreamWriter(store(root)).write(
+                transferId = "adaptive-buffer-transfer",
+                item = item(data.size.toLong()),
+                sourceModifiedAtMillis = null,
+                input = trackingInput,
+                sourcePeerId = "verified-peer",
+                bufferBytesOverride = 8 * 1024
+            )
+            assertEquals(data.size.toLong(), result.bytesReceived)
+            assertEquals(sha256(data), result.sha256)
+            assertTrue("The adaptive override must bound the actual read request", largestRequestedRead <= 8 * 1024)
+            assertTrue("The writer should use the selected buffer size", largestRequestedRead == 8 * 1024)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun adaptiveBufferOverrideRejectsBuffersBelowTheSafeMinimum() {
+        val root = Files.createTempDirectory("nearer-resume-writer-adaptive-buffer-small").toFile()
+        try {
+            TransferResumeStreamWriter(store(root)).write(
+                transferId = "adaptive-buffer-invalid",
+                item = item(1L),
+                sourceModifiedAtMillis = null,
+                input = ByteArrayInputStream(byteArrayOf(1)),
+                sourcePeerId = "verified-peer",
+                bufferBytesOverride = 1024
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
 }
