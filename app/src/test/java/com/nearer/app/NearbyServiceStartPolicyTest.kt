@@ -5,18 +5,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NearbyServiceStartPolicyTest {
-    @Test fun discoveryStartsOnlyWhenAllPlatformPrerequisitesAreReady() {
-        assertTrue(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, true, true))
-        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(false, true, true, true))
-        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(true, false, true, true))
-        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, false, true))
-        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, true, false))
+    @Test fun discoveryStartsOnlyWhenPlatformPrerequisitesAreReady() {
+        assertTrue(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, true, 30, true))
+        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(false, true, true, 30, true))
+        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(true, false, true, 30, true))
+        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, false, 30, true))
+        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, true, 30, false))
     }
 
-    @Test fun radioAndPermissionRecoveryCanReenableDiscoveryWithoutChangingPolicy() {
-        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, false, true))
-        assertTrue(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, true, true))
-        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(true, false, true, true))
-        assertTrue(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, true, true))
+    @Test fun locationServicesAreRequiredOnlyThroughAndroid11() {
+        assertTrue(NearbyServiceStartPolicy.requiresLocationServices(26))
+        assertTrue(NearbyServiceStartPolicy.requiresLocationServices(30))
+        assertFalse(NearbyServiceStartPolicy.requiresLocationServices(31))
+        assertFalse(NearbyServiceStartPolicy.requiresLocationServices(35))
+        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, true, 31, false))
+    }
+
+    @Test fun radioAndPermissionRecoveryCanReenableDiscovery() {
+        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, false, 30, true))
+        assertTrue(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, true, 30, true))
+        assertFalse(NearbyServiceStartPolicy.shouldStartDiscovery(true, false, true, 30, true))
+        assertTrue(NearbyServiceStartPolicy.shouldStartDiscovery(true, true, true, 30, true))
     }
 }
