@@ -24,7 +24,7 @@ A route disconnect triggers Oboe's error callback and marks the engine disconnec
 
 The monitor observes headphone add/remove events while it is open and stops capture when the Activity leaves the foreground; returning to the app requires the user to explicitly enable monitoring again. It refuses to start mic-to-output monitoring without a detected headset/headphone/USB audio output, and stops if that output disappears, preventing speaker-to-microphone feedback. This is a device-class check rather than a guarantee that every connected accessory is physically worn or acoustically isolated.
 
-The Java capture path is marked privacy-sensitive on Android 11/API 30+; microphone capture still starts only after the user's explicit in-screen opt-in and is never saved by the pitch monitor. Oboe's current builder API does not expose the same privacy-sensitive switch, so this is not claimed for the native backend.
+Both native Oboe/AAudio and Java AudioRecord capture paths explicitly request Android's privacy-sensitive mode on API 30+; the native flag is passed only after Kotlin checks the runtime API level, because Android 11 added the underlying AAudio capability. On API 27–29 the native path cannot explicitly set that flag; the default VoiceRecognition preset is privacy-sensitive, while the optional Unprocessed preset is not guaranteed to be. Microphone capture still starts only after the user's explicit in-screen opt-in and the pitch monitor never saves microphone audio.
 
 ## Validation still required
 
