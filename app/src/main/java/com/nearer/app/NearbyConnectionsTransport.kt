@@ -511,16 +511,19 @@ internal object IncomingFilePayloadPolicy {
         return false
     }
 
-    private fun hasSeenMessageId(messageId: String): Boolean =
-        synchronized(seenMessageIdsLock) { messageId in seenMessageIds }
+    private fun hasSeenMessageId(peerId: String, messageId: String): Boolean =
+        synchronized(seenMessageIdsLock) {
+            NearbyMessageDedupePolicy.hasSeen(seenMessageIds, peerId, messageId)
+        }
 
     /**
      * A delivery receipt is allowed only after this ID is durably committed.
      * Restore the previous in-memory history if SharedPreferences cannot commit.
      */
-    private fun rememberMessageId(messageId: String): Boolean = synchronized(seenMessageIdsLock) {
+    private fun rememberMessageId(peerId: String, messageId: String): Boolean = synchronized(seenMessageIdsLock) {
+        val scopedKey = NearbyMessageDedupePolicy.key(peerId, messageId) ?: return false
         val previous = LinkedHashSet(seenMessageIds)
-        seenMessageIds.add(messageId)
+        seenMessageIds.add(scopedKey)
         MessageIdHistoryPolicy.trimOldest(seenMessageIds)
         try {
             val ordered = org.json.JSONArray()
@@ -1528,14 +1531,15 @@ internal object IncomingFilePayloadPolicy {
             listener.onStatus("A relayed message is safely queued, but its sender must be verified on this phone before it can be opened.")
             return
         }
-        if (hasSeenMessageId(packet.packetId)) {
+        if (hasSeenMessageId(packet.originId, packet.packetId)) {
             val duplicateReceipt = MeshDeliveryReceipt.create(
                 packet.packetId, packet.originId, packet.destinationId, System.currentTimeMillis()
             ) { bytes -> SecurePeerIdentity.signDetached(bytes) }
             if (queueMeshReceipt(duplicateReceipt)) deadDropStore.markLocallyDelivered(packet.packetId)
             return
         }
-        if (!pendingIncomingMessageIds.add(packet.packetId)) return
+        val pendingKey = NearbyMessageDedupePolicy.key(packet.originId, packet.packetId) ?: return
+        if (!pendingIncomingMessageIds.add(pendingKey)) return
         try {
             val clear = RecipientMessageCrypto.decrypt(
                 localRecipientIdentity.privateKey,
@@ -1554,9 +1558,9 @@ internal object IncomingFilePayloadPolicy {
             val hasReplyFields = replyId != null || replyPreview != null || replySender != null
             require(!hasReplyFields || ChatReplyPolicy.isValidIncomingQuote(replyId, replyPreview, replySender))
             listener.onMeshMessageWithReply(packet.originId, senderName, packet.packetId, body, replyId, replyPreview, replySender) {
-                if (packet.packetId in pendingIncomingMessageIds) {
-                    val saved = rememberMessageId(packet.packetId)
-                    pendingIncomingMessageIds.remove(packet.packetId)
+                if (pendingKey in pendingIncomingMessageIds) {
+                    val saved = rememberMessageId(packet.originId, packet.packetId)
+                    pendingIncomingMessageIds.remove(pendingKey)
                     if (saved) {
                         val receipt = MeshDeliveryReceipt.create(
                             packet.packetId, packet.originId, packet.destinationId, System.currentTimeMillis()
@@ -1572,7 +1576,7 @@ internal object IncomingFilePayloadPolicy {
                 }
             }
         } catch (_: Exception) {
-            pendingIncomingMessageIds.remove(packet.packetId)
+            pendingIncomingMessageIds.remove(pendingKey)
             listener.onStatus("A relayed message could not be decrypted or validated. It was not delivered.")
         }
     }
@@ -2197,22 +2201,24 @@ internal object IncomingFilePayloadPolicy {
         if (hasReplyFields && !ChatReplyPolicy.isValidIncomingQuote(replyId, replyPreview, replySender)) return
         if (messageId.isBlank() || body.isBlank() || body.length > 4000) return
         if (messageId.length > 80 || ttl !in 0..4) return
-        if (hasSeenMessageId(messageId)) {
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        val pendingKey = NearbyMessageDedupePolicy.key(peerId, messageId) ?: return
+        if (hasSeenMessageId(peerId, messageId)) {
             sendAcknowledgement(endpointId, messageId)
             return
         }
-        if (!pendingIncomingMessageIds.add(messageId)) return
+        if (!pendingIncomingMessageIds.add(pendingKey)) return
         val senderName = synchronized(names) { names[endpointId] ?: "Nearby member" }
         try {
             listener.onMessageWithReply(endpointId, senderName, messageId, body, replyId, replyPreview, replySender) {
-                if (messageId in pendingIncomingMessageIds) {
-                    val dedupeRecordSaved = rememberMessageId(messageId)
-                    pendingIncomingMessageIds.remove(messageId)
+                if (pendingKey in pendingIncomingMessageIds) {
+                    val dedupeRecordSaved = rememberMessageId(peerId, messageId)
+                    pendingIncomingMessageIds.remove(pendingKey)
                     if (dedupeRecordSaved) sendAcknowledgement(endpointId, messageId)
                 }
             }
         } catch (error: Exception) {
-            pendingIncomingMessageIds.remove(messageId)
+            pendingIncomingMessageIds.remove(pendingKey)
             throw error
         }
         // Direct/private chat only. No relay forwarding is enabled.
@@ -2357,16 +2363,24 @@ internal object IncomingFilePayloadPolicy {
      */
     fun acknowledgePersistedIncomingMessage(peerId: String, messageId: String): Boolean {
         if (messageId.isBlank() || messageId.length > 80) return false
-        val saved = rememberMessageId(messageId)
-        pendingIncomingMessageIds.remove(messageId)
+        val pendingKey = NearbyMessageDedupePolicy.key(peerId, messageId) ?: return false
+        val saved = rememberMessageId(peerId, messageId)
+        pendingIncomingMessageIds.remove(pendingKey)
         if (!saved) return false
         endpointForStablePeer(NeaRerIdentity.normalize(peerId).orEmpty())?.let { sendAcknowledgement(it, messageId) }
         return true
     }
 
     /** Release a message whose durable inbox write failed so a sender retry is not suppressed. */
+    fun releasePendingIncomingMessage(peerId: String, messageId: String) {
+        val pendingKey = NearbyMessageDedupePolicy.key(peerId, messageId) ?: return
+        pendingIncomingMessageIds.remove(pendingKey)
+    }
+
+    /** Releases any in-flight key when its authenticated peer could not be resolved. */
     fun releasePendingIncomingMessage(messageId: String) {
-        if (messageId.isNotBlank()) pendingIncomingMessageIds.remove(messageId)
+        if (messageId.isBlank()) return
+        pendingIncomingMessageIds.removeIf { it.endsWith("|$messageId") }
     }
 
     fun setDisplayName(name: String) {
