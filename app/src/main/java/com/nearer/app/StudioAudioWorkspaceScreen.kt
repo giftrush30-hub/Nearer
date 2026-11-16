@@ -1,9 +1,11 @@
 package com.nearer.app
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaRecorder
+import android.media.AudioManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,6 +62,10 @@ import java.io.File
 @Composable
 internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, String) -> Unit) {
     val context = LocalContext.current
+    val supportsUnprocessedInput = remember(context) {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        audioManager?.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED)?.equals("true", ignoreCase = true) == true
+    }
     var showPitchMonitor by remember { mutableStateOf(false) }
     var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
     var recording by remember { mutableStateOf(false) }
@@ -98,6 +104,10 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
         }
         Text("Capture the moment.", color = White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Text("Offline recording · AAC audio · Original take preserved", color = Mint, fontSize = 12.sp)
+        Text(
+            if (supportsUnprocessedInput) "STUDIO INPUT  ·  UNPROCESSED MIC" else "STUDIO INPUT  ·  VOICE-RECOGNITION FALLBACK",
+            color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp
+        )
         Button(onClick = {
             if (permissionGranted) showPitchMonitor = true
             else permission.launch(Manifest.permission.RECORD_AUDIO)
@@ -119,7 +129,7 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
                                 @Suppress("DEPRECATION")
                                 val next = MediaRecorder()
                                 recorder = next
-                                next.setAudioSource(MediaRecorder.AudioSource.MIC)
+                                next.setAudioSource(if (supportsUnprocessedInput) MediaRecorder.AudioSource.UNPROCESSED else MediaRecorder.AudioSource.VOICE_RECOGNITION)
                                 next.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                                 next.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                                 next.setAudioEncodingBitRate(192000)
@@ -131,7 +141,11 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
                                 output = file
                                 elapsedSeconds = 0
                                 recording = true
-                                message = "Recording in progress. Tap stop when finished."
+                                message = if (supportsUnprocessedInput) {
+                                    "Recording with the device's unprocessed microphone path. Tap stop when finished."
+                                } else {
+                                    "Recording with Android's voice-recognition input fallback. Tap stop when finished."
+                                }
                             }.onFailure { error ->
                                 runCatching { recorder?.release() }
                                 recorder = null
