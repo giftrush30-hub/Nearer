@@ -67,8 +67,19 @@ internal object BusinessDraftCodec {
         return JSONObject().put("version", VERSION).put("items", items).toString()
     }
 
+    fun canDecode(raw: String?): Boolean {
+        if (raw.isNullOrBlank()) return true
+        return runCatching {
+            val trimmed = raw.trim()
+            if (trimmed.startsWith("[")) JSONArray(trimmed)
+            else JSONObject(trimmed).optInt("version", -1).takeIf { it == VERSION }
+                ?: return false
+            true
+        }.getOrDefault(false)
+    }
+
     fun decode(raw: String?): List<BusinessDraft> {
-        if (raw.isNullOrBlank()) return emptyList()
+        if (raw.isNullOrBlank() || !canDecode(raw)) return emptyList()
         return runCatching {
             val trimmed = raw.trim()
             val array = if (trimmed.startsWith("[")) {
