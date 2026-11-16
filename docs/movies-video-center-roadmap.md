@@ -12,7 +12,7 @@ Current capabilities:
 - Save resume position periodically while playing, on pause, on app background and when leaving the player.
 - Pause video playback when the app moves to the background; audio focus and headphone-disconnect handling are delegated to Media3.
 - Playback speed choices: 1.0x, 1.25x, 1.5x and 2.0x.
-- Generate small video-frame thumbnails off the UI thread, use Android's scaled frame extraction where supported, and retain a 4 MB in-memory thumbnail cache.
+- Generate small video-frame thumbnails off the UI thread only for known local Android media/document providers, use Android's scaled frame extraction where supported, and retain a 4 MB in-memory thumbnail cache. Unknown/cloud providers show a placeholder so opening the library does not silently fetch remote frames.
 - Show a protected read-only state for unsupported future catalogue versions instead of overwriting them.
 
 The library stores up to 500 URI references. Resume positions are bounded to seven days to protect against malformed or corrupted values. The existing unversioned JSON array and legacy per-URI resume keys are migrated when the library is next saved.
