@@ -10,6 +10,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(androidx.media3.common.util.UnstableApi::class)
 class StudioPitchCorrectionProcessorIntegrationTest {
     private fun render(frequencyHz: Double, settings: StudioPitchCorrectionSettings): FloatArray {
         val sampleRate = 48_000
