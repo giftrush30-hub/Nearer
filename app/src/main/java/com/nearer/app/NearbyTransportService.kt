@@ -250,7 +250,7 @@ class NearbyTransportService : Service() {
         val listener = uiListener ?: return
         val key = inboxKey(entry.peerId, entry.messageId)
         if (!inFlightMessageIds.add(key)) return
-        val acknowledgeAfterUiCommit = {
+        val acknowledgeAfterUiCommit: () -> Unit = {
             val key = inboxKey(entry.peerId, entry.messageId)
             val removed = inbox.remove(entry.peerId, entry.messageId)
             if (removed) {
@@ -262,6 +262,7 @@ class NearbyTransportService : Service() {
                 }
             }
             inFlightMessageIds.remove(key)
+            Unit
         }
         try {
             if (entry.mesh) {
