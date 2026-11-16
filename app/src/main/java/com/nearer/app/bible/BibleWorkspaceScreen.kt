@@ -41,15 +41,20 @@ import java.io.File
 fun BibleWorkspaceScreen(onBack:()->Unit) {
     val context= LocalContext.current
     val database= remember(context) { BibleLocalDatabase(context) }
+    val readingPrefs=remember(context){context.getSharedPreferences("nearer_word_reading",android.content.Context.MODE_PRIVATE)}
     val scope= rememberCoroutineScope()
     var translations by remember { mutableStateOf(database.listTranslations()) }
-    var selectedTranslation by remember { mutableStateOf(translations.firstOrNull()) }
+    var selectedTranslation by remember {
+        mutableStateOf(translations.firstOrNull{it.id==readingPrefs.getString("translation_id",null)} ?: translations.firstOrNull())
+    }
     var compareTranslation by remember { mutableStateOf(translations.getOrNull(1)) }
     var showComparison by remember { mutableStateOf(false) }
     var books by remember { mutableStateOf(selectedTranslation?.let{database.listBooks(it.id)}.orEmpty()) }
-    var selectedBook by remember { mutableStateOf(books.firstOrNull()) }
-    var chapter by remember { mutableStateOf(1) }
-    var verses by remember { mutableStateOf(selectedBook?.let{database.readChapter(selectedTranslation!!.id,it.id,1)}.orEmpty()) }
+    var selectedBook by remember {
+        mutableStateOf(books.firstOrNull{it.id==readingPrefs.getString("book_id",null)} ?: books.firstOrNull())
+    }
+    var chapter by remember { mutableStateOf(readingPrefs.getInt("chapter",1).coerceIn(1,selectedBook?.chapterCount ?: 1)) }
+    var verses by remember { mutableStateOf(selectedBook?.let{database.readChapter(selectedTranslation!!.id,it.id,chapter)}.orEmpty()) }
     var search by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf(emptyList<BibleVerse>()) }
     var busy by remember { mutableStateOf(false) }
@@ -57,6 +62,12 @@ fun BibleWorkspaceScreen(onBack:()->Unit) {
     var selectedWord by remember { mutableStateOf<Pair<BibleVerse,String>?>(null) }
     var showJournal by remember { mutableStateOf(false) }
     var selectedVerseNumber by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(selectedTranslation?.id,selectedBook?.id,chapter) {
+        selectedTranslation?.let{readingPrefs.edit().putString("translation_id",it.id).apply()}
+        selectedBook?.let{readingPrefs.edit().putString("book_id",it.id).apply()}
+        readingPrefs.edit().putInt("chapter",chapter).apply()
+    }
 
     fun refresh() {
         translations=database.listTranslations()
