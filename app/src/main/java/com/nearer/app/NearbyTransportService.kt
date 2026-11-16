@@ -12,6 +12,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationCompat
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -219,13 +220,14 @@ class NearbyTransportService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val notification = Notification.Builder(this, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setContentTitle("NeaRer nearby is ready")
             .setContentText("Nearby discovery and message recovery can continue while you use other apps.")
-            .setCategory(Notification.CATEGORY_SERVICE)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
             .setContentIntent(openApp)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
 
         if (Build.VERSION.SDK_INT >= 29) {
