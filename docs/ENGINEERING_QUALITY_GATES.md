@@ -83,7 +83,7 @@ Use these exact status labels in project documentation:
 
 ## Nearby background-service integration gate
 
-The current `main` branch has begun introducing `NearbyIncomingMessageInbox` and `NearbyTransportService`. These are promising boundaries, but the presence of the classes alone is not proof that background messaging is integrated or usable. At the audit snapshot, the manifest and `MainActivity` did not yet declare/bind/start `NearbyTransportService`; treat the work as an integration-in-progress until the wiring lands.
+Historical audit note (not current implementation status): an earlier `main` snapshot briefly contained `NearbyIncomingMessageInbox` and `NearbyTransportService`. That incomplete draft was subsequently removed from `main` (removal commit `fe12451a1bb67739a5f1f97b05ddbba7714f446d`). Do not infer that either class is currently present or integrated. Keep the checklist below as a gate to apply if/when a service-owned transport and persisted inbox are reintroduced.
 
 Before calling this complete, verify all of the following on the final integrated branch:
 
