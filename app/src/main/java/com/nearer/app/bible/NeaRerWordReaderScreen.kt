@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -24,7 +26,7 @@ import androidx.compose.ui.unit.sp
 data class BibleReaderScreenState(
     val translationName:String,val bookName:String,val chapter:Int,val verses:List<BibleVerse>,
     val mode:BibleReadingMode=BibleReadingMode.BOOK_PAGE,val hasPreviousChapter:Boolean=false,
-    val hasNextChapter:Boolean=true
+    val hasNextChapter:Boolean=true,val isRightToLeft:Boolean=false
 )
 
 /** Isolated reader surface; the app navigation/ViewModel supplies installed verses and state. */
@@ -38,6 +40,8 @@ fun NeaRerWordReaderScreen(
     LaunchedEffect(state.bookName,state.chapter) {
         rotation.snapTo(78f); rotation.animateTo(0f,tween(420))
     }
+    CompositionLocalProvider(LocalLayoutDirection provides
+        if(state.isRightToLeft) LayoutDirection.Rtl else LayoutDirection.Ltr) {
     Column(modifier.fillMaxSize().background(Color(0xFF101A2B)).padding(14.dp),
         verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Column {
@@ -105,5 +109,6 @@ fun NeaRerWordReaderScreen(
             OutlinedButton(onClick=onPreviousChapter,enabled=state.hasPreviousChapter){Text("← Previous")}
             Button(onClick=onNextChapter,enabled=state.hasNextChapter){Text("Next →")}
         }
+    }
     }
 }
