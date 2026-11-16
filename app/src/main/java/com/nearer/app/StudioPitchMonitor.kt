@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -32,7 +33,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.ln
-import kotlin.math.log2
 import kotlin.math.sqrt
 
 internal data class StudioPitchReading(
@@ -173,8 +173,6 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
 
         val pcm = ShortArray(frameSize)
         val mono = FloatArray(frameSize)
-        // Downsample the 48 kHz device capture to 24 kHz for efficient vocal pitch analysis.
-        val downsampled = FloatArray(frameSize / 2)
         try {
             while (isActive) {
                 val count = withContext(Dispatchers.IO) {
@@ -186,8 +184,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
                 }
                 for (i in 0 until count) mono[i] = pcm[i] / 32768f
                 if (count == frameSize) {
-                    for (i in downsampled.indices) downsampled[i] = (mono[i * 2] + mono[i * 2 + 1]) * 0.5f
-                    reading = StudioPitchEngine.detect(downsampled, sampleRate, 70f, 1_000f)
+                    reading = StudioPitchEngine.detect(mono, sampleRate, 70f, 1_000f)
                     status = if (reading == null) "No stable pitch yet — sing or hold one clear note." else "Live pitch detected"
                 }
             }
@@ -235,13 +232,16 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit) {
                         }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    keys.forEachIndexed { index, key ->
-                        Button(onClick = { keyRoot = index }, modifier = Modifier.weight(1f),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp, vertical = 8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = if (keyRoot == index) Mint else Midnight,
-                                contentColor = if (keyRoot == index) Midnight else White)) {
-                            Text(key, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                keys.chunked(6).forEachIndexed { rowIndex, rowKeys ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        rowKeys.forEachIndexed { columnIndex, key ->
+                            val index = rowIndex * 6 + columnIndex
+                            Button(onClick = { keyRoot = index }, modifier = Modifier.weight(1f),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp, vertical = 8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = if (keyRoot == index) Mint else Midnight,
+                                    contentColor = if (keyRoot == index) Midnight else White)) {
+                                Text(key, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
