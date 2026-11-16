@@ -25,7 +25,8 @@ data class MeshRecipient(
     val isDirect: Boolean
 )
 
-class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = false, listener: Listener) {\n    @Volatile private var listener: Listener = listener
+class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = false, listener: Listener) {
+    @Volatile private var listener: Listener = listener
     interface Listener {
         fun onStatus(message: String)
         fun onFound(id: String, name: String, stableId: String)
