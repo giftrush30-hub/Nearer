@@ -5041,12 +5041,3 @@ private data class IncomingTransfer(
 }
 
 
-
-private fun deviceStatus(status: Int): String = when (status) {
-    WifiP2pDevice.AVAILABLE -> "Available"
-    WifiP2pDevice.INVITED -> "Invitation pending"
-    WifiP2pDevice.CONNECTED -> "Connected"
-    WifiP2pDevice.FAILED -> "Connection failed"
-    WifiP2pDevice.UNAVAILABLE -> "Temporarily unavailable"
-    else -> "Nearby Wi-Fi Direct device"
-}

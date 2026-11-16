@@ -77,6 +77,10 @@ Approx. 3,111 lines; 124 function declarations found by source scan. The class i
 
 Before moving production code, choose the first low-risk seam from the ownership map and inspect its complete call graph. Preferred starting candidates are pure formatters and small transfer queue persistence policies. Avoid extracting the transport's cryptographic handshake or Activity lifecycle first.
 
+## Third extraction: Wi-Fi Direct peer status labels
+
+The pure deviceStatus mapping has been moved into WifiDirectDeviceStatus.kt without changing its call site or user-facing labels. WifiDirectDeviceStatusTest.kt covers all five Android peer states and the unknown-state fallback. This does not alter discovery, permission handling, or Wi-Fi Direct connection behaviour.
+
 ## First extraction completed on the working branch
 
 The initial baseline map included `AppInstallResultActivity` in the final lines of `MainActivity.kt`. That Android package-install result activity has now been moved into `AppInstallResultActivity.kt` on `chore/architecture-quality-foundation`. Its manifest registration and logic were retained; this is a small responsibility-boundary extraction, not a broader MainActivity refactor. The baseline line counts above intentionally describe the pre-refactor main commit.
