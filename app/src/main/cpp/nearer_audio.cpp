@@ -73,9 +73,12 @@ public:
             oboe::AudioStreamBuilder builder;
             builder.setDirection(oboe::Direction::Output)
                 ->setChannelCount(1)
+                ->setChannelConversionAllowed(true)
                 ->setFormat(oboe::AudioFormat::Float)
                 ->setFormatConversionAllowed(true)
                 ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
+                ->setUsage(oboe::Usage::Media)
+                ->setContentType(oboe::ContentType::Music)
                 ->setSharingMode(sharing)
                 ->setDataCallback(dataCallback)
                 ->setErrorCallback(errorCallback);
@@ -95,6 +98,7 @@ public:
             oboe::AudioStreamBuilder builder;
             builder.setDirection(oboe::Direction::Input)
                 ->setChannelCount(1)
+                ->setChannelConversionAllowed(true)
                 ->setFormat(oboe::AudioFormat::Float)
                 ->setFormatConversionAllowed(true)
                 ->setSampleRate(output_->getSampleRate())
