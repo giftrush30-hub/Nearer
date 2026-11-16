@@ -1081,19 +1081,44 @@ class MainActivity : ComponentActivity() {
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val bluetoothOn = try { bluetoothManager?.adapter?.isEnabled == true } catch (_: SecurityException) { false }
         val wifiOn = isWifiEnabled()
-        if (!SmartConnectPolicy.shouldStartDiscovery(
-                onboardingComplete = onboardingComplete,
-                permissionsGranted = hasNearbyPermissions(),
-                radioAvailable = SmartConnectPolicy.hasUsableRadio(bluetoothOn, wifiOn),
-                alreadySearching = hybridSearching,
-                alreadyConnected = hybridConnected
-            )) {
-            if (onboardingComplete && hasNearbyPermissions() && !bluetoothOn && !wifiOn) {
-                statusMessage = "NeaRer is ready. Turn on Bluetooth or Wi-Fi to discover nearby people; mobile data is not needed."
+        val permissionsGranted = hasNearbyPermissions()
+        val radioAvailable = SmartConnectPolicy.hasUsableRadio(bluetoothOn, wifiOn)
+        val locationServicesEnabled = Build.VERSION.SDK_INT > Build.VERSION_CODES.R || isLocationEnabled()
+        val platformReady = NearbyServiceStartPolicy.shouldStartDiscovery(
+            onboardingComplete = onboardingComplete,
+            permissionsGranted = permissionsGranted,
+            radioAvailable = radioAvailable,
+            sdkInt = Build.VERSION.SDK_INT,
+            locationServicesEnabled = locationServicesEnabled
+        )
+
+        if (!platformReady) {
+            // Do not leave a discovery session advertising after the user revokes
+            // access, turns off the required radio, or disables Location on Android 8–11.
+            nearbyTransport?.stopSearching()
+            hybridSearching = false
+            statusMessage = when {
+                !onboardingComplete -> "Complete NeaRer setup before starting nearby discovery."
+                !permissionsGranted -> "Nearby discovery is paused until the required nearby-device permissions are granted."
+                !radioAvailable -> "NeaRer is ready. Turn on Bluetooth or Wi-Fi to discover nearby people; mobile data is not needed."
+                !locationServicesEnabled -> "Nearby discovery is paused. On Android 8–11, turn Location on to allow nearby radio discovery."
+                else -> "Nearby discovery is paused. Review your phone's nearby settings."
             }
             if (onboardingComplete) ensureNearbyServiceBound(startForeground = false)
             return
         }
+
+        if (!SmartConnectPolicy.shouldStartDiscovery(
+                onboardingComplete = onboardingComplete,
+                permissionsGranted = permissionsGranted,
+                radioAvailable = radioAvailable,
+                alreadySearching = hybridSearching,
+                alreadyConnected = hybridConnected
+            )) {
+            if (onboardingComplete) ensureNearbyServiceBound(startForeground = false)
+            return
+        }
+
         val transport = nearbyTransport
         if (transport == null) {
             statusMessage = "Starting NeaRer's background nearby service…"
@@ -1106,11 +1131,7 @@ class MainActivity : ComponentActivity() {
             .commit()
         transport.start()
         hybridSearching = true
-        statusMessage = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R && !isLocationEnabled()) {
-            "NeaRer is ready. On this Android version, turn Location on too if nearby discovery does not find people."
-        } else {
-            "NeaRer is ready. Nearby people will appear automatically while the app is open."
-        }
+        statusMessage = "NeaRer is ready. Nearby people will appear automatically while the app is open."
     }
 
     private fun hasDiscoveryPermission(): Boolean {
