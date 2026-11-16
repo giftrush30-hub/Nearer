@@ -26,7 +26,7 @@ The ACK acceptance gate now requires all of the following:
 
 This prevents a stale endpoint binding from being enough to retire a message if Android/ Nearby later reuses an endpoint identifier for a different peer.
 
-When an authenticated endpoint disconnects, all pending messages bound to that endpoint and stable peer are released back to endpoint-less queued state. Their retry timers are cancelled, attempts are reset, and their endpoint-target mappings are removed. A later reconnect can bind them again only after the expected stable identity authenticates.
+When an authenticated endpoint disconnects, all pending messages bound to that endpoint and stable peer are released back to endpoint-less queued state. Their retry timers are cancelled, attempts are reset, and their endpoint-target mappings are removed. A later reconnect can bind them again only after the expected stable identity authenticates. The Activity is immediately told to display those messages as `Queued`; if no Activity is attached, the outbox remains the source of truth and the state is reconciled on reattachment.
 
 ## Tests added
 
