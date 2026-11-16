@@ -2923,7 +2923,7 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
                         if (outgoingHyperStreams.values.any { it.transferId == record.transferId }) return@forEach
                         val item = TransferBundleItem(
                             record.itemId, record.relativePath, record.displayName,
-                            record.sizeBytes, null
+                            record.sizeBytes, record.mimeType
                         )
                         val prepared = runCatching { streamPayloadBridge.prepareOutgoingPayload() }.getOrNull()
                             ?: return@forEach
