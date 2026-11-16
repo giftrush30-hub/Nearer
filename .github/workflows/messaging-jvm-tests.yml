@@ -1,4 +1,4 @@
-name: Messaging JVM tests (no APK)
+name: Messaging JVM tests + manifest validation (no APK)
 # Deliberately runs only JVM tests; never assembles or uploads an Android package.
 
 on:
@@ -6,6 +6,8 @@ on:
     branches:
       - work/messaging-service-owned-nearby
     paths:
+      - "app/src/main/AndroidManifest.xml"
+      - "app/build.gradle.kts"
       - "app/src/main/java/com/nearer/app/**"
       - "app/src/test/java/com/nearer/app/**"
       - ".github/workflows/messaging-jvm-tests.yml"
@@ -36,5 +38,5 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Run JVM unit tests only
-        run: gradle --no-daemon --stacktrace testDebugUnitTest
+      - name: Run JVM tests and validate Android manifest (no APK)
+        run: gradle --no-daemon --stacktrace testDebugUnitTest processDebugManifest
