@@ -2,7 +2,15 @@
 
 ## Current implementation
 
-Studio now has two live-monitor backends behind a Kotlin selection policy:
+### Offline multitrack Sound Desk
+
+The Sound Desk supports up to eight audio layers in one local project. Each layer has independent mute, volume, stereo pan, fade-in/fade-out, three-band low/mid/high EQ and room reverb. Project settings are auto-saved on the phone and older project versions migrate to flat EQ and dry processing. The original source files are never overwritten.
+
+The render path uses Media3 Transformer with parallel audio sequences and per-track PCM processors, then writes one AAC mix locally. Users can play the completed render in-app and share it. Individual source preview is deliberately labelled as source preview and does not pretend to include the full mix effects; the rendered mix is the authoritative effects preview. The render path is offline and does not upload audio.
+
+### Live microphone monitoring
+
+Studio has two live-monitor backends behind a Kotlin selection policy:
 
 - **Oboe native duplex engine:** used on Android API 27+ for default input and selected USB input. AAudio device-ID routing is available from API 26; Oboe's AAudio backend begins at API 27. After opening, the engine verifies the actual input device ID and refuses to silently substitute another microphone. It opens a low-latency output stream first, then opens the input at the output stream's negotiated sample rate. It requests exclusive sharing and falls back to shared mode if exclusive is unavailable.
 - **Java compatibility backend:** the existing AudioRecord/AudioTrack path remains available when native startup fails, on Android API 26, and when explicit USB device routing is not supported by the native API level.
@@ -28,7 +36,7 @@ On API 30+, the native builder explicitly requests Android's privacy-sensitive m
 
 ## Validation still required
 
-The code is integrated into the Android build. Automated checks compile the NDK target, run JVM tests (including PCM frame assembly and signal-level vocal processor tests), and build/upload the debug APK. This does not prove physical-device performance. Required device testing includes:
+The code is integrated into the Android build. Automated checks compile the NDK target, run JVM tests (including PCM frame assembly, signal-level vocal processors and offline track DSP tests), and build/upload the debug APK. This does not prove physical-device performance. In addition to the microphone-monitor checks below, listen to a rendered multitrack mix with voice, music and effects on phone speakers, wired headphones and Bluetooth; compare the output against the source tracks and verify EQ/reverb tails and pan placement. Required device testing includes:
 
 1. Phone built-in microphone and speaker/headphones.
 2. USB microphone plus wired/USB headphones on Android API 27+; verify the displayed input device ID matches the selected device.
