@@ -19,6 +19,23 @@ internal object StudioAudioProjectLibraryCodec {
     fun normalizeName(raw: String): String =
         raw.trim().replace(Regex("\\s+"), " ").take(MAX_NAME_LENGTH).ifBlank { "Untitled Mix" }
 
+    fun rename(
+        projects: List<StudioAudioProjectLibraryEntry>,
+        projectId: String,
+        rawName: String,
+        activeTracks: List<StudioAudioProjectTrackState>,
+        updatedAtMs: Long
+    ): List<StudioAudioProjectLibraryEntry> {
+        val safeTimestamp = updatedAtMs.coerceAtLeast(0L)
+        return projects.map { project ->
+            if (project.id == projectId) project.copy(
+                name = normalizeName(rawName),
+                updatedAtMs = safeTimestamp,
+                tracks = activeTracks
+            ) else project
+        }
+    }
+
     fun encode(projects: List<StudioAudioProjectLibraryEntry>): String {
         val items = JSONArray()
         projects.distinctBy { it.id.trim() }.take(MAX_PROJECTS).forEach { project ->

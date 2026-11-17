@@ -232,8 +232,18 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 currentProjectId = created.id
                 exported = null
             } else {
-                val index = projects.indexOfFirst { it.id == currentProjectId }
-                if (index >= 0) projects[index] = projects[index].copy(name = safeName, updatedAtMs = System.currentTimeMillis())
+                val renamed = StudioAudioProjectLibraryCodec.rename(
+                    projects = projects.toList(),
+                    projectId = currentProjectId,
+                    rawName = safeName,
+                    activeTracks = tracks.map { it.toProjectState() },
+                    updatedAtMs = System.currentTimeMillis()
+                )
+                projects.clear()
+                projects.addAll(renamed)
+                projectPreferences.edit()
+                    .putString("projects_v1", StudioAudioProjectLibraryCodec.encode(renamed))
+                    .apply()
             }
             showProjectNameDialog = false
         }) { Text(if (creatingProject) "CREATE" else "SAVE") } },

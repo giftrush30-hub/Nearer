@@ -36,6 +36,32 @@ class StudioAudioProjectLibraryCodecTest {
         assertEquals("First", restored.single().name)
     }
 
+    @Test fun renameUpdatesNameTimestampAndKeepsCurrentTrackEdits() {
+        val original = listOf(
+            project("one", "Old name", "content://audio/old"),
+            project("two", "Untouched", "content://audio/other")
+        )
+        val activeTracks = listOf(StudioAudioProjectTrackState(
+            "content://audio/current", "Current vocal", 90_000L, false,
+            0.65f, 0.25f, 250L, 750L
+        ))
+
+        val renamed = StudioAudioProjectLibraryCodec.rename(
+            projects = original,
+            projectId = "one",
+            rawName = "  New   project  ",
+            activeTracks = activeTracks,
+            updatedAtMs = 9876L
+        )
+        val restored = StudioAudioProjectLibraryCodec.decode(StudioAudioProjectLibraryCodec.encode(renamed))
+
+        assertEquals("New project", restored[0].name)
+        assertEquals(9876L, restored[0].updatedAtMs)
+        assertEquals(activeTracks, restored[0].tracks)
+        assertEquals("Untouched", restored[1].name)
+        assertEquals(original[1].tracks, restored[1].tracks)
+    }
+
     @Test fun malformedAndUnknownVersionsAreSafe() {
         assertTrue(StudioAudioProjectLibraryCodec.decode("not-json").isEmpty())
         assertTrue(StudioAudioProjectLibraryCodec.decode("""{"version":99,"projects":[]}""").isEmpty())
