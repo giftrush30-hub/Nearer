@@ -14,12 +14,12 @@ internal data class StudioTempoPoint(
 
 /**
  * Bounded piecewise-linear tempo automation. Media3's SpeedProvider consumes discrete change
- * timestamps, so the curve is sampled on a 100 ms grid while keyframes remain user-editable.
+ * timestamps, so the curve is sampled on a 50 ms grid while keyframes remain user-editable.
  */
 internal object StudioTempoAutomationPolicy {
     const val MIN_SPEED = 0.5f
     const val MAX_SPEED = 2.0f
-    const val STEP_MS = 100L
+    const val STEP_MS = 50L
     const val MAX_KEYFRAMES = 32
     const val MAX_AUTOMATION_MS = 30_000L
 
