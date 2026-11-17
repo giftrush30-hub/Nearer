@@ -668,15 +668,26 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                     EditedMediaItemSequence.Builder(sequenceItems).build()
                 }
                 val composition = Composition.Builder(sequences).build()
-                val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Mix_${System.currentTimeMillis()}.mp4")
+                val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Mix_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}.m4a")
                 val transformer = Transformer.Builder(context).setAudioMimeType(MimeTypes.AUDIO_AAC)
                     .addListener(object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                             exporting = false
                             temporarySilenceFiles.forEach { it.delete() }
-                            exported = output.takeIf { it.exists() && it.length() > 0L }
-                            message = if (exported != null) "Mix rendered · ${output.length() / 1024L} KB. Original recordings and source tracks remain untouched."
-                                else "The render finished but no output file was found. Please try again."
+                            val inspection = runCatching { inspectStudioAudioExport(output) }.getOrNull()
+                            val usableOutput = StudioAudioExportPolicy.hasUsableOutput(
+                                fileExists = output.exists(),
+                                fileLengthBytes = output.length(),
+                                hasAudioTrack = inspection?.hasAudioTrack == true,
+                                durationMs = inspection?.durationMs ?: 0L
+                            )
+                            exported = output.takeIf { usableOutput }
+                            if (usableOutput) {
+                                message = "Mix rendered and checked · ${output.length() / 1024L} KB · ${formatMixTime(inspection!!.durationMs)}. Original recordings and source tracks remain untouched."
+                            } else {
+                                output.delete()
+                                message = "The render completed but failed audio-file verification (missing audio track, unreadable duration or empty output). Please try again." 
+                            }
                         }
                         override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
                             exporting = false
@@ -756,6 +767,26 @@ private fun readStudioAudioDuration(context: android.content.Context, uri: Uri):
         retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
     } catch (_: Exception) {
         0L
+    } finally {
+        runCatching { retriever.release() }
+    }
+}
+
+private data class StudioAudioExportInspection(
+    val hasAudioTrack: Boolean,
+    val durationMs: Long
+)
+
+/** Verifies the completed container is readable and actually contains an audio track. */
+private fun inspectStudioAudioExport(file: File): StudioAudioExportInspection {
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(file.absolutePath)
+        StudioAudioExportInspection(
+            hasAudioTrack = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes",
+            durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+        )
     } finally {
         runCatching { retriever.release() }
     }
