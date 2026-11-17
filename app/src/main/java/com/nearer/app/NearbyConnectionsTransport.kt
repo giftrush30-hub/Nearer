@@ -792,7 +792,7 @@ internal object IncomingFilePayloadPolicy {
                                     pending.value.receiptTimeout = null
                                     pending.value.retentionTimeout = null
                                     pending.value.prepared.close()
-                                    pending.value.sourceFile.delete()
+                                    outgoingHyperStore.remove(pending.value.transferId)
                                     transferSpeedMeters.remove(pending.key)
                                     listener.onFileStatus(
                                         "The recipient did not confirm the save in time. The temporary retry copy was cleared; please send the file again."
@@ -2864,8 +2864,8 @@ internal object IncomingFilePayloadPolicy {
                 preparingHyperStreams.remove(payloadId)
                 if (cancelledOutgoingPreparations.remove(payloadId) || outgoingHyperStreams[payloadId] !== state) {
                     outgoingHyperStreams.remove(payloadId, state)
+                    outgoingHyperStore.remove(transferId)
                     prepared.close()
-                    staged!!.delete()
                     return@execute
                 }
                 val initialSpeed = transferSpeedMeters.computeIfAbsent(payloadId) { TransferSpeedMeter() }
