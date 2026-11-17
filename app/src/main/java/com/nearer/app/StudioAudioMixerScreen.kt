@@ -117,6 +117,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     var projectNameDraft by remember { mutableStateOf("") }
     var creatingProject by remember { mutableStateOf(true) }
     val currentProject = projects.firstOrNull { it.id == currentProjectId } ?: projects.first()
+    var exported by remember { mutableStateOf<File?>(null) }
     fun switchProject(project: StudioAudioProjectLibraryEntry) {
         val oldIndex = projects.indexOfFirst { it.id == currentProjectId }
         if (oldIndex >= 0) projects[oldIndex] = projects[oldIndex].copy(tracks = tracks.map { it.toProjectState() }, updatedAtMs = System.currentTimeMillis())
@@ -129,7 +130,6 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
         currentProjectId = project.id
         exported = null
     }
-    var exported by remember { mutableStateOf<File?>(null) }
     var exporting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Build a layered mix from voice, music and sound effects stored on your phone.") }
     var previewUri by remember { mutableStateOf<Uri?>(null) }
@@ -272,12 +272,18 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                     Text(track.name, color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
                                     Text("TRACK ${index + 1}  ·  ${if (track.durationMs > 0) formatMixTime(track.durationMs) else "DURATION UNKNOWN"}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 }
-                                Text(if (previewUri == track.uri && previewPlayer.isPlaying) "PAUSE" else "SOURCE PREVIEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
+                                Text(if (previewUri == track.uri && previewPlayer.isPlaying) "PAUSE" else "CLIP PREVIEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                                     if (previewUri == track.uri && previewPlayer.isPlaying) previewPlayer.pause()
                                     else {
                                         finalMixSelected = false
                                         previewUri = track.uri
-                                        previewPlayer.setMediaItem(MediaItem.fromUri(track.uri))
+                                        val clipPreview = MediaItem.Builder().setUri(track.uri).apply {
+                                            if (track.durationMs > 0L && track.clipEndMs > track.clipStartMs) {
+                                                setClippingConfiguration(MediaItem.ClippingConfiguration.Builder()
+                                                    .setStartPositionMs(track.clipStartMs).setEndPositionMs(track.clipEndMs).build())
+                                            }
+                                        }.build()
+                                        previewPlayer.setMediaItem(clipPreview)
                                         previewPlayer.volume = track.gain.coerceIn(0f, 1f)
                                         previewPlayer.prepare()
                                         previewPlayer.play()
@@ -333,7 +339,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 Slider(value = track.highGainDb, onValueChange = { tracks[index] = track.copy(highGainDb = it); exported = null }, valueRange = -12f..12f)
                                 Text("ROOM REVERB  ·  ${(track.reverbMix * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 Slider(value = track.reverbMix, onValueChange = { tracks[index] = track.copy(reverbMix = it); exported = null }, valueRange = 0f..0.35f)
-                                Text("SOURCE PREVIEW APPLIES VOLUME ONLY; EQ, REVERB, PAN AND FADES APPLY ON EXPORT.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
+                                Text("CLIP PREVIEW PLAYS THE SELECTED SOURCE RANGE. EQ, REVERB, PAN AND FADES APPLY ON EXPORT.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
                             }
                             if (track.durationMs > 0L) {
                                 val minClip = 500L.coerceAtMost(track.durationMs)
@@ -352,12 +358,12 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 Slider(value = clipStart.toFloat(), onValueChange = { v ->
                                     val next = v.toLong().coerceIn(0L, (clipEnd - minClip).coerceAtLeast(0L))
                                     tracks[index] = track.copy(clipStartMs = next); exported = null
-                                }, valueRange = 0f..(clipEnd - minClip).coerceAtLeast(0L).toFloat())
+                                }, valueRange = 0f..(clipEnd - minClip).coerceAtLeast(0L).toFloat(), enabled = track.durationMs > minClip)
                                 Text("TRIM END · ${formatMixTime(clipEnd)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 Slider(value = clipEnd.toFloat(), onValueChange = { v ->
                                     val next = v.toLong().coerceIn((clipStart + minClip).coerceAtMost(track.durationMs), track.durationMs)
                                     tracks[index] = track.copy(clipEndMs = next); exported = null
-                                }, valueRange = (clipStart + minClip).coerceAtMost(track.durationMs).toFloat()..track.durationMs.toFloat())
+                                }, valueRange = (clipStart + minClip).coerceAtMost(track.durationMs).toFloat()..track.durationMs.toFloat(), enabled = track.durationMs > minClip)
                             }
                             Text("TRACK START POSITION · ${formatMixTime(track.startOffsetMs)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = track.startOffsetMs.toFloat(), onValueChange = { v ->
