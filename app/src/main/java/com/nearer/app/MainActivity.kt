@@ -299,8 +299,8 @@ class MainActivity : ComponentActivity() {
                     incomingRequesterName = null
                     connectedDeviceName = name
                     chatReady = true
+                    nearbyConnectionEpoch += 1
                     sendPendingReadReceipts(stableId)
-                    selectedCommunityCode?.let(::sendGroupReadReceipts)
                     resumeLudoAfterReconnect(name, stableId)
                     connectionMessage = "Secure nearby connection active"
                     approvalMessage = "Connection approved"
@@ -684,6 +684,7 @@ class MainActivity : ComponentActivity() {
     private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var activityResumed by mutableStateOf(false)
+    private var nearbyConnectionEpoch by mutableStateOf(0)
     private var readReceiptsEnabled by mutableStateOf(true)
     private var typingPeerId by mutableStateOf<String?>(null)
     private var typingExpiresAt by mutableStateOf(0L)
@@ -888,6 +889,7 @@ class MainActivity : ComponentActivity() {
                     transferHistory = nearbyTransferHistory.toList(),
                     onSendMessage = ::sendChatMessage,
                     activityResumed = activityResumed,
+                    connectionEpoch = nearbyConnectionEpoch,
                     onMarkConversationRead = { peerId -> markConversationRead(peerId ?: hybridConnectedStableId) },
                     readReceiptsEnabled = readReceiptsEnabled,
                     onReadReceiptsEnabledChange = ::persistReadReceiptsEnabled,
@@ -1015,7 +1017,6 @@ class MainActivity : ComponentActivity() {
         activityResumed = true
         nearbyServiceBinder?.replayPendingMessages()
         (selectedMeshRecipientId ?: hybridConnectedStableId)?.let(::sendPendingReadReceipts)
-        selectedCommunityCode?.let(::sendGroupReadReceipts)
         val filter = IntentFilter().apply {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
@@ -2037,7 +2038,6 @@ class MainActivity : ComponentActivity() {
             .putBoolean("read_receipts_enabled", enabled).apply()
         if (enabled) {
             (selectedMeshRecipientId ?: hybridConnectedStableId)?.let(::sendPendingReadReceipts)
-            selectedCommunityCode?.let(::sendGroupReadReceipts)
         }
     }
 
@@ -4204,6 +4204,7 @@ private fun NeaRerHome(
     transferHistory: List<NearbyTransferRecord>,
     onSendMessage: (String, ChatMessage?) -> Unit,
     activityResumed: Boolean,
+    connectionEpoch: Int,
     onMarkConversationRead: (String?) -> Unit,
     readReceiptsEnabled: Boolean,
     onReadReceiptsEnabledChange: (Boolean) -> Unit,
@@ -5023,6 +5024,8 @@ private fun NeaRerHome(
                 onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame, profileAvatarId,
                 onOpenRoyalLudo = { showRoyalLudo = true },
                 isCommunityVisible = activityResumed && selectedTab == "Games",
+                connectionEpoch = connectionEpoch,
+                readReceiptsEnabled = readReceiptsEnabled,
                 onMarkGroupRead = onMarkGroupRead)
 
             }
@@ -5415,6 +5418,8 @@ private fun CommunityHub(
     localAvatarId: String,
     onOpenRoyalLudo: () -> Unit,
     isCommunityVisible: Boolean,
+    connectionEpoch: Int,
+    readReceiptsEnabled: Boolean,
     onMarkGroupRead: (String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
@@ -5423,8 +5428,11 @@ private fun CommunityHub(
     var broadcastText by remember { mutableStateOf("") }
     var gameText by remember { mutableStateOf("") }
     val selected = groups.firstOrNull { it.code == selectedCode }
-    LaunchedEffect(selectedCode, messages.size, selected?.memberPeerIds, isCommunityVisible) {
-        if (isCommunityVisible) selectedCode?.let(onMarkGroupRead)
+    LaunchedEffect(
+        selectedCode, messages.size, selected?.memberPeerIds,
+        isCommunityVisible, connectionEpoch, readReceiptsEnabled
+    ) {
+        if (isCommunityVisible && readReceiptsEnabled) selectedCode?.let(onMarkGroupRead)
     }
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
