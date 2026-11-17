@@ -76,7 +76,11 @@ Direct-message and mesh-message branches have distinct receipt handling. Do not 
 
 ### 4.2 Outgoing direct route
 
-ChatTransportRouter is intentionally narrow. It tries Nearby Connections when ready and falls back to Wi-Fi Direct only when that route is ready. If neither succeeds, it returns no route so the message remains queued. This is a private direct-route selector, not a mesh route selector. However, a focused search of the inspected MainActivity and NearbyConnectionsTransport sources did not find a reference to ChatTransportRouter or DirectChatOutbox. Their production caller graph must be traced across the full source tree before treating either as part of the active send path. The tests prove their local behaviour, not their integration.
+The actual user-facing outgoing path inspected is `MainActivity.sendChatMessage()`. It first adds the outgoing message to local chat history and requires `persistMessages()` to succeed before attempting transport. When a selected recipient has a `MeshRecipient` entry, it tries `NearbyConnectionsTransport.sendMeshMessage()`; if that recipient is directly connected and the recipient-encrypted route cannot start, it falls back only to the same peer's direct Nearby `send()`. It deliberately refuses to redirect a vanished remote recipient to some other connected phone. For an ordinary directly connected chat, it sends through the authenticated Nearby endpoint. A send failure marks the pending bubble failed and persists that state.
+
+The legacy Wi-Fi Direct socket chat path is explicitly blocked: `LegacySocketChatPolicy.mayUseSocketChat()` and `mayAcceptSocketChatFrame()` both return false, with focused tests. MainActivity's remaining socket branch states that no plaintext socket-chat implementation remains. This is a privacy/security guard, not a missing fallback to re-enable casually.
+
+`ChatTransportRouter` is a separate pure helper whose local tests show Nearby-first/Wi-Fi-Direct-second behaviour, but no reference to it was found in the inspected MainActivity or NearbyConnectionsTransport. Likewise, no reference to `DirectChatOutbox` was found in those coordinators. Their full production caller graph remains unconfirmed; do not treat either as part of the active outgoing send path based only on its focused test.
 
 ### 4.3 Identity and cryptographic trust
 
