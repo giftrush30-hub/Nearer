@@ -45,6 +45,29 @@ class OutgoingHyperTransferStoreTest {
     }
 
     @Test
+    fun duplicateTransferIdentityCannotReplaceAnExistingDurableSource() {
+        val root = Files.createTempDirectory("nearer-outgoing-duplicate").toFile()
+        try {
+            val directory = File(root, "outgoing").apply { mkdirs() }
+            val firstBytes = byteArrayOf(1, 2, 3, 4)
+            val secondBytes = byteArrayOf(5, 6, 7, 8)
+            val first = File(directory, "first.bin").apply { writeBytes(firstBytes) }
+            val second = File(directory, "second.bin").apply { writeBytes(secondBytes) }
+            val store = OutgoingHyperTransferStore(directory)
+            store.persist("transfer-same", peerA, item(firstBytes), sha(firstBytes), first)
+            try {
+                store.persist("transfer-same", peerA, item(secondBytes), sha(secondBytes), second)
+                fail("A duplicate stable transfer ID must not replace the original journal")
+            } catch (_: IllegalStateException) { }
+            val restored = store.restoreForPeer(peerA).single()
+            assertArrayEquals(firstBytes, restored.sourceFile.readBytes())
+            assertTrue(second.isFile)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun refusesSourcesOutsideItsAppPrivateStagingDirectory() {
         val root = Files.createTempDirectory("nearer-outgoing-path").toFile()
         try {

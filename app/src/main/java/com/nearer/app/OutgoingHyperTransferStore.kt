@@ -66,6 +66,12 @@ internal class OutgoingHyperTransferStore(private val directory: File) {
             setProperty("sourceName", record.sourceFile.name)
         }
         val target = recordFile(transferId)
+        if (target.exists()) {
+            if (readRecord(target) != null) {
+                throw IllegalStateException("This transfer is already durably queued")
+            }
+            target.delete()
+        }
         val temp = File(directory, target.name + ".tmp")
         FileOutputStream(temp).use { output ->
             properties.store(output, "NeaRer durable outgoing HyperTransfer")

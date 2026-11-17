@@ -2797,6 +2797,7 @@ internal object IncomingFilePayloadPolicy {
         listener.onFileStatus("Preparing a verified transfer for " + safeFileName(displayName) + "…")
         transferPreparation.execute {
             var staged: File? = null
+            var preparedTransferId: String? = null
             try {
                 if (cancelledOutgoingPreparations.remove(payloadId)) {
                     preparingHyperStreams.remove(payloadId)
@@ -2839,6 +2840,17 @@ internal object IncomingFilePayloadPolicy {
                 val transferId = HyperTransferIdentity.createTransferId(
                     localStableId, peerId, item, copied.sha256
                 )
+                preparedTransferId = transferId
+                val alreadyInMemory = outgoingHyperStreams.values.any { it.transferId == transferId }
+                val alreadyDurable = outgoingHyperStore.restoreForPeer(peerId).any { it.transferId == transferId }
+                if (alreadyInMemory || alreadyDurable) {
+                    preparingHyperStreams.remove(payloadId)
+                    prepared.close()
+                    staged!!.delete()
+                    if (alreadyDurable && !alreadyInMemory) restoreOutgoingHyperTransfers(peerId, endpointId)
+                    listener.onFileStatus("This exact file is already queued for that nearby phone. Keeping the existing transfer.")
+                    return@execute
+                }
                 if (cancelledOutgoingPreparations.remove(payloadId)) {
                     preparingHyperStreams.remove(payloadId)
                     prepared.close()
@@ -2873,6 +2885,16 @@ internal object IncomingFilePayloadPolicy {
                 preparingHyperStreams.remove(payloadId)
                 val wasCancelled = cancelledOutgoingPreparations.remove(payloadId)
                 val existing = outgoingHyperStreams[payloadId]
+                val duplicateAlreadyQueued = preparedTransferId?.let { id ->
+                    outgoingHyperStreams.values.any { it.transferId == id } ||
+                        outgoingHyperStore.restoreForPeer(peerId).any { it.transferId == id }
+                } == true
+                if (duplicateAlreadyQueued && existing == null) {
+                    prepared.close()
+                    staged?.delete()
+                    listener.onFileStatus("This exact file is already queued for that nearby phone. Keeping the existing transfer.")
+                    return@execute
+                }
                 if (existing != null) {
                     if (wasCancelled) {
                         outgoingHyperStreams.remove(payloadId, existing)
@@ -3045,13 +3067,20 @@ internal object IncomingFilePayloadPolicy {
                             synchronized(names) { stableIds[endpointId] } != peerId) return@forEach
                         if (outgoingHyperStreams.values.any { it.transferId == record.transferId }) return@forEach
                         val item = TransferBundleItem(record.itemId, record.relativePath, record.displayName, record.sizeBytes, record.mimeType)
-                        val prepared = runCatching { streamPayloadBridge.prepareOutgoingPayload() }.getOrNull() ?: return@forEach
+                        val prepared = runCatching { streamPayloadBridge.prepareOutgoingPayload() }.getOrNull()
+                        if (prepared == null) {
+                            listener.onFileStatus("A saved transfer is waiting for the nearby stream engine to become ready.")
+                            return@forEach
+                        }
                         prepared.payload.setSensitive(true)
                         val state = OutgoingHyperStream(
                             endpointId, record.peerId, record.displayName, record.sourceFile,
                             item, record.transferId, record.sha256, prepared, durableRecovery = true
                         )
                         outgoingHyperStreams[prepared.payloadId] = state
+                        val initialSpeed = transferSpeedMeters.computeIfAbsent(prepared.payloadId) { TransferSpeedMeter() }
+                            .record(0L, item.sizeBytes)
+                        listener.onFileTransferUpdate(endpointId, prepared.payloadId, state.name, 0L, item.sizeBytes, false, initialSpeed)
                         val metadata = TransferResumeStreamMetadataCodec.Metadata(
                             prepared.payloadId, state.transferId, state.item, null, state.sha256
                         )
