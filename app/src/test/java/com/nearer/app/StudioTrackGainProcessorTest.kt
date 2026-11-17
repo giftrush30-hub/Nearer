@@ -82,6 +82,38 @@ class StudioTrackGainProcessorTest {
         assertEquals(-8_000, right[3].toInt())
     }
 
+    @Test fun flushRestartsTheFrameClockForAReusedProcessor() {
+        val processor = StudioTrackGainProcessor(
+            gain = 1f,
+            pan = 0f,
+            durationMs = 1_000L,
+            fadeInMs = 500L,
+            fadeOutMs = 0L
+        )
+        processor.configure(AudioProcessor.AudioFormat(1_000, 2, C.ENCODING_PCM_16BIT))
+        val inputSamples = ShortArray(400) { 10_000 }
+
+        fun processOnePass(): ShortArray {
+            val input = ByteBuffer.allocateDirect(inputSamples.size * 2).order(ByteOrder.nativeOrder())
+            inputSamples.forEach(input::putShort)
+            input.flip()
+            processor.queueInput(input)
+            val output = processor.output
+            val samples = ShortArray(output.remaining() / 2) { output.short }
+            return samples
+        }
+
+        processor.flush()
+        val firstPass = processOnePass()
+        processor.flush()
+        val secondPass = processOnePass()
+        assertEquals(firstPass.size, secondPass.size)
+        assertTrue(firstPass.indices.all { firstPass[it] == secondPass[it] })
+        assertEquals(0, secondPass.first().toInt())
+        assertTrue(secondPass[200] in 6_900..7_200)
+        processor.reset()
+    }
+
     @Test fun invalidChannelLayoutsAreRejectedInsteadOfMisreadingPcm() {
         val processor = StudioTrackGainProcessor(1f, 0f, 1_000L, 0L, 0L)
         val invalid = AudioProcessor.AudioFormat(48_000, 3, C.ENCODING_PCM_16BIT)
