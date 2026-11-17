@@ -95,6 +95,31 @@ class CommunityIngressPolicyTest {
         assertFalse(CommunityIngressPolicy.isValid(bad, sender))
     }
 
+    @Test fun rejectsDuplicateStablePeerIdsInGroupRoster() {
+        val duplicate = packet("group_members") {
+            put("code", "123456").put("ownerPeerId", sender)
+            put("memberPeerIds", JSONArray(listOf(sender, "ABCDEF", "ABCDEF")))
+            put("members", JSONArray(listOf("Ada", "Bo", "Bo")))
+        }
+        assertFalse(CommunityIngressPolicy.isValid(duplicate, sender))
+    }
+
+    @Test fun rejectsMismatchedOrBlankGroupRosterNames() {
+        val mismatched = packet("group_members") {
+            put("code", "123456").put("ownerPeerId", sender)
+            put("memberPeerIds", JSONArray(listOf(sender, "ABCDEF")))
+            put("members", JSONArray(listOf("Ada")))
+        }
+        assertFalse(CommunityIngressPolicy.isValid(mismatched, sender))
+
+        val blankName = packet("group_members") {
+            put("code", "123456").put("ownerPeerId", sender)
+            put("memberPeerIds", JSONArray(listOf(sender, "ABCDEF")))
+            put("members", JSONArray(listOf("Ada", " ")))
+        }
+        assertFalse(CommunityIngressPolicy.isValid(blankName, sender))
+    }
+
     @Test fun permitsBoundedLegacySocketLudoButNotLegacyGroupMessages() {
         val invite = packet("ludo_invite") { put("matchId", "room-1") }
         assertTrue(CommunityIngressPolicy.isValid(invite, "", allowLegacySocketLudo = true))
