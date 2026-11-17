@@ -452,6 +452,10 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                         }
                         outputRoutingListener = listener
                         track.addOnRoutingChangedListener(listener, android.os.Handler(android.os.Looper.getMainLooper()))
+                        // Close the small race between the first route check and listener registration.
+                        check(StudioAudioEnginePolicy.matchesPreferredOutput(selectedOutputId, track.routedDevice?.id)) {
+                            "The headphone output changed during monitor startup."
+                        }
                         track
                     } catch (error: Exception) {
                         runCatching { track.pause() }
