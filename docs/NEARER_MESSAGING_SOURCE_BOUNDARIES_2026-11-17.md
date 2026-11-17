@@ -225,14 +225,17 @@ Rules:
 ## 7. Safe refactoring order
 
 1. **Freeze and characterize current semantics.** Preserve the current JVM suite and add tests around the exact service/inbox callback contract before changing it.
-2. **Map callers and persistence.** For every candidate class, identify production callers, persistent keys/files, Android dependencies and test coverage. Do not infer ownership from filename alone.
-3. **Extract pure Messaging policies.** Start with classes that have no Android or UI dependencies and already have focused JVM tests. Move only after tests prove behaviour unchanged.
-4. **Define route and delivery interfaces.** Keep Nearby Connections and Wi-Fi Direct behind a small adapter contract. Preserve route priority and the “no route, keep queued” result.
-5. **Formalise inbox/outbox ownership.** Separate message semantics from Android storage implementation without changing encryption format, keys, commit timing or retry identity.
-6. **Separate Mesh protocol from transport.** Extract signed route/packet/receipt policy and persistence behind explicit contracts. Keep relay disabled until independent safety gates pass.
-7. **Separate Share payload operations.** Only after sender binding, integrity, completion receipt and recovery are mapped and covered.
-8. **Reduce MainActivity gradually.** Extract one state owner/use case at a time; keep navigation and app composition stable.
-9. **Only then introduce package boundaries or Gradle modules.** Start with package-level boundaries in the existing app module; consider modules only when dependencies are demonstrably acyclic and build/test costs justify them.
+2. **Enumerate every transport listener implementation.** Find all `NearbyConnectionsTransport.Listener` and `ListenerAdapter` implementations/call sites. Specifically characterize the adapter's acknowledge-by-default method before altering it; an unhandled message must not be acknowledged without durable acceptance.
+3. **Name the two incoming completion stages separately.** One callback establishes transport dedupe/ACK or a mesh final receipt after inbox commit. The second reports successful local chat/community persistence and permits inbox retirement. Replace ambiguous callback names only behind compatibility tests.
+4. **Map callers and persistence.** For every candidate class, identify production callers, persistent keys/files, Android dependencies and test coverage. Do not infer ownership from filename alone.
+5. **Extract dependency ports before moving implementations.** Define incoming-delivery storage, notification, message-event and file-transfer event contracts. Inject implementations from app composition so Nearby lifecycle does not depend on Messaging/Share concrete classes or Activity screens.
+6. **Extract pure Messaging policies.** Start with classes that have no Android or UI dependencies and already have focused JVM tests. Move only after tests prove behaviour unchanged and model dependencies are not pulled back into the app root.
+7. **Define route and delivery interfaces.** Keep Nearby Connections behind an authenticated session/route contract. Keep the legacy socket-chat guard in place; do not revive Wi-Fi Direct chat as a fallback. Preserve the “no route, keep queued” result and never substitute a different recipient.
+8. **Formalise inbox/outbox ownership.** Separate message semantics from Android storage implementation without changing encryption format, keys, commit timing or retry identity. Treat plaintext history encryption as a separate, versioned migration with recovery.
+9. **Separate Mesh protocol from transport.** Extract signed route/packet/receipt policy and persistence behind explicit contracts. Keep relay disabled until independent safety gates pass.
+10. **Separate Share payload operations.** Only after sender binding, integrity, completion receipt and recovery are mapped and covered.
+11. **Reduce MainActivity gradually.** Extract one state owner/use case at a time; keep navigation and app composition stable.
+12. **Only then introduce package boundaries or Gradle modules.** Start with package-level boundaries in the existing app module; consider modules only when dependencies are demonstrably acyclic and build/test costs justify them.
 
 Every production refactor must be a focused PR, pass JVM tests, manifest validation, lint review and debug APK build, and be reviewed against existing behaviour. Physical-device testing is a separate gate and must not be claimed from CI.
 
