@@ -224,7 +224,34 @@ HyperTransferCompletionReceiptCodec.kt, HyperTransferIdentity.kt, LegacySocketCh
 
 The corresponding test tree includes focused tests for many chat policies, community policies, mesh packet/route/receipt types, identity/handshake/crypto and nearby service policies. Exact source-to-test pairing and the production caller graph still need file-by-file verification.
 
-## 9. Explicit non-changes in this audit
+## 9. First extraction decision and required test gate
+
+**No production class is approved for a blind package move yet.** The inspected candidates have dependencies or integration gaps that make a cosmetic move misleading:
+
+- `ChatInboxPolicy` is a good pure presentation policy and is called by `PremiumChatsScreen`, but it consumes app-root `ChatMessage` and `MeshRecipient` models. Move those contracts first or deliberately keep the policy at the app boundary; do not create a feature-to-app dependency.
+- `NearbyInboxCommitPolicy` is pure, but its caller is the foreground `NearbyTransportService`. Moving it directly into Messaging would make the Nearby infrastructure depend on a feature implementation. First define the cross-layer delivery contract and its owner.
+- `CommunityIngressPolicy` is called from `MainActivity` and validates both group and Ludo packet vocabularies. Its future owner/contract must account for the Communities and Games split rather than moving it wholesale.
+- `MeshRelayParticipationPolicy` is actively called from `NearbyConnectionsTransport`; moving it directly into `feature.mesh` would create a transport-to-feature dependency unless the gate is injected through an explicit contract.
+- `ChatTransportRouter` and `DirectChatOutbox` have focused source/test files, but no production caller was found in the inspected MainActivity or NearbyConnectionsTransport. Do not move or advertise them as the active outgoing direct-message path until the full production caller graph is established.
+- The tree contains focused tests for `NearbyInboxCommitPolicy`, but no correspondingly named focused test for `NearbyIncomingMessageInbox` or `DirectChatOutbox`. This does not prove there is no indirect coverage; it means their storage/recovery guarantees are not demonstrated by a dedicated test file in the inspected tree.
+- `MeshRelayPolicy` has a focused test but no production callsite was found in the inspected coordinators. It must not be confused with the active `MeshRelayParticipationPolicy` gate.
+
+### Next safe engineering slice
+
+Before package moves, add a testable seam around the service/transport inbox callback and cover these observable invariants:
+
+1. If encrypted inbox persistence fails, the transport acknowledgement callback is never invoked and the pending dedupe reservation is released.
+2. For direct Nearby delivery, the encrypted sender ACK is emitted only after the peer-scoped dedupe record is durably committed.
+3. For destination mesh delivery, the final signed receipt is durably queued before the callback reports success.
+4. If the chat/community domain commit fails, the staged inbox entry remains available for replay.
+5. If the process dies after inbox persistence or after receipt persistence, replay is idempotent and does not create duplicate chat messages or duplicate final receipts.
+6. A failed inbox removal does not erase the only recoverable copy of the incoming event.
+
+The test seam should use fake persistence and transport collaborators; it must not alter packet formats, SharedPreferences keys, encryption, ACK timing, retry identity or Android service lifecycle. Once these tests characterize the current behaviour, the first implementation refactor can introduce narrow interfaces without changing semantics.
+
+This is the next task, not a claim that the tests or interfaces already exist.
+
+## 10. Explicit non-changes in this audit
 
 - No production Kotlin file was changed.
 - No class or package was moved.
