@@ -6,6 +6,7 @@ import android.media.AudioDeviceCallback
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
+import android.media.AudioRouting
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import androidx.compose.foundation.background
@@ -44,6 +45,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.ln
 import kotlin.math.sqrt
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal data class StudioPitchReading(
     val frequencyHz: Float,
@@ -174,25 +176,34 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
     val audioManager = remember(context) {
         context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
     }
-    fun headphoneOutputConnected(): Boolean =
-        audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.any {
-            it.isSink && it.type in setOf(
-                AudioDeviceInfo.TYPE_WIRED_HEADSET,
-                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-                AudioDeviceInfo.TYPE_USB_HEADSET,
-                AudioDeviceInfo.TYPE_USB_DEVICE,
-                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
-                AudioDeviceInfo.TYPE_BLUETOOTH_SCO
-            )
-        } == true
-    var hasHeadphoneOutput by remember(context) { mutableStateOf(headphoneOutputConnected()) }
+    fun headphoneOutputDevices(): List<AudioDeviceInfo> =
+        audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
+            .filter { it.isSink && StudioAudioEnginePolicy.isHeadphoneOutputType(it.type) }
+            .sortedBy {
+                when (it.type) {
+                    AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                    AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                    AudioDeviceInfo.TYPE_USB_HEADSET,
+                    AudioDeviceInfo.TYPE_USB_DEVICE -> 0
+                    else -> 1
+                }
+            }
+    var preferredOutputId by remember(context) {
+        mutableStateOf(headphoneOutputDevices().firstOrNull()?.id)
+    }
+    var hasHeadphoneOutput by remember(context) { mutableStateOf(preferredOutputId != null) }
     DisposableEffect(audioManager) {
+        fun refreshHeadphoneRoute() {
+            val selected = headphoneOutputDevices().firstOrNull()
+            preferredOutputId = selected?.id
+            hasHeadphoneOutput = selected != null
+        }
         val callback = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
-                hasHeadphoneOutput = headphoneOutputConnected()
+                refreshHeadphoneRoute()
             }
             override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
-                hasHeadphoneOutput = headphoneOutputConnected()
+                refreshHeadphoneRoute()
             }
         }
         audioManager?.registerAudioDeviceCallback(callback, android.os.Handler(android.os.Looper.getMainLooper()))
@@ -200,7 +211,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
     }
     val keys = listOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B")
 
-    LaunchedEffect(monitorEnabled, preferredInputId, preferUnprocessedInput, hasHeadphoneOutput, appInForeground) {
+    LaunchedEffect(monitorEnabled, preferredInputId, preferUnprocessedInput, hasHeadphoneOutput, preferredOutputId, appInForeground) {
         if (!appInForeground) {
             monitorEnabled = false
             reading = null
@@ -219,12 +230,18 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
             monitorEnabled = false
             return@LaunchedEffect
         }
+        val selectedOutputId = preferredOutputId
+        if (selectedOutputId == null) {
+            status = "No verified headphone output is available. Live microphone playback remains disabled."
+            monitorEnabled = false
+            return@LaunchedEffect
+        }
         val frameSize = 2_048
         val pitchFrames = StudioPcmFrameAccumulator(frameSize)
         val nativePreferUnprocessed = StudioAudioEnginePolicy.useUnprocessedInput(android.os.Build.VERSION.SDK_INT, preferUnprocessedInput)
         if (StudioAudioEnginePolicy.useOboe(android.os.Build.VERSION.SDK_INT, preferredInputId)) {
             var nativeStarted = withContext(Dispatchers.IO) {
-                StudioOboeEngine.start(preferredInputId, nativePreferUnprocessed)
+                StudioOboeEngine.start(preferredInputId, selectedOutputId, nativePreferUnprocessed)
             }
             var reconnectAttempts = 0
             while (nativeStarted && isActive) {
@@ -259,7 +276,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             val captureDropped = stats.getOrNull(5) ?: 0L
                             val playbackDropped = stats.getOrNull(6) ?: 0L
                             val analysisDropped = stats.getOrNull(7) ?: 0L
-                            routeDisconnected = stats.getOrNull(8) == 1L
+                            routeDisconnected = stats.getOrNull(8) == 1L || !StudioAudioEnginePolicy.matchesPreferredOutput(selectedOutputId, stats.getOrNull(10)?.toInt())
                             val inputRoute = stats.getOrNull(9)?.toInt() ?: -1
                             val outputRoute = stats.getOrNull(10)?.toInt() ?: -1
                             val actualLowLatency = stats.getOrNull(11) == 1L
@@ -270,7 +287,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                     }
                     if (isActive && !StudioOboeEngine.isRunning()) {
                         val finalStats = withContext(Dispatchers.IO) { StudioOboeEngine.diagnostics() }
-                        routeDisconnected = routeDisconnected || finalStats.getOrNull(8) == 1L
+                        routeDisconnected = routeDisconnected || finalStats.getOrNull(8) == 1L || !StudioAudioEnginePolicy.matchesPreferredOutput(selectedOutputId, finalStats.getOrNull(10)?.toInt())
                         if (routeDisconnected) status = "Audio route changed. Reconnecting the live monitor…"
                     }
                 } finally {
