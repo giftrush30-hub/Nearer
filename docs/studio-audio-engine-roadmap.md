@@ -27,7 +27,7 @@ The native diagnostics report the negotiated sample rate, output burst and buffe
 
 ### Pitch-preserving time-stretch investigation
 
-The app currently uses Media3 1.5.1, whose older `SpeedChangingAudioProcessor` couples speed and pitch. The stable Media3 1.11.1 release adds `EditedMediaItem.Builder.setSpeed(SpeedParameters)`, with a dedicated speed-parameter API for Transformer. This dependency upgrade is being isolated and validated before any user-facing tempo control is added. The next implementation step is to configure a constant speed curve with pitch preservation, verify that it is not combined with any separate speed-changing effect, and test output duration, pitch stability, clipping, and composition alignment. Until those tests pass, no pitch-preserving tempo adjustment is claimed.
+The app previously used Media3 1.5.1, whose default speed processor couples speed and pitch. Media3 1.11.1 adds `EditedMediaItem.Builder.setSpeed(SpeedParameters)`; the `shouldMaintainPitch` flag is passed through to the Transformer's `SpeedChangingAudioProcessor`, which leaves Sonic pitch at 1.0 while adjusting speed. Media3 1.11.1 requires compileSdk 36, so the isolated upgrade also moves the Android Gradle Plugin to 8.10.1 and CI Gradle to 8.11.1. The app's `targetSdk` remains 35 and `minSdk` remains 26; compile SDK and target SDK are deliberately kept separate. The next implementation step is to configure a constant speed curve with pitch preservation, verify that it is not combined with any separate speed-changing effect, and test output duration, pitch stability, clipping, and composition alignment. Until those tests pass, no pitch-preserving tempo adjustment is claimed.
 
 ## Android and Oboe compatibility
 
@@ -65,6 +65,7 @@ Do not publish a millisecond latency claim until those measurements exist. Bluet
 ## Architecture sources
 
 - Media3 1.11.1 stable release and pitch-preserving Transformer speed support: https://developer.android.com/jetpack/androidx/releases/media3
+- Android Gradle Plugin 8.10 API 36 and Gradle 8.11.1 compatibility: https://developer.android.com/build/releases/agp-8-10-0-release-notes
 - Media3 EditedMediaItem.Builder.setSpeed(SpeedParameters): https://developer.android.com/reference/androidx/media3/transformer/EditedMediaItem.Builder
 - Jetpack Compose Slider discrete/continuous interaction guidance: https://developer.android.com/develop/ui/compose/components/slider
 - Android low-latency checklist: https://developer.android.com/games/sdk/oboe/low-latency-audio
