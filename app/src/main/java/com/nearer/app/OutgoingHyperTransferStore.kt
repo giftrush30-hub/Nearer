@@ -93,6 +93,12 @@ internal class OutgoingHyperTransferStore(private val directory: File) {
     }
 
     @Synchronized
+    fun containsVerifiedTransfer(transferId: String, peerId: String): Boolean {
+        val normalized = NeaRerIdentity.normalize(peerId) ?: return false
+        return readRecord(recordFile(transferId))?.peerId == normalized
+    }
+
+    @Synchronized
     fun restoreForPeer(peerId: String): List<Record> {
         val normalized = NeaRerIdentity.normalize(peerId) ?: return emptyList()
         if (!directory.isDirectory) return emptyList()

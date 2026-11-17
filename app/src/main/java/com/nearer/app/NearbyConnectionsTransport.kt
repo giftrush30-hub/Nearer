@@ -2842,7 +2842,7 @@ internal object IncomingFilePayloadPolicy {
                 )
                 preparedTransferId = transferId
                 val alreadyInMemory = outgoingHyperStreams.values.any { it.transferId == transferId }
-                val alreadyDurable = outgoingHyperStore.restoreForPeer(peerId).any { it.transferId == transferId }
+                val alreadyDurable = outgoingHyperStore.containsVerifiedTransfer(transferId, peerId)
                 if (alreadyInMemory || alreadyDurable) {
                     preparingHyperStreams.remove(payloadId)
                     prepared.close()
@@ -2887,7 +2887,7 @@ internal object IncomingFilePayloadPolicy {
                 val existing = outgoingHyperStreams[payloadId]
                 val duplicateAlreadyQueued = preparedTransferId?.let { id ->
                     outgoingHyperStreams.values.any { it.transferId == id } ||
-                        outgoingHyperStore.restoreForPeer(peerId).any { it.transferId == id }
+                        outgoingHyperStore.containsVerifiedTransfer(id, peerId)
                 } == true
                 if (duplicateAlreadyQueued && existing == null) {
                     prepared.close()
