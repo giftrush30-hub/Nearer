@@ -299,3 +299,41 @@ This is the next task, not a claim that the tests or interfaces already exist.
 - No relay safety guard was relaxed.
 
 **Next engineering task:** complete the caller/persistence/test matrix for the candidate inventory, then propose the first small, pure-policy extraction with existing and additional regression tests. Do not start with MainActivity or NearbyConnectionsTransport surgery.
+
+
+## 11. Transport listener implementation inventory — confirmed scope
+
+A focused source inspection of the three production coordinators confirms the following concrete listener objects on the current `main` baseline:
+
+| Source | Implementation | Message callbacks | Acknowledgement behaviour | Other event families |
+|---|---|---|---|---|
+| `NearbyTransportService.kt` | `serviceListener = object : NearbyConnectionsTransport.ListenerAdapter()` | Overrides `onMessage`, `onMessageWithReply`, `onMeshMessage`, `onMeshMessageWithReply` and `onMessageStatus`. | Non-typing direct and mesh messages are staged in `NearbyIncomingMessageInbox`; transport callback is invoked only after successful `inbox.put`. The Activity receives a separate completion callback; the inbox is retired only after the Activity reports successful domain commit and the dedupe/receipt boundary is satisfied. | Forwards discovery, connection, mesh-route and file events to the currently attached UI listener. |
+| `MainActivity.kt` | `nearbyListener = object : NearbyConnectionsTransport.Listener` | Overrides `onMessage`, `onMessageWithReply` and `onMessageStatus`; the service normally owns the transport and calls this listener only after inbox staging/replay. | Processes message/control/community content on the UI thread. It invokes the callback supplied by the service only when the relevant handler reports safe storage. This callback is the local-domain-commit/inbox-retirement stage, not the original transport ACK. | Handles status, discovery, connection state, Mesh route changes, file progress/receipt/status and other app-shell state. |
+| `NearbyConnectionsTransport.kt` | `Listener` interface and `ListenerAdapter` base class | Interface requires `onMessage`; reply and mesh callbacks default-bridge to simpler message callbacks. Adapter's `onMessage` invokes `acknowledge()` by default. | The adapter default is an implicit ACK and is unsafe for a future subclass that does not override message handling and durably accept the event. | One combined contract covers discovery, connection, message, Mesh route and file-transfer events. |
+
+### Important special case: ephemeral typing events
+
+The service treats `NR_TYPING:` separately from durable chat messages. It forwards typing directly to the attached UI listener and does not stage it in the encrypted inbox. If there is no UI listener, or forwarding throws, the service currently invokes the supplied acknowledgement callback. The Activity's typing handler returns whether the event was accepted by its typing-state handler. This is an ephemeral, best-effort path and must not be described as having the same durable replay guarantee as ordinary messages.
+
+The same direct-forwarding pattern exists for Mesh typing events. Any future listener split must preserve the explicit distinction between ephemeral typing signals and durable message/control events; tests should prove that a typing ACK cannot be confused with a persisted-message commit.
+
+### What this inventory establishes — and what it does not
+
+- Two concrete production listener objects were directly inspected: the service-owned adapter subclass and the Activity's direct interface implementation.
+- The service is the transport's listener at construction time; the Activity is attached as a UI listener through the binder. The transport therefore has one active service listener, while the service delegates selected events to the attached Activity.
+- The adapter's acknowledge-by-default implementation is confirmed in source, not merely inferred from its name.
+- The service listener explicitly overrides all four message delivery callback variants, so the dangerous adapter default is not used for its ordinary direct/mesh message paths.
+- This focused inspection is not yet a repository-wide proof that no other anonymous or named implementations exist in other production or test files. The complete all-source implementor search remains open; do not change the adapter default until that sweep and compatibility tests are complete.
+- No dedicated test was found in the inspected test inventory that instantiates `ListenerAdapter` to assert the default ACK behaviour, or exercises the complete service -> encrypted inbox -> Activity commit -> inbox retirement sequence. Existing pure policy tests do not substitute for those integration-contract tests.
+
+### Listener contract test cases to add before interface extraction
+
+1. A bare `ListenerAdapter` subclass that does not override message handling demonstrates the current default ACK behaviour. Mark this as a compatibility hazard, not desired future semantics.
+2. A listener that explicitly declines or cannot persist an ordinary message must not ACK it.
+3. Direct and Mesh ordinary messages must not ACK before encrypted inbox persistence succeeds.
+4. Activity/domain commit failure must leave the staged inbox event available for replay; successful commit may retire it only after the dedupe/receipt condition is met.
+5. Direct and Mesh typing events remain ephemeral and are tested separately from durable message delivery.
+6. A UI listener throwing during durable dispatch must not cause the durable inbox copy to be deleted.
+7. Replaying an already staged event after rebind/restart must remain idempotent and must not duplicate the domain message or final Mesh receipt.
+
+These are proposed regression cases; they are not claimed to exist or pass yet.
