@@ -72,7 +72,12 @@ internal object StudioAudioProjectCodec {
                     val name = item.optString("name", "Audio track").ifBlank { "Audio track" }
                     val durationMs = item.optLong("durationMs", 0L).coerceAtLeast(0L)
                     val clipStartMs = item.optLong("clipStartMs", 0L).coerceIn(0L, durationMs)
-                    val clipEndMs = if (durationMs > 0L) item.optLong("clipEndMs", durationMs).coerceIn((clipStartMs + 1L).coerceAtMost(durationMs), durationMs) else 0L
+                    // Avoid Long overflow when a malformed imported project uses Long.MAX_VALUE
+                    // for both the source duration and trim-in position.
+                    val minimumClipEndMs = if (clipStartMs < durationMs) clipStartMs + 1L else durationMs
+                    val clipEndMs = if (durationMs > 0L) {
+                        item.optLong("clipEndMs", durationMs).coerceIn(minimumClipEndMs, durationMs)
+                    } else 0L
                     add(StudioAudioProjectTrackState(
                         uri = uri,
                         name = name,
