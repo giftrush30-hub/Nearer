@@ -303,7 +303,7 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                 reading = null
                 delay(350)
                 nativeStarted = withContext(Dispatchers.IO) {
-                    StudioOboeEngine.start(preferredInputId, nativePreferUnprocessed)
+                    StudioOboeEngine.start(preferredInputId, selectedOutputId, nativePreferUnprocessed)
                 }
             }
             if (isActive && nativeStarted) return@LaunchedEffect
