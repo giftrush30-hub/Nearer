@@ -92,6 +92,13 @@ class StudioTempoAutomationPolicyTest {
         assertEquals(C.TIME_UNSET, provider.getNextSpeedChangeTimeUs(300_000))
     }
 
+    @Test fun automationWindowCapsAtThirtySecondsAndHoldsTheLastSpeedAfterward() {
+        val ramp = StudioTempoAutomationPolicy.twoPointRamp(1f, 2f, 60_000L)
+        assertEquals(30_000L, ramp.last().timeMs)
+        val outputDuration = StudioTempoAutomationPolicy.outputDurationMs(ramp, 60_000L)
+        assertEquals(45_000L, outputDuration)
+    }
+
     @Test fun constantTempoDoesNotScheduleUnnecessaryChanges() {
         val provider = StudioTempoAutomationSpeedProvider(
             listOf(StudioTempoPoint(0, 1f), StudioTempoPoint(1_000, 1f)),
