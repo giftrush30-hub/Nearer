@@ -61,6 +61,13 @@ class StudioTrackToneProcessorTest {
         assertTrue("Low EQ boost should increase low-frequency RMS", rms(boosted) > rms(flat) * 1.5)
     }
 
+    @Test fun midBandBoostRaisesVoicePresenceEnergy() {
+        val input = tone(1_000.0)
+        val flat = process(input)
+        val boosted = process(input, midDb = 6f)
+        assertTrue("Mid EQ boost should increase mid-frequency RMS", rms(boosted) > rms(flat) * 1.5)
+    }
+
     @Test fun highBandBoostRaisesHighFrequencyEnergy() {
         val input = tone(8_000.0)
         val flat = process(input)
