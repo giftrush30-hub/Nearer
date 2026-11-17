@@ -98,12 +98,26 @@ internal class VerifiedTransferReceiptStore(private val directory: File) {
             val file = File(path).canonicalFile
             val receivedRoot = File(directory.parentFile, "received").canonicalFile
             if (!file.path.startsWith(receivedRoot.path + File.separator) ||
-                !file.isFile || file.length() != size) return false
+                !file.isFile || file.length() != size ||
+                !hash(file).equals(sha, ignoreCase = true)) return false
             ReceiptRecord(storedPeer, transferId, itemId, sha, size, file)
         } catch (_: Exception) {
             null
         } ?: return false
         return record.peerId == normalized
+    }
+
+    private fun hash(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(128 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count > 0) digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun recordFile(transferId: String, itemId: String): File =

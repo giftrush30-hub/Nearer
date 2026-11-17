@@ -63,6 +63,28 @@ class VerifiedTransferReceiptStoreTest {
     }
 
     @Test
+    fun receiptIsRejectedWhenPublishedBytesAreTamperedWithoutChangingSize() {
+        val root = Files.createTempDirectory("nearer-verified-receipt-tamper").toFile()
+        try {
+            val received = File(root, "received").apply { mkdirs() }
+            val journal = File(root, "hypertransfer-completed")
+            val original = byteArrayOf(1, 2, 3, 4, 5)
+            val completed = File(received, "received.bin").apply { writeBytes(original) }
+            val metadata = TransferResumeStreamMetadataCodec.Metadata(
+                252L, "transfer-tamper",
+                TransferBundleItem("item-tamper", "clip.bin", "clip.bin", original.size.toLong(), null),
+                null, sha(original)
+            )
+            val store = VerifiedTransferReceiptStore(journal)
+            store.record(peer, metadata, completed, sha(original))
+            completed.writeBytes(byteArrayOf(9, 9, 9, 9, 9))
+            assertFalse(store.containsVerified(peer, metadata))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun refusesToJournalFilesOutsideThePrivateReceivedDirectory() {
         val root = Files.createTempDirectory("nearer-verified-receipt-path").toFile()
         try {
