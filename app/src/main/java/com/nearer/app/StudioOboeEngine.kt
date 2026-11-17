@@ -51,7 +51,8 @@ internal object StudioAudioEnginePolicy {
     /** Generic USB/A2DP outputs may be speakers, so require explicit user confirmation. */
     fun requiresOutputConfirmation(type: Int): Boolean = type in setOf(
         android.media.AudioDeviceInfo.TYPE_USB_DEVICE,
-        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO
     )
 
     /** The active output must match the exact external headphone route selected by Android. */
