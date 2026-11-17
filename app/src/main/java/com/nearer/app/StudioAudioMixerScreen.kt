@@ -861,7 +861,9 @@ private fun inspectStudioAudioExport(file: File): StudioAudioExportInspection {
     return try {
         retriever.setDataSource(file.absolutePath)
         StudioAudioExportInspection(
-            hasAudioTrack = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) != null,
+            hasAudioTrack = StudioAudioExportPolicy.metadataReportsAudioTrack(
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO)
+            ),
             durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 ?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
         )
