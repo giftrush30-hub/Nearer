@@ -99,15 +99,26 @@ internal object StudioAudioProjectCodec {
     private fun decodeTempoPoints(item: JSONObject, durationMs: Long): List<StudioTempoPoint> {
         val array = item.optJSONArray("tempoPoints") ?: return emptyList()
         if (array.length() == 0) return emptyList()
-        val points = buildList {
-            for (index in 0 until array.length()) {
-                val point = array.optJSONObject(index) ?: continue
-                add(StudioTempoPoint(
-                    timeMs = point.optLong("timeMs", 0L),
-                    speed = point.optDouble("speed", 1.0).toFloat()
-                ))
+        // Keep the first 31 editable points and the final intent if an imported project
+        // contains more than the supported 32. Taking the first 32 would silently discard
+        // the user's final tempo target.
+        val points = ArrayList<StudioTempoPoint>(
+            minOf(array.length(), StudioTempoAutomationPolicy.MAX_KEYFRAMES)
+        )
+        var finalPoint: StudioTempoPoint? = null
+        for (index in 0 until array.length()) {
+            val point = array.optJSONObject(index) ?: continue
+            val decoded = StudioTempoPoint(
+                timeMs = point.optLong("timeMs", 0L),
+                speed = point.optDouble("speed", 1.0).toFloat()
+            )
+            if (points.size < StudioTempoAutomationPolicy.MAX_KEYFRAMES) {
+                points += decoded
+            } else {
+                finalPoint = decoded
             }
         }
-        return StudioTempoAutomationPolicy.normalize(points.take(StudioTempoAutomationPolicy.MAX_KEYFRAMES), durationMs)
+        if (finalPoint != null) points[points.lastIndex] = finalPoint
+        return StudioTempoAutomationPolicy.normalize(points, durationMs)
     }
 }
