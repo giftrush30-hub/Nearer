@@ -150,7 +150,11 @@ class NearbyTransportService : Service() {
                 return
             }
             // Notify only after durable inbox commit. The text remains generic for lock-screen privacy.
-            PrivateMessageNotification.show(applicationContext, messageId, isNewInboxEntry, inboxPersisted = true)
+            if (ChatNotificationPolicy.isUserVisibleMessageBody(body)) {
+                if (ChatNotificationPolicy.isUserVisibleMessageBody(body)) {
+                PrivateMessageNotification.show(applicationContext, messageId, isNewInboxEntry, inboxPersisted = true)
+            }
+            }
             // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
             val dedupeCommitted = runCatching { acknowledge() }.getOrDefault(false)
             val acknowledgementAllowed = NearbyInboxCommitPolicy.canAcknowledge(inboxCommitted = true, dedupeCommitted = dedupeCommitted)
