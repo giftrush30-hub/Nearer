@@ -558,6 +558,7 @@ private fun createStudioTimelineSilence(context: android.content.Context, durati
         fun le(value: Int, bytes: Int) { repeat(bytes) { stream.write((value ushr (it * 8)) and 0xff) } }
         ascii("RIFF"); le(36 + dataSize, 4); ascii("WAVE")
         ascii("fmt "); le(16, 4); le(1, 2); le(channels, 2)
+        le(sampleRate, 4); le(sampleRate * channels * bitsPerSample / 8, 4)
         le(channels * bitsPerSample / 8, 2); le(bitsPerSample, 2)
         ascii("data"); le(dataSize, 4)
         val silence = ByteArray(16 * 1024)
