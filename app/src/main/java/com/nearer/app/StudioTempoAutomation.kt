@@ -3,6 +3,7 @@ package com.nearer.app
 import androidx.media3.common.C
 import androidx.media3.common.SpeedParameters
 import androidx.media3.common.util.ExperimentalApi
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.audio.SpeedProvider
 import kotlin.math.roundToLong
 
@@ -56,7 +57,7 @@ internal object StudioTempoAutomationPolicy {
         return (previous.speed + (next.speed - previous.speed) * progress).coerceIn(MIN_SPEED, MAX_SPEED)
     }
 
-    @OptIn(ExperimentalApi::class)
+    @OptIn(ExperimentalApi::class, UnstableApi::class)
     fun speedParameters(points: List<StudioTempoPoint>, durationMs: Long): SpeedParameters =
         SpeedParameters(StudioTempoAutomationSpeedProvider(points, durationMs), /* shouldMaintainPitch= */ true)
 
@@ -69,7 +70,7 @@ internal object StudioTempoAutomationPolicy {
     }
 }
 
-@androidx.media3.common.util.UnstableApi
+@UnstableApi
 internal class StudioTempoAutomationSpeedProvider(
     points: List<StudioTempoPoint>,
     durationMs: Long
