@@ -154,6 +154,12 @@ The `commit()` call is deliberate for synchronous durability before some deliver
 
 Do not silently clear history or change the storage format during a package-only refactor. Do not claim chat history is encrypted at rest until the migration and verification are implemented.
 
+### Risk F — ListenerAdapter has an implicit acknowledge-by-default behaviour
+
+The inspected `NearbyConnectionsTransport.ListenerAdapter.onMessage()` implementation invokes `acknowledge()` unless a subclass overrides it. This convenience default can turn an unhandled incoming message into a transport acknowledgement without proving that a durable inbox or domain store accepted it. The current service listener does override the callback and uses the encrypted inbox, but the base class remains a hazardous extension point.
+
+**Decision:** Do not change this default as a side effect of package organisation. First enumerate all implementations and call sites, add a regression test for the intended no-handler behaviour, then migrate to an explicit opt-in acknowledgement contract. Preserve compatibility deliberately rather than silently changing delivery semantics.
+
 ### Risk E — Source package does not express domain boundaries
 
 The inspected files currently live in the broad com.nearer.app package. Ownership is not enforced by package structure. Moving files into feature packages without resolving dependencies could create cycles or accidental access to UI implementation details.
@@ -185,6 +191,27 @@ core.security = identity, trust, key and cryptographic primitives/contracts
 ~~~
 
 This is target dependency direction, not a statement that these packages or interfaces already exist.
+
+### 6.1 Current dependency violations and mixed contracts found in source
+
+The target diagram above is not the current dependency graph. The following concrete couplings were verified in the inspected source:
+
+| Current edge | Evidence in current source | Why it matters | Safe target boundary |
+|---|---|---|---|
+| Nearby foreground service -> Messaging persistence | `NearbyTransportService` constructs and calls `NearbyIncomingMessageInbox` directly, and uses `NearbyInboxCommitPolicy` to decide retirement. | The service owns Android lifecycle but also knows a concrete chat inbox implementation and its domain durability policy. | Define a small incoming-delivery store/commit contract. Keep the service responsible for lifecycle/replay; inject the store implementation from the app composition root. |
+| Nearby foreground service -> Messaging notification policy | `NearbyTransportService` calls `ChatNotificationPolicy.isUserVisibleMessageBody()` and `PrivateMessageNotification.show()`. | A core transport lifecycle component makes product-specific message visibility and notification decisions. | Inject a notification/presentation port or publish a typed event; let the Messaging/platform notification adapter decide whether and how to notify. Keep generic service-status notifications in Nearby. |
+| Nearby foreground service -> Activity class | Its foreground notification creates a `PendingIntent` targeting `MainActivity`. | This is an app-shell navigation dependency, not a domain dependency. | Supply an app-provided notification intent factory or navigation PendingIntent at composition time. Do not make the service depend on a feature screen. |
+| Nearby service -> combined transport listener | The binder attaches a `NearbyConnectionsTransport.Listener`; the same listener contains discovery, connection, direct/mesh message, message-status, file progress, file received and file status callbacks. | Messaging and Share are coupled through one broad event surface. | Split into typed nearby-session, message-delivery and file-transfer event ports, with a compatibility adapter during migration. |
+| Nearby transport -> Mesh and Share implementation | `NearbyConnectionsTransport` owns mesh route/receipt stores and state as well as file metadata, payload and stream state. | One SDK coordinator owns three different domains and their recovery rules. | Keep the SDK connection adapter narrow; inject Mesh protocol and Share payload collaborators behind stable contracts. Extract only after tests characterize lifecycle and callback order. |
+| App shell -> every feature | `MainActivity.kt` remains the listener and composition point for chat messages, community packets, game-related packet handling, file events and many other screens/states. | The Activity is acting as both composition root and feature implementation host. | Retain it as Android entry point, then delegate by feature-specific state holders/use cases. Do not move the Activity wholesale. |
+
+**Important callback hazard:** `NearbyConnectionsTransport.ListenerAdapter.onMessage()` currently calls the supplied `acknowledge()` callback by default. That is not a safe generic default for a listener that has not durably stored a message. The service-owned listener explicitly overrides the message callbacks and stages messages in the encrypted inbox, but future listeners that inherit the adapter without overriding message handling could accidentally acknowledge without a durable domain commit. Treat this as a high-priority contract/test issue. Before changing the default, enumerate all Listener and ListenerAdapter implementations and test compatibility; the safe eventual contract should make acknowledgement opt-in and explicit.
+
+The current `NearbyTransportService` path has two separate callbacks with the same Kotlin type `() -> Boolean` but different meanings:
+- the transport-supplied callback, invoked by the service after encrypted inbox persistence, establishes the peer-scoped dedupe/transport ACK (or mesh receipt) boundary;
+- the callback passed from the service to the Activity listener is invoked only after the Activity has successfully persisted chat/community state, and then retires the staged inbox entry.
+
+Keep these two stages separately named in any future interface. A generic `acknowledge` name obscures the difference between sender transport acknowledgement and local domain-commit completion.
 
 Rules:
 - UI may call feature use cases; domain policies must not import Compose or Activity classes.
