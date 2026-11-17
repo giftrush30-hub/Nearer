@@ -82,11 +82,20 @@ internal object StudioTempoAutomationPolicy {
         val normalized = normalize(points, safeDuration)
         var sourceCursorMs = 0L
         var outputDurationMs = 0.0
-        while (sourceCursorMs < safeDuration) {
+        // Only the first 30 seconds can contain automation. Integrate those exact 20 ms
+        // samples, then account for the remaining (constant-speed) tail in one operation.
+        // This policy is also called during Compose recomposition, so work must not scale
+        // with the full duration of multi-hour recordings.
+        val sampledWindowMs = minOf(safeDuration, MAX_AUTOMATION_MS)
+        while (sourceCursorMs < sampledWindowMs) {
             val speed = speedAt(normalized, sourceCursorMs).coerceIn(MIN_SPEED, MAX_SPEED)
-            val segmentMs = minOf(STEP_MS, safeDuration - sourceCursorMs)
+            val segmentMs = minOf(STEP_MS, sampledWindowMs - sourceCursorMs)
             outputDurationMs += segmentMs.toDouble() / speed.toDouble()
             sourceCursorMs += segmentMs
+        }
+        if (safeDuration > sampledWindowMs) {
+            val heldSpeed = speedAt(normalized, sampledWindowMs).coerceIn(MIN_SPEED, MAX_SPEED)
+            outputDurationMs += (safeDuration - sampledWindowMs).toDouble() / heldSpeed.toDouble()
         }
         return outputDurationMs.roundToLong().coerceAtLeast(1L)
     }
