@@ -127,7 +127,7 @@ The foreground service is responsible for durable staging, but the Activity list
 
 ### Risk D — Chat history persistence is not encrypted by the current writer
 
-MainActivity.persistMessages serializes the locally retained chat history to JSON and writes it directly to the SharedPreferences key messages using commit(). The inspected writer does not pass that JSON through LocalDataCipher. This is distinct from NearbyIncomingMessageInbox and DirectChatOutbox, which do encrypt their stored payloads. Therefore, do not describe the entire chat history as encrypted at rest merely because the transport inbox/outbox are encrypted.
+MainActivity.persistMessages serializes the locally retained chat history to JSON and writes it directly to the SharedPreferences key messages using commit(); restoreLocalData reads that value back as a JSONArray. The inspected read/write path does not pass the chat-history JSON through LocalDataCipher. This is distinct from NearbyIncomingMessageInbox and DirectChatOutbox, which do encrypt their stored payloads. Therefore, do not describe the entire chat history as encrypted at rest merely because the transport inbox/outbox are encrypted.
 
 **Decision:** Record this as a security and data-migration item for Messaging. Before changing storage, inspect the matching restore path, define a safe encrypted migration that preserves existing local history, and test corrupted/locked ciphertext and write failures. Do not silently clear history or change the storage format during a package-only refactor.
 
