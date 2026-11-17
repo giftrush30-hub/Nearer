@@ -4,6 +4,24 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+/**
+ * Converts milliseconds to PCM frames without overflowing on malformed metadata.
+ * Splitting whole seconds from the remainder keeps the fractional multiplication bounded.
+ */
+internal fun studioAudioMillisecondsToFrames(milliseconds: Long, sampleRate: Int): Long {
+    val safeMilliseconds = milliseconds.coerceAtLeast(0L)
+    val safeSampleRate = sampleRate.coerceAtLeast(0).toLong()
+    if (safeSampleRate == 0L) return 0L
+    val wholeSeconds = safeMilliseconds / 1_000L
+    val remainingMs = safeMilliseconds % 1_000L
+    if (wholeSeconds > Long.MAX_VALUE / safeSampleRate) return Long.MAX_VALUE
+    val wholeFrames = wholeSeconds * safeSampleRate
+    val fractionalFrames = remainingMs * safeSampleRate / 1_000L
+    return if (wholeFrames > Long.MAX_VALUE - fractionalFrames) {
+        Long.MAX_VALUE
+    } else wholeFrames + fractionalFrames
+}
+
 /** Pure sample-frame envelope used by the offline mixer and its unit tests. */
 internal fun studioAudioGainAtFrame(
     frame: Long,
