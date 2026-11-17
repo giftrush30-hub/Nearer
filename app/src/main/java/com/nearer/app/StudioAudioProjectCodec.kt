@@ -48,8 +48,10 @@ internal object StudioAudioProjectCodec {
                 .put("clipEndMs", track.clipEndMs.coerceAtLeast(track.clipStartMs))
                 .put("startOffsetMs", track.startOffsetMs.coerceIn(0L, 30_000L))
                 .put("tempoPoints", JSONArray().apply {
-                    StudioTempoAutomationPolicy.normalize(track.tempoPoints, track.durationMs).forEach { point ->
-                        put(JSONObject().put("timeMs", point.timeMs).put("speed", point.speed.toDouble()))
+                    if (track.tempoPoints.isNotEmpty()) {
+                        StudioTempoAutomationPolicy.normalize(track.tempoPoints, track.durationMs).forEach { point ->
+                            put(JSONObject().put("timeMs", point.timeMs).put("speed", point.speed.toDouble()))
+                        }
                     }
                 }))
         }
@@ -96,6 +98,7 @@ internal object StudioAudioProjectCodec {
 
     private fun decodeTempoPoints(item: JSONObject, durationMs: Long): List<StudioTempoPoint> {
         val array = item.optJSONArray("tempoPoints") ?: return emptyList()
+        if (array.length() == 0) return emptyList()
         val points = buildList {
             for (index in 0 until array.length()) {
                 val point = array.optJSONObject(index) ?: continue
