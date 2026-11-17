@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -355,8 +357,51 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                             } else {
                                 Text("REAL AUDIO WAVEFORM · SELECTED CLIP HIGHLIGHTED", color = Mint, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                                 Canvas(
-                                    modifier = Modifier.fillMaxWidth().height(54.dp)
+                                    modifier = Modifier.fillMaxWidth().height(60.dp)
                                         .background(Panel, RoundedCornerShape(8.dp))
+                                        .pointerInput(track.uri, track.durationMs) {
+                                            var activeHandle: Int? = null
+                                            detectDragGestures(
+                                                onDragStart = { down ->
+                                                    val current = tracks.getOrNull(index)
+                                                    if (current != null && current.durationMs > 0L) {
+                                                        val startX = current.clipStartMs.toFloat() / current.durationMs * size.width
+                                                        val endX = current.clipEndMs.toFloat() / current.durationMs * size.width
+                                                        val startDistance = kotlin.math.abs(down.x - startX)
+                                                        val endDistance = kotlin.math.abs(down.x - endX)
+                                                        val hitSlop = 24.dp.toPx()
+                                                        activeHandle = when {
+                                                            startDistance <= hitSlop && startDistance <= endDistance -> 0
+                                                            endDistance <= hitSlop -> 1
+                                                            else -> null
+                                                        }
+                                                    }
+                                                },
+                                                onDrag = { change, _ ->
+                                                    val handle = activeHandle
+                                                    val current = tracks.getOrNull(index)
+                                                    if (handle != null && current != null && current.durationMs > 0L) {
+                                                        change.consume()
+                                                        val fraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                                        val requestedMs = (fraction * current.durationMs).toLong()
+                                                        val next = if (handle == 0) {
+                                                            StudioAudioClipRangePolicy.moveStart(
+                                                                current.clipStartMs, current.clipEndMs, requestedMs, current.durationMs
+                                                            )
+                                                        } else {
+                                                            StudioAudioClipRangePolicy.moveEnd(
+                                                                current.clipStartMs, current.clipEndMs, requestedMs, current.durationMs
+                                                            )
+                                                        }
+                                                        tracks[index] = if (handle == 0) current.copy(clipStartMs = next)
+                                                            else current.copy(clipEndMs = next)
+                                                        exported = null
+                                                    }
+                                                },
+                                                onDragEnd = { activeHandle = null },
+                                                onDragCancel = { activeHandle = null }
+                                            )
+                                        }
                                 ) {
                                     val gap = 2.dp.toPx()
                                     val barWidth = ((size.width - gap * (waveformPeaks.size - 1)) / waveformPeaks.size).coerceAtLeast(1f)
@@ -366,7 +411,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                         val fraction = (bar + 0.5f) / waveformPeaks.size
                                         val selected = fraction >= startFraction && fraction <= endFraction
                                         val x = bar * (barWidth + gap) + barWidth / 2f
-                                        val halfHeight = (amplitude.coerceIn(0f, 1f) * size.height * 0.46f).coerceAtLeast(1.2f)
+                                        val halfHeight = (amplitude.coerceIn(0f, 1f) * size.height * 0.40f).coerceAtLeast(1.2f)
                                         drawLine(
                                             color = if (selected) Color(0xFF35D6B0) else Color(0xFF52636D),
                                             start = Offset(x, size.height / 2f - halfHeight),
@@ -375,7 +420,15 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                             cap = StrokeCap.Round
                                         )
                                     }
+                                    val startX = size.width * startFraction
+                                    val endX = size.width * endFraction
+                                    drawLine(Color(0xFFFFC857), Offset(startX, 3.dp.toPx()), Offset(startX, size.height - 3.dp.toPx()), 2.dp.toPx())
+                                    drawLine(Color(0xFFFFC857), Offset(endX, 3.dp.toPx()), Offset(endX, size.height - 3.dp.toPx()), 2.dp.toPx())
+                                    drawCircle(Color(0xFFFFC857), 4.dp.toPx(), Offset(startX, size.height / 2f))
+                                    drawCircle(Color(0xFFFFC857), 4.dp.toPx(), Offset(endX, size.height / 2f))
                                 }
+                                Text("DRAG THE GOLD IN / OUT HANDLES TO TRIM · USE THE SLIDERS BELOW FOR PRECISION",
+                                    color = Muted, fontSize = 8.sp, lineHeight = 11.sp)
                             }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Mute layer", color = Muted, fontSize = 11.sp)
