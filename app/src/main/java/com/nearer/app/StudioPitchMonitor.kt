@@ -326,14 +326,42 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                     }
                     .build()
                     .also { audioRecord ->
-                        if (preferredInputId != null) {
-                            val preferred = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
-                            val device = preferred?.getDevices(AudioManager.GET_DEVICES_INPUTS)?.firstOrNull { it.id == preferredInputId }
-                            check(device != null && audioRecord.setPreferredDevice(device)) {
-                                "Android could not route the live monitor to the selected USB microphone. Reconnect it or choose Phone Default."
+                        try {
+                            if (preferredInputId != null) {
+                                val preferred = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
+                                val device = preferred?.getDevices(AudioManager.GET_DEVICES_INPUTS)?.firstOrNull { it.id == preferredInputId }
+                                check(device != null && audioRecord.setPreferredDevice(device)) {
+                                    "Android could not route the live monitor to the selected USB microphone. Reconnect it or choose Phone Default."
+                                }
                             }
+                            check(audioRecord.state == AudioRecord.STATE_INITIALIZED) {
+                                "Android could not initialise the selected microphone."
+                            }
+                            audioRecord.startRecording()
+                            if (preferredInputId != null) {
+                                // setPreferredDevice() confirms a valid preference, not the active route.
+                                // Wait briefly for Android to publish the actual recording device.
+                                var routedToRequestedInput = false
+                                for (attempt in 0 until 10) {
+                                    if (StudioAudioEnginePolicy.matchesPreferredInput(
+                                            preferredInputId, audioRecord.routedDevice?.id
+                                        )) {
+                                        routedToRequestedInput = true
+                                        break
+                                    }
+                                    android.os.SystemClock.sleep(50L)
+                                }
+                                check(routedToRequestedInput) {
+                                    "Android did not activate the selected USB microphone. Reconnect it or choose Phone Default."
+                                }
+                            }
+                        } catch (error: Exception) {
+                            if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                                runCatching { audioRecord.stop() }
+                            }
+                            runCatching { audioRecord.release() }
+                            throw error
                         }
-                        if (audioRecord.state == AudioRecord.STATE_INITIALIZED) audioRecord.startRecording()
                     }
             }.getOrNull()
         }

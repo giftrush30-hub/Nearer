@@ -23,6 +23,14 @@ class StudioAudioEnginePolicyTest {
         assertTrue(StudioAudioEnginePolicy.useOboe(28, 12))
     }
 
+    @Test fun selectedInputMustBeTheActuallyRoutedDevice() {
+        assertTrue(StudioAudioEnginePolicy.matchesPreferredInput(12, 12))
+        assertFalse(StudioAudioEnginePolicy.matchesPreferredInput(12, 7))
+        assertFalse(StudioAudioEnginePolicy.matchesPreferredInput(12, null))
+        assertTrue(StudioAudioEnginePolicy.matchesPreferredInput(null, 7))
+        assertTrue(StudioAudioEnginePolicy.matchesPreferredInput(null, null))
+    }
+
     @Test fun unprocessedPresetIsOnlyRequestedFromApi28() {
         assertFalse(StudioAudioEnginePolicy.useUnprocessedInput(27, true))
         assertTrue(StudioAudioEnginePolicy.useUnprocessedInput(28, true))

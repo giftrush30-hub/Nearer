@@ -5,13 +5,16 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -29,10 +32,15 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +59,7 @@ import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import java.io.File
 import java.util.Locale
@@ -136,7 +145,30 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     var finalMixSelected by remember { mutableStateOf(false) }
     var finalMixPlaying by remember { mutableStateOf(false) }
     var expandedTrackEffects by remember { mutableStateOf(setOf<String>()) }
+    val waveformByUri = remember { mutableStateMapOf<String, List<Float>>() }
+    var waveformRequestUri by remember { mutableStateOf<String?>(null) }
+    var waveformLoadingUri by remember { mutableStateOf<String?>(null) }
     val previewPlayer = remember(context) { ExoPlayer.Builder(context).build() }
+
+    LaunchedEffect(currentProjectId, tracks.map { it.uri.toString() }, waveformRequestUri) {
+        val key = waveformRequestUri ?: return@LaunchedEffect
+        val target = tracks.firstOrNull { it.uri.toString() == key }
+        if (target != null && waveformByUri[key] == null) {
+            waveformLoadingUri = key
+            try {
+                val waveform = StudioAudioWaveformExtractor.extract(context, target.uri, target.durationMs)
+                waveformByUri[key] = waveform.peaks
+                message = "Real audio waveform generated · ${waveform.peaks.size} amplitude windows."
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                message = "Waveform unavailable: ${error.message ?: "this audio format could not be decoded"}"
+            } finally {
+                if (waveformLoadingUri == key) waveformLoadingUri = null
+                if (waveformRequestUri == key) waveformRequestUri = null
+            }
+        }
+    }
 
     DisposableEffect(previewPlayer) {
         val playbackListener = object : Player.Listener {
@@ -202,8 +234,18 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 currentProjectId = created.id
                 exported = null
             } else {
-                val index = projects.indexOfFirst { it.id == currentProjectId }
-                if (index >= 0) projects[index] = projects[index].copy(name = safeName, updatedAtMs = System.currentTimeMillis())
+                val renamed = StudioAudioProjectLibraryCodec.rename(
+                    projects = projects.toList(),
+                    projectId = currentProjectId,
+                    rawName = safeName,
+                    activeTracks = tracks.map { it.toProjectState() },
+                    updatedAtMs = System.currentTimeMillis()
+                )
+                projects.clear()
+                projects.addAll(renamed)
+                projectPreferences.edit()
+                    .putString("projects_v1", StudioAudioProjectLibraryCodec.encode(renamed))
+                    .apply()
             }
             showProjectNameDialog = false
         }) { Text(if (creatingProject) "CREATE" else "SAVE") } },
@@ -301,6 +343,94 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                     exported = null
                                 }.padding(4.dp))
                             }
+                            val waveformKey = track.uri.toString()
+                            val waveformPeaks = waveformByUri[waveformKey]
+                            if (waveformPeaks == null) {
+                                Button(
+                                    onClick = { waveformRequestUri = waveformKey },
+                                    enabled = waveformLoadingUri == null,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)
+                                ) {
+                                    Text(if (waveformLoadingUri == waveformKey) "DECODING AUDIO WAVEFORM…" else "GENERATE REAL WAVEFORM")
+                                }
+                            } else {
+                                Text("REAL AUDIO WAVEFORM · SELECTED CLIP HIGHLIGHTED", color = Mint, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                Canvas(
+                                    modifier = Modifier.fillMaxWidth().height(60.dp)
+                                        .background(Panel, RoundedCornerShape(8.dp))
+                                        .pointerInput(track.uri, track.durationMs) {
+                                            var activeHandle: Int? = null
+                                            detectHorizontalDragGestures(
+                                                onDragStart = { down ->
+                                                    val current = tracks.firstOrNull { it.uri == track.uri }
+                                                    if (current != null && current.durationMs > 0L) {
+                                                        val startX = current.clipStartMs.toFloat() / current.durationMs * size.width
+                                                        val endX = current.clipEndMs.toFloat() / current.durationMs * size.width
+                                                        val startDistance = kotlin.math.abs(down.x - startX)
+                                                        val endDistance = kotlin.math.abs(down.x - endX)
+                                                        val hitSlop = 24.dp.toPx()
+                                                        activeHandle = when {
+                                                            startDistance <= hitSlop && startDistance <= endDistance -> 0
+                                                            endDistance <= hitSlop -> 1
+                                                            else -> null
+                                                        }
+                                                    }
+                                                },
+                                                onHorizontalDrag = { change, _ ->
+                                                    val handle = activeHandle
+                                                    val currentIndex = tracks.indexOfFirst { it.uri == track.uri }
+                                                    val current = tracks.getOrNull(currentIndex)
+                                                    if (handle != null && currentIndex >= 0 && current != null && current.durationMs > 0L) {
+                                                        change.consume()
+                                                        val fraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                                        val requestedMs = (fraction * current.durationMs).toLong()
+                                                        val next = if (handle == 0) {
+                                                            StudioAudioClipRangePolicy.moveStart(
+                                                                current.clipStartMs, current.clipEndMs, requestedMs, current.durationMs
+                                                            )
+                                                        } else {
+                                                            StudioAudioClipRangePolicy.moveEnd(
+                                                                current.clipStartMs, current.clipEndMs, requestedMs, current.durationMs
+                                                            )
+                                                        }
+                                                        tracks[currentIndex] = if (handle == 0) current.copy(clipStartMs = next)
+                                                            else current.copy(clipEndMs = next)
+                                                        exported = null
+                                                    }
+                                                },
+                                                onDragEnd = { activeHandle = null },
+                                                onDragCancel = { activeHandle = null }
+                                            )
+                                        }
+                                ) {
+                                    val gap = 2.dp.toPx()
+                                    val barWidth = ((size.width - gap * (waveformPeaks.size - 1)) / waveformPeaks.size).coerceAtLeast(1f)
+                                    val startFraction = if (track.durationMs > 0L) track.clipStartMs.toFloat() / track.durationMs else 0f
+                                    val endFraction = if (track.durationMs > 0L) track.clipEndMs.toFloat() / track.durationMs else 1f
+                                    waveformPeaks.forEachIndexed { bar, amplitude ->
+                                        val fraction = (bar + 0.5f) / waveformPeaks.size
+                                        val selected = fraction >= startFraction && fraction <= endFraction
+                                        val x = bar * (barWidth + gap) + barWidth / 2f
+                                        val halfHeight = (amplitude.coerceIn(0f, 1f) * size.height * 0.40f).coerceAtLeast(1.2f)
+                                        drawLine(
+                                            color = if (selected) Color(0xFF35D6B0) else Color(0xFF52636D),
+                                            start = Offset(x, size.height / 2f - halfHeight),
+                                            end = Offset(x, size.height / 2f + halfHeight),
+                                            strokeWidth = barWidth.coerceAtLeast(1f),
+                                            cap = StrokeCap.Round
+                                        )
+                                    }
+                                    val startX = size.width * startFraction
+                                    val endX = size.width * endFraction
+                                    drawLine(Color(0xFFFFC857), Offset(startX, 3.dp.toPx()), Offset(startX, size.height - 3.dp.toPx()), 2.dp.toPx())
+                                    drawLine(Color(0xFFFFC857), Offset(endX, 3.dp.toPx()), Offset(endX, size.height - 3.dp.toPx()), 2.dp.toPx())
+                                    drawCircle(Color(0xFFFFC857), 4.dp.toPx(), Offset(startX, size.height / 2f))
+                                    drawCircle(Color(0xFFFFC857), 4.dp.toPx(), Offset(endX, size.height / 2f))
+                                }
+                                Text("DRAG THE GOLD IN / OUT HANDLES TO TRIM · USE THE SLIDERS BELOW FOR PRECISION",
+                                    color = Muted, fontSize = 8.sp, lineHeight = 11.sp)
+                            }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Mute layer", color = Muted, fontSize = 11.sp)
                                 Switch(checked = track.muted, onCheckedChange = {
@@ -342,7 +472,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 Text("CLIP PREVIEW PLAYS THE SELECTED SOURCE RANGE. EQ, REVERB, PAN AND FADES APPLY ON EXPORT.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
                             }
                             if (track.durationMs > 0L) {
-                                val minClip = 500L.coerceAtMost(track.durationMs)
+                                val minClip = StudioAudioClipRangePolicy.MIN_CLIP_MS.coerceAtMost(track.durationMs)
                                 val clipEnd = track.clipEndMs.coerceIn((track.clipStartMs + minClip).coerceAtMost(track.durationMs), track.durationMs)
                                 val clipStart = track.clipStartMs.coerceIn(0L, (clipEnd - minClip).coerceAtLeast(0L))
                                 Text("CLIP TIMELINE  ·  ${formatMixTime(clipStart)} – ${formatMixTime(clipEnd)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -356,12 +486,12 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 }
                                 Text("TRIM START · ${formatMixTime(clipStart)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 Slider(value = clipStart.toFloat(), onValueChange = { v ->
-                                    val next = v.toLong().coerceIn(0L, (clipEnd - minClip).coerceAtLeast(0L))
+                                    val next = StudioAudioClipRangePolicy.moveStart(clipStart, clipEnd, v.toLong(), track.durationMs)
                                     tracks[index] = track.copy(clipStartMs = next); exported = null
                                 }, valueRange = 0f..(clipEnd - minClip).coerceAtLeast(0L).toFloat(), enabled = track.durationMs > minClip)
                                 Text("TRIM END · ${formatMixTime(clipEnd)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 Slider(value = clipEnd.toFloat(), onValueChange = { v ->
-                                    val next = v.toLong().coerceIn((clipStart + minClip).coerceAtMost(track.durationMs), track.durationMs)
+                                    val next = StudioAudioClipRangePolicy.moveEnd(clipStart, clipEnd, v.toLong(), track.durationMs)
                                     tracks[index] = track.copy(clipEndMs = next); exported = null
                                 }, valueRange = (clipStart + minClip).coerceAtMost(track.durationMs).toFloat()..track.durationMs.toFloat(), enabled = track.durationMs > minClip)
                             }
