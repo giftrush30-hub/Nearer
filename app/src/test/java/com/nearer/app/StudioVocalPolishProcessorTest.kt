@@ -112,6 +112,29 @@ class StudioVocalPolishProcessorTest {
         assertTrue("De-essing should preserve the low vocal fundamental", highReduction > lowReduction * 4.0)
     }
 
+    @Test fun strongerCompressionControlsSustainedLoudVocalMoreThanGentleSetting() {
+        val input = FloatArray(24_000) { index ->
+            (0.86 * sin(2.0 * PI * 220.0 * index / 48_000.0)).toFloat()
+        }
+        val gentle = process(1, input, StudioVocalControls(compression = 0f))
+        val stronger = process(1, input, StudioVocalControls(compression = 4f))
+        assertTrue("A stronger ratio should reduce sustained loud-signal RMS",
+            rms(stronger, 4_000) < rms(gentle, 4_000) * 0.94)
+    }
+
+    @Test fun zeroStereoWidthProducesAStableCentreSignal() {
+        val frames = 8_192
+        val input = FloatArray(frames * 2) { index ->
+            val frame = index / 2
+            val frequency = if (index % 2 == 0) 220.0 else 330.0
+            (0.2 * sin(2.0 * PI * frequency * frame / 48_000.0)).toFloat()
+        }
+        val output = process(2, input, StudioVocalControls(stereoWidth = 0f))
+        for (frame in 0 until frames) {
+            assertEquals(output[frame * 2], output[frame * 2 + 1])
+        }
+    }
+
     @Test fun lowSampleRateConfigurationClampsAirFilterBelowNyquist() {
         val input = FloatArray(4_000) { index ->
             (0.2 * sin(2.0 * PI * 1_000.0 * index / 8_000.0)).toFloat()
