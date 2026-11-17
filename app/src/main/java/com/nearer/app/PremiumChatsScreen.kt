@@ -108,15 +108,16 @@ internal fun PremiumChatsScreen(
     }
     var typingSignalActive by remember(selectedMeshRecipientId) { mutableStateOf(false) }
     val latestChatVisibility = androidx.compose.runtime.rememberUpdatedState(isChatVisible)
-    LaunchedEffect(draft, selectedMeshRecipientId, chatReady) {
-        if (draft.isBlank() || !chatReady || !latestChatVisibility.value) {
+    val latestChatReady = androidx.compose.runtime.rememberUpdatedState(chatReady)
+    LaunchedEffect(draft, selectedMeshRecipientId) {
+        if (draft.isBlank() || !latestChatReady.value || !latestChatVisibility.value) {
             if (typingSignalActive) {
                 onTyping(false)
                 typingSignalActive = false
             }
         } else {
             delay(300)
-            if (!latestChatVisibility.value) return@LaunchedEffect
+            if (!latestChatVisibility.value || !latestChatReady.value) return@LaunchedEffect
             onTyping(true)
             typingSignalActive = true
             delay(1_800)
@@ -124,8 +125,8 @@ internal fun PremiumChatsScreen(
             typingSignalActive = false
         }
     }
-    DisposableEffect(selectedMeshRecipientId, isChatVisible) {
-        if (!isChatVisible && typingSignalActive) {
+    DisposableEffect(selectedMeshRecipientId, isChatVisible, chatReady) {
+        if ((!isChatVisible || !chatReady) && typingSignalActive) {
             onTyping(false)
             typingSignalActive = false
         }
