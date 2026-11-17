@@ -41,3 +41,29 @@ class NearbyInboxCommitPolicyTest {
         )
     }
 }
+
+    @Test fun acknowledgementGateMatchesEveryDurabilityCombination() {
+        for (inboxCommitted in listOf(false, true)) {
+            for (dedupeCommitted in listOf(false, true)) {
+                assertEquals(
+                    inboxCommitted && dedupeCommitted,
+                    NearbyInboxCommitPolicy.canAcknowledge(inboxCommitted, dedupeCommitted)
+                )
+            }
+        }
+    }
+
+    @Test fun inboxRetirementGateMatchesEveryDurabilityCombination() {
+        for (inboxCommitted in listOf(false, true)) {
+            for (dedupeCommitted in listOf(false, true)) {
+                for (chatStoreCommitted in listOf(false, true)) {
+                    assertEquals(
+                        inboxCommitted && dedupeCommitted && chatStoreCommitted,
+                        NearbyInboxCommitPolicy.canRetireInbox(
+                            inboxCommitted, dedupeCommitted, chatStoreCommitted
+                        )
+                    )
+                }
+            }
+        }
+    }
