@@ -45,12 +45,14 @@ internal object CommunityIngressPolicy {
                 val ids = packet.optJSONArray("memberPeerIds")
                 val names = packet.optJSONArray("members")
                 val owner = NeaRerIdentity.normalize(packet.optString("ownerPeerId"))
+                val memberIds = ids?.toListOfStrings().orEmpty()
+                val memberNames = names?.toListOfStrings().orEmpty()
                 ids != null && names != null && owner == stableId &&
-                    ids.length() in 1..MAX_GROUP_MEMBERS &&
-                    names.length() <= MAX_GROUP_MEMBERS &&
-                    ids.length() == ids.toSetOfStrings().size &&
-                    ids.toSetOfStrings().all { NeaRerIdentity.normalize(it) != null } &&
-                    names.toSetOfStrings().all { it.length <= MAX_SENDER_NAME_LENGTH } &&
+                    memberIds.size in 1..MAX_GROUP_MEMBERS &&
+                    memberIds.distinct().size == memberIds.size &&
+                    memberIds.all { NeaRerIdentity.normalize(it) == it && it.isNotBlank() } &&
+                    memberNames.size in 1..MAX_GROUP_MEMBERS &&
+                    memberNames.all { it.isNotBlank() && it.length <= MAX_SENDER_NAME_LENGTH } &&
                     packet.optString("code").matches(GROUP_CODE)
             }
             "group_read_receipt" -> {
@@ -86,7 +88,7 @@ internal object CommunityIngressPolicy {
     private fun validMatchId(packet: JSONObject): Boolean =
         packet.optString("matchId").isNotBlank() && packet.optString("matchId").length <= 80
 
-    private fun org.json.JSONArray.toSetOfStrings(): List<String> =
+    private fun org.json.JSONArray.toListOfStrings(): List<String> =
         (0 until length()).map { optString(it) }
 
     private const val MAX_PACKET_LENGTH = 24 * 1024
