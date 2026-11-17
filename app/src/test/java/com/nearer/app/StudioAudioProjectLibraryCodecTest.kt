@@ -36,6 +36,37 @@ class StudioAudioProjectLibraryCodecTest {
         assertEquals("First", restored.single().name)
     }
 
+    @Test fun deletingLastProjectCreatesAnEmptyStarterProject() {
+        val onlyProject = listOf(project("only", "Only mix", "content://audio/only"))
+        val remaining = StudioAudioProjectLibraryCodec.delete(
+            projects = onlyProject,
+            projectId = "only",
+            replacementId = "fresh-project",
+            updatedAtMs = 9876L
+        )
+        assertEquals(1, remaining.size)
+        assertEquals("fresh-project", remaining.single().id)
+        assertEquals("My First Mix", remaining.single().name)
+        assertEquals(9876L, remaining.single().updatedAtMs)
+        assertTrue(remaining.single().tracks.isEmpty())
+    }
+
+    @Test fun deletingOneOfSeveralProjectsKeepsTheOtherArrangementsUntouched() {
+        val original = listOf(
+            project("one", "First", "content://audio/one"),
+            project("two", "Second", "content://audio/two")
+        )
+        val remaining = StudioAudioProjectLibraryCodec.delete(
+            projects = original,
+            projectId = "one",
+            replacementId = "unused",
+            updatedAtMs = 9999L
+        )
+        assertEquals(1, remaining.size)
+        assertEquals("two", remaining.single().id)
+        assertEquals(original[1], remaining.single())
+    }
+
     @Test fun renameUpdatesNameTimestampAndKeepsCurrentTrackEdits() {
         val original = listOf(
             project("one", "Old name", "content://audio/old"),
