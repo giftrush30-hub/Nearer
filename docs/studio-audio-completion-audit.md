@@ -8,7 +8,7 @@ This audit is based on the latest shared `main` at `366f5bdcbbbc4bc52a0abb8fecfc
 |---|---|---|
 | 1. Vocal quality audit | DSP refinement added in this branch | Smoothed sibilance-band envelope detection, sample-rate-safe filter cutoffs, and new signal-level tests. Still requires exact-head CI and listening on real voices/microphones. |
 | 2. Timeline zoom and navigation | Already merged | PR #275 adds 1×/2×/4× zoom and horizontal scrolling. Do not duplicate it. |
-| 3. Tempo automation | Not implemented yet | Existing BPM is a beat-grid/snap setting, not a playback-speed automation lane. Media3 1.11.1 upgrade PR #277 is still open on another branch and must be reconciled with current main before using its API. |
+| 3. Tempo automation | Not implemented yet | Existing BPM is a beat-grid/snap setting, not a playback-speed automation lane. The parallel workstream is reconciling Media3 1.11.1 on branch `feat/studio-media3-111-final`; earlier PR drafts #277 and #278 were closed without merging. Its current base must be reconciled before using the new API. |
 | 4. Crossfades | Equal-power envelope implementation added in this branch | Existing track offsets allow two sequences to overlap. Matching the outgoing fade-out and incoming fade-in durations now uses complementary cosine/sine curves, maintaining constant combined power in the ideal aligned overlap. The Media3 Composition API itself still does not provide native crossfades. |
 | 5. Export quality audit | Mix-export validation added in this branch | Output is named as an AAC-in-MP4 `.m4a`; after render, metadata inspection verifies a readable audio track and positive duration off the UI thread before exposing the file. Invalid output is deleted. Exact-head CI and device playback checks remain required. |
 
@@ -44,8 +44,8 @@ The export still uses Media3's AAC encoder defaults. This branch does not claim 
 
 ## Coordination with the parallel Studio Audio work
 
-- PR #277 is owned by the parallel Studio Audio workstream. It upgrades Media3 1.5.1 to 1.11.1 and the required Android build toolchain; this branch does not modify those dependency or workflow files.
-- PR #277's base predates the latest main commit. Do not merge it as-is; it needs current-main reconciliation and exact-head CI.
+- The parallel Studio Audio workstream owns `feat/studio-media3-111-final`. It upgrades Media3 1.5.1 to 1.11.1, updates the Android build toolchain and fixes Media3 1.11.1 source imports; this branch does not modify those dependency or workflow files.
+- That branch is one commit behind current `main` and must be reconciled and validated before using its new API. The earlier PR drafts #277 and #278 were closed without merging.
 - The zoom/navigation work from PR #275 is already merged and is treated as complete here.
 - No changes in this branch should be force-pushed into the other chat's feature branches.
 
