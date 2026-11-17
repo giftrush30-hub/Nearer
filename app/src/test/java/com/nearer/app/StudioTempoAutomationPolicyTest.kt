@@ -98,6 +98,11 @@ class StudioTempoAutomationPolicyTest {
         assertEquals(30_000L, ramp.last().timeMs)
         val outputDuration = StudioTempoAutomationPolicy.outputDurationMs(ramp, 60_000L)
         assertEquals(35_799L, outputDuration)
+
+        // The ramp ends at 30 seconds; the final speed must remain active for the rest.
+        val provider = StudioTempoAutomationSpeedProvider(ramp, durationMs = 60_000L)
+        assertEquals(2f, provider.getSpeed(30_000_000L), 0.0001f)
+        assertEquals(2f, provider.getSpeed(45_000_000L), 0.0001f)
     }
 
     @Test fun constantTempoDoesNotScheduleUnnecessaryChanges() {
