@@ -8,14 +8,13 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import android.graphics.Typeface
 import androidx.media3.common.OverlaySettings
-import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.TextOverlay
 
 @androidx.media3.common.util.UnstableApi
 internal class StudioTimedTextOverlay(
     private val layer: StudioVideoCaptionLayer
 ) : TextOverlay() {
-    private val overlaySettings = StaticOverlaySettings.Builder()
+    private val overlaySettings = OverlaySettings.Builder()
         .setOverlayFrameAnchor(0f, 0f)
         .setBackgroundFrameAnchor(0f, when (layer.verticalPosition) { 0 -> 0.78f; 1 -> 0f; else -> -0.78f })
         .setScale(0.85f, 0.85f)
