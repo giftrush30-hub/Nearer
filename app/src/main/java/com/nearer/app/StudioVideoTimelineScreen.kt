@@ -53,6 +53,7 @@ import androidx.media3.effect.Contrast
 import androidx.media3.effect.HslAdjustment
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.common.OverlaySettings
+import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.TextOverlay
 import androidx.media3.effect.TimestampWrapper
 import androidx.media3.transformer.Effects
@@ -133,7 +134,7 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
             caption.setSpan(BackgroundColorSpan(Color.argb(150, 8, 14, 22)), 0, caption.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             caption.setSpan(StyleSpan(Typeface.BOLD), 0, caption.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             val anchorY = when (textOverlay.verticalPosition) { 0 -> 0.78f; 1 -> 0f; else -> -0.78f }
-            val settings = OverlaySettings.Builder()
+            val settings = StaticOverlaySettings.Builder()
                 .setOverlayFrameAnchor(0f, 0f)
                 .setBackgroundFrameAnchor(0f, anchorY)
                 .setScale(0.85f, 0.85f)
