@@ -18,7 +18,10 @@ class StudioAudioProjectCodecTest {
             lowGainDb = -3f,
             midGainDb = 2f,
             highGainDb = 5f,
-            reverbMix = 0.2f
+            reverbMix = 0.2f,
+            clipStartMs = 12_000L,
+            clipEndMs = 98_000L,
+            startOffsetMs = 4_500L
         ))
         val restored = StudioAudioProjectCodec.decode(StudioAudioProjectCodec.encode(original))
         assertEquals(original, restored)
@@ -55,6 +58,22 @@ class StudioAudioProjectCodecTest {
         assertEquals(-12f, restored.midGainDb, 0f)
         assertEquals(12f, restored.highGainDb, 0f)
         assertEquals(0.35f, restored.reverbMix, 0f)
+    }
+
+    @Test fun migratesVersionThreeProjectsWithFullSourceRangeAndNoOffset() {
+        val raw = """{"version":3,"tracks":[{"uri":"content://audio/old","durationMs":50000}]}"""
+        val restored = StudioAudioProjectCodec.decode(raw).single()
+        assertEquals(0L, restored.clipStartMs)
+        assertEquals(50_000L, restored.clipEndMs)
+        assertEquals(0L, restored.startOffsetMs)
+    }
+
+    @Test fun clampsTimelineValuesToSourceAndThirtySecondOffsetLimit() {
+        val raw = """{"version":4,"tracks":[{"uri":"content://audio/x","durationMs":10000,"clipStartMs":9000,"clipEndMs":20000,"startOffsetMs":90000}]}"""
+        val restored = StudioAudioProjectCodec.decode(raw).single()
+        assertEquals(9_000L, restored.clipStartMs)
+        assertEquals(10_000L, restored.clipEndMs)
+        assertEquals(30_000L, restored.startOffsetMs)
     }
 
     @Test fun ignoresUnknownProjectVersions() {

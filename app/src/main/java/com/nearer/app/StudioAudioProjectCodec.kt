@@ -15,12 +15,15 @@ internal data class StudioAudioProjectTrackState(
     val lowGainDb: Float = 0f,
     val midGainDb: Float = 0f,
     val highGainDb: Float = 0f,
-    val reverbMix: Float = 0f
+    val reverbMix: Float = 0f,
+    val clipStartMs: Long = 0L,
+    val clipEndMs: Long = durationMs,
+    val startOffsetMs: Long = 0L
 )
 
 /** Versioned local project codec. Older projects migrate with flat EQ and dry audio. */
 internal object StudioAudioProjectCodec {
-    private const val VERSION = 3
+    private const val VERSION = 4
 
     fun encode(tracks: List<StudioAudioProjectTrackState>): String {
         val root = JSONObject().put("version", VERSION)
@@ -38,7 +41,11 @@ internal object StudioAudioProjectCodec {
                 .put("lowGainDb", track.lowGainDb.coerceIn(-12f, 12f).toDouble())
                 .put("midGainDb", track.midGainDb.coerceIn(-12f, 12f).toDouble())
                 .put("highGainDb", track.highGainDb.coerceIn(-12f, 12f).toDouble())
-                .put("reverbMix", track.reverbMix.coerceIn(0f, 0.35f).toDouble()))
+                
+                .put("reverbMix", track.reverbMix.coerceIn(0f, 0.35f).toDouble())
+                .put("clipStartMs", track.clipStartMs.coerceAtLeast(0L))
+                .put("clipEndMs", track.clipEndMs.coerceAtLeast(track.clipStartMs))
+                .put("startOffsetMs", track.startOffsetMs.coerceIn(0L, 30_000L)))
         }
         return root.put("tracks", items).toString()
     }
@@ -55,10 +62,13 @@ internal object StudioAudioProjectCodec {
                     val item = items.optJSONObject(index) ?: continue
                     val uri = item.optString("uri", "").takeIf { it.isNotBlank() } ?: continue
                     val name = item.optString("name", "Audio track").ifBlank { "Audio track" }
+                    val durationMs = item.optLong("durationMs", 0L).coerceAtLeast(0L)
+                    val clipStartMs = item.optLong("clipStartMs", 0L).coerceIn(0L, durationMs)
+                    val clipEndMs = if (durationMs > 0L) item.optLong("clipEndMs", durationMs).coerceIn((clipStartMs + 1L).coerceAtMost(durationMs), durationMs) else 0L
                     add(StudioAudioProjectTrackState(
                         uri = uri,
                         name = name,
-                        durationMs = item.optLong("durationMs", 0L).coerceAtLeast(0L),
+                        durationMs = durationMs,
                         muted = item.optBoolean("muted", false),
                         gain = item.optDouble("gain", 1.0).toFloat().coerceIn(0f, 1f),
                         pan = item.optDouble("pan", 0.0).toFloat().coerceIn(-1f, 1f),
@@ -67,7 +77,10 @@ internal object StudioAudioProjectCodec {
                         lowGainDb = item.optDouble("lowGainDb", 0.0).toFloat().coerceIn(-12f, 12f),
                         midGainDb = item.optDouble("midGainDb", 0.0).toFloat().coerceIn(-12f, 12f),
                         highGainDb = item.optDouble("highGainDb", 0.0).toFloat().coerceIn(-12f, 12f),
-                        reverbMix = item.optDouble("reverbMix", 0.0).toFloat().coerceIn(0f, 0.35f)
+                        reverbMix = item.optDouble("reverbMix", 0.0).toFloat().coerceIn(0f, 0.35f),
+                        clipStartMs = clipStartMs,
+                        clipEndMs = clipEndMs,
+                        startOffsetMs = item.optLong("startOffsetMs", 0L).coerceIn(0L, 30_000L)
                     ))
                 }
             }.take(8)

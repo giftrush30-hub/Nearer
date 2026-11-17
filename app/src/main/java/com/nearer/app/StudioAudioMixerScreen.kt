@@ -67,12 +67,16 @@ private data class StudioMixTrack(
     val lowGainDb: Float = 0f,
     val midGainDb: Float = 0f,
     val highGainDb: Float = 0f,
-    val reverbMix: Float = 0f
+    val reverbMix: Float = 0f,
+    val clipStartMs: Long = 0L,
+    val clipEndMs: Long = durationMs,
+    val startOffsetMs: Long = 0L
 ) {
     fun toProjectState() = StudioAudioProjectTrackState(
         uri = uri.toString(), name = name, durationMs = durationMs, muted = muted,
         gain = gain, pan = pan, fadeInMs = fadeInMs, fadeOutMs = fadeOutMs,
-        lowGainDb = lowGainDb, midGainDb = midGainDb, highGainDb = highGainDb, reverbMix = reverbMix
+        lowGainDb = lowGainDb, midGainDb = midGainDb, highGainDb = highGainDb, reverbMix = reverbMix,
+        clipStartMs = clipStartMs, clipEndMs = clipEndMs, startOffsetMs = startOffsetMs
     )
 }
 
@@ -95,7 +99,8 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
         mutableStateListOf<StudioMixTrack>().apply {
             addAll(projects.first().tracks.map { saved -> StudioMixTrack(
                 Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan,
-                saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix
+                saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix,
+                saved.clipStartMs, saved.clipEndMs, saved.startOffsetMs
             ) })
         }
     }
@@ -118,14 +123,15 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
         tracks.clear()
         tracks.addAll(project.tracks.map { saved -> StudioMixTrack(
             Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan,
-            saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix
+            saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix,
+            saved.clipStartMs, saved.clipEndMs, saved.startOffsetMs
         ) })
         currentProjectId = project.id
         exported = null
     }
+    var exported by remember { mutableStateOf<File?>(null) }
     var exporting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Build a layered mix from voice, music and sound effects stored on your phone.") }
-    var exported by remember { mutableStateOf<File?>(null) }
     var previewUri by remember { mutableStateOf<Uri?>(null) }
     var finalMixSelected by remember { mutableStateOf(false) }
     var finalMixPlaying by remember { mutableStateOf(false) }
@@ -213,7 +219,8 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
             tracks.clear()
             tracks.addAll(replacement.tracks.map { saved -> StudioMixTrack(
                 Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan,
-                saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix
+                saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix,
+                saved.clipStartMs, saved.clipEndMs, saved.startOffsetMs
             ) })
             currentProjectId = replacement.id
             exported = null
@@ -299,7 +306,8 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 tracks[index] = track.copy(gain = it); exported = null
                                 if (previewUri == track.uri) previewPlayer.volume = it
                             }, valueRange = 0f..1f)
-                            val maxFade = (track.durationMs / 1000f).coerceAtMost(8f)
+                            val clipDurationMs = if (track.durationMs > 0L) (track.clipEndMs - track.clipStartMs).coerceIn(1L, track.durationMs) else track.durationMs
+                            val maxFade = (clipDurationMs / 1000f).coerceAtMost(8f)
                             Text("STEREO PAN  ·  ${if (track.pan < -0.01f) "L ${(-track.pan * 100).toInt()}%" else if (track.pan > 0.01f) "R ${(track.pan * 100).toInt()}%" else "CENTRE"}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = track.pan, onValueChange = {
                                 tracks[index] = track.copy(pan = it); exported = null
@@ -327,6 +335,34 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 Slider(value = track.reverbMix, onValueChange = { tracks[index] = track.copy(reverbMix = it); exported = null }, valueRange = 0f..0.35f)
                                 Text("SOURCE PREVIEW APPLIES VOLUME ONLY; EQ, REVERB, PAN AND FADES APPLY ON EXPORT.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
                             }
+                            if (track.durationMs > 0L) {
+                                val minClip = 500L.coerceAtMost(track.durationMs)
+                                val clipEnd = track.clipEndMs.coerceIn((track.clipStartMs + minClip).coerceAtMost(track.durationMs), track.durationMs)
+                                val clipStart = track.clipStartMs.coerceIn(0L, (clipEnd - minClip).coerceAtLeast(0L))
+                                Text("CLIP TIMELINE  ·  ${formatMixTime(clipStart)} – ${formatMixTime(clipEnd)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Surface(color = Panel, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text("IN  ${formatMixTime(clipStart)}", color = Gold, fontSize = 8.sp)
+                                        Text("▰  AUDIO CLIP  ·  ${formatMixTime(clipEnd - clipStart)}", color = Midnight, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.background(Mint, RoundedCornerShape(5.dp)).padding(7.dp))
+                                        Text("OUT  ${formatMixTime(clipEnd)}", color = Gold, fontSize = 8.sp)
+                                    }
+                                }
+                                Text("TRIM START · ${formatMixTime(clipStart)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Slider(value = clipStart.toFloat(), onValueChange = { v ->
+                                    val next = v.toLong().coerceIn(0L, (clipEnd - minClip).coerceAtLeast(0L))
+                                    tracks[index] = track.copy(clipStartMs = next); exported = null
+                                }, valueRange = 0f..(clipEnd - minClip).coerceAtLeast(0L).toFloat())
+                                Text("TRIM END · ${formatMixTime(clipEnd)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Slider(value = clipEnd.toFloat(), onValueChange = { v ->
+                                    val next = v.toLong().coerceIn((clipStart + minClip).coerceAtMost(track.durationMs), track.durationMs)
+                                    tracks[index] = track.copy(clipEndMs = next); exported = null
+                                }, valueRange = (clipStart + minClip).coerceAtMost(track.durationMs).toFloat()..track.durationMs.toFloat())
+                            }
+                            Text("TRACK START POSITION · ${formatMixTime(track.startOffsetMs)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Slider(value = track.startOffsetMs.toFloat(), onValueChange = { v ->
+                                tracks[index] = track.copy(startOffsetMs = v.toLong().coerceIn(0L, 30_000L)); exported = null
+                            }, valueRange = 0f..30_000f, steps = 29)
                             Text("FADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = (track.fadeInMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
                                 tracks[index] = track.copy(fadeInMs = (it * 1000f).toLong()); exported = null
@@ -354,17 +390,29 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 previewUri = null
                 exporting = true; exported = null
                 message = "Rendering ${activeTracks.size} track(s) with their own volume and fade envelopes…"
+                val temporarySilenceFiles = mutableListOf<File>()
                 val sequences = activeTracks.map { track ->
                     val effects = Effects(
                         listOf(
                             ToInt16PcmAudioProcessor(),
-                            StudioTrackGainProcessor(track.gain, track.pan, track.durationMs, track.fadeInMs, track.fadeOutMs),
+                            StudioTrackGainProcessor(track.gain, track.pan, if (track.durationMs > 0L) track.clipEndMs - track.clipStartMs else track.durationMs, track.fadeInMs, track.fadeOutMs),
                             StudioTrackToneProcessor(track.lowGainDb, track.midGainDb, track.highGainDb, track.reverbMix)
                         ),
                         emptyList()
                     )
-                    val item = EditedMediaItem.Builder(MediaItem.fromUri(track.uri)).setEffects(effects).build()
-                    EditedMediaItemSequence.Builder(listOf(item)).build()
+                    val sourceMediaItem = MediaItem.Builder().setUri(track.uri).apply {
+                        if (track.durationMs > 0L && track.clipEndMs > track.clipStartMs) {
+                            setClippingConfiguration(MediaItem.ClippingConfiguration.Builder()
+                                .setStartPositionMs(track.clipStartMs).setEndPositionMs(track.clipEndMs).build())
+                        }
+                    }.build()
+                    val item = EditedMediaItem.Builder(sourceMediaItem).setEffects(effects).build()
+                    val sequenceItems = if (track.startOffsetMs > 0L) {
+                        val silence = createStudioTimelineSilence(context, track.startOffsetMs)
+                        temporarySilenceFiles += silence
+                        listOf(EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(silence))).build(), item)
+                    } else listOf(item)
+                    EditedMediaItemSequence.Builder(sequenceItems).build()
                 }
                 val composition = Composition.Builder(sequences).build()
                 val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Mix_${System.currentTimeMillis()}.mp4")
@@ -372,18 +420,20 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                     .addListener(object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                             exporting = false
+                            temporarySilenceFiles.forEach { it.delete() }
                             exported = output.takeIf { it.exists() && it.length() > 0L }
                             message = if (exported != null) "Mix rendered · ${output.length() / 1024L} KB. Original recordings and source tracks remain untouched."
                                 else "The render finished but no output file was found. Please try again."
                         }
                         override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
                             exporting = false
+                            temporarySilenceFiles.forEach { it.delete() }
                             output.delete()
                             message = "This mix could not be rendered on this device: ${exportException.message ?: "encoder or source format not supported"}"
                         }
                     }).build()
                 runCatching { transformer.start(composition, output.absolutePath) }.onFailure {
-                    exporting = false; output.delete()
+                    exporting = false; temporarySilenceFiles.forEach { it.delete() }; output.delete()
                     message = "Could not start the mix: ${it.message ?: "unknown error"}"
                 }
             }
@@ -419,8 +469,31 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 Text("SHARE FINISHED MIX")
             }
         }
-        Text("Each named project keeps its own arrangement and track controls on this phone. Offline export applies volume, pan, fades, three-band EQ and room reverb without changing original source files. Source preview is intentionally unprocessed. Timeline trimming/positioning, waveform editing and tempo automation are still being completed.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
+        Text("Each named project saves its own clip trims, start positions and mix controls locally. Export applies real source clipping, timeline offsets, volume, pan, fades, EQ and reverb without changing original files. Waveform editing and tempo automation remain in progress.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
+}
+
+/** Creates a bounded stereo PCM silence clip used to place a track later on the mix timeline. */
+private fun createStudioTimelineSilence(context: android.content.Context, durationMs: Long): File {
+    val safeDuration = durationMs.coerceIn(1L, 30_000L)
+    val sampleRate = 48_000
+    val channels = 2
+    val bitsPerSample = 16
+    val dataSize = (sampleRate.toLong() * channels * (bitsPerSample / 8) * safeDuration / 1_000L).toInt()
+    val output = File(File(context.cacheDir, "studio-timeline").apply { mkdirs() }, "silence_${safeDuration}_${System.nanoTime()}.wav")
+    java.io.FileOutputStream(output).use { stream ->
+        fun ascii(value: String) { stream.write(value.toByteArray(Charsets.US_ASCII)) }
+        fun le(value: Int, bytes: Int) { repeat(bytes) { stream.write((value ushr (it * 8)) and 0xff) } }
+        ascii("RIFF"); le(36 + dataSize, 4); ascii("WAVE")
+        ascii("fmt "); le(16, 4); le(1, 2); le(channels, 2)
+        le(sampleRate, 4); le(sampleRate * channels * bitsPerSample / 8, 4)
+        le(channels * bitsPerSample / 8, 2); le(bitsPerSample, 2)
+        ascii("data"); le(dataSize, 4)
+        val silence = ByteArray(16 * 1024)
+        var remaining = dataSize
+        while (remaining > 0) { val count = minOf(remaining, silence.size); stream.write(silence, 0, count); remaining -= count }
+    }
+    return output
 }
 
 private fun readStudioAudioDuration(context: android.content.Context, uri: Uri): Long {
