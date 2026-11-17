@@ -64,7 +64,9 @@ Do not publish a millisecond latency claim until those measurements exist. Bluet
 
 ## Architecture sources
 
-- Media3 1.11.1 stable release and pitch-preserving Transformer speed support: https://developer.android.com/jetpack/androidx/releases/media3\n- Media3 EditedMediaItem.Builder.setSpeed(SpeedParameters): https://developer.android.com/reference/androidx/media3/transformer/EditedMediaItem.Builder\n- Jetpack Compose Slider discrete/continuous interaction guidance: https://developer.android.com/develop/ui/compose/components/slider
+- Media3 1.11.1 stable release and pitch-preserving Transformer speed support: https://developer.android.com/jetpack/androidx/releases/media3
+- Media3 EditedMediaItem.Builder.setSpeed(SpeedParameters): https://developer.android.com/reference/androidx/media3/transformer/EditedMediaItem.Builder
+- Jetpack Compose Slider discrete/continuous interaction guidance: https://developer.android.com/develop/ui/compose/components/slider
 - Android low-latency checklist: https://developer.android.com/games/sdk/oboe/low-latency-audio
 - Android app audio latency guidance: https://source.android.com/docs/core/audio/latency/app
 - Oboe integration guide: https://github.com/google/oboe/blob/main/docs/GettingStarted.md
