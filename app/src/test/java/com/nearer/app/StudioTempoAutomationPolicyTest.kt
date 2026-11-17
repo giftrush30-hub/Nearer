@@ -132,8 +132,9 @@ class StudioTempoAutomationPolicyTest {
             durationMs = 200
         )
         // Media3 requires the next change, not the current one, at an exact boundary.
-        assertEquals(80_000L, provider.getNextSpeedChangeTimeUs(40_000))
-        assertEquals(100_000L, provider.getNextSpeedChangeTimeUs(80_000))
+        assertEquals(60_000L, provider.getNextSpeedChangeTimeUs(40_000))
+        // At the final keyframe the speed becomes constant, so no further change is scheduled.
+        assertEquals(C.TIME_UNSET, provider.getNextSpeedChangeTimeUs(80_000))
         assertEquals(C.TIME_UNSET, provider.getNextSpeedChangeTimeUs(100_000))
         assertEquals(2f, provider.getSpeed(199_999), 0.0001f)
     }
