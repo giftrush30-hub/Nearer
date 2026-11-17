@@ -60,6 +60,8 @@ class NearbyTransportService : Service() {
         private const val NOTIFICATION_ID = 4101
         private const val ACTION_START = "com.nearer.app.NEARBY_START"
 
+        // Commit before starting the service so restart recovery sees the active flag.
+        @Suppress("ApplySharedPref")
         fun start(context: Context) {
             context.getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
                 .putBoolean("nearby_service_active", true)

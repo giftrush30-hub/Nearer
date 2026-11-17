@@ -1,8 +1,9 @@
 # NeaRer Messaging: research, architecture decisions and completion gates
 
 Status: active development workstream
-Working branch: `work/messaging-service-owned-nearby`
-Main remains unchanged. Do not merge this work until the gates below pass.
+Current integration: service-owned transport merged to `main` by PR #258 (`02a7a2be138d4c8c06ea5ae4395482e94e9a2921`).
+Current work branch: `work/messaging-outgoing-recovery`.
+The next outgoing-delivery hardening batch is under development and must pass its own tests and review before merging.
 
 ## 1. Product research and lessons
 
@@ -159,6 +160,14 @@ Messaging findings:
 - Android 14+ requires foreground-service types and their matching permissions. For `connectedDevice`, the platform also requires an eligible device/network permission such as `CHANGE_WIFI_STATE` or a granted Bluetooth runtime permission. NeaRer declares `FOREGROUND_SERVICE_CONNECTED_DEVICE` and `CHANGE_WIFI_STATE`; this satisfies the documented manifest-side prerequisite, but actual service start and Nearby permission behavior still require device testing.
 - Google Nearby Connections requires its platform permissions at runtime; if required permissions are denied, advertising/discovery cannot start.
 - Android's background Bluetooth guidance recommends an appropriately declared `connectedDevice` foreground service when an app must keep a device connection alive while the user switches apps. This does not promise survival after force-stop or every OEM process-kill policy.
+
+### Foreground-service type selection
+
+The service uses `connectedDevice`, not `remoteMessaging`. Android describes `connectedDevice` for interactions with external devices over Bluetooth or network connections. Android's `remoteMessaging` type is described more narrowly as messaging use cases that host a local server to relay messages across devices. NeaRer uses Google Nearby Connections to discover and communicate directly with nearby peer devices; it does not host a local relay server. Revisit this decision if the transport architecture changes to a local-server relay model.
+
+Sources:
+- Android foreground-service type descriptions: https://developer.android.com/develop/background-work/services/fgs/service-types
+- Android ServiceInfo API reference: https://developer.android.com/reference/android/content/pm/ServiceInfo
 
 Additional official sources:
 - Android foreground-service type requirements: https://developer.android.com/about/versions/14/changes/fgs-types-required

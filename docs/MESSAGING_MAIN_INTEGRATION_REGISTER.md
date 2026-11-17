@@ -1,6 +1,6 @@
 # Messaging Integration Register
 
-Last reviewed: 2026-11-16
+Last reviewed: 2026-11-17
 Repository: `giftrush30-hub/Nearer`
 
 ## Integration rule
@@ -98,10 +98,18 @@ Current branch adds `NearbyServiceStartPolicy` and JVM tests for the readiness g
 - APK generation is an explicit `workflow_dispatch` option and defaults to false.
 - Passing JVM/manifest checks is not a substitute for physical device validation.
 
+## Recent integration
+
+- PR #258, “Make nearby messaging service-owned with durable incoming recovery”, was merged to `main` on 2026-11-17 as `02a7a2be138d4c8c06ea5ae4395482e94e9a2921`.
+- The merged module includes service-owned Nearby transport, encrypted durable incoming inbox, peer-scoped dedupe, mesh final-receipt recovery, lifecycle readiness gates and no-APK CI validation.
+- PR checks passed: JVM tests, manifest processing and diagnostic Android lint. APK build/upload steps were skipped.
+- The diagnostic lint report recorded 110 project-wide errors and 64 warnings, with the first blocking issues in existing MainActivity permission calls, OpenSendHotspot, FlashActivity, StudioAudioWorkspaceScreen and manifest location declarations. The new inbox/service contributed two `ApplySharedPref` warnings because synchronous commits are required before ACK/service activation; those two intentional commits are now explicitly documented and suppressed in the outgoing-recovery branch.
+- The original service branch was reset to the merged `main` commit; the next work branch is based on that same commit.
+
 ## Next integration sequence
 
-1. Finish and validate the current service-owned Nearby transport/incoming-delivery module, then merge it through a reviewed PR.
-2. Rebase/synchronise the development branch from the new main and complete outgoing outbox recovery, ACK loss and reconnect behavior.
+1. Complete outgoing delivery ACK identity validation, endpoint-disconnect cleanup, and reconnect recovery on `work/messaging-outgoing-recovery`.
+2. Validate and merge that outgoing-reliability module through a focused PR.
 3. Port read receipts, typing hints and private background notifications as one coherent delivery/presence feature, reconciling PR #216 and #210.
 4. Re-audit voice-note end-to-end functionality and inbox UI completeness without duplicating policies already in main.
 5. Continue the same selective branch-recovery process for identity, community, HyperTransfer and other cross-department features.
