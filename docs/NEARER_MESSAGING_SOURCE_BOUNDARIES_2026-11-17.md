@@ -337,3 +337,15 @@ The same direct-forwarding pattern exists for Mesh typing events. Any future lis
 7. Replaying an already staged event after rebind/restart must remain idempotent and must not duplicate the domain message or final Mesh receipt.
 
 These are proposed regression cases; they are not claimed to exist or pass yet.
+
+
+## 12. Durability-gate characterization tests added
+
+A test-only change now exhaustively checks the existing pure `NearbyInboxCommitPolicy` truth tables:
+
+- `canAcknowledge`: all four combinations of inbox-commit and dedupe-commit state.
+- `canRetireInbox`: all eight combinations of inbox, dedupe and chat/community-store commit state.
+
+The expected rule is explicit: acknowledgement requires both inbox and dedupe commits; inbox retirement requires all three commits. These tests characterize the existing policy and do not change the policy implementation or runtime callback order.
+
+**Still not covered by these tests:** Android SharedPreferences/Keystore persistence, the actual Nearby SDK acknowledgement closure, service listener dispatch, Activity rebind/restart replay, ephemeral typing forwarding, or the default adapter acknowledgement hazard. Those require a dedicated seam and fake collaborators; this test addition must not be mistaken for end-to-end delivery coverage.
