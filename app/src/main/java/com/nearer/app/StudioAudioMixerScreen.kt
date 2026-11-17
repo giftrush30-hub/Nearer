@@ -650,7 +650,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 steps = 29,
                                 enabled = track.durationMs > 0L
                             )
-                            Text("END SPEED  ·  ${String.format(Locale.US, "%.2f", tempoEndSpeed)}×", color = Mint, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            Text("END SPEED · FIRST 30 SEC MAX  ·  ${String.format(Locale.US, "%.2f", tempoEndSpeed)}×", color = Mint, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                             Slider(
                                 value = tempoEndSpeed,
                                 onValueChange = { value ->
@@ -672,7 +672,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 ) { Text("RESET TEMPO TO 1.00×", fontSize = 8.sp) }
                             }
                             Text(
-                                if (track.durationMs > 0L) "A fine-grained 20 ms sampled speed curve changes this track's timing while preserving musical pitch. It does not change the project's beat-grid BPM."
+                                if (track.durationMs > 0L) "A fine-grained 20 ms sampled speed curve changes timing while preserving pitch. Automation is bounded to the first 30 seconds; the final speed then holds for the rest of longer clips. Beat-grid BPM remains separate."
                                 else "Tempo automation needs readable audio duration metadata.",
                                 color = Muted, fontSize = 8.sp, lineHeight = 12.sp
                             )
