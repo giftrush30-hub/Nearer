@@ -48,10 +48,6 @@ internal fun VoiceNoteComposer(
     var recording by remember { mutableStateOf(false) }
     var elapsedSeconds by remember { mutableStateOf(0) }
     var notice by remember { mutableStateOf("") }
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startRecording() else notice = "Microphone permission is required for voice notes."
-    }
-
     fun discardRecording() {
         val active = recorder
         val file = recordingFile
@@ -136,6 +132,10 @@ internal fun VoiceNoteComposer(
             recording = false
             notice = "Could not start recording. Check microphone access and try again."
         }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startRecording() else notice = "Microphone permission is required for voice notes."
     }
 
     LaunchedEffect(recording) {
