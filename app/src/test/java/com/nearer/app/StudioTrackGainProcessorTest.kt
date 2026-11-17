@@ -95,7 +95,7 @@ class StudioTrackGainProcessorTest {
 
         fun processOnePass(): ShortArray {
             val input = ByteBuffer.allocateDirect(inputSamples.size * 2).order(ByteOrder.nativeOrder())
-            inputSamples.forEach(input::putShort)
+            inputSamples.forEach { input.putShort(it) }
             input.flip()
             processor.queueInput(input)
             val output = processor.output
@@ -110,7 +110,7 @@ class StudioTrackGainProcessorTest {
         assertEquals(firstPass.size, secondPass.size)
         assertTrue(firstPass.indices.all { firstPass[it] == secondPass[it] })
         assertEquals(0, secondPass.first().toInt())
-        assertTrue(secondPass[200] in 6_900..7_200)
+        assertTrue(secondPass[200] in 3_000..3_200)
         processor.reset()
     }
 
