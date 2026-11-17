@@ -7,14 +7,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -105,6 +108,9 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     }
     var currentProjectId by remember(context) { mutableStateOf(projects.first().id) }
     val currentProject = projects.firstOrNull { it.id == currentProjectId } ?: projects.first()
+    var timelineZoom by remember(currentProjectId) { mutableStateOf(1) }
+    val timelineScrollState = rememberScrollState()
+    LaunchedEffect(currentProjectId, timelineZoom) { timelineScrollState.scrollTo(0) }
     val tracks = remember(context) {
         mutableStateListOf<StudioMixTrack>().apply {
             addAll(projects.first().tracks.map { saved -> StudioMixTrack(
@@ -344,26 +350,58 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                         }
                     )
                 }
-                Canvas(Modifier.fillMaxWidth().height(24.dp)) {
-                    val interval = StudioAudioBeatGridPolicy.gridIntervalMs(currentProject.bpm, currentProject.beatDivision)
-                    val tickCount = (StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS / interval).toInt()
-                    val showSubdivisions = interval / StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS * size.width >= 4.dp.toPx()
-                    for (tick in 0..tickCount) {
-                        val isBar = tick % (currentProject.beatDivision * 4) == 0
-                        val isBeat = tick % currentProject.beatDivision == 0
-                        if (isBar || isBeat || showSubdivisions) {
-                            val x = (tick * interval / StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS * size.width).toFloat()
-                            val height = when { isBar -> size.height; isBeat -> size.height * 0.68f; else -> size.height * 0.34f }
-                            val color = when { isBar -> Gold; isBeat -> Mint; else -> Color(0xFF52636D) }
-                            drawLine(color, Offset(x, size.height - height), Offset(x, size.height), if (isBar) 2.dp.toPx() else 1.dp.toPx())
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("ARRANGEMENT TIMELINE", color = White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        StudioAudioTimelineViewportPolicy.ZOOM_LEVELS.forEach { zoom ->
+                            Button(
+                                onClick = { timelineZoom = zoom },
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 3.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (timelineZoom == zoom) Mint else Midnight,
+                                    contentColor = if (timelineZoom == zoom) Midnight else White
+                                )
+                            ) { Text("${zoom}×", fontSize = 9.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("0:00", color = Muted, fontSize = 8.sp)
-                    Text("0:10", color = Muted, fontSize = 8.sp)
-                    Text("0:20", color = Muted, fontSize = 8.sp)
-                    Text("0:30", color = Muted, fontSize = 8.sp)
+                Text(
+                    "Showing ${StudioAudioTimelineViewportPolicy.visibleDurationMs(timelineZoom) / 1_000}s at once · swipe sideways to move along the mix",
+                    color = Muted, fontSize = 8.sp
+                )
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val viewportWidth = maxWidth
+                    val contentWidth = viewportWidth * timelineZoom.toFloat()
+                    Row(Modifier.fillMaxWidth().horizontalScroll(timelineScrollState)) {
+                        Column(Modifier.width(contentWidth)) {
+                            Canvas(Modifier.fillMaxWidth().height(34.dp)) {
+                                val interval = StudioAudioBeatGridPolicy.gridIntervalMs(currentProject.bpm, currentProject.beatDivision)
+                                val tickCount = (StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS / interval).toInt()
+                                val showSubdivisions = interval / StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS * size.width >= 4.dp.toPx()
+                                for (tick in 0..tickCount) {
+                                    val isBar = tick % (currentProject.beatDivision * 4) == 0
+                                    val isBeat = tick % currentProject.beatDivision == 0
+                                    if (isBar || isBeat || showSubdivisions) {
+                                        val x = (tick * interval / StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS * size.width).toFloat()
+                                        val tickHeight = when { isBar -> size.height; isBeat -> size.height * 0.68f; else -> size.height * 0.34f }
+                                        val color = when { isBar -> Gold; isBeat -> Mint; else -> Color(0xFF52636D) }
+                                        drawLine(color, Offset(x, size.height - tickHeight), Offset(x, size.height), if (isBar) 2.dp.toPx() else 1.dp.toPx())
+                                    }
+                                }
+                                tracks.forEach { track ->
+                                    val x = (track.startOffsetMs.coerceIn(0L, StudioAudioTimelineViewportPolicy.DURATION_MS).toFloat() /
+                                        StudioAudioTimelineViewportPolicy.DURATION_MS * size.width)
+                                    drawLine(White, Offset(x, size.height * 0.42f), Offset(x, size.height), 2.dp.toPx(), cap = StrokeCap.Round)
+                                }
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("0:00", color = Muted, fontSize = 8.sp)
+                                Text("0:10", color = Muted, fontSize = 8.sp)
+                                Text("0:20", color = Muted, fontSize = 8.sp)
+                                Text("0:30", color = Muted, fontSize = 8.sp)
+                            }
+                        }
+                    }
                 }
                 Text("The grid guides track start positions in the 30-second arrangement window. It does not time-stretch audio or alter clip trims.",
                     color = Muted, fontSize = 9.sp, lineHeight = 13.sp)
