@@ -349,3 +349,10 @@ A test-only change now exhaustively checks the existing pure `NearbyInboxCommitP
 The expected rule is explicit: acknowledgement requires both inbox and dedupe commits; inbox retirement requires all three commits. These tests characterize the existing policy and do not change the policy implementation or runtime callback order.
 
 **Still not covered by these tests:** Android SharedPreferences/Keystore persistence, the actual Nearby SDK acknowledgement closure, service listener dispatch, Activity rebind/restart replay, ephemeral typing forwarding, or the default adapter acknowledgement hazard. Those require a dedicated seam and fake collaborators; this test addition must not be mistaken for end-to-end delivery coverage.
+
+
+### Adapter default is now captured by a characterization test
+
+A focused JVM test instantiates a bare `NearbyConnectionsTransport.ListenerAdapter` subclass and confirms that its inherited `onMessage` invokes the acknowledgement callback once. The test name and comments explicitly classify this as a hazardous legacy compatibility default, not the desired durable-delivery rule.
+
+This test is a tripwire for future contract changes: if the default is later made opt-in, the test must be deliberately rewritten alongside the complete implementation inventory and migration of every listener. It does not prove that every listener implementation has been found, nor does it validate the service's Android persistence path.
