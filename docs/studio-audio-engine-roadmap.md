@@ -4,9 +4,11 @@
 
 ### Offline multitrack Sound Desk
 
-The Sound Desk supports up to eight audio layers per local project. Users can create, open, rename and delete up to 20 named projects; each project independently saves its track order, mute, volume, stereo pan, fade-in/fade-out, three-band low/mid/high EQ and room reverb. The first launch migrates the former single-project preference into **My First Mix**. Project metadata is stored in a bounded, versioned local library; original imported/recorded audio files are never overwritten or deleted when a project is removed.
+The Sound Desk supports up to eight audio layers per local project. Users can create, open, rename and delete up to 20 named projects; each project independently saves its track order, mute, volume, stereo pan, fade-in/fade-out, three-band low/mid/high EQ, room reverb, clip trim points and timeline start offset. The first launch migrates the former single-project preference into **My First Mix**. Project metadata is stored in a bounded, versioned local library; original imported/recorded audio files are never overwritten or deleted when a project is removed.
 
-The render path uses Media3 Transformer with parallel audio sequences and per-track PCM processors, then writes one AAC mix locally. Users can play the completed render in-app and share it. Individual source preview is deliberately labelled as source preview and does not pretend to include the full mix effects; the rendered mix is the authoritative effects preview. The render path is offline and does not upload audio.
+Each track has source trim-in and trim-out controls (for known-duration media) and a timeline start-position control bounded to 30 seconds. Clip preview uses the selected source range. The export composition applies the source clipping and represents a later start with a generated, bounded PCM silence lead-in before the trimmed source. This is a functional placement/trim foundation, not yet a waveform editor: the visible clip strip is a range summary, not an amplitude waveform, and there is not yet waveform-driven drag editing, tempo automation or beat snapping. Short sources retain a minimum playable clip length; unknown-duration sources do not expose trim controls.
+
+The render path uses Media3 Transformer with parallel audio sequences and per-track PCM processors, then writes one AAC mix locally. Users can play the completed render in-app and share it. Clip preview plays the selected source range but is not a full effects preview; EQ, reverb, pan and fades are applied on export, and the rendered mix remains the authoritative effects preview. The render path is offline and does not upload audio. Media3 composition does not currently provide audio crossfading, so crossfades are not claimed.
 
 ### Live microphone monitoring
 
@@ -36,7 +38,7 @@ On API 30+, the native builder explicitly requests Android's privacy-sensitive m
 
 ## Validation still required
 
-The code is integrated into the Android build. Automated checks compile the NDK target, run JVM tests (including PCM frame assembly, signal-level vocal processors and offline track DSP tests), and build/upload the debug APK. This does not prove physical-device performance. In addition to the microphone-monitor checks below, listen to a rendered multitrack mix with voice, music and effects on phone speakers, wired headphones and Bluetooth; compare the output against the source tracks and verify EQ/reverb tails and pan placement. Required device testing includes:
+The code is integrated into the Android build. Automated checks compile the NDK target, run JVM tests (including PCM frame assembly, signal-level vocal processors and offline track DSP tests), and build/upload the debug APK. This does not prove physical-device performance. In addition to the microphone-monitor checks below, listen to a rendered multitrack mix with voice, music and effects on phone speakers, wired headphones and Bluetooth; compare the output against the source tracks and verify EQ/reverb tails, trim boundaries, track offsets, fades and pan placement. Required device testing includes:
 
 1. Phone built-in microphone and speaker/headphones.
 2. USB microphone plus wired/USB headphones on Android API 27+; verify the displayed input device ID matches the selected device.
@@ -45,6 +47,8 @@ The code is integrated into the Android build. Automated checks compile the NDK 
 5. Competing microphone apps and microphone permission revocation.
 6. At least one older Android device and one newer device.
 7. Acoustic or electrical loopback measurements for round-trip latency and glitch rate.
+8. Create, reopen, rename and delete projects; verify independent track settings and confirm source audio files remain intact.
+9. Export mixes with different trim ranges and timeline offsets; listen for correct start/end boundaries and absence of unwanted silence or truncation.
 
 Do not publish a millisecond latency claim until those measurements exist. Bluetooth output can add substantial latency even when the input and processing path are native.
 
