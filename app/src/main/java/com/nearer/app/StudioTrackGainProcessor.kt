@@ -61,6 +61,12 @@ internal class StudioTrackGainProcessor(
         outputBuffer.flip()
     }
 
+    // Media3 may flush and reuse an AudioProcessor for a new input stream.
+    // Reset the frame clock on flush as well as full reset so fades restart at frame zero.
+    override fun onFlush() {
+        frameCursor = 0L
+    }
+
     override fun onReset() {
         frameCursor = 0L
     }
