@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, integration/nearer-complete-app, phase-1-smartconnect, fix/studio-native-capture-privacy]
   pull_request:
-    branches: [main, integration/nearer-complete-app, feature/messaging-people-chat-inbox]
+    branches: [main, integration/nearer-complete-app, feature/messaging-people-chat-inbox, feat/studio-audio-route-media3-main-sync]
   workflow_dispatch:
     inputs:
       build_apk:
