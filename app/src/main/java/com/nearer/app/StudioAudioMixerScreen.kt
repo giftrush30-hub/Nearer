@@ -8,7 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -150,7 +150,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     var waveformLoadingUri by remember { mutableStateOf<String?>(null) }
     val previewPlayer = remember(context) { ExoPlayer.Builder(context).build() }
 
-    LaunchedEffect(currentProjectId, waveformRequestUri) {
+    LaunchedEffect(currentProjectId, tracks.map { it.uri.toString() }, waveformRequestUri) {
         val key = waveformRequestUri ?: return@LaunchedEffect
         val target = tracks.firstOrNull { it.uri.toString() == key }
         if (target != null && waveformByUri[key] == null) {
@@ -361,7 +361,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                         .background(Panel, RoundedCornerShape(8.dp))
                                         .pointerInput(track.uri, track.durationMs) {
                                             var activeHandle: Int? = null
-                                            detectDragGestures(
+                                            detectHorizontalDragGestures(
                                                 onDragStart = { down ->
                                                     val current = tracks.firstOrNull { it.uri == track.uri }
                                                     if (current != null && current.durationMs > 0L) {
@@ -377,7 +377,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                                         }
                                                     }
                                                 },
-                                                onDrag = { change, _ ->
+                                                onHorizontalDrag = { change, _ ->
                                                     val handle = activeHandle
                                                     val currentIndex = tracks.indexOfFirst { it.uri == track.uri }
                                                     val current = tracks.getOrNull(currentIndex)
