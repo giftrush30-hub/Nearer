@@ -92,6 +92,17 @@ class StudioAudioProjectCodecTest {
         assertEquals(original, restored)
     }
 
+    @Test fun oversizedTempoArraysKeepTheFinalAutomationIntent() {
+        val points = (0..39).joinToString(",") { index ->
+            """{"timeMs":${index * 1_000L},"speed":${0.5 + index * 0.02}}"""
+        }
+        val raw = """{"version":5,"tracks":[{"uri":"content://audio/tempo-long","durationMs":30000,"tempoPoints":[$points]}]}"""
+        val restored = StudioAudioProjectCodec.decode(raw).single()
+        assertTrue(restored.tempoPoints.size <= StudioTempoAutomationPolicy.MAX_KEYFRAMES)
+        assertEquals(30_000L, restored.tempoPoints.last().timeMs)
+        assertEquals(1.28f, restored.tempoPoints.last().speed, 0.0001f)
+    }
+
     @Test fun versionFourProjectsMigrateWithoutTempoAutomation() {
         val raw = """{"version":4,"tracks":[{"uri":"content://audio/legacy","durationMs":10000}]}"""
         val restored = StudioAudioProjectCodec.decode(raw).single()
