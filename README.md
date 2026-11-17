@@ -71,38 +71,44 @@ GitHub Actions validates JVM unit tests, debug APK assembly and APK artifact upl
 - [Nearby Connections: exchange data](https://developers.google.com/nearby/connections/android/exchange-data)
 - [Android Keystore system](https://developer.android.com/privacy-and-security/keystore)
 
-## SmartConnect — Phase 1 implementation
+## Messaging — current integrated state (17 November 2026)
 
-The Phase 1 SmartConnect branch adds automatic Nearby Connections startup after first-run permissions are granted and whenever the app returns to the foreground. It uses the flexible multi-peer cluster strategy by default, so users do not need to configure a matching one-to-one speed mode. Nearby person cards open the connection flow with one tap. Peers whose signing and recipient-encryption keys were previously pinned can reconnect without repeating first-contact approval; the authenticated handshake still verifies key continuity before application data is accepted. First-time peers still require explicit approval and a security-code comparison.
+The following messaging capabilities are integrated into `main`. They are source- and CI-validated; physical-device acceptance is still required before calling the messaging department release-ready.
 
-SmartConnect does not silently enable Bluetooth or Wi-Fi and does not bypass Android permissions. Discovery currently remains dependent on Android radio availability and foreground/app-process lifecycle; continuous background discovery and two-physical-phone verification are separate release gates. The existing Android minimum is API 26 (Android 8.0).
+### Direct chat and delivery
+- First-contact peers must approve the connection and compare the in-person security code. Previously pinned peers can reconnect after the authenticated identity/key-continuity checks.
+- Direct messages use the authenticated encrypted Nearby Connections session, an encrypted durable outbox, stable message IDs, duplicate suppression and authenticated delivery acknowledgements.
+- A delivery acknowledgement means the recipient committed the message to NeaRer's encrypted incoming inbox. It does **not** mean the recipient opened or read it.
+- Pending outgoing messages retry when the same pinned peer authenticates again. Recovery is reconnect-driven and depends on Android allowing the service and radios to run; force-stop, radio shutdown, OEM battery restrictions and Doze can affect availability.
 
-Hosted Android emulator launch jobs are currently deferred because their startup/boot reliability has been inconsistent. The CI validation path focuses on JVM unit tests, debug APK assembly and artifact upload. Emulator checks are not claimed as passed, and physical-device testing remains separate.
+### Groups, receipts and chat controls
+- Verified community-group messages are encrypted separately for each verified recipient, queued durably per recipient before dispatch, and acknowledged independently. Nearby broadcast messages remain best-effort.
+- Direct and group read receipts are separate from delivery acknowledgements. Receipt events are bounded and checked against the authenticated peer identity; group receipts also require membership in the verified group roster.
+- Users can disable read receipts. Local read state and delivery of a receipt are tracked separately; pending receipts can retry after reconnect.
+- Direct-chat typing indicators are short-lived control packets. They are not stored in the durable message inbox or queued for later delivery.
+- Delete-for-everyone is restricted to the original sender and eligible outgoing messages. The receiving copy accepts deletion only from the authenticated original sender. Local delete-for-me is separate. Deletion cannot erase screenshots, exports or copies made outside NeaRer.
+- New persisted direct and verified group messages can trigger generic private notifications while NeaRer is backgrounded. Protocol control packets, duplicates and failed inbox writes must not create new-message alerts. Android notification permission and channel settings remain user-controlled.
 
+### Voice notes and lifecycle
+- Direct-chat voice notes are recorded locally and sent through the nearby file-transfer path. They are file attachments, not yet fully integrated inline audio-message bubbles or group voice notes.
+- Active recording is stopped and released when the app backgrounds or the composer is disposed; incomplete recordings are discarded.
+- The Nearby transport is owned by a connected-device foreground service rather than by the Activity alone. The service maintains an ongoing Android notification, stages incoming messages in an encrypted durable inbox before acknowledging them, and replays pending inbox entries when the UI reconnects.
+- This service does not override Android permission, battery, force-stop or radio controls. Continuous availability across every device/OEM lifecycle state is not promised until verified on physical phones.
 
-## Coordinated integration checkpoint
+### Automated validation and release acceptance
+- GitHub Actions on `main` runs JVM tests, Android manifest validation, diagnostic lint, debug APK assembly and artifact upload.
+- The `main` build at commit `3bfafc51c815e21a334a1b70dad9507b872f98b1` passed all workflow steps on 17 November 2026. Its uploaded debug APK is approximately 17.3 MB.
+- A passing CI workflow proves that the source tests and APK build succeeded. It does not prove radio discovery, Bluetooth/Wi-Fi interoperability, multi-phone delivery, notification behavior or background recovery on real devices.
+- Android minimum remains API 26 (Android 8.0). Hosted emulator checks are deferred; no physical-device test is claimed as passed.
 
-Phase 1 SmartConnect is integrated into `main`. The coordinated Phase 2 branch carries the Batch Two mesh identity/proof-chain transport work and the Batch Three Ludo pass-and-play updates while retaining the SmartConnect `MainActivity.kt` changes. The existing CI workflow is kept from `main` (JVM tests + debug APK build + artifact upload; no emulator launch job). The coordinated PR #119 has been merged into `main` at `16a6a51a6cf11480a80f9536a0a9ec97f9098f37` after exact-head CI passed. The original conflicting PR #117 was closed as superseded; its source branch remains available. Relay remains disabled.
+Before marking Messaging release-ready, test with at least two physical Android phones (and three for group fan-out):
+1. Discover each other with Bluetooth/Wi-Fi enabled, compare the security code, approve, and exchange direct messages in both directions.
+2. Confirm queued/sent and Delivered states; open the receiving chat and confirm Read appears only when read receipts are enabled.
+3. Disable read receipts and verify no direct or group read receipt is sent.
+4. Test typing, replies, edits, reactions and delete-for-everyone, including attempts by a non-sender and delayed edits/reactions after deletion.
+5. Create a group, add a third phone, exchange messages, and verify per-recipient delivery and group read receipts.
+6. Record and send a voice note; play the received attachment. Background the app during another recording and confirm it stops safely.
+7. Background both phones and verify the foreground-service notification, message notifications and inbox replay. Repeat after disconnect/reconnect, process recreation and device restart; record force-stop and battery-optimization behavior separately.
+8. Transfer files while connected and interrupt a transfer to document the current recovery behavior.
 
-
-## Post-merge coordination update — 13 November 2026
-
-- Coordinated PR #119 (SmartConnect + Batch Two mesh proof-chain/Dead Drop integration + Ludo foundations) was merged into `main` as `16a6a51a6cf11480a80f9536a0a9ec97f9098f37`.
-- Exact PR-head workflow for `ceb48ad6382d55102dddd9f3b21e81edd464d599` passed JVM unit tests, debug APK assembly and artifact upload before merge.
-- A separate push workflow for the resulting `main` merge commit was started; its final result must be checked before describing the post-merge main build as validated.
-- Phase 1 SmartConnect, coordinated mesh proof-chain foundations and Ludo pass-and-play foundations are now source-integrated in `main`. This does not mean multi-hop relay, internet multiplayer, nearby multiplayer, or physical-device behavior is field-verified.
-- Relay remains hard-disabled. Next engineering focus is a focused Phase 2 audit and completion of the live secure-message delivery path, then transfer lifecycle integration; do not claim full Phase 2 completion based only on the foundations already present.
-- Android minimum remains API 26 (Android 8.0). Hosted emulator checks remain deferred; physical-device compatibility is unverified.
-
-
-## Phase 2 messaging audit — 13 November 2026
-
-The live direct one-to-one path has these integrated foundations: signed fresh ECDH handshake, directional AES-GCM session keys, encrypted message packets and acknowledgements, persist-before-send encrypted outbox, duplicate suppression committed before ACK, bounded retry attempts, and retry on a later authenticated reconnect. The acknowledgement means the recipient committed the message locally; it is not a read receipt. First-contact trust remains trust-on-first-use and depends on users comparing the in-person security code.
-
-### Group fan-out reliability gap
-
-The current group/broadcast methods encrypt a separate packet for each connected peer, but do not put each recipient's copy into the durable outbox or map its acknowledgement to a pending delivery. They are best-effort while peers are connected. This is a known Phase 2 gap, not a completed reliable group-messaging feature. The next implementation must track delivery independently per recipient, persist each recipient's queue entry before send, retry after reconnect, and clear only that recipient's copy after its authenticated ACK.
-
-### Process lifecycle boundary
-
-The direct outbox is restored when the transport is recreated and retries when the matching trusted peer authenticates again. This is reconnect-driven recovery, not a guarantee of background delivery while the app is stopped or the phone is in Doze. Android background execution and a durable scheduled retry mechanism remain separate work.
+Do not enable multi-hop relay or claim complete messaging availability based only on these checks; relay remains separately disabled pending its security and A → B → C → D validation.
