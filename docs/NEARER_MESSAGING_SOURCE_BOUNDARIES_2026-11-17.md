@@ -185,7 +185,7 @@ Every production refactor must be a focused PR, pass JVM tests, manifest validat
 The tree contains these filename-matched source candidates. This is deliberately an inventory, not a final ownership assignment.
 
 **Chat/conversation candidates:**  
-ChatDeletePolicy.kt, ChatDeliveryLabelPolicy.kt, ChatDeliveryRecoveryPolicy.kt, ChatEditPolicy.kt, ChatForwardPolicy.kt, ChatHistoryPolicy.kt, ChatInboxPolicy.kt, ChatInboxStatePolicy.kt, ChatMessageRecoveryPolicy.kt, ChatNotificationPolicy.kt, ChatReactionPolicy.kt, ChatReadReceiptPolicy.kt, ChatReplyPolicy.kt, ChatRestartRecoveryPolicy.kt, ChatTransportRouter.kt, ChatTypingPolicy.kt, ConversationIndex.kt, DirectChatOutbox.kt, MessageIdHistoryPolicy.kt, MessageRetryPolicy.kt, OutgoingReceiptHistoryPolicy.kt, PremiumChatsScreen.kt, PrivateMessageNotification.kt, VoiceNoteComposer.kt, VoiceNotePolicy.kt.
+ChatDeletePolicy.kt, ChatDeliveryLabelPolicy.kt, ChatDeliveryRecoveryPolicy.kt, ChatEditPolicy.kt, ChatForwardPolicy.kt, ChatHistoryPolicy.kt, ChatInboxPolicy.kt, ChatInboxStatePolicy.kt, ChatMessageRecoveryPolicy.kt, ChatNotificationPolicy.kt, ChatReactionPolicy.kt, ChatReadReceiptPolicy.kt, ChatReplyPolicy.kt, ChatRestartRecoveryPolicy.kt, ChatTransportRouter.kt, ChatTypingPolicy.kt, ConversationIndex.kt, DirectChatOutbox.kt, MessageIdHistoryPolicy.kt, MessageRetryPolicy.kt, OutgoingReceiptHistoryPolicy.kt, PremiumChatsScreen.kt, PrivateMessageNotification.kt.
 
 **Community candidates:**  
 CommunityDeliveryPolicy.kt, CommunityIngressPolicy.kt, CommunityPacketPolicy.kt, CommunityReadReceiptPolicy.kt, CommunityRosterPolicy.kt.
