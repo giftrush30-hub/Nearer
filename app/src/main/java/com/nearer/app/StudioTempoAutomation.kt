@@ -79,7 +79,14 @@ internal object StudioTempoAutomationPolicy {
     fun outputDurationMs(points: List<StudioTempoPoint>, sourceDurationMs: Long): Long {
         val safeDuration = sourceDurationMs.coerceAtLeast(0L)
         if (safeDuration == 0L) return 0L
+        // The common no-automation case should be O(1), not 1,500 samples per
+        // recomposition for every track. A single keyframe is also a constant-speed curve.
+        if (points.isEmpty()) return safeDuration
         val normalized = normalize(points, safeDuration)
+        if (normalized.all { it.speed == normalized.first().speed }) {
+            return (safeDuration.toDouble() / normalized.first().speed.toDouble())
+                .roundToLong().coerceAtLeast(1L)
+        }
         var sourceCursorMs = 0L
         var outputDurationMs = 0.0
         // Only the first 30 seconds can contain automation. Integrate those exact 20 ms
