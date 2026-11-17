@@ -27,9 +27,13 @@ internal object StudioTempoAutomationPolicy {
     fun normalize(points: List<StudioTempoPoint>, durationMs: Long): List<StudioTempoPoint> {
         val safeDuration = if (durationMs > 0L) durationMs.coerceAtMost(MAX_AUTOMATION_MS) else MAX_AUTOMATION_MS
         val byTime = points.map { point ->
-            val snappedTime = (point.timeMs.coerceAtLeast(0L).toDouble() / STEP_MS).roundToLong() * STEP_MS
+            // Clamp before snapping: multiplying a hostile Long.MAX_VALUE timestamp by
+            // STEP_MS could overflow and wrap into the beginning of the automation curve.
+            val boundedTime = point.timeMs.coerceIn(0L, safeDuration)
+            val snappedTime = ((boundedTime.toDouble() / STEP_MS).roundToLong() * STEP_MS)
+                .coerceIn(0L, safeDuration)
             StudioTempoPoint(
-                timeMs = snappedTime.coerceIn(0L, safeDuration),
+                timeMs = snappedTime,
                 speed = if (point.speed.isFinite()) point.speed.coerceIn(MIN_SPEED, MAX_SPEED) else 1f
             )
         }.sortedBy { it.timeMs }
