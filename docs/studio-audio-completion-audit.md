@@ -31,7 +31,7 @@ This integration branch is rebuilt on the parallel workstream's current PR #284 
 - Added direct `StudioTrackGainProcessor` regression tests for chunk-boundary invariance (the gain/fade envelope must not reset between Media3 input buffers), mono-to-stereo duplication, hard-left/right balance, and rejection of unsupported channel layouts. A lifecycle review also found that the processor reset its frame clock on full reset but not on Media3 `flush()`; it now resets on both, with a reuse regression test proving a second input stream starts its fade at frame zero. These tests are committed but still need exact-head CI execution.
 - Live-monitor route refresh preserves the selected headphone when another eligible device is added; if the selected output disappears, monitoring stops and a remaining output is selected for a fresh explicit restart. Unit tests cover preservation, fallback and no-device cases.
 - This branch is based on PR #284's current head; exact-head validation must run here before integration. The parallel PR #284 remains independently owned.
-- Exact-head JVM tests, manifest validation, Android lint and installable debug APK build are required.
+- Exact-head JVM tests, manifest validation, Android lint and installable debug APK build are required. The Android validation workflow now runs on pushes to `studio/five-parts-main-sync`; that branch is explicitly included in the APK build and artifact-upload conditions so the stacked integration head can be validated without changing PR #284.
 - Physical device listening at 0.5×, 1×, 1.5× and 2× is still required. No physical test or studio-grade guarantee is claimed.
 
 ## References
