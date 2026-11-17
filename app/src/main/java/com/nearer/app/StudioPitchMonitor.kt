@@ -20,6 +20,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -183,18 +185,29 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                 when (it.type) {
                     AudioDeviceInfo.TYPE_WIRED_HEADSET,
                     AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-                    AudioDeviceInfo.TYPE_USB_HEADSET,
-                    AudioDeviceInfo.TYPE_USB_DEVICE -> 0
-                    else -> 1
+                    AudioDeviceInfo.TYPE_USB_HEADSET -> 0
+                    AudioDeviceInfo.TYPE_BLE_HEADSET,
+                    AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> 1
+                    AudioDeviceInfo.TYPE_USB_DEVICE,
+                    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> 2
+                    else -> 3
                 }
             }
     var preferredOutputId by remember(context) {
         mutableStateOf(headphoneOutputDevices().firstOrNull()?.id)
     }
+    var confirmedOutputId by remember(context) { mutableStateOf<Int?>(null) }
+    var showOutputConfirmation by remember { mutableStateOf(false) }
+    val selectedOutputDevice = headphoneOutputDevices().firstOrNull { it.id == preferredOutputId }
     var hasHeadphoneOutput by remember(context) { mutableStateOf(preferredOutputId != null) }
     DisposableEffect(audioManager) {
         fun refreshHeadphoneRoute() {
             val selected = headphoneOutputDevices().firstOrNull()
+            if (selected?.id != preferredOutputId) {
+                confirmedOutputId = null
+                showOutputConfirmation = false
+                monitorEnabled = false
+            }
             preferredOutputId = selected?.id
             hasHeadphoneOutput = selected != null
         }
@@ -565,7 +578,22 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         Text("Vocal pitch & key guide", color = White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
         Text("${if (preferredInputId == null) "Phone default" else "Selected USB"} input · ${if (preferUnprocessedInput && (android.os.Build.VERSION.SDK_INT < 27 || android.os.Build.VERSION.SDK_INT >= 28)) "Unprocessed capture" else "Standard microphone path"} · No recording is saved", color = Muted, fontSize = 11.sp)
         Button(
-            onClick = { monitorEnabled = !monitorEnabled },
+            onClick = {
+                if (monitorEnabled) {
+                    monitorEnabled = false
+                } else {
+                    val output = selectedOutputDevice
+                    if (output == null) {
+                        status = "No verified headphone output is available."
+                    } else if (StudioAudioEnginePolicy.requiresOutputConfirmation(output.type) &&
+                        confirmedOutputId != output.id
+                    ) {
+                        showOutputConfirmation = true
+                    } else {
+                        monitorEnabled = true
+                    }
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
             enabled = hasHeadphoneOutput || monitorEnabled,
             colors = ButtonDefaults.buttonColors(
@@ -577,7 +605,11 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         ) { Text(if (monitorEnabled) "LIVE VOCAL MONITOR · ON" else "TURN ON LIVE VOCAL MONITOR") }
         Text(
             if (monitorEnabled) "Live monitor diagnostics appear below: sample rate, routed devices, estimated output-buffer time and underruns. Wired or USB headphones are strongly recommended."
-            else if (hasHeadphoneOutput) "Headphone output detected. Bluetooth may still introduce noticeable delay."
+            else if (selectedOutputDevice != null &&
+                StudioAudioEnginePolicy.requiresOutputConfirmation(selectedOutputDevice.type) &&
+                confirmedOutputId != selectedOutputDevice.id
+            ) "Android cannot tell whether this USB/Bluetooth output is headphones or a speaker. You must confirm it is headphones before live monitoring can start."
+            else if (hasHeadphoneOutput) "Headphone-class output detected. Bluetooth may still introduce noticeable delay."
             else "Connect wired, USB or Bluetooth headphones before monitoring. Speaker playback is blocked to prevent feedback.",
             color = Muted, fontSize = 10.sp, lineHeight = 15.sp
         )
@@ -626,5 +658,25 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         Text(status, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
         Button(onClick = onBack, modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) { Text("BACK TO RECORDER") }
+    }
+    if (showOutputConfirmation && selectedOutputDevice != null) {
+        val deviceName = selectedOutputDevice.productName.toString().ifBlank { "Selected audio output" }
+        AlertDialog(
+            onDismissRequest = { showOutputConfirmation = false },
+            title = { Text("Confirm headphone output") },
+            text = {
+                Text("$deviceName is reported by Android as a general USB/Bluetooth audio output. It could be a speaker. Continue only if this device is connected to headphones, not an external speaker. NeaRer will still verify the actual route and stop if it changes.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmedOutputId = selectedOutputDevice.id
+                    showOutputConfirmation = false
+                    monitorEnabled = true
+                }) { Text("I'M USING HEADPHONES") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showOutputConfirmation = false }) { Text("CANCEL") }
+            }
+        )
     }
 }
