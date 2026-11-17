@@ -18,12 +18,13 @@ internal data class StudioAudioProjectTrackState(
     val reverbMix: Float = 0f,
     val clipStartMs: Long = 0L,
     val clipEndMs: Long = durationMs,
-    val startOffsetMs: Long = 0L
+    val startOffsetMs: Long = 0L,
+    val tempoPoints: List<StudioTempoPoint> = emptyList()
 )
 
 /** Versioned local project codec. Older projects migrate with flat EQ and dry audio. */
 internal object StudioAudioProjectCodec {
-    private const val VERSION = 4
+    private const val VERSION = 5
 
     fun encode(tracks: List<StudioAudioProjectTrackState>): String {
         val root = JSONObject().put("version", VERSION)
@@ -45,7 +46,12 @@ internal object StudioAudioProjectCodec {
                 .put("reverbMix", track.reverbMix.coerceIn(0f, 0.35f).toDouble())
                 .put("clipStartMs", track.clipStartMs.coerceAtLeast(0L))
                 .put("clipEndMs", track.clipEndMs.coerceAtLeast(track.clipStartMs))
-                .put("startOffsetMs", track.startOffsetMs.coerceIn(0L, 30_000L)))
+                .put("startOffsetMs", track.startOffsetMs.coerceIn(0L, 30_000L))
+                .put("tempoPoints", JSONArray().apply {
+                    StudioTempoAutomationPolicy.normalize(track.tempoPoints, track.durationMs).forEach { point ->
+                        put(JSONObject().put("timeMs", point.timeMs).put("speed", point.speed.toDouble()))
+                    }
+                }))
         }
         return root.put("tracks", items).toString()
     }
@@ -80,10 +86,25 @@ internal object StudioAudioProjectCodec {
                         reverbMix = item.optDouble("reverbMix", 0.0).toFloat().coerceIn(0f, 0.35f),
                         clipStartMs = clipStartMs,
                         clipEndMs = clipEndMs,
-                        startOffsetMs = item.optLong("startOffsetMs", 0L).coerceIn(0L, 30_000L)
+                        startOffsetMs = item.optLong("startOffsetMs", 0L).coerceIn(0L, 30_000L),
+                        tempoPoints = if (version >= 5) decodeTempoPoints(item, durationMs) else emptyList()
                     ))
                 }
             }.take(8)
         }.getOrDefault(emptyList())
+    }
+
+    private fun decodeTempoPoints(item: JSONObject, durationMs: Long): List<StudioTempoPoint> {
+        val array = item.optJSONArray("tempoPoints") ?: return emptyList()
+        val points = buildList {
+            for (index in 0 until array.length()) {
+                val point = array.optJSONObject(index) ?: continue
+                add(StudioTempoPoint(
+                    timeMs = point.optLong("timeMs", 0L),
+                    speed = point.optDouble("speed", 1.0).toFloat()
+                ))
+            }
+        }
+        return StudioTempoAutomationPolicy.normalize(points.take(StudioTempoAutomationPolicy.MAX_KEYFRAMES), durationMs)
     }
 }
