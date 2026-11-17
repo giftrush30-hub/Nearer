@@ -148,7 +148,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     var waveformLoadingUri by remember { mutableStateOf<String?>(null) }
     val previewPlayer = remember(context) { ExoPlayer.Builder(context).build() }
 
-    LaunchedEffect(waveformRequestUri) {
+    LaunchedEffect(currentProjectId, waveformRequestUri) {
         val key = waveformRequestUri ?: return@LaunchedEffect
         val target = tracks.firstOrNull { it.uri.toString() == key }
         if (target != null && waveformByUri[key] == null) {

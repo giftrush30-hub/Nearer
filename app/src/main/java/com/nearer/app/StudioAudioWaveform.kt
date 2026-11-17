@@ -11,6 +11,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.nio.ByteOrder
+import java.nio.FloatBuffer
+import java.nio.ShortBuffer
 
 internal class StudioAudioWaveformAccumulator(
     private val bucketCount: Int,
@@ -24,24 +26,39 @@ internal class StudioAudioWaveformAccumulator(
         require(bucketCount in 1..512)
     }
 
-    fun addInterleaved(samples: FloatArray, channelCount: Int) {
+    fun addInterleaved(samples: ShortBuffer, channelCount: Int) {
         require(channelCount > 0)
-        val frames = samples.size / channelCount
-        for (frame in 0 until frames) {
+        val frameCount = samples.remaining() / channelCount
+        repeat(frameCount) {
             var peak = 0f
-            val base = frame * channelCount
-            for (channel in 0 until channelCount) {
-                val value = samples[base + channel]
-                val amplitude = if (value.isFinite()) kotlin.math.abs(value).coerceIn(0f, 1f) else 0f
+            repeat(channelCount) {
+                val amplitude = kotlin.math.abs(samples.get().toInt() / 32768f)
                 if (amplitude > peak) peak = amplitude
             }
-            val bucket = ((framesSeen.coerceAtMost(expectedFrames - 1L) * peaks.size) / expectedFrames)
-                .toInt().coerceIn(0, peaks.lastIndex)
-            if (peak > peaks[bucket]) peaks[bucket] = peak
-            framesSeen++
+            recordPeak(peak)
         }
     }
 
+    fun addInterleaved(samples: FloatBuffer, channelCount: Int) {
+        require(channelCount > 0)
+        val frameCount = samples.remaining() / channelCount
+        repeat(frameCount) {
+            var peak = 0f
+            repeat(channelCount) {
+                val value = samples.get()
+                val amplitude = if (value.isFinite()) kotlin.math.abs(value).coerceIn(0f, 1f) else 0f
+                if (amplitude > peak) peak = amplitude
+            }
+            recordPeak(peak)
+        }
+    }
+
+    private fun recordPeak(peak: Float) {
+        val bucket = ((framesSeen.coerceAtMost(expectedFrames - 1L) * peaks.size) / expectedFrames)
+            .toInt().coerceIn(0, peaks.lastIndex)
+        if (peak > peaks[bucket]) peaks[bucket] = peak
+        framesSeen++
+    }
     fun finish(): List<Float> = peaks.toList()
 }
 
@@ -136,15 +153,11 @@ internal object StudioAudioWaveformExtractor {
                             when (encoding) {
                                 AudioFormat.ENCODING_PCM_16BIT -> {
                                     val shorts = bytes.slice().order(ByteOrder.nativeOrder()).asShortBuffer()
-                                    val values = FloatArray(shorts.remaining())
-                                    for (sample in values.indices) values[sample] = shorts.get().toFloat() / 32768f
-                                    accumulator.addInterleaved(values, channels)
+                                    accumulator.addInterleaved(shorts, channels)
                                 }
                                 AudioFormat.ENCODING_PCM_FLOAT -> {
                                     val floats = bytes.slice().order(ByteOrder.nativeOrder()).asFloatBuffer()
-                                    val values = FloatArray(floats.remaining())
-                                    for (sample in values.indices) values[sample] = floats.get()
-                                    accumulator.addInterleaved(values, channels)
+                                    accumulator.addInterleaved(floats, channels)
                                 }
                                 else -> error("This device decoded the file to an unsupported PCM format ($encoding).")
                             }
