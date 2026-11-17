@@ -15,7 +15,7 @@ Tempo automation is stored per track as source-media keyframes:
 
 The export uses Media3 1.11.1's `SpeedParameters(speedProvider, shouldMaintainPitch = true)` on each edited audio item. The speed provider is attached to the item, not the entire composition, so each track can have an independent curve. The implementation does not also add a second speed-changing audio effect to the same item.
 
-The output-duration policy uses the same 20 ms sampled speed values as the provider. The gain/fade processor receives the estimated rendered duration, and fade lengths are bounded to that duration. This keeps fade-out timing aligned when a clip is sped up or slowed down.
+The output-duration policy uses the same 20 ms sampled speed values as the provider. The gain/fade processor receives the estimated rendered duration, and fade lengths are bounded to that duration. This keeps fade-out timing aligned when a clip is sped up or slowed down. Normal-speed and constant-speed tracks use O(1) duration calculations rather than walking the sample grid, avoiding unnecessary work during recomposition for long recordings.
 
 The curve changes timing, not source files. Imported recordings remain unchanged; tempo automation is applied only during the local render. The project codec moves to version 5 and reads versions 1–4 with an empty (normal-speed) automation curve.
 
