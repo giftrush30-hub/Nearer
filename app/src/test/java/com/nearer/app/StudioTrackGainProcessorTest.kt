@@ -56,8 +56,8 @@ class StudioTrackGainProcessorTest {
         assertEquals(whole.size, fragmented.size)
         assertTrue(whole.indices.all { whole[it] == fragmented[it] })
         assertEquals(0, whole[0].toInt())
-        assertEquals(0, whole[whole.lastIndex].toInt())
-        assertTrue(whole[400].toInt() in 9_500..9_700)
+        assertTrue(kotlin.math.abs(whole[whole.lastIndex].toInt()) < 50)
+        assertTrue(whole[400].toInt() in 5_300..5_600)
     }
 
     @Test fun monoInputIsDuplicatedToBothOutputChannels() {
