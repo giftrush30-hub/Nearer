@@ -7,12 +7,16 @@ internal data class StudioAudioProjectLibraryEntry(
     val id: String,
     val name: String,
     val updatedAtMs: Long,
-    val tracks: List<StudioAudioProjectTrackState>
+    val tracks: List<StudioAudioProjectTrackState>,
+    val bpm: Int = StudioAudioBeatGridPolicy.DEFAULT_BPM,
+    val beatDivision: Int = 2,
+    val snapEnabled: Boolean = true
 )
 
 /** Bounded, versioned local library for independent Sound Desk arrangements. */
 internal object StudioAudioProjectLibraryCodec {
-    private const val VERSION = 1
+    private const val VERSION = 2
+    private const val LEGACY_VERSION = 1
     const val MAX_PROJECTS = 20
     const val MAX_NAME_LENGTH = 48
 
@@ -44,6 +48,9 @@ internal object StudioAudioProjectLibraryCodec {
                 .put("id", id)
                 .put("name", normalizeName(project.name))
                 .put("updatedAtMs", project.updatedAtMs.coerceAtLeast(0L))
+                .put("bpm", StudioAudioBeatGridPolicy.normalizeBpm(project.bpm))
+                .put("beatDivision", StudioAudioBeatGridPolicy.normalizeBeatDivision(project.beatDivision))
+                .put("snapEnabled", project.snapEnabled)
                 .put("tracksJson", StudioAudioProjectCodec.encode(project.tracks)))
         }
         return JSONObject().put("version", VERSION).put("projects", items).toString()
@@ -53,7 +60,8 @@ internal object StudioAudioProjectLibraryCodec {
         if (raw.isNullOrBlank()) return emptyList()
         return runCatching {
             val root = JSONObject(raw)
-            if (root.optInt("version", -1) != VERSION) return emptyList()
+            val version = root.optInt("version", -1)
+            if (version != VERSION && version != LEGACY_VERSION) return emptyList()
             val items = root.optJSONArray("projects") ?: return emptyList()
             buildList {
                 val ids = HashSet<String>()
@@ -66,7 +74,15 @@ internal object StudioAudioProjectLibraryCodec {
                         id = id,
                         name = normalizeName(item.optString("name", "Untitled Mix")),
                         updatedAtMs = item.optLong("updatedAtMs", 0L).coerceAtLeast(0L),
-                        tracks = StudioAudioProjectCodec.decode(item.optString("tracksJson", null))
+                        tracks = StudioAudioProjectCodec.decode(item.optString("tracksJson", null)),
+                        bpm = StudioAudioBeatGridPolicy.normalizeBpm(
+                            if (version >= VERSION) item.optInt("bpm", StudioAudioBeatGridPolicy.DEFAULT_BPM)
+                            else StudioAudioBeatGridPolicy.DEFAULT_BPM
+                        ),
+                        beatDivision = StudioAudioBeatGridPolicy.normalizeBeatDivision(
+                            if (version >= VERSION) item.optInt("beatDivision", 2) else 2
+                        ),
+                        snapEnabled = if (version >= VERSION) item.optBoolean("snapEnabled", true) else false
                     ))
                 }
             }

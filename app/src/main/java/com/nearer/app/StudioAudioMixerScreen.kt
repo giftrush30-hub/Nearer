@@ -104,6 +104,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
         }
     }
     var currentProjectId by remember(context) { mutableStateOf(projects.first().id) }
+    val currentProject = projects.firstOrNull { it.id == currentProjectId } ?: projects.first()
     val tracks = remember(context) {
         mutableStateListOf<StudioMixTrack>().apply {
             addAll(projects.first().tracks.map { saved -> StudioMixTrack(
@@ -113,7 +114,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
             ) })
         }
     }
-    LaunchedEffect(currentProjectId, tracks.map { it.toProjectState() }) {
+    LaunchedEffect(currentProjectId, tracks.map { it.toProjectState() }, currentProject.bpm, currentProject.beatDivision, currentProject.snapEnabled) {
         val index = projects.indexOfFirst { it.id == currentProjectId }
         if (index >= 0) {
             projects[index] = projects[index].copy(tracks = tracks.map { it.toProjectState() }, updatedAtMs = System.currentTimeMillis())
@@ -125,7 +126,6 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     var showDeleteProjectDialog by remember { mutableStateOf(false) }
     var projectNameDraft by remember { mutableStateOf("") }
     var creatingProject by remember { mutableStateOf(true) }
-    val currentProject = projects.firstOrNull { it.id == currentProjectId } ?: projects.first()
     var exported by remember { mutableStateOf<File?>(null) }
     fun switchProject(project: StudioAudioProjectLibraryEntry) {
         val oldIndex = projects.indexOfFirst { it.id == currentProjectId }
@@ -296,6 +296,77 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                     Button(onClick = { showDeleteProjectDialog = true }, enabled = projects.size > 1,
                         colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Muted)) { Text("×") }
                 }
+            }
+        }
+        Surface(color = Panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("TEMPO & BEAT GRID", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("${currentProject.bpm} BPM  ·  ${when (currentProject.beatDivision) { 1 -> "QUARTER NOTES"; 2 -> "EIGHTH NOTES"; else -> "SIXTEENTH NOTES" }}",
+                    color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Slider(
+                    value = currentProject.bpm.toFloat(),
+                    onValueChange = { value ->
+                        val projectIndex = projects.indexOfFirst { it.id == currentProjectId }
+                        if (projectIndex >= 0) projects[projectIndex] = projects[projectIndex].copy(
+                            bpm = StudioAudioBeatGridPolicy.normalizeBpm(value.toInt())
+                        )
+                    },
+                    valueRange = StudioAudioBeatGridPolicy.MIN_BPM.toFloat()..StudioAudioBeatGridPolicy.MAX_BPM.toFloat(),
+                    steps = StudioAudioBeatGridPolicy.MAX_BPM - StudioAudioBeatGridPolicy.MIN_BPM - 1
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(1, 2, 4).forEach { division ->
+                        val label = when (division) { 1 -> "¼ NOTE"; 2 -> "⅛ NOTE"; else -> "1/16 NOTE" }
+                        Button(
+                            onClick = {
+                                val projectIndex = projects.indexOfFirst { it.id == currentProjectId }
+                                if (projectIndex >= 0) projects[projectIndex] = projects[projectIndex].copy(beatDivision = division)
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (currentProject.beatDivision == division) Mint else Midnight,
+                                contentColor = if (currentProject.beatDivision == division) Midnight else White
+                            )
+                        ) { Text(label, fontSize = 8.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) {
+                        Text("SNAP TRACK STARTS TO GRID", color = White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(if (currentProject.snapEnabled) "Track positions lock to the nearest grid line" else "Free positioning · no beat snapping",
+                            color = Muted, fontSize = 9.sp)
+                    }
+                    Switch(
+                        checked = currentProject.snapEnabled,
+                        onCheckedChange = { enabled ->
+                            val projectIndex = projects.indexOfFirst { it.id == currentProjectId }
+                            if (projectIndex >= 0) projects[projectIndex] = projects[projectIndex].copy(snapEnabled = enabled)
+                        }
+                    )
+                }
+                Canvas(Modifier.fillMaxWidth().height(24.dp)) {
+                    val interval = StudioAudioBeatGridPolicy.gridIntervalMs(currentProject.bpm, currentProject.beatDivision)
+                    val tickCount = (StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS / interval).toInt()
+                    val showSubdivisions = interval / StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS * size.width >= 4.dp.toPx()
+                    for (tick in 0..tickCount) {
+                        val isBar = tick % (currentProject.beatDivision * 4) == 0
+                        val isBeat = tick % currentProject.beatDivision == 0
+                        if (isBar || isBeat || showSubdivisions) {
+                            val x = (tick * interval / StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS * size.width).toFloat()
+                            val height = when { isBar -> size.height; isBeat -> size.height * 0.68f; else -> size.height * 0.34f }
+                            val color = when { isBar -> Gold; isBeat -> Mint; else -> Color(0xFF52636D) }
+                            drawLine(color, Offset(x, size.height - height), Offset(x, size.height), if (isBar) 2.dp.toPx() else 1.dp.toPx())
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("0:00", color = Muted, fontSize = 8.sp)
+                    Text("0:10", color = Muted, fontSize = 8.sp)
+                    Text("0:20", color = Muted, fontSize = 8.sp)
+                    Text("0:30", color = Muted, fontSize = 8.sp)
+                }
+                Text("The grid guides track start positions in the 30-second arrangement window. It does not time-stretch audio or alter clip trims.",
+                    color = Muted, fontSize = 9.sp, lineHeight = 13.sp)
             }
         }
         Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
@@ -496,9 +567,17 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 }, valueRange = (clipStart + minClip).coerceAtMost(track.durationMs).toFloat()..track.durationMs.toFloat(), enabled = track.durationMs > minClip)
                             }
                             Text("TRACK START POSITION · ${formatMixTime(track.startOffsetMs)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (currentProject.snapEnabled) "BEAT SNAP ON · ${currentProject.bpm} BPM / ${currentProject.beatDivision} GRID" else "FREE TIMELINE POSITION",
+                                color = Muted, fontSize = 8.sp
+                            )
                             Slider(value = track.startOffsetMs.toFloat(), onValueChange = { v ->
-                                tracks[index] = track.copy(startOffsetMs = v.toLong().coerceIn(0L, 30_000L)); exported = null
-                            }, valueRange = 0f..30_000f, steps = 29)
+                                val requested = v.toLong().coerceIn(0L, StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS)
+                                val position = if (currentProject.snapEnabled) {
+                                    StudioAudioBeatGridPolicy.snapOffsetMs(requested, currentProject.bpm, currentProject.beatDivision)
+                                } else requested
+                                tracks[index] = track.copy(startOffsetMs = position); exported = null
+                            }, valueRange = 0f..StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS.toFloat())
                             Text("FADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = (track.fadeInMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
                                 tracks[index] = track.copy(fadeInMs = (it * 1000f).toLong()); exported = null
@@ -605,7 +684,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 Text("SHARE FINISHED MIX")
             }
         }
-        Text("Each named project saves its own clip trims, start positions and mix controls locally. Export applies real source clipping, timeline offsets, volume, pan, fades, EQ and reverb without changing original files. Waveform editing and tempo automation remain in progress.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
+        Text("Each named project saves its own tempo, beat grid, snap preference, clip trims, start positions and mix controls locally. Export applies real source clipping, timeline offsets, volume, pan, fades, EQ and reverb without changing original files. Tempo-based snapping guides placement; it does not time-stretch audio.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
 }
 
