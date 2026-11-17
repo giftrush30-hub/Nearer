@@ -3,6 +3,7 @@
     <files-path name="received_files" path="received/" />
     <files-path name="studio_exports" path="studio-exports/" />
     <files-path name="studio_recordings" path="studio-recordings/" />
+    <files-path name="voice_notes" path="voice-notes/" />
     <files-path name="business_photos" path="business-photos/" />
     <cache-path name="shared_apk" path="nearer-share/" />
     <cache-path name="folder_shares" path="nearer-folder-shares/" />

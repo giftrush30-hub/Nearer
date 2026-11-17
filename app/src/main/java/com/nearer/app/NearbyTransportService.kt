@@ -141,11 +141,16 @@ class NearbyTransportService : Service() {
                 messageId, peerId, senderName, body,
                 replyToMessageId, replyToPreview, replyToSender, mesh = false
             )
+            val isNewInboxEntry = inbox.snapshot().none {
+                it.peerId == entry.peerId && it.messageId == entry.messageId
+            }
             if (!inbox.put(entry)) {
                 nearbyTransport.releasePendingIncomingMessage(peerId, messageId)
                 uiListener?.onStatus("NeaRer could not securely save an incoming message for later delivery. The sender has not been acknowledged.")
                 return
             }
+            // Notify only after durable inbox commit. The text remains generic for lock-screen privacy.
+            PrivateMessageNotification.show(applicationContext, messageId, isNewInboxEntry, inboxPersisted = true)
             // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
             val dedupeCommitted = runCatching { acknowledge() }.getOrDefault(false)
             val acknowledgementAllowed = NearbyInboxCommitPolicy.canAcknowledge(inboxCommitted = true, dedupeCommitted = dedupeCommitted)
@@ -172,11 +177,15 @@ class NearbyTransportService : Service() {
                 messageId, originPeerId, senderName, body,
                 replyToMessageId, replyToPreview, replyToSender, mesh = true
             )
+            val isNewInboxEntry = inbox.snapshot().none {
+                it.peerId == entry.peerId && it.messageId == entry.messageId
+            }
             if (!inbox.put(entry)) {
                 nearbyTransport.releasePendingIncomingMessage(originPeerId, messageId)
                 uiListener?.onStatus("NeaRer could not securely save an incoming nearby message. Delivery was not acknowledged.")
                 return
             }
+            PrivateMessageNotification.show(applicationContext, messageId, isNewInboxEntry, inboxPersisted = true)
             // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
             val dedupeCommitted = runCatching { acknowledge() }.getOrDefault(false)
             dispatchInboxEntry(entry, dedupeCommitted)
