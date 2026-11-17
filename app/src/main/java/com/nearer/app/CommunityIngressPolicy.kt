@@ -9,7 +9,7 @@ import org.json.JSONObject
  */
 internal object CommunityIngressPolicy {
     private val groupTypes = setOf(
-        "group_created", "group_join", "group_members", "group_message"
+        "group_created", "group_join", "group_members", "group_message", "group_read_receipt"
     )
     private val ludoTypes = setOf(
         "ludo_invite", "ludo_accept", "ludo_reject", "ludo_action",
@@ -52,6 +52,15 @@ internal object CommunityIngressPolicy {
                     ids.toSetOfStrings().all { NeaRerIdentity.normalize(it) != null } &&
                     names.toSetOfStrings().all { it.length <= MAX_SENDER_NAME_LENGTH } &&
                     packet.optString("code").matches(GROUP_CODE)
+            }
+            "group_read_receipt" -> {
+                val ids = packet.optJSONArray("messageIds")
+                val messageIds = ids?.let { array -> (0 until array.length()).map { array.optString(it) } }.orEmpty()
+                packet.optString("code").matches(GROUP_CODE) &&
+                    packet.optString("readerPeerId") == stableId &&
+                    CommunityReadReceiptPolicy.isValid(
+                        messageIds, packet.optLong("readAt", 0L), System.currentTimeMillis()
+                    )
             }
             "group_message" -> packet.optString("code").matches(GROUP_CODE) &&
                 packet.optString("id").isNotBlank() && packet.optString("id").length <= 80 &&

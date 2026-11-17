@@ -149,30 +149,34 @@ internal fun VoiceNoteComposer(
         }
     }
 
-    val latestRecorder = androidx.compose.runtime.rememberUpdatedState(recorder)
-    val latestFile = androidx.compose.runtime.rememberUpdatedState(recordingFile)
-    val latestRecording = androidx.compose.runtime.rememberUpdatedState(recording)
     val lifecycleOwner = context as? LifecycleOwner
+    // Lifecycle observers are long-lived; read the latest Compose state rather
+    // than the values captured when this effect was first installed.
+    val latestRecorder by androidx.compose.runtime.rememberUpdatedState(recorder)
+    val latestRecordingFile by androidx.compose.runtime.rememberUpdatedState(recordingFile)
+    val latestRecording by androidx.compose.runtime.rememberUpdatedState(recording)
     DisposableEffect(lifecycleOwner) {
+        fun cancelActiveRecording() {
+            if (!latestRecording) return
+            val active = latestRecorder
+            val file = latestRecordingFile
+            recorder = null
+            recordingFile = null
+            recording = false
+            runCatching { active?.stop() }
+            runCatching { active?.release() }
+            file?.delete()
+        }
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP && latestRecording.value) {
-                runCatching { latestRecorder.value?.stop() }
-                runCatching { latestRecorder.value?.release() }
-                latestFile.value?.delete()
-                recorder = null
-                recordingFile = null
-                recording = false
+            if (event == Lifecycle.Event.ON_STOP && latestRecording) {
+                cancelActiveRecording()
                 notice = "Recording cancelled when NeaRer went into the background."
             }
         }
         lifecycleOwner?.lifecycle?.addObserver(observer)
         onDispose {
             lifecycleOwner?.lifecycle?.removeObserver(observer)
-            if (latestRecording.value) {
-                runCatching { latestRecorder.value?.stop() }
-                runCatching { latestRecorder.value?.release() }
-                latestFile.value?.delete()
-            }
+            cancelActiveRecording()
         }
     }
 

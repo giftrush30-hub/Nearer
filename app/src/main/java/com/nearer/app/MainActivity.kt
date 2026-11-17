@@ -299,6 +299,8 @@ class MainActivity : ComponentActivity() {
                     incomingRequesterName = null
                     connectedDeviceName = name
                     chatReady = true
+                    nearbyConnectionEpoch += 1
+                    sendPendingReadReceipts(stableId)
                     resumeLudoAfterReconnect(name, stableId)
                     connectionMessage = "Secure nearby connection active"
                     approvalMessage = "Connection approved"
@@ -343,7 +345,16 @@ class MainActivity : ComponentActivity() {
             ) {
                 runOnUiThread {
                     var safelyStored = false
-                    if (body.startsWith("NR_REACTION:")) {
+                    if (body.startsWith("NR_TYPING:")) {
+                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        safelyStored = applyIncomingTyping(body.removePrefix("NR_TYPING:"), actorPeerId)
+                    } else if (body.startsWith("NR_DELETE:")) {
+                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        safelyStored = applyIncomingChatDelete(body.removePrefix("NR_DELETE:"), actorPeerId)
+                    } else if (body.startsWith("NR_READ_RECEIPT:")) {
+                        val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
+                        safelyStored = applyIncomingChatReadReceipt(body.removePrefix("NR_READ_RECEIPT:"), actorPeerId)
+                    } else if (body.startsWith("NR_REACTION:")) {
                         val actorPeerId = nearbyTransport?.stableIdentityForEndpoint(id).orEmpty()
                         safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), actorPeerId)
                     } else if (body.startsWith("NR_EDIT:")) {
@@ -377,6 +388,10 @@ class MainActivity : ComponentActivity() {
                                     packetOwnerId, senderPeerId, incomingPeerIds, localPeerId,
                                     group.ownerPeerId, group.memberPeerIds
                                 )
+                            }
+                            "group_read_receipt" -> {
+                                group != null && senderPeerId == packet.optString("readerPeerId") &&
+                                    senderPeerId in group.memberPeerIds
                             }
                             "group_message" -> {
                                 val id = packet.optString("id")
@@ -427,7 +442,13 @@ class MainActivity : ComponentActivity() {
             ) {
                 runOnUiThread {
                     var safelyStored = false
-                    if (body.startsWith("NR_REACTION:")) {
+                    if (body.startsWith("NR_TYPING:")) {
+                        safelyStored = applyIncomingTyping(body.removePrefix("NR_TYPING:"), originPeerId)
+                    } else if (body.startsWith("NR_DELETE:")) {
+                        safelyStored = applyIncomingChatDelete(body.removePrefix("NR_DELETE:"), originPeerId)
+                    } else if (body.startsWith("NR_READ_RECEIPT:")) {
+                        safelyStored = applyIncomingChatReadReceipt(body.removePrefix("NR_READ_RECEIPT:"), originPeerId)
+                    } else if (body.startsWith("NR_REACTION:")) {
                         safelyStored = applyIncomingChatReaction(body.removePrefix("NR_REACTION:"), originPeerId)
                     } else if (body.startsWith("NR_EDIT:")) {
                         safelyStored = applyIncomingChatEdit(body.removePrefix("NR_EDIT:"), originPeerId)
@@ -662,6 +683,11 @@ class MainActivity : ComponentActivity() {
     private var incomingRateBytesPerSecond = 0L
     private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
+    private var activityResumed by mutableStateOf(false)
+    private var nearbyConnectionEpoch by mutableStateOf(0)
+    private var readReceiptsEnabled by mutableStateOf(true)
+    private var typingPeerId by mutableStateOf<String?>(null)
+    private var typingExpiresAt by mutableStateOf(0L)
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
 
@@ -804,6 +830,8 @@ class MainActivity : ComponentActivity() {
         runCatching { restoreNearbyTransferHistory() }
         runCatching { restoreNearbyFileQueue() }
         runCatching { restoreCommunityData() }
+        readReceiptsEnabled = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            .getBoolean("read_receipts_enabled", true)
         displayName = runCatching {
             getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
                 .getString("display_name", "NeaRer User")?.take(24)?.ifBlank { "NeaRer User" } ?: "NeaRer User"
@@ -860,6 +888,16 @@ class MainActivity : ComponentActivity() {
                     receivedFiles = receivedFiles,
                     transferHistory = nearbyTransferHistory.toList(),
                     onSendMessage = ::sendChatMessage,
+                    activityResumed = activityResumed,
+                    connectionEpoch = nearbyConnectionEpoch,
+                    onMarkConversationRead = { peerId -> markConversationRead(peerId ?: hybridConnectedStableId) },
+                    readReceiptsEnabled = readReceiptsEnabled,
+                    onReadReceiptsEnabledChange = ::persistReadReceiptsEnabled,
+                    onRequestNotifications = ::requestChatNotifications,
+                    typingIndicator = typingPeerId == (selectedMeshRecipientId ?: hybridConnectedStableId) &&
+                        typingExpiresAt > System.currentTimeMillis(),
+                    onTyping = { typing -> sendTypingIndicator(selectedMeshRecipientId ?: hybridConnectedStableId, typing) },
+                    onDeleteMessageForEveryone = ::deleteChatMessageForEveryone,
                     onDeleteMessage = ::deleteChatMessage,
                     onEditMessage = ::editChatMessage,
                     onReactToMessage = ::sendChatReaction,
@@ -874,6 +912,7 @@ class MainActivity : ComponentActivity() {
                     onJoinGroup = ::joinCommunityGroup,
                     onSelectGroup = { selectedCommunityCode = it },
                     onSendGroupMessage = ::sendCommunityGroupMessage,
+                    onMarkGroupRead = ::sendGroupReadReceipts,
                     onBroadcast = ::sendCommunityBroadcast,
                     onGameInvite = ::inviteToGame,
                     onAcceptGameInvite = ::acceptGameInvite,
@@ -957,6 +996,13 @@ class MainActivity : ComponentActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 7901) {
+            chatNotice = if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                "NeaRer message notifications are enabled."
+            } else {
+                "Notifications were not allowed. You can enable them later in Android app settings."
+            }
+        }
         if (requestCode == REQUEST_DISCOVERY_PERMISSION) {
             if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
                 startAlwaysReadyDiscovery()
@@ -968,7 +1014,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        activityResumed = true
         nearbyServiceBinder?.replayPendingMessages()
+        (selectedMeshRecipientId ?: hybridConnectedStableId)?.let(::sendPendingReadReceipts)
         val filter = IntentFilter().apply {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
@@ -1013,6 +1061,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        activityResumed = false
         if (communityDataDirty) persistCommunityData()
         if (receiverRegistered) {
             runCatching { unregisterReceiver(receiver) }
@@ -1687,6 +1736,10 @@ class MainActivity : ComponentActivity() {
                         replyToSender = item.optString("replyToSender").takeIf { it.isNotBlank() },
                         editVersion = item.optInt("editVersion", 0).coerceIn(0, ChatEditPolicy.MAX_REVISION),
                         editedAt = item.optLong("editedAt", 0L).coerceAtLeast(0L),
+                        readAt = item.optLong("readAt", 0L).coerceAtLeast(0L),
+                        readReceiptSentAt = item.optLong("readReceiptSentAt", 0L).coerceAtLeast(0L),
+                        deletedForEveryone = item.optBoolean("deletedForEveryone", false),
+                        deletedAt = item.optLong("deletedAt", 0L).coerceAtLeast(0L),
                         reactions = item.optJSONObject("reactions")?.let { reactionObject ->
                             buildMap {
                                 val keys = reactionObject.keys()
@@ -1817,12 +1870,12 @@ class MainActivity : ComponentActivity() {
         if (packet.optInt("version", 0) != 1 ||
             !ChatReactionPolicy.isValidActor(actorPeerId) ||
             targetId.isBlank() || targetId.length > 80) return false
-        val index = chatMessages.indexOfFirst {
-            it.id == targetId &&
-                ChatEditPolicy.mayApplyToMessage(it.conversationId, actorPeerId, it.outgoing)
-        }
+        val index = chatMessages.indexOfFirst { it.id == targetId }
         if (index < 0) return false
         val previous = chatMessages[index]
+        // A delayed edit must never resurrect content after delete-for-everyone.
+        if (previous.deletedForEveryone) return true
+        if (!ChatEditPolicy.mayApplyToMessage(previous.conversationId, actorPeerId, previous.outgoing)) return false
         return when (ChatEditPolicy.apply(previous.body, previous.editVersion, previous.editedAt, revision)) {
             ChatEditPolicy.ApplyResult.STALE,
             ChatEditPolicy.ApplyResult.ALREADY_APPLIED -> true
@@ -1851,6 +1904,10 @@ class MainActivity : ComponentActivity() {
         val previous = chatMessages[index]
         if (!previous.outgoing) {
             chatNotice = "You can only edit messages you sent."
+            return false
+        }
+        if (previous.deletedForEveryone) {
+            chatNotice = "A deleted message cannot be edited."
             return false
         }
         val revision = ChatEditPolicy.create(
@@ -1919,6 +1976,8 @@ class MainActivity : ComponentActivity() {
         }
         if (index < 0) return false
         val previous = chatMessages[index]
+        // Reactions queued before a delete are stale control events.
+        if (previous.deletedForEveryone) return true
         val updated = ChatReactionPolicy.set(previous.reactions, actorPeerId, emoji)
         chatMessages[index] = previous.copy(reactions = updated)
         if (persistMessages()) return true
@@ -1931,6 +1990,10 @@ class MainActivity : ComponentActivity() {
         val index = chatMessages.indexOfFirst { it.id == messageId }
         if (index < 0 || !ChatReactionPolicy.isValidEmoji(emoji)) return
         val target = chatMessages[index]
+        if (target.deletedForEveryone) {
+            chatNotice = "A deleted message cannot receive reactions."
+            return
+        }
         val peerId = target.conversationId
         val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
         if (!ChatReactionPolicy.isValidActor(localPeerId) || !ChatReactionPolicy.isValidActor(peerId)) {
@@ -1969,6 +2032,276 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun persistReadReceiptsEnabled(enabled: Boolean) {
+        readReceiptsEnabled = enabled
+        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
+            .putBoolean("read_receipts_enabled", enabled).apply()
+        if (enabled) {
+            (selectedMeshRecipientId ?: hybridConnectedStableId)?.let(::sendPendingReadReceipts)
+        }
+    }
+
+    private fun requestChatNotifications() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7901)
+        } else {
+            chatNotice = "Message alerts are controlled by your Android notification settings."
+        }
+    }
+
+    private fun sendTypingIndicator(peerId: String?, typing: Boolean) {
+        val target = peerId?.takeIf { ChatReactionPolicy.isValidActor(it) } ?: return
+        val packet = JSONObject()
+            .put("version", 1)
+            .put("typing", typing)
+            .put("expiresAt", if (typing) System.currentTimeMillis() + 2_000L else System.currentTimeMillis())
+        nearbyTransport?.sendToPeerIds("NR_TYPING:$packet", setOf(target))
+    }
+
+    private fun applyIncomingTyping(raw: String, actorPeerId: String): Boolean {
+        // Typing is ephemeral: malformed, unauthenticated or expired hints are safely
+        // discarded and acknowledged rather than being retained for replay forever.
+        val packet = try { JSONObject(raw) } catch (_: Exception) { return true }
+        val typing = packet.optBoolean("typing", false)
+        val expiresAt = packet.optLong("expiresAt", 0L)
+        val now = System.currentTimeMillis()
+        if (!ChatReactionPolicy.isValidActor(actorPeerId) ||
+            !ChatTypingPolicy.isValid(packet.optInt("version", 0), typing, expiresAt, now)
+        ) return true
+        if (!typing) {
+            if (typingPeerId == actorPeerId) {
+                typingPeerId = null
+                typingExpiresAt = 0L
+            }
+            return true
+        }
+        typingPeerId = actorPeerId
+        typingExpiresAt = expiresAt
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (typingPeerId == actorPeerId && typingExpiresAt <= System.currentTimeMillis()) {
+                typingPeerId = null
+                typingExpiresAt = 0L
+            }
+        }, (expiresAt - now).coerceAtLeast(0L))
+        return true
+    }
+
+    private fun markConversationRead(conversationId: String?) {
+        val peerId = conversationId?.takeIf { ChatReactionPolicy.isValidActor(it) } ?: return
+        val newlyRead = chatMessages.indices.filter { index ->
+            val message = chatMessages[index]
+            ChatReadReceiptPolicy.shouldMarkRead(
+                message.outgoing, message.conversationId, peerId,
+                message.readReceiptSentAt, message.readAt
+            )
+        }
+        if (newlyRead.isNotEmpty()) {
+            val now = System.currentTimeMillis()
+            val previous = newlyRead.associateWith { chatMessages[it] }
+            newlyRead.forEach { index -> chatMessages[index] = chatMessages[index].copy(readAt = now) }
+            if (!persistMessages()) {
+                previous.forEach { (index, message) -> chatMessages[index] = message }
+                chatNotice = "NeaRer could not save the read state. No receipt was sent."
+                return
+            }
+        }
+        sendPendingReadReceipts(peerId)
+    }
+
+    private fun sendPendingReadReceipts(peerId: String) {
+        if (!readReceiptsEnabled) return
+        val pending = chatMessages.filter { message ->
+            ChatReadReceiptPolicy.shouldSendReceipt(
+                message.outgoing, message.conversationId, peerId,
+                message.readAt, message.readReceiptSentAt
+            )
+        }
+        pending.chunked(ChatReadReceiptPolicy.MAX_MESSAGE_IDS).forEach { batch ->
+            val now = System.currentTimeMillis()
+            val packet = "NR_READ_RECEIPT:" + JSONObject()
+                .put("version", 1)
+                .put("messageIds", JSONArray(batch.map { it.id }))
+                .put("readAt", now)
+                .toString()
+            val queued = nearbyTransport?.sendDurableToPeerIds(packet, setOf(peerId)) == true
+            if (!queued) {
+                chatNotice = "Your read state is saved. NeaRer will retry the receipt when this person reconnects."
+                return
+            }
+            val previous = batch.associate { it.id to it.readReceiptSentAt }
+            batch.forEach { message ->
+                val index = chatMessages.indexOfFirst { it.id == message.id }
+                if (index >= 0) chatMessages[index] = chatMessages[index].copy(readReceiptSentAt = now)
+            }
+            if (!persistMessages()) {
+                batch.forEach { message ->
+                    val index = chatMessages.indexOfFirst { it.id == message.id }
+                    if (index >= 0) chatMessages[index] =
+                        chatMessages[index].copy(readReceiptSentAt = previous[message.id] ?: 0L)
+                }
+                chatNotice = "The receipt was queued but its local sent marker could not be saved."
+                return
+            }
+        }
+    }
+
+    private fun applyIncomingChatReadReceipt(raw: String, actorPeerId: String): Boolean {
+        val packet = try { JSONObject(raw) } catch (_: Exception) { return false }
+        val idsJson = packet.optJSONArray("messageIds") ?: return false
+        val ids = (0 until idsJson.length()).map { idsJson.optString(it) }
+        val readAt = packet.optLong("readAt", 0L)
+        if (!ChatReadReceiptPolicy.isValidPacket(
+                packet.optInt("version", 0), ids, readAt, System.currentTimeMillis()
+            ) || !ChatReactionPolicy.isValidActor(actorPeerId)
+        ) return false
+        val updates = chatMessages.indices.filter { index ->
+            val message = chatMessages[index]
+            message.id in ids && ChatReadReceiptPolicy.canApplyReceipt(
+                message.outgoing, message.conversationId, actorPeerId, readAt
+            )
+        }
+        if (updates.isEmpty()) return true
+        val previous = updates.associateWith { chatMessages[it] }
+        updates.forEach { index ->
+            val message = chatMessages[index]
+            chatMessages[index] = message.copy(
+                readAt = maxOf(message.readAt, minOf(readAt, System.currentTimeMillis()))
+            )
+        }
+        if (persistMessages()) return true
+        previous.forEach { (index, message) -> chatMessages[index] = message }
+        chatNotice = "A read receipt arrived but could not be saved on this phone."
+        return false
+    }
+
+    private fun deleteChatMessageForEveryone(messageId: String): Boolean {
+        val index = chatMessages.indexOfFirst { it.id == messageId }
+        if (index < 0) return false
+        val message = chatMessages[index]
+        if (!ChatDeletePolicy.canDeleteForEveryone(
+                message.outgoing, message.delivery, message.readAt, message.deletedForEveryone
+            )
+        ) {
+            chatNotice = "You can delete for everyone only after this message has been delivered."
+            return false
+        }
+        val peerId = message.conversationId
+        val now = System.currentTimeMillis()
+        val previousMessages = chatMessages.toList()
+        chatMessages[index] = message.copy(
+            body = "This message was deleted",
+            deletedForEveryone = true,
+            deletedAt = now,
+            reactions = emptyMap(),
+            replyToMessageId = null,
+            replyToPreview = null,
+            replyToSender = null
+        )
+        scrubDeletedMessageQuotes(messageId)
+        if (!persistMessages()) {
+            chatMessages.clear()
+            chatMessages.addAll(previousMessages)
+            chatNotice = "Couldn't save the deletion. The message was kept."
+            return false
+        }
+        val packet = "NR_DELETE:" + JSONObject()
+            .put("version", 1)
+            .put("messageId", messageId)
+            .put("deletedAt", now)
+            .toString()
+        if (nearbyTransport?.sendDurableToPeerIds(packet, setOf(peerId)) != true) {
+            chatMessages.clear()
+            chatMessages.addAll(previousMessages)
+            persistMessages()
+            chatNotice = "Deletion could not be queued. The original message was restored on this phone."
+            return false
+        }
+        chatNotice = "Message deleted for everyone."
+        return true
+    }
+
+    private fun applyIncomingChatDelete(raw: String, actorPeerId: String): Boolean {
+        val packet = try { JSONObject(raw) } catch (_: Exception) { return false }
+        val messageId = packet.optString("messageId")
+        val deletedAt = packet.optLong("deletedAt", 0L)
+        if (!ChatDeletePolicy.isValidPacket(packet.optInt("version", 0), messageId, deletedAt) ||
+            !ChatReactionPolicy.isValidActor(actorPeerId)
+        ) return false
+        val index = chatMessages.indexOfFirst { it.id == messageId }
+        if (index < 0) return true
+        val message = chatMessages[index]
+        if (message.deletedForEveryone) return true
+        if (!ChatDeletePolicy.canApplyIncoming(
+                message.outgoing, message.conversationId, actorPeerId, message.deletedForEveryone
+            )
+        ) return false
+        val previousMessages = chatMessages.toList()
+        chatMessages[index] = message.copy(
+            body = "This message was deleted",
+            deletedForEveryone = true,
+            deletedAt = minOf(deletedAt, System.currentTimeMillis()),
+            reactions = emptyMap(),
+            replyToMessageId = null,
+            replyToPreview = null,
+            replyToSender = null
+        )
+        scrubDeletedMessageQuotes(messageId)
+        if (persistMessages()) return true
+        chatMessages.clear()
+        chatMessages.addAll(previousMessages)
+        chatNotice = "A deletion arrived but could not be saved. Delivery was not confirmed."
+        return false
+    }
+
+    private fun scrubDeletedMessageQuotes(messageId: String) {
+        chatMessages.indices.forEach { index ->
+            val quoted = chatMessages[index]
+            if (quoted.replyToMessageId == messageId) {
+                chatMessages[index] = quoted.copy(
+                    replyToMessageId = null,
+                    replyToPreview = null,
+                    replyToSender = null
+                )
+            }
+        }
+    }
+
+    private fun sendGroupReadReceipts(code: String) {
+        if (!readReceiptsEnabled) return
+        val transport = nearbyTransport ?: return
+        val localPeerId = transport.localIdentityId().takeIf { it.isNotBlank() } ?: return
+        val group = communityGroups.firstOrNull { it.code == code } ?: return
+        if (localPeerId !in group.memberPeerIds) return
+        val pending = communityMessages.filter {
+            it.groupCode == code && it.senderPeerId.isNotBlank() &&
+                it.senderPeerId != localPeerId && it.readReceiptSentAt <= 0L
+        }.groupBy { it.senderPeerId }
+        pending.forEach { (authorPeerId, authorMessages) ->
+            authorMessages.chunked(ChatReadReceiptPolicy.MAX_MESSAGE_IDS).forEach { batch ->
+                val packet = JSONObject()
+                    .put("type", "group_read_receipt")
+                    .put("code", code)
+                    .put("readerPeerId", localPeerId)
+                    .put("messageIds", JSONArray(batch.map { it.id }))
+                    .put("readAt", System.currentTimeMillis())
+                val queued = transport.sendDurableToPeerIds("NR_COMMUNITY:$packet", setOf(authorPeerId))
+                if (queued) {
+                    val sentAt = System.currentTimeMillis()
+                    batch.forEach { original ->
+                        val index = communityMessages.indexOfFirst { it.id == original.id && it.groupCode == code }
+                        if (index >= 0) communityMessages[index] =
+                            communityMessages[index].copy(readReceiptSentAt = sentAt)
+                    }
+                    if (!persistCommunityData()) {
+                        communityNotice = "Group read receipts were queued, but their local sent state could not be saved."
+                    }
+                }
+            }
+        }
+    }
+
     private fun deleteChatMessage(messageId: String): Boolean {
         val index = chatMessages.indexOfFirst { it.id == messageId }
         if (index < 0) return false
@@ -1999,6 +2332,10 @@ class MainActivity : ComponentActivity() {
                     .put("replyToSender", message.replyToSender)
                     .put("editVersion", message.editVersion)
                     .put("editedAt", message.editedAt)
+                    .put("readAt", message.readAt)
+                    .put("readReceiptSentAt", message.readReceiptSentAt)
+                    .put("deletedForEveryone", message.deletedForEveryone)
+                    .put("deletedAt", message.deletedAt)
                     .put("reactions", JSONObject(message.reactions)))
             }
             // commit() is intentional here: a delivery receipt must follow the disk write,
@@ -2032,6 +2369,10 @@ class MainActivity : ComponentActivity() {
     private fun sendChatMessage(rawText: String, replyTarget: ChatMessage? = null) {
         val body = rawText.trim()
         if (body.isEmpty()) return
+        if (replyTarget?.deletedForEveryone == true) {
+            chatNotice = "You cannot reply to a message that was deleted for everyone."
+            return
+        }
         val id = UUID.randomUUID().toString()
         val targetPeerId = selectedMeshRecipientId ?: hybridConnectedStableId
         val conversationIdForReply = targetPeerId ?: connectedDeviceName?.let { "direct:$it" }.orEmpty()
@@ -2141,6 +2482,8 @@ class MainActivity : ComponentActivity() {
             communityMessages.takeLast(300).forEach { message ->
                 val delivery = JSONObject()
                 message.deliveryByPeerId.forEach { (peerId, status) -> delivery.put(peerId, status) }
+                val readBy = JSONObject()
+                message.readByPeerId.forEach { (peerId, readAt) -> readBy.put(peerId, readAt) }
                 messages.put(
                     JSONObject()
                         .put("id", message.id)
@@ -2149,6 +2492,9 @@ class MainActivity : ComponentActivity() {
                         .put("body", message.body)
                         .put("time", message.time)
                         .put("deliveryByPeerId", delivery)
+                        .put("senderPeerId", message.senderPeerId)
+                        .put("readByPeerId", readBy)
+                        .put("readReceiptSentAt", message.readReceiptSentAt)
                 )
             }
             val deliveryRefs = JSONArray()
@@ -2195,10 +2541,14 @@ class MainActivity : ComponentActivity() {
                 val item = messages.getJSONObject(i)
                 val deliveryJson = item.optJSONObject("deliveryByPeerId") ?: JSONObject()
                 val delivery = deliveryJson.keys().asSequence().associateWith { deliveryJson.optString(it) }
+                val readJson = item.optJSONObject("readByPeerId") ?: JSONObject()
+                val readBy = readJson.keys().asSequence().associateWith { readJson.optLong(it) }
                 communityMessages.add(
                     CommunityChatMessage(
                         item.getString("id"), item.getString("code"), item.optString("sender"),
-                        item.getString("body"), item.optLong("time"), delivery
+                        item.getString("body"), item.optLong("time"), delivery,
+                        item.optString("senderPeerId"), readBy,
+                        item.optLong("readReceiptSentAt", 0L)
                     )
                 )
             }
@@ -2355,8 +2705,11 @@ class MainActivity : ComponentActivity() {
         val body = raw.trim().take(1500)
         if (body.isBlank()) return
         val id = UUID.randomUUID().toString()
+        val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
         val packet = JSONObject().put("type", "group_message").put("code", code).put("sender", displayName).put("body", body).put("id", id)
-        val localMessage = CommunityChatMessage(id, code, displayName, body, System.currentTimeMillis())
+        val localMessage = CommunityChatMessage(
+            id, code, displayName, body, System.currentTimeMillis(), senderPeerId = localPeerId
+        )
 
         // Commit the sender's local copy before any recipient can receive and ACK it.
         communityMessages.add(localMessage)
@@ -2367,7 +2720,6 @@ class MainActivity : ComponentActivity() {
         }
 
         val transport = nearbyTransport
-        val localPeerId = transport?.localIdentityId().orEmpty()
         if (transport == null || group.ownerPeerId.isBlank() || localPeerId !in group.memberPeerIds) {
             communityNotice = "Secure group messaging needs a synced identity roster. The message is saved on this phone."
             return
@@ -2485,6 +2837,34 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                "group_read_receipt" -> {
+                    val group = communityGroups.firstOrNull { it.code == code }
+                    val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
+                    val readerPeerId = packet.optString("readerPeerId")
+                    val idsJson = packet.optJSONArray("messageIds") ?: JSONArray()
+                    val ids = (0 until idsJson.length()).map { idsJson.optString(it) }
+                    val readAt = packet.optLong("readAt", 0L).coerceAtMost(System.currentTimeMillis())
+                    if (group != null &&
+                        CommunityReadReceiptPolicy.mayAcceptReader(senderPeerId, readerPeerId, group.memberPeerIds.toSet()) &&
+                        localPeerId in group.memberPeerIds &&
+                        CommunityReadReceiptPolicy.isValid(ids, packet.optLong("readAt", 0L), System.currentTimeMillis())
+                    ) {
+                        ids.forEach { id ->
+                            val index = communityMessages.indexOfFirst {
+                                it.id == id && it.groupCode == code && it.senderPeerId == localPeerId
+                            }
+                            if (index >= 0) {
+                                val message = communityMessages[index]
+                                communityMessages[index] = message.copy(
+                                    readByPeerId = CommunityReadReceiptPolicy.apply(
+                                        message.readByPeerId, senderPeerId, readAt
+                                    )
+                                )
+                            }
+                        }
+                        persistCommunityData()
+                    }
+                }
                 "group_message" -> {
                     val group = communityGroups.firstOrNull { it.code == code }
                     val senderId = NeaRerIdentity.normalize(senderPeerId)
@@ -2492,7 +2872,12 @@ class MainActivity : ComponentActivity() {
                         CommunityRosterPolicy.mayAcceptGroupMessage(senderId, group.memberPeerIds)) {
                         val id = packet.optString("id")
                         if (id.isNotBlank() && communityMessages.none { it.id == id }) {
-                            communityMessages.add(CommunityChatMessage(id, code, sender, packet.optString("body").take(1500), System.currentTimeMillis()))
+                            communityMessages.add(
+                                CommunityChatMessage(
+                                    id, code, sender, packet.optString("body").take(1500),
+                                    System.currentTimeMillis(), senderPeerId = senderPeerId
+                                )
+                            )
                             persistCommunityData()
                         }
                     } else if (group != null) {
@@ -3820,6 +4205,15 @@ private fun NeaRerHome(
     onExternalShareConsumed: () -> Unit,
     transferHistory: List<NearbyTransferRecord>,
     onSendMessage: (String, ChatMessage?) -> Unit,
+    activityResumed: Boolean,
+    connectionEpoch: Int,
+    onMarkConversationRead: (String?) -> Unit,
+    readReceiptsEnabled: Boolean,
+    onReadReceiptsEnabledChange: (Boolean) -> Unit,
+    onRequestNotifications: () -> Unit,
+    typingIndicator: Boolean,
+    onTyping: (Boolean) -> Unit,
+    onDeleteMessageForEveryone: (String) -> Boolean,
     onDeleteMessage: (String) -> Boolean,
     onEditMessage: (String, String) -> Boolean,
     onReactToMessage: (String, String) -> Unit,
@@ -3834,6 +4228,7 @@ private fun NeaRerHome(
     onJoinGroup: (String) -> Unit,
     onSelectGroup: (String) -> Unit,
     onSendGroupMessage: (String) -> Unit,
+    onMarkGroupRead: (String) -> Unit,
     onBroadcast: (String) -> Unit,
     onGameInvite: () -> Unit,
     onAcceptGameInvite: () -> Unit,
@@ -4559,6 +4954,14 @@ private fun NeaRerHome(
                     draft = draft,
                     onDraftChange = { draft = it.take(ChatEditPolicy.MAX_BODY_LENGTH) },
                     onSendMessage = { text, reply -> onSendMessage(text, reply); draft = "" },
+                    isChatVisible = activityResumed && selectedTab == "Chats",
+                    onMarkConversationRead = onMarkConversationRead,
+                    readReceiptsEnabled = readReceiptsEnabled,
+                    onReadReceiptsEnabledChange = onReadReceiptsEnabledChange,
+                    onRequestNotifications = onRequestNotifications,
+                    typingIndicator = typingIndicator,
+                    onTyping = onTyping,
+                    onDeleteMessageForEveryone = onDeleteMessageForEveryone,
                     onDeleteMessage = onDeleteMessage,
                     onEditMessage = onEditMessage,
                     onReactToMessage = onReactToMessage,
@@ -4621,7 +5024,11 @@ private fun NeaRerHome(
                 activeGame, gameChatMessages, (usingNearbyConnections || chatReady), onCreateGroup, onJoinGroup, onSelectGroup,
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
                 onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame, profileAvatarId,
-                onOpenRoyalLudo = { showRoyalLudo = true })
+                onOpenRoyalLudo = { showRoyalLudo = true },
+                isCommunityVisible = activityResumed && selectedTab == "Games",
+                connectionEpoch = connectionEpoch,
+                readReceiptsEnabled = readReceiptsEnabled,
+                onMarkGroupRead = onMarkGroupRead)
 
             }
 
@@ -5011,7 +5418,11 @@ private fun CommunityHub(
     onGroupMessage: (String) -> Unit, onBroadcast: (String) -> Unit, onInviteGame: () -> Unit,
     onAccept: () -> Unit, onReject: () -> Unit, onMove: (String, Int) -> Unit, onGameChat: (String) -> Unit, onGameRematch: () -> Unit, onEndGame: () -> Unit,
     localAvatarId: String,
-    onOpenRoyalLudo: () -> Unit
+    onOpenRoyalLudo: () -> Unit,
+    isCommunityVisible: Boolean,
+    connectionEpoch: Int,
+    readReceiptsEnabled: Boolean,
+    onMarkGroupRead: (String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
@@ -5019,6 +5430,12 @@ private fun CommunityHub(
     var broadcastText by remember { mutableStateOf("") }
     var gameText by remember { mutableStateOf("") }
     val selected = groups.firstOrNull { it.code == selectedCode }
+    LaunchedEffect(
+        selectedCode, messages.size, selected?.memberPeerIds,
+        isCommunityVisible, connectionEpoch, readReceiptsEnabled
+    ) {
+        if (isCommunityVisible && readReceiptsEnabled) selectedCode?.let(onMarkGroupRead)
+    }
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("NEARER COMMUNITY", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -5058,6 +5475,9 @@ private fun CommunityHub(
                 Column(Modifier.fillMaxWidth().height(130.dp).verticalScroll(rememberScrollState())) {
                     messages.filter { it.groupCode == selected.code }.takeLast(40).forEach { message ->
                         Text(message.sender + ": " + message.body, color = White, fontSize = 12.sp)
+                        if (message.readByPeerId.isNotEmpty()) {
+                            Text("Read by ${message.readByPeerId.size}", color = Mint, fontSize = 9.sp)
+                        }
                         if (message.deliveryByPeerId.isNotEmpty()) {
                             val summary = CommunityDeliveryPolicy.summarize(message.deliveryByPeerId)
                             val receiptText = buildList {
@@ -5098,7 +5518,10 @@ private data class CommunityChatMessage(
     val sender: String,
     val body: String,
     val time: Long,
-    val deliveryByPeerId: Map<String, String> = emptyMap()
+    val deliveryByPeerId: Map<String, String> = emptyMap(),
+    val senderPeerId: String = "",
+    val readByPeerId: Map<String, Long> = emptyMap(),
+    val readReceiptSentAt: Long = 0L
 )
 private data class CommunityDeliveryRef(val communityMessageId: String, val peerId: String)
 data class GameInvite(val matchId: String, val sender: String, val senderPeerId: String = "")
@@ -5128,7 +5551,11 @@ internal data class ChatMessage(
     val replyToSender: String? = null,
     val reactions: Map<String, String> = emptyMap(),
     val editVersion: Int = 0,
-    val editedAt: Long = 0L
+    val editedAt: Long = 0L,
+    val readAt: Long = 0L,
+    val readReceiptSentAt: Long = 0L,
+    val deletedForEveryone: Boolean = false,
+    val deletedAt: Long = 0L
 )
 
 private fun isNeaRerAppBundle(file: File): Boolean {

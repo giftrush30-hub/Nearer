@@ -132,6 +132,21 @@ class NearbyTransportService : Service() {
             replyToSender: String?,
             acknowledge: () -> Boolean
         ) {
+            if (body.startsWith("NR_TYPING:")) {
+                val peerId = nearbyTransport.stableIdentityForEndpoint(id)
+                val listener = uiListener
+                if (listener != null && peerId.isNotBlank()) {
+                    runCatching {
+                        listener.onMessageWithReply(
+                            peerId, senderName, messageId, body,
+                            replyToMessageId, replyToPreview, replyToSender, acknowledge
+                        )
+                    }.onFailure { runCatching { acknowledge() } }
+                } else {
+                    runCatching { acknowledge() }
+                }
+                return
+            }
             val peerId = nearbyTransport.stableIdentityForEndpoint(id)
             if (peerId.isBlank()) {
                 nearbyTransport.releasePendingIncomingMessage(messageId)
@@ -150,7 +165,9 @@ class NearbyTransportService : Service() {
                 return
             }
             // Notify only after durable inbox commit. The text remains generic for lock-screen privacy.
-            PrivateMessageNotification.show(applicationContext, messageId, isNewInboxEntry, inboxPersisted = true)
+            if (ChatNotificationPolicy.isUserVisibleMessageBody(body)) {
+                PrivateMessageNotification.show(applicationContext, messageId, isNewInboxEntry, inboxPersisted = true)
+            }
             // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
             val dedupeCommitted = runCatching { acknowledge() }.getOrDefault(false)
             val acknowledgementAllowed = NearbyInboxCommitPolicy.canAcknowledge(inboxCommitted = true, dedupeCommitted = dedupeCommitted)
@@ -173,6 +190,20 @@ class NearbyTransportService : Service() {
             replyToSender: String?,
             acknowledge: () -> Boolean
         ) {
+            if (body.startsWith("NR_TYPING:")) {
+                val listener = uiListener
+                if (listener != null) {
+                    runCatching {
+                        listener.onMeshMessageWithReply(
+                            originPeerId, senderName, messageId, body,
+                            replyToMessageId, replyToPreview, replyToSender, acknowledge
+                        )
+                    }.onFailure { runCatching { acknowledge() } }
+                } else {
+                    runCatching { acknowledge() }
+                }
+                return
+            }
             val entry = NearbyIncomingMessageInbox.Entry(
                 messageId, originPeerId, senderName, body,
                 replyToMessageId, replyToPreview, replyToSender, mesh = true
@@ -185,7 +216,10 @@ class NearbyTransportService : Service() {
                 uiListener?.onStatus("NeaRer could not securely save an incoming nearby message. Delivery was not acknowledged.")
                 return
             }
-            PrivateMessageNotification.show(applicationContext, messageId, isNewInboxEntry, inboxPersisted = true)
+            // Mesh control packets are durable protocol events, not user-visible alerts.
+            if (ChatNotificationPolicy.isUserVisibleMessageBody(body)) {
+                PrivateMessageNotification.show(applicationContext, messageId, isNewInboxEntry, inboxPersisted = true)
+            }
             // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
             val dedupeCommitted = runCatching { acknowledge() }.getOrDefault(false)
             dispatchInboxEntry(entry, dedupeCommitted)
