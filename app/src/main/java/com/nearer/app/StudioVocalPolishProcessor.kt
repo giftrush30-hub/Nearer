@@ -29,7 +29,8 @@ internal enum class StudioVocalProfile(
 
 /**
  * Offline vocal polish chain for PCM16 mono/stereo exports.
- * It is intentionally a finishing processor, not a physical microphone model or pitch-correction engine.
+ * This is a finishing processor, not a physical microphone model, spectral denoiser,
+ * true-peak mastering limiter, or pitch-correction engine.
  */
 @androidx.media3.common.util.UnstableApi
 internal class StudioVocalPolishProcessor(
@@ -37,13 +38,13 @@ internal class StudioVocalPolishProcessor(
     controls: StudioVocalControls = StudioVocalControls()
 ) : BaseAudioProcessor() {
     private val controls = controls.normalized()
-    private var frameCursor = 0L
     private var previousInput = FloatArray(2)
     private var previousHighPass = FloatArray(2)
     private var lowPassPresence = FloatArray(2)
     private var lowPassWarmth = FloatArray(2)
     private var lowPassEss = FloatArray(2)
     private var lowPassAir = FloatArray(2)
+    private var deEssEnvelope = FloatArray(2)
     private var compressorEnvelope = 0f
     private var gateEnvelope = 0f
     private var limiterGain = 1f
@@ -84,6 +85,11 @@ internal class StudioVocalPolishProcessor(
         val compressorRelease = exp(-1f / (sampleRate * 0.090f))
         val gateAttack = exp(-1f / (sampleRate * 0.004f))
         val gateRelease = exp(-1f / (sampleRate * 0.080f))
+        // The de-esser detector follows the sibilance-band envelope rather than
+        // reacting to every individual waveform crossing. This avoids harsh,
+        // buzzy gain modulation while retaining fast attack and natural release.
+        val deEssAttack = exp(-1f / (sampleRate * 0.002f))
+        val deEssRelease = exp(-1f / (sampleRate * 0.055f))
         val driveNorm = tanh(profile.drive.toDouble()).toFloat().coerceAtLeast(0.001f)
         val presenceAmount = (profile.presence + controls.presence).coerceIn(0f, 0.5f)
         val warmthAmount = controls.warmth * 0.22f
@@ -95,6 +101,7 @@ internal class StudioVocalPolishProcessor(
         val stereoWidth = controls.stereoWidth
         val limiterCeiling = controls.limiterCeiling
         val noiseReduction = controls.noiseReduction
+        // This is a downward expander/gate control, not spectral noise removal.
         val gateThreshold = profile.gateThreshold * (1f + noiseReduction * 5f)
         val limiterAttack = exp(-1f / (sampleRate * 0.0015f))
         val limiterRelease = exp(-1f / (sampleRate * 0.080f))
@@ -123,8 +130,11 @@ internal class StudioVocalPolishProcessor(
                 val airBand = present - lowPassAir[channel]
                 val sibilance = present - lowPassEss[channel]
                 val essLevel = abs(sibilance)
-                val essReduction = if (essLevel > 0.075f) {
-                    (1f - deEssAmount * ((essLevel - 0.075f) / 0.35f).coerceIn(0f, 1f))
+                val deEssCoefficient = if (essLevel > deEssEnvelope[channel]) deEssAttack else deEssRelease
+                deEssEnvelope[channel] = deEssCoefficient * deEssEnvelope[channel] +
+                    (1f - deEssCoefficient) * essLevel
+                val essReduction = if (deEssEnvelope[channel] > 0.075f) {
+                    1f - deEssAmount * ((deEssEnvelope[channel] - 0.075f) / 0.35f).coerceIn(0f, 1f)
                 } else 1f
                 processedScratch[channel] = present - sibilance * (1f - essReduction) + airBand * airAmount
                 framePeak = maxOf(framePeak, abs(processedScratch[channel]))
@@ -171,19 +181,18 @@ internal class StudioVocalPolishProcessor(
                 output.putShort(pcm.toShort())
             }
             delayIndex = (delayIndex + 1) % delayFrames
-            frameCursor++
         }
         output.flip()
     }
 
     override fun onReset() {
-        frameCursor = 0L
-        previousInput = FloatArray(2)
-        previousHighPass = FloatArray(2)
-        lowPassPresence = FloatArray(2)
-        lowPassWarmth = FloatArray(2)
-        lowPassEss = FloatArray(2)
-        lowPassAir = FloatArray(2)
+        previousInput.fill(0f)
+        previousHighPass.fill(0f)
+        lowPassPresence.fill(0f)
+        lowPassWarmth.fill(0f)
+        lowPassEss.fill(0f)
+        lowPassAir.fill(0f)
+        deEssEnvelope.fill(0f)
         compressorEnvelope = 0f
         gateEnvelope = 0f
         limiterGain = 1f
@@ -192,7 +201,8 @@ internal class StudioVocalPolishProcessor(
     }
 
     private fun rcCoefficient(cutoffHz: Float, sampleRate: Int): Float {
-        val rc = 1f / (2f * Math.PI.toFloat() * cutoffHz.coerceAtLeast(1f))
+        val safeCutoff = cutoffHz.coerceIn(1f, sampleRate * 0.45f)
+        val rc = 1f / (2f * Math.PI.toFloat() * safeCutoff)
         val dt = 1f / sampleRate.toFloat()
         return rc / (rc + dt)
     }
