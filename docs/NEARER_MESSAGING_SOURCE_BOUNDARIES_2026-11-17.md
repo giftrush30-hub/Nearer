@@ -54,7 +54,8 @@ The tree also shows focused JVM tests for many chat policies, mesh protocol obje
 | Conversation list projection | ChatInboxPolicy.kt | Pure conversation-ID projection, latest-message grouping, recipient association and filtering/order logic. | Messaging domain/presentation policy |
 | Community packet gate | CommunityIngressPolicy.kt | Validates supported group and Ludo packet structure and transport identity; comments leave roster and live game-state authorization to stateful handlers. | Community/game protocol ingress |
 | Mesh route protocol | MeshRouteTable.kt | Verifies signed route advertisements, binds next hop to authenticated direct sender, validates path vectors and route freshness/withdrawal. | feature.mesh |
-| Mesh relay allow-list | MeshRelayPolicy.kt | Restricts relay eligibility to community-prefixed packets with bounded TTL/hops. | feature.mesh relay policy |
+| Runtime mesh participation gate | MeshRelayParticipationPolicy.kt, called from NearbyConnectionsTransport.kt | Controls whether third-party packets/receipts may be accepted or forwarded and whether routes may be advertised. The transport also hard-forces `meshTransitEnabled = false` when asked to enable transit, so this runtime path keeps third-party relay disabled while still allowing this phone's own destination/origin traffic. | feature.mesh policy, called by Nearby adapter |
+| Legacy/community-prefix relay predicate | MeshRelayPolicy.kt | Pure predicate that accepts only `NR_COMMUNITY:` bodies with bounded TTL/hops; no production callsite was found in the inspected MainActivity or NearbyConnectionsTransport. Its unit tests do not establish that it governs the current encrypted MeshRelayPacketV1 runtime. | Candidate/legacy policy pending full-tree caller confirmation |
 
 ## 4. Behaviour that must be protected
 
@@ -91,9 +92,11 @@ A connected Nearby endpoint must not automatically be treated as a trusted conta
 
 ### 4.4 Mesh is not a private-chat shortcut
 
-The inspected private-chat router never broadcasts private messages through mesh. The relay policy currently allows only the community packet prefix and bounded TTL/hops. The transport implementation also contains an explicit hard-disable guard for transit relay pending further proof-chain, trust/key-rotation, recovery, security and physical multi-phone gates.
+The inspected private-chat route selector never broadcasts private messages through mesh. The current encrypted mesh runtime uses `MeshRelayParticipationPolicy` at the transport boundary to gate third-party packet/receipt acceptance, forwarding and route advertisement. In addition, `NearbyConnectionsTransport.setMeshTransitEnabled(true)` explicitly forces the runtime flag back to false and reports that multi-hop transit is paused pending proof-chain, trust/key-rotation, recovery, security and physical multi-phone gates. The current code therefore keeps transit relay disabled while preserving direct delivery for this phone's own messages.
 
-Do not remove that guard or broaden the relay allow-list as part of organisation work.
+A separate `MeshRelayPolicy` checks the legacy `NR_COMMUNITY:` body prefix and TTL/hop bounds, but no production callsite was found in the inspected MainActivity or NearbyConnectionsTransport. Do not treat that helper or its unit tests as proof that the current encrypted MeshRelayPacketV1 path uses that allow-list. Full-tree caller confirmation remains open.
+
+Do not remove the hard-disable guard or broaden relay participation as part of organisation work.
 
 ### 4.5 Share is adjacent, not owned by Messaging
 
