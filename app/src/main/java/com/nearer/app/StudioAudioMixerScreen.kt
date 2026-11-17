@@ -672,7 +672,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 ) { Text("RESET TEMPO TO 1.00×", fontSize = 8.sp) }
                             }
                             Text(
-                                if (track.durationMs > 0L) "A smooth 20 ms speed curve changes this track's timing while preserving musical pitch. It does not change the project's beat-grid BPM."
+                                if (track.durationMs > 0L) "A fine-grained 20 ms sampled speed curve changes this track's timing while preserving musical pitch. It does not change the project's beat-grid BPM."
                                 else "Tempo automation needs readable audio duration metadata.",
                                 color = Muted, fontSize = 8.sp, lineHeight = 12.sp
                             )
