@@ -504,17 +504,30 @@ internal fun StudioAudioEditorScreen(uri: Uri, title: String, onBack: () -> Unit
                 val transformer = Transformer.Builder(context).addListener(object : Transformer.Listener {
                     override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                         exportBusy = false
-                        exportedFile = output
-                        comparisonMode = true
-                        message = "Processed copy ready. Use A/B below to compare it with your untouched original."
+                        if (StudioAudioExportPolicy.hasUsableOutput(output.exists(), output.length())) {
+                            exportedFile = output
+                            comparisonMode = true
+                            message = "Processed copy ready. Use A/B below to compare it with your untouched original."
+                        } else {
+                            output.delete()
+                            exportedFile = null
+                            comparisonMode = false
+                            message = "Export completed without a usable audio file. Please try again."
+                        }
                     }
                     override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
                         exportBusy = false
+                        output.delete()
+                        exportedFile = null
+                        comparisonMode = false
                         message = "Audio export failed: ${exportException.message ?: "unsupported format or device encoder error"}"
                     }
                 }).build()
                 runCatching { transformer.start(edited, output.absolutePath) }.onFailure {
                     exportBusy = false
+                    output.delete()
+                    exportedFile = null
+                    comparisonMode = false
                     message = "Could not start audio export: ${it.message ?: "unknown error"}"
                 }
             }
