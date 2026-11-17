@@ -70,6 +70,7 @@ GitHub Actions validates JVM unit tests, debug APK assembly and APK artifact upl
 Current repository structure, source ownership boundaries, safe refactoring sequence and engineering gates:
 - [NeaRer Organisation Audit — 17 November 2026](docs/NEARER_ORGANISATION_AUDIT_2026-11-17.md)
 - [Current Source Ownership Map](docs/NEARER_SOURCE_OWNERSHIP_MAP_2026-11-17.md)
+- [Department and Package Ownership Plan](docs/NEARER_DEPARTMENT_OWNERSHIP_PLAN_2026-11-17.md)
 - [Engineering and Organisation Gates](docs/NEARER_ENGINEERING_GATES.md)
 
 These records are tied to the current source baseline and distinguish source integration, automated validation, physical-device verification and release readiness.
