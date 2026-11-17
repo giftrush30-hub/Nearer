@@ -8,7 +8,7 @@ This integration branch is rebuilt on the parallel workstream's current PR #284 
 2. **Timeline navigation:** 1×/2×/4× zoom and horizontal scrolling are copied from merged main PR #275.
 3. **Tempo automation:** per-track start/end speed ramp, 0.50×–2.00×, 20 ms sampling, pitch-preserving Media3 speed parameters, bounded project codec v5 persistence, and output-duration calculation for fades.
 4. **Crossfades:** equal-power sine fade-in and cosine fade-out curves; matching overlapping track fades maintain constant combined power in the ideal aligned case. Fade lengths are clamped to clip duration.
-5. **Mix export verification:** .m4a AAC-in-MP4 output; completed file is inspected off the UI thread and only exposed when it is readable, has an audio track and has positive duration.
+5. **Mix export verification:** .m4a AAC-in-MP4 output; completed file is inspected off the UI thread and only exposed when it is readable, explicitly reports `METADATA_KEY_HAS_AUDIO=yes`, and has positive duration. JVM coverage rejects `no`, null and empty audio-track metadata.
 
 ## Automation details
 
