@@ -88,11 +88,18 @@ internal object StudioTempoAutomationPolicy {
     }
 
     fun nextChangeTimeUs(timeUs: Long, points: List<StudioTempoPoint>): Long {
-        if (points.size < 2 || points.all { it.speed == points.first().speed }) return C.TIME_UNSET
+        if (points.size < 2) return C.TIME_UNSET
         val currentMs = timeUs.coerceAtLeast(0L) / 1_000L
-        val nextStepMs = ((currentMs / STEP_MS) + 1L) * STEP_MS
+        val currentSampleMs = (currentMs / STEP_MS) * STEP_MS
+        val currentSpeed = speedAt(points, currentSampleMs)
+        var candidateMs = currentSampleMs + STEP_MS
         val lastKeyframeMs = points.last().timeMs
-        return if (nextStepMs <= lastKeyframeMs) nextStepMs * 1_000L else C.TIME_UNSET
+        while (candidateMs <= lastKeyframeMs) {
+            val candidateSpeed = speedAt(points, candidateMs)
+            if (candidateSpeed != currentSpeed) return candidateMs * 1_000L
+            candidateMs += STEP_MS
+        }
+        return C.TIME_UNSET
     }
 }
 
