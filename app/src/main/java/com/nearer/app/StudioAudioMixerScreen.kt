@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
@@ -63,6 +64,9 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import java.io.File
 import java.util.Locale
@@ -96,6 +100,7 @@ private data class StudioMixTrack(
 @Composable
 internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val exportValidationScope = rememberCoroutineScope()
     val projectPreferences = remember(context) { context.getSharedPreferences("nearer_studio_audio_project", android.content.Context.MODE_PRIVATE) }
     val projects = remember(context) {
         mutableStateListOf<StudioAudioProjectLibraryEntry>().apply {
@@ -616,14 +621,15 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 } else requested
                                 tracks[index] = track.copy(startOffsetMs = position); exported = null
                             }, valueRange = 0f..StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS.toFloat())
-                            Text("FADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text("FADE IN / CROSSFADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = (track.fadeInMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
                                 tracks[index] = track.copy(fadeInMs = (it * 1000f).toLong()); exported = null
                             }, valueRange = 0f..maxFade.coerceAtLeast(0.1f), enabled = track.durationMs > 0L)
-                            Text("FADE OUT  ·  ${String.format(Locale.US, "%.1f", track.fadeOutMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text("FADE OUT / CROSSFADE OUT  ·  ${String.format(Locale.US, "%.1f", track.fadeOutMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = (track.fadeOutMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
                                 tracks[index] = track.copy(fadeOutMs = (it * 1000f).toLong()); exported = null
                             }, valueRange = 0f..maxFade.coerceAtLeast(0.1f), enabled = track.durationMs > 0L)
+                            Text("EQUAL-POWER CROSSFADE: overlap two tracks, then match the outgoing fade-out and incoming fade-in durations.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
                             if (track.durationMs <= 0L) Text("Fade controls need readable duration metadata for this file.", color = Muted, fontSize = 9.sp)
                         }
                     }
@@ -668,15 +674,30 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                     EditedMediaItemSequence.Builder(sequenceItems).build()
                 }
                 val composition = Composition.Builder(sequences).build()
-                val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Mix_${System.currentTimeMillis()}.mp4")
+                val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Mix_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}.m4a")
                 val transformer = Transformer.Builder(context).setAudioMimeType(MimeTypes.AUDIO_AAC)
                     .addListener(object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
-                            exporting = false
                             temporarySilenceFiles.forEach { it.delete() }
-                            exported = output.takeIf { it.exists() && it.length() > 0L }
-                            message = if (exported != null) "Mix rendered · ${output.length() / 1024L} KB. Original recordings and source tracks remain untouched."
-                                else "The render finished but no output file was found. Please try again."
+                            exportValidationScope.launch {
+                                val inspection = withContext(Dispatchers.IO) {
+                                    runCatching { inspectStudioAudioExport(output) }.getOrNull()
+                                }
+                                val usableOutput = StudioAudioExportPolicy.hasUsableOutput(
+                                    fileExists = output.exists(),
+                                    fileLengthBytes = output.length(),
+                                    hasAudioTrack = inspection?.hasAudioTrack == true,
+                                    durationMs = inspection?.durationMs ?: 0L
+                                )
+                                exporting = false
+                                exported = output.takeIf { usableOutput }
+                                if (usableOutput) {
+                                    message = "Mix rendered and checked · ${output.length() / 1024L} KB · ${formatMixTime(inspection!!.durationMs)}. Original recordings and source tracks remain untouched."
+                                } else {
+                                    output.delete()
+                                    message = "The render completed but failed audio-file verification (missing audio track, unreadable duration or empty output). Please try again."
+                                }
+                            }
                         }
                         override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
                             exporting = false
@@ -756,6 +777,26 @@ private fun readStudioAudioDuration(context: android.content.Context, uri: Uri):
         retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
     } catch (_: Exception) {
         0L
+    } finally {
+        runCatching { retriever.release() }
+    }
+}
+
+private data class StudioAudioExportInspection(
+    val hasAudioTrack: Boolean,
+    val durationMs: Long
+)
+
+/** Verifies the completed container is readable and actually contains an audio track. */
+private fun inspectStudioAudioExport(file: File): StudioAudioExportInspection {
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(file.absolutePath)
+        StudioAudioExportInspection(
+            hasAudioTrack = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) != null,
+            durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+        )
     } finally {
         runCatching { retriever.release() }
     }
