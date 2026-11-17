@@ -61,11 +61,16 @@ private data class StudioMixTrack(
     val gain: Float = 1f,
     val pan: Float = 0f,
     val fadeInMs: Long = 0L,
-    val fadeOutMs: Long = 0L
+    val fadeOutMs: Long = 0L,
+    val lowGainDb: Float = 0f,
+    val midGainDb: Float = 0f,
+    val highGainDb: Float = 0f,
+    val reverbMix: Float = 0f
 ) {
     fun toProjectState() = StudioAudioProjectTrackState(
         uri = uri.toString(), name = name, durationMs = durationMs, muted = muted,
-        gain = gain, pan = pan, fadeInMs = fadeInMs, fadeOutMs = fadeOutMs
+        gain = gain, pan = pan, fadeInMs = fadeInMs, fadeOutMs = fadeOutMs,
+        lowGainDb = lowGainDb, midGainDb = midGainDb, highGainDb = highGainDb, reverbMix = reverbMix
     )
 }
 
@@ -77,7 +82,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     val tracks = remember(context) {
         mutableStateListOf<StudioMixTrack>().apply {
             addAll(StudioAudioProjectCodec.decode(projectPreferences.getString("tracks_v1", null)).mapNotNull { saved ->
-                runCatching { StudioMixTrack(Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan, saved.fadeInMs, saved.fadeOutMs) }.getOrNull()
+                runCatching { StudioMixTrack(Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan, saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix) }.getOrNull()
             })
         }
     }
@@ -88,6 +93,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     var message by remember { mutableStateOf("Build a layered mix from voice, music and sound effects stored on your phone.") }
     var exported by remember { mutableStateOf<File?>(null) }
     var previewUri by remember { mutableStateOf<Uri?>(null) }
+    var expandedTrackEffects by remember { mutableStateOf(setOf<String>()) }
     val previewPlayer = remember(context) { ExoPlayer.Builder(context).build() }
 
     DisposableEffect(previewPlayer) { onDispose { previewPlayer.release() } }
@@ -136,7 +142,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                     Text(track.name, color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
                                     Text("TRACK ${index + 1}  ·  ${if (track.durationMs > 0) formatMixTime(track.durationMs) else "DURATION UNKNOWN"}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 }
-                                Text(if (previewUri == track.uri && previewPlayer.isPlaying) "PAUSE" else "PREVIEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
+                                Text(if (previewUri == track.uri && previewPlayer.isPlaying) "PAUSE" else "SOURCE PREVIEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                                     if (previewUri == track.uri && previewPlayer.isPlaying) previewPlayer.pause()
                                     else {
                                         previewUri = track.uri
@@ -175,6 +181,28 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 tracks[index] = track.copy(pan = it); exported = null
                             }, valueRange = -1f..1f)
                             Text("PAN IS APPLIED TO THE EXPORTED MIX", color = Muted, fontSize = 8.sp)
+                            val trackKey = track.uri.toString()
+                            val effectsExpanded = trackKey in expandedTrackEffects
+                            Text(
+                                if (effectsExpanded) "HIDE TRACK EFFECTS  ▴" else "SHOW TRACK EFFECTS  ▾",
+                                color = Mint,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable {
+                                    expandedTrackEffects = if (effectsExpanded) expandedTrackEffects - trackKey else expandedTrackEffects + trackKey
+                                }.padding(vertical = 5.dp)
+                            )
+                            if (effectsExpanded) {
+                                Text("LOW EQ  ·  ${track.lowGainDb.toInt()} dB", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Slider(value = track.lowGainDb, onValueChange = { tracks[index] = track.copy(lowGainDb = it); exported = null }, valueRange = -12f..12f)
+                                Text("MID EQ  ·  ${track.midGainDb.toInt()} dB", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Slider(value = track.midGainDb, onValueChange = { tracks[index] = track.copy(midGainDb = it); exported = null }, valueRange = -12f..12f)
+                                Text("HIGH EQ  ·  ${track.highGainDb.toInt()} dB", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Slider(value = track.highGainDb, onValueChange = { tracks[index] = track.copy(highGainDb = it); exported = null }, valueRange = -12f..12f)
+                                Text("ROOM REVERB  ·  ${(track.reverbMix * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Slider(value = track.reverbMix, onValueChange = { tracks[index] = track.copy(reverbMix = it); exported = null }, valueRange = 0f..0.35f)
+                                Text("SOURCE PREVIEW IS UNPROCESSED; EQ, REVERB, PAN AND FADES ARE HEARD IN THE EXPORTED MIX.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
+                            }
                             Text("FADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = (track.fadeInMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
                                 tracks[index] = track.copy(fadeInMs = (it * 1000f).toLong()); exported = null
@@ -203,7 +231,8 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                     val effects = Effects(
                         listOf(
                             ToInt16PcmAudioProcessor(),
-                            StudioTrackGainProcessor(track.gain, track.pan, track.durationMs, track.fadeInMs, track.fadeOutMs)
+                            StudioTrackGainProcessor(track.gain, track.pan, track.durationMs, track.fadeInMs, track.fadeOutMs),
+                            StudioTrackToneProcessor(track.lowGainDb, track.midGainDb, track.highGainDb, track.reverbMix)
                         ),
                         emptyList()
                     )
@@ -247,7 +276,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 Text("SHARE FINISHED MIX")
             }
         }
-        Text("Track volume, stereo balance, mute, reorder, and non-destructive fade-in/fade-out are applied during the offline render. Mono tracks are normalized to stereo so they can be mixed with stereo sources. Live simultaneous monitoring, EQ, reverb, tempo automation and multiple named projects are planned for the next audio-engine milestone.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
+        Text("Each track has independent volume, pan, fades, three-band EQ and room reverb. Changes are saved on this phone and applied during offline export; the original source files remain untouched. Source preview is intentionally unprocessed. Live simultaneous monitoring, tempo automation and multiple named projects remain future work.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
 }
 

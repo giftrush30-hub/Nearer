@@ -14,7 +14,11 @@ class StudioAudioProjectCodecTest {
             gain = 0.72f,
             pan = -0.35f,
             fadeInMs = 1_500L,
-            fadeOutMs = 2_000L
+            fadeOutMs = 2_000L,
+            lowGainDb = -3f,
+            midGainDb = 2f,
+            highGainDb = 5f,
+            reverbMix = 0.2f
         ))
         val restored = StudioAudioProjectCodec.decode(StudioAudioProjectCodec.encode(original))
         assertEquals(original, restored)
@@ -33,6 +37,24 @@ class StudioAudioProjectCodecTest {
         val raw = """{"version":1,"tracks":[{"uri":"content://audio/legacy","name":"Legacy","gain":0.8}]}"""
         val restored = StudioAudioProjectCodec.decode(raw)
         assertEquals(0f, restored.single().pan, 0f)
+    }
+
+    @Test fun legacyProjectsDefaultToFlatDryProcessing() {
+        val raw = """{"version":2,"tracks":[{"uri":"content://audio/old","name":"Old track"}]}"""
+        val restored = StudioAudioProjectCodec.decode(raw).single()
+        assertEquals(0f, restored.lowGainDb, 0f)
+        assertEquals(0f, restored.midGainDb, 0f)
+        assertEquals(0f, restored.highGainDb, 0f)
+        assertEquals(0f, restored.reverbMix, 0f)
+    }
+
+    @Test fun clampsNewEffectSettings() {
+        val raw = """{"version":3,"tracks":[{"uri":"content://audio/unsafe","lowGainDb":30,"midGainDb":-30,"highGainDb":18,"reverbMix":1.2}]}"""
+        val restored = StudioAudioProjectCodec.decode(raw).single()
+        assertEquals(12f, restored.lowGainDb, 0f)
+        assertEquals(-12f, restored.midGainDb, 0f)
+        assertEquals(12f, restored.highGainDb, 0f)
+        assertEquals(0.35f, restored.reverbMix, 0f)
     }
 
     @Test fun ignoresUnknownProjectVersions() {
