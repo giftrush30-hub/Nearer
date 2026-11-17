@@ -47,6 +47,16 @@ internal object StudioTempoAutomationPolicy {
         return bounded
     }
 
+    fun twoPointRamp(startSpeed: Float, endSpeed: Float, durationMs: Long): List<StudioTempoPoint> {
+        val start = if (startSpeed.isFinite()) startSpeed.coerceIn(MIN_SPEED, MAX_SPEED) else 1f
+        val end = if (endSpeed.isFinite()) endSpeed.coerceIn(MIN_SPEED, MAX_SPEED) else 1f
+        if (start == 1f && end == 1f) return emptyList()
+        if (start == end) return listOf(StudioTempoPoint(0L, start))
+        val endTimeMs = (if (durationMs > 0L) durationMs else MAX_AUTOMATION_MS)
+            .coerceIn(STEP_MS, MAX_AUTOMATION_MS)
+        return normalize(listOf(StudioTempoPoint(0L, start), StudioTempoPoint(endTimeMs, end)), endTimeMs)
+    }
+
     fun speedAt(points: List<StudioTempoPoint>, timeMs: Long): Float {
         val safePoints = points.ifEmpty { listOf(StudioTempoPoint(0L, 1f)) }
         val time = timeMs.coerceAtLeast(0L)
