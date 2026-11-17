@@ -90,6 +90,12 @@ class StudioTempoAutomationPolicyTest {
         assertEquals(0L, StudioTempoAutomationPolicy.outputDurationMs(points, 0L))
     }
 
+    @Test fun longClipDurationCalculationIntegratesOnlyTheAutomationWindowThenHoldsSpeed() {
+        val ramp = StudioTempoAutomationPolicy.twoPointRamp(1f, 2f, 60_000L)
+        // 20,799 ms for the sampled first 30 seconds, then 23 hours 59 minutes 30 seconds at 2x.
+        assertEquals(43_205_799L, StudioTempoAutomationPolicy.outputDurationMs(ramp, 86_400_000L))
+    }
+
     @Test fun providerSkipsFlatSectionsUntilTheCurveActuallyChanges() {
         val provider = StudioTempoAutomationSpeedProvider(
             listOf(
