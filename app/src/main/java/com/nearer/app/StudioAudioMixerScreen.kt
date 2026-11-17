@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
@@ -63,6 +64,9 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import java.io.File
 import java.util.Locale
@@ -96,6 +100,7 @@ private data class StudioMixTrack(
 @Composable
 internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val exportValidationScope = rememberCoroutineScope()
     val projectPreferences = remember(context) { context.getSharedPreferences("nearer_studio_audio_project", android.content.Context.MODE_PRIVATE) }
     val projects = remember(context) {
         mutableStateListOf<StudioAudioProjectLibraryEntry>().apply {
@@ -672,21 +677,25 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 val transformer = Transformer.Builder(context).setAudioMimeType(MimeTypes.AUDIO_AAC)
                     .addListener(object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
-                            exporting = false
                             temporarySilenceFiles.forEach { it.delete() }
-                            val inspection = runCatching { inspectStudioAudioExport(output) }.getOrNull()
-                            val usableOutput = StudioAudioExportPolicy.hasUsableOutput(
-                                fileExists = output.exists(),
-                                fileLengthBytes = output.length(),
-                                hasAudioTrack = inspection?.hasAudioTrack == true,
-                                durationMs = inspection?.durationMs ?: 0L
-                            )
-                            exported = output.takeIf { usableOutput }
-                            if (usableOutput) {
-                                message = "Mix rendered and checked · ${output.length() / 1024L} KB · ${formatMixTime(inspection!!.durationMs)}. Original recordings and source tracks remain untouched."
-                            } else {
-                                output.delete()
-                                message = "The render completed but failed audio-file verification (missing audio track, unreadable duration or empty output). Please try again." 
+                            exportValidationScope.launch {
+                                val inspection = withContext(Dispatchers.IO) {
+                                    runCatching { inspectStudioAudioExport(output) }.getOrNull()
+                                }
+                                val usableOutput = StudioAudioExportPolicy.hasUsableOutput(
+                                    fileExists = output.exists(),
+                                    fileLengthBytes = output.length(),
+                                    hasAudioTrack = inspection?.hasAudioTrack == true,
+                                    durationMs = inspection?.durationMs ?: 0L
+                                )
+                                exporting = false
+                                exported = output.takeIf { usableOutput }
+                                if (usableOutput) {
+                                    message = "Mix rendered and checked · ${output.length() / 1024L} KB · ${formatMixTime(inspection!!.durationMs)}. Original recordings and source tracks remain untouched."
+                                } else {
+                                    output.delete()
+                                    message = "The render completed but failed audio-file verification (missing audio track, unreadable duration or empty output). Please try again."
+                                }
                             }
                         }
                         override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
