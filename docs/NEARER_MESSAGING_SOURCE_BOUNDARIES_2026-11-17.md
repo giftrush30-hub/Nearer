@@ -135,6 +135,8 @@ The current `MainActivity.persistMessages()` implementation serializes up to the
 
 This is distinct from `NearbyIncomingMessageInbox` and `DirectChatOutbox`, which do encrypt their own persisted payloads. Those encrypted transport queues do not make the main chat-history store encrypted at rest.
 
+The shared `LocalDataCipher` currently uses Android Keystore AES-256-GCM with a `v1:` Base64 envelope containing the 12-byte IV followed by ciphertext. Its decrypt helper returns `null` for malformed/unsupported ciphertext and decryption failures; it also calls `getOrCreateKey()`, which creates a new alias key if the expected alias is absent. Therefore, a missing/invalidated old key can be indistinguishable from other decrypt failures at this API boundary, and attempting decrypt can create a new key that still cannot unlock old ciphertext. Keep the original value/backup untouched and design explicit key-availability/version handling before using this helper for a history migration. The inspected source tree has no dedicated `LocalDataCipher` test file.
+
 There is a second recovery concern: if parsing/restoration throws, `restoreLocalData()` clears the in-memory `chatMessages` collection. The catch path inspected does not overwrite the original SharedPreferences value, so the persisted raw string remains, but the app can present an empty in-memory history on that launch and repeat the failure on a later launch. This must not be confused with a successful repair or a confirmed permanent deletion.
 
 The `commit()` call is deliberate for synchronous durability before some delivery-related state transitions. Any migration must preserve the required durability ordering, not replace it with an asynchronous `apply()` by assumption.
