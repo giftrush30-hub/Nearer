@@ -6,6 +6,7 @@ plugins {
 
 android {
     namespace = "com.nearer.app"
+    // Media3 1.11.1 needs API 36 to compile; runtime minSdk/targetSdk remain unchanged.
     compileSdk = 36
     ndkVersion = "27.2.12479018"
 
