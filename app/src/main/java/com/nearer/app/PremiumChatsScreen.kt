@@ -1,5 +1,6 @@
 package com.nearer.app
 
+import android.net.Uri
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -68,6 +69,7 @@ internal fun PremiumChatsScreen(
     onFindNearby: () -> Unit,
     onBackToInbox: () -> Unit,
     onChooseFiles: () -> Unit,
+    onSendVoiceNote: (Uri) -> Unit,
     receivedFiles: List<ReceivedFile>,
     onOpenFile: (ReceivedFile) -> Unit,
     transferHistory: List<NearbyTransferRecord>,
@@ -527,9 +529,14 @@ internal fun PremiumChatsScreen(
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.RaisedPanel, contentColor = White)
-                            ) { Text("＋  Share files", fontSize = 12.sp) }
+                            ) { Text("＋ Share files", fontSize = 12.sp) }
+                            VoiceNoteComposer(
+                                enabled = true,
+                                onSend = onSendVoiceNote,
+                                modifier = Modifier.weight(1f)
+                            )
                         } else {
-                            Text("File sharing needs a direct nearby connection.", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                            Text("Voice notes and file sharing need a direct nearby connection.", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
                         }
                         Text(
                             if (selectedRecipient?.isDirect == false) "Via nearby helpers" else if (usingNearbyConnections) "Nearby link" else "Wi-Fi Direct link",
@@ -577,6 +584,9 @@ internal fun PremiumChatsScreen(
                             Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("↓", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                                 Text(fileItem.displayName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 9.dp))
+                                if (fileItem.file.extension.lowercase() in setOf("m4a", "mp3", "aac", "ogg", "3gp")) {
+                                    InlineVoiceNotePlayer(fileItem.file)
+                                }
                                 Text("Open", color = NeaRerPalette.Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
