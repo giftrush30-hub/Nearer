@@ -18,6 +18,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -65,12 +67,16 @@ private data class StudioMixTrack(
     val lowGainDb: Float = 0f,
     val midGainDb: Float = 0f,
     val highGainDb: Float = 0f,
-    val reverbMix: Float = 0f
+    val reverbMix: Float = 0f,
+    val clipStartMs: Long = 0L,
+    val clipEndMs: Long = durationMs,
+    val startOffsetMs: Long = 0L
 ) {
     fun toProjectState() = StudioAudioProjectTrackState(
         uri = uri.toString(), name = name, durationMs = durationMs, muted = muted,
         gain = gain, pan = pan, fadeInMs = fadeInMs, fadeOutMs = fadeOutMs,
-        lowGainDb = lowGainDb, midGainDb = midGainDb, highGainDb = highGainDb, reverbMix = reverbMix
+        lowGainDb = lowGainDb, midGainDb = midGainDb, highGainDb = highGainDb, reverbMix = reverbMix,
+        clipStartMs = clipStartMs, clipEndMs = clipEndMs, startOffsetMs = startOffsetMs
     )
 }
 
@@ -79,19 +85,53 @@ private data class StudioMixTrack(
 internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val projectPreferences = remember(context) { context.getSharedPreferences("nearer_studio_audio_project", android.content.Context.MODE_PRIVATE) }
-    val tracks = remember(context) {
-        mutableStateListOf<StudioMixTrack>().apply {
-            addAll(StudioAudioProjectCodec.decode(projectPreferences.getString("tracks_v1", null)).mapNotNull { saved ->
-                runCatching { StudioMixTrack(Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan, saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix) }.getOrNull()
-            })
+    val projects = remember(context) {
+        mutableStateListOf<StudioAudioProjectLibraryEntry>().apply {
+            addAll(StudioAudioProjectLibraryCodec.decode(projectPreferences.getString("projects_v1", null)))
+            if (isEmpty()) add(StudioAudioProjectLibraryEntry(
+                id = "studio-default", name = "My First Mix", updatedAtMs = System.currentTimeMillis(),
+                tracks = StudioAudioProjectCodec.decode(projectPreferences.getString("tracks_v1", null))
+            ))
         }
     }
-    LaunchedEffect(tracks.map { it.toProjectState() }) {
-        projectPreferences.edit().putString("tracks_v1", StudioAudioProjectCodec.encode(tracks.map { it.toProjectState() })).apply()
+    var currentProjectId by remember(context) { mutableStateOf(projects.first().id) }
+    val tracks = remember(context) {
+        mutableStateListOf<StudioMixTrack>().apply {
+            addAll(projects.first().tracks.map { saved -> StudioMixTrack(
+                Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan,
+                saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix,
+                saved.clipStartMs, saved.clipEndMs, saved.startOffsetMs
+            ) })
+        }
+    }
+    LaunchedEffect(currentProjectId, tracks.map { it.toProjectState() }) {
+        val index = projects.indexOfFirst { it.id == currentProjectId }
+        if (index >= 0) {
+            projects[index] = projects[index].copy(tracks = tracks.map { it.toProjectState() }, updatedAtMs = System.currentTimeMillis())
+            projectPreferences.edit().putString("projects_v1", StudioAudioProjectLibraryCodec.encode(projects.toList())).remove("tracks_v1").apply()
+        }
+    }
+    var showProjectPicker by remember { mutableStateOf(false) }
+    var showProjectNameDialog by remember { mutableStateOf(false) }
+    var showDeleteProjectDialog by remember { mutableStateOf(false) }
+    var projectNameDraft by remember { mutableStateOf("") }
+    var creatingProject by remember { mutableStateOf(true) }
+    val currentProject = projects.firstOrNull { it.id == currentProjectId } ?: projects.first()
+    var exported by remember { mutableStateOf<File?>(null) }
+    fun switchProject(project: StudioAudioProjectLibraryEntry) {
+        val oldIndex = projects.indexOfFirst { it.id == currentProjectId }
+        if (oldIndex >= 0) projects[oldIndex] = projects[oldIndex].copy(tracks = tracks.map { it.toProjectState() }, updatedAtMs = System.currentTimeMillis())
+        tracks.clear()
+        tracks.addAll(project.tracks.map { saved -> StudioMixTrack(
+            Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan,
+            saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix,
+            saved.clipStartMs, saved.clipEndMs, saved.startOffsetMs
+        ) })
+        currentProjectId = project.id
+        exported = null
     }
     var exporting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Build a layered mix from voice, music and sound effects stored on your phone.") }
-    var exported by remember { mutableStateOf<File?>(null) }
     var previewUri by remember { mutableStateOf<Uri?>(null) }
     var finalMixSelected by remember { mutableStateOf(false) }
     var finalMixPlaying by remember { mutableStateOf(false) }
@@ -128,6 +168,66 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
         exported = null
     }
 
+    if (showProjectPicker) AlertDialog(
+        onDismissRequest = { showProjectPicker = false },
+        title = { Text("Your Studio projects") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            projects.sortedByDescending { it.updatedAtMs }.forEach { project ->
+                Button(onClick = { switchProject(project); showProjectPicker = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (project.id == currentProjectId) Mint else Panel,
+                        contentColor = if (project.id == currentProjectId) Midnight else White
+                    )) { Text("${if (project.id == currentProjectId) "✓  " else ""}${project.name} · ${project.tracks.size} tracks") }
+            }
+        } },
+        confirmButton = { Button(onClick = { showProjectPicker = false }) { Text("CLOSE") } }
+    )
+    if (showProjectNameDialog) AlertDialog(
+        onDismissRequest = { showProjectNameDialog = false },
+        title = { Text(if (creatingProject) "Create a project" else "Rename project") },
+        text = { OutlinedTextField(value = projectNameDraft, onValueChange = { projectNameDraft = it.take(48) },
+            label = { Text("Project name") }, singleLine = true) },
+        confirmButton = { Button(onClick = {
+            val safeName = StudioAudioProjectLibraryCodec.normalizeName(projectNameDraft)
+            if (creatingProject) {
+                val previousIndex = projects.indexOfFirst { it.id == currentProjectId }
+                if (previousIndex >= 0) projects[previousIndex] = projects[previousIndex].copy(
+                    tracks = tracks.map { it.toProjectState() },
+                    updatedAtMs = System.currentTimeMillis()
+                )
+                val created = StudioAudioProjectLibraryEntry(java.util.UUID.randomUUID().toString(), safeName, System.currentTimeMillis(), emptyList())
+                projects.add(created)
+                tracks.clear()
+                currentProjectId = created.id
+                exported = null
+            } else {
+                val index = projects.indexOfFirst { it.id == currentProjectId }
+                if (index >= 0) projects[index] = projects[index].copy(name = safeName, updatedAtMs = System.currentTimeMillis())
+            }
+            showProjectNameDialog = false
+        }) { Text(if (creatingProject) "CREATE" else "SAVE") } },
+        dismissButton = { Button(onClick = { showProjectNameDialog = false }) { Text("CANCEL") } }
+    )
+    if (showDeleteProjectDialog) AlertDialog(
+        onDismissRequest = { showDeleteProjectDialog = false },
+        title = { Text("Delete this project?") },
+        text = { Text("Only the saved arrangement is removed. Your original audio files are never deleted.") },
+        confirmButton = { Button(onClick = {
+            projects.removeAll { it.id == currentProjectId }
+            val replacement = projects.first()
+            tracks.clear()
+            tracks.addAll(replacement.tracks.map { saved -> StudioMixTrack(
+                Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan,
+                saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix,
+                saved.clipStartMs, saved.clipEndMs, saved.startOffsetMs
+            ) })
+            currentProjectId = replacement.id
+            exported = null
+            showDeleteProjectDialog = false
+        }) { Text("DELETE") } },
+        dismissButton = { Button(onClick = { showDeleteProjectDialog = false }) { Text("CANCEL") } }
+    )
     Column(
         Modifier.fillMaxSize().background(Midnight).verticalScroll(rememberScrollState()).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -138,7 +238,24 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
         }
         Text("Mix every layer.", color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
         Text("A phone-friendly multitrack desk. Balance each layer, shape its entrance and ending, reorder the arrangement, then render one local mix.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
-        Text("● PROJECT AUTO-SAVED ON THIS PHONE", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Surface(color = Panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("PROJECT LIBRARY  ·  ${projects.size}/20", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text(currentProject.name, color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text("${tracks.size} audio layers · Saved locally on this phone", color = Muted, fontSize = 10.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Button(onClick = { showProjectPicker = true }, modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) { Text("OPEN", fontSize = 9.sp) }
+                    Button(onClick = { creatingProject = true; projectNameDraft = ""; showProjectNameDialog = true },
+                        enabled = projects.size < 20, modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("＋ NEW", fontSize = 9.sp) }
+                    Button(onClick = { creatingProject = false; projectNameDraft = currentProject.name; showProjectNameDialog = true },
+                        modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("RENAME", fontSize = 9.sp) }
+                    Button(onClick = { showDeleteProjectDialog = true }, enabled = projects.size > 1,
+                        colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Muted)) { Text("×") }
+                }
+            }
+        }
         Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
             Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -155,12 +272,18 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                     Text(track.name, color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
                                     Text("TRACK ${index + 1}  ·  ${if (track.durationMs > 0) formatMixTime(track.durationMs) else "DURATION UNKNOWN"}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 }
-                                Text(if (previewUri == track.uri && previewPlayer.isPlaying) "PAUSE" else "SOURCE PREVIEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
+                                Text(if (previewUri == track.uri && previewPlayer.isPlaying) "PAUSE" else "CLIP PREVIEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                                     if (previewUri == track.uri && previewPlayer.isPlaying) previewPlayer.pause()
                                     else {
                                         finalMixSelected = false
                                         previewUri = track.uri
-                                        previewPlayer.setMediaItem(MediaItem.fromUri(track.uri))
+                                        val clipPreview = MediaItem.Builder().setUri(track.uri).apply {
+                                            if (track.durationMs > 0L && track.clipEndMs > track.clipStartMs) {
+                                                setClippingConfiguration(MediaItem.ClippingConfiguration.Builder()
+                                                    .setStartPositionMs(track.clipStartMs).setEndPositionMs(track.clipEndMs).build())
+                                            }
+                                        }.build()
+                                        previewPlayer.setMediaItem(clipPreview)
                                         previewPlayer.volume = track.gain.coerceIn(0f, 1f)
                                         previewPlayer.prepare()
                                         previewPlayer.play()
@@ -189,7 +312,8 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 tracks[index] = track.copy(gain = it); exported = null
                                 if (previewUri == track.uri) previewPlayer.volume = it
                             }, valueRange = 0f..1f)
-                            val maxFade = (track.durationMs / 1000f).coerceAtMost(8f)
+                            val clipDurationMs = if (track.durationMs > 0L) (track.clipEndMs - track.clipStartMs).coerceIn(1L, track.durationMs) else track.durationMs
+                            val maxFade = (clipDurationMs / 1000f).coerceAtMost(8f)
                             Text("STEREO PAN  ·  ${if (track.pan < -0.01f) "L ${(-track.pan * 100).toInt()}%" else if (track.pan > 0.01f) "R ${(track.pan * 100).toInt()}%" else "CENTRE"}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = track.pan, onValueChange = {
                                 tracks[index] = track.copy(pan = it); exported = null
@@ -215,8 +339,36 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 Slider(value = track.highGainDb, onValueChange = { tracks[index] = track.copy(highGainDb = it); exported = null }, valueRange = -12f..12f)
                                 Text("ROOM REVERB  ·  ${(track.reverbMix * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 Slider(value = track.reverbMix, onValueChange = { tracks[index] = track.copy(reverbMix = it); exported = null }, valueRange = 0f..0.35f)
-                                Text("SOURCE PREVIEW APPLIES VOLUME ONLY; EQ, REVERB, PAN AND FADES APPLY ON EXPORT.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
+                                Text("CLIP PREVIEW PLAYS THE SELECTED SOURCE RANGE. EQ, REVERB, PAN AND FADES APPLY ON EXPORT.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
                             }
+                            if (track.durationMs > 0L) {
+                                val minClip = 500L.coerceAtMost(track.durationMs)
+                                val clipEnd = track.clipEndMs.coerceIn((track.clipStartMs + minClip).coerceAtMost(track.durationMs), track.durationMs)
+                                val clipStart = track.clipStartMs.coerceIn(0L, (clipEnd - minClip).coerceAtLeast(0L))
+                                Text("CLIP TIMELINE  ·  ${formatMixTime(clipStart)} – ${formatMixTime(clipEnd)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Surface(color = Panel, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text("IN  ${formatMixTime(clipStart)}", color = Gold, fontSize = 8.sp)
+                                        Text("▰  AUDIO CLIP  ·  ${formatMixTime(clipEnd - clipStart)}", color = Midnight, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.background(Mint, RoundedCornerShape(5.dp)).padding(7.dp))
+                                        Text("OUT  ${formatMixTime(clipEnd)}", color = Gold, fontSize = 8.sp)
+                                    }
+                                }
+                                Text("TRIM START · ${formatMixTime(clipStart)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Slider(value = clipStart.toFloat(), onValueChange = { v ->
+                                    val next = v.toLong().coerceIn(0L, (clipEnd - minClip).coerceAtLeast(0L))
+                                    tracks[index] = track.copy(clipStartMs = next); exported = null
+                                }, valueRange = 0f..(clipEnd - minClip).coerceAtLeast(0L).toFloat(), enabled = track.durationMs > minClip)
+                                Text("TRIM END · ${formatMixTime(clipEnd)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Slider(value = clipEnd.toFloat(), onValueChange = { v ->
+                                    val next = v.toLong().coerceIn((clipStart + minClip).coerceAtMost(track.durationMs), track.durationMs)
+                                    tracks[index] = track.copy(clipEndMs = next); exported = null
+                                }, valueRange = (clipStart + minClip).coerceAtMost(track.durationMs).toFloat()..track.durationMs.toFloat(), enabled = track.durationMs > minClip)
+                            }
+                            Text("TRACK START POSITION · ${formatMixTime(track.startOffsetMs)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Slider(value = track.startOffsetMs.toFloat(), onValueChange = { v ->
+                                tracks[index] = track.copy(startOffsetMs = v.toLong().coerceIn(0L, 30_000L)); exported = null
+                            }, valueRange = 0f..30_000f, steps = 29)
                             Text("FADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = (track.fadeInMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
                                 tracks[index] = track.copy(fadeInMs = (it * 1000f).toLong()); exported = null
@@ -244,17 +396,29 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 previewUri = null
                 exporting = true; exported = null
                 message = "Rendering ${activeTracks.size} track(s) with their own volume and fade envelopes…"
+                val temporarySilenceFiles = mutableListOf<File>()
                 val sequences = activeTracks.map { track ->
                     val effects = Effects(
                         listOf(
                             ToInt16PcmAudioProcessor(),
-                            StudioTrackGainProcessor(track.gain, track.pan, track.durationMs, track.fadeInMs, track.fadeOutMs),
+                            StudioTrackGainProcessor(track.gain, track.pan, if (track.durationMs > 0L) track.clipEndMs - track.clipStartMs else track.durationMs, track.fadeInMs, track.fadeOutMs),
                             StudioTrackToneProcessor(track.lowGainDb, track.midGainDb, track.highGainDb, track.reverbMix)
                         ),
                         emptyList()
                     )
-                    val item = EditedMediaItem.Builder(MediaItem.fromUri(track.uri)).setEffects(effects).build()
-                    EditedMediaItemSequence.Builder(listOf(item)).build()
+                    val sourceMediaItem = MediaItem.Builder().setUri(track.uri).apply {
+                        if (track.durationMs > 0L && track.clipEndMs > track.clipStartMs) {
+                            setClippingConfiguration(MediaItem.ClippingConfiguration.Builder()
+                                .setStartPositionMs(track.clipStartMs).setEndPositionMs(track.clipEndMs).build())
+                        }
+                    }.build()
+                    val item = EditedMediaItem.Builder(sourceMediaItem).setEffects(effects).build()
+                    val sequenceItems = if (track.startOffsetMs > 0L) {
+                        val silence = createStudioTimelineSilence(context, track.startOffsetMs)
+                        temporarySilenceFiles += silence
+                        listOf(EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(silence))).build(), item)
+                    } else listOf(item)
+                    EditedMediaItemSequence.Builder(sequenceItems).build()
                 }
                 val composition = Composition.Builder(sequences).build()
                 val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Mix_${System.currentTimeMillis()}.mp4")
@@ -262,18 +426,20 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                     .addListener(object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                             exporting = false
+                            temporarySilenceFiles.forEach { it.delete() }
                             exported = output.takeIf { it.exists() && it.length() > 0L }
                             message = if (exported != null) "Mix rendered · ${output.length() / 1024L} KB. Original recordings and source tracks remain untouched."
                                 else "The render finished but no output file was found. Please try again."
                         }
                         override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
                             exporting = false
+                            temporarySilenceFiles.forEach { it.delete() }
                             output.delete()
                             message = "This mix could not be rendered on this device: ${exportException.message ?: "encoder or source format not supported"}"
                         }
                     }).build()
                 runCatching { transformer.start(composition, output.absolutePath) }.onFailure {
-                    exporting = false; output.delete()
+                    exporting = false; temporarySilenceFiles.forEach { it.delete() }; output.delete()
                     message = "Could not start the mix: ${it.message ?: "unknown error"}"
                 }
             }
@@ -309,8 +475,31 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 Text("SHARE FINISHED MIX")
             }
         }
-        Text("Each track has independent volume, pan, fades, three-band EQ and room reverb. Changes are saved on this phone and applied during offline export; the original source files remain untouched. Source preview is intentionally unprocessed. Live simultaneous monitoring, tempo automation and multiple named projects remain future work.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
+        Text("Each named project saves its own clip trims, start positions and mix controls locally. Export applies real source clipping, timeline offsets, volume, pan, fades, EQ and reverb without changing original files. Waveform editing and tempo automation remain in progress.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
+}
+
+/** Creates a bounded stereo PCM silence clip used to place a track later on the mix timeline. */
+private fun createStudioTimelineSilence(context: android.content.Context, durationMs: Long): File {
+    val safeDuration = durationMs.coerceIn(1L, 30_000L)
+    val sampleRate = 48_000
+    val channels = 2
+    val bitsPerSample = 16
+    val dataSize = (sampleRate.toLong() * channels * (bitsPerSample / 8) * safeDuration / 1_000L).toInt()
+    val output = File(File(context.cacheDir, "studio-timeline").apply { mkdirs() }, "silence_${safeDuration}_${System.nanoTime()}.wav")
+    java.io.FileOutputStream(output).use { stream ->
+        fun ascii(value: String) { stream.write(value.toByteArray(Charsets.US_ASCII)) }
+        fun le(value: Int, bytes: Int) { repeat(bytes) { stream.write((value ushr (it * 8)) and 0xff) } }
+        ascii("RIFF"); le(36 + dataSize, 4); ascii("WAVE")
+        ascii("fmt "); le(16, 4); le(1, 2); le(channels, 2)
+        le(sampleRate, 4); le(sampleRate * channels * bitsPerSample / 8, 4)
+        le(channels * bitsPerSample / 8, 2); le(bitsPerSample, 2)
+        ascii("data"); le(dataSize, 4)
+        val silence = ByteArray(16 * 1024)
+        var remaining = dataSize
+        while (remaining > 0) { val count = minOf(remaining, silence.size); stream.write(silence, 0, count); remaining -= count }
+    }
+    return output
 }
 
 private fun readStudioAudioDuration(context: android.content.Context, uri: Uri): Long {
