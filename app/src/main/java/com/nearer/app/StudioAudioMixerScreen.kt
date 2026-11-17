@@ -7,14 +7,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -35,6 +38,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
@@ -48,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.media3.common.MediaItem
+import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.audio.ToInt16PcmAudioProcessor
@@ -60,6 +65,9 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import java.io.File
 import java.util.Locale
@@ -79,20 +87,23 @@ private data class StudioMixTrack(
     val reverbMix: Float = 0f,
     val clipStartMs: Long = 0L,
     val clipEndMs: Long = durationMs,
-    val startOffsetMs: Long = 0L
+    val startOffsetMs: Long = 0L,
+    val tempoPoints: List<StudioTempoPoint> = emptyList()
 ) {
     fun toProjectState() = StudioAudioProjectTrackState(
         uri = uri.toString(), name = name, durationMs = durationMs, muted = muted,
         gain = gain, pan = pan, fadeInMs = fadeInMs, fadeOutMs = fadeOutMs,
         lowGainDb = lowGainDb, midGainDb = midGainDb, highGainDb = highGainDb, reverbMix = reverbMix,
-        clipStartMs = clipStartMs, clipEndMs = clipEndMs, startOffsetMs = startOffsetMs
+        clipStartMs = clipStartMs, clipEndMs = clipEndMs, startOffsetMs = startOffsetMs,
+        tempoPoints = tempoPoints
     )
 }
 
-@OptIn(androidx.media3.common.util.UnstableApi::class)
+@OptIn(androidx.media3.common.util.UnstableApi::class, ExperimentalApi::class)
 @Composable
 internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val exportValidationScope = rememberCoroutineScope()
     val projectPreferences = remember(context) { context.getSharedPreferences("nearer_studio_audio_project", android.content.Context.MODE_PRIVATE) }
     val projects = remember(context) {
         mutableStateListOf<StudioAudioProjectLibraryEntry>().apply {
@@ -105,12 +116,15 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     }
     var currentProjectId by remember(context) { mutableStateOf(projects.first().id) }
     val currentProject = projects.firstOrNull { it.id == currentProjectId } ?: projects.first()
+    var timelineZoom by remember(currentProjectId) { mutableStateOf(1) }
+    val timelineScrollState = rememberScrollState()
+    LaunchedEffect(currentProjectId, timelineZoom) { timelineScrollState.scrollTo(0) }
     val tracks = remember(context) {
         mutableStateListOf<StudioMixTrack>().apply {
             addAll(projects.first().tracks.map { saved -> StudioMixTrack(
                 Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan,
                 saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix,
-                saved.clipStartMs, saved.clipEndMs, saved.startOffsetMs
+                saved.clipStartMs, saved.clipEndMs, saved.startOffsetMs, saved.tempoPoints
             ) })
         }
     }
@@ -344,26 +358,58 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                         }
                     )
                 }
-                Canvas(Modifier.fillMaxWidth().height(24.dp)) {
-                    val interval = StudioAudioBeatGridPolicy.gridIntervalMs(currentProject.bpm, currentProject.beatDivision)
-                    val tickCount = (StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS / interval).toInt()
-                    val showSubdivisions = interval / StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS * size.width >= 4.dp.toPx()
-                    for (tick in 0..tickCount) {
-                        val isBar = tick % (currentProject.beatDivision * 4) == 0
-                        val isBeat = tick % currentProject.beatDivision == 0
-                        if (isBar || isBeat || showSubdivisions) {
-                            val x = (tick * interval / StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS * size.width).toFloat()
-                            val height = when { isBar -> size.height; isBeat -> size.height * 0.68f; else -> size.height * 0.34f }
-                            val color = when { isBar -> Gold; isBeat -> Mint; else -> Color(0xFF52636D) }
-                            drawLine(color, Offset(x, size.height - height), Offset(x, size.height), if (isBar) 2.dp.toPx() else 1.dp.toPx())
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("ARRANGEMENT TIMELINE", color = White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        StudioAudioTimelineViewportPolicy.ZOOM_LEVELS.forEach { zoom ->
+                            Button(
+                                onClick = { timelineZoom = zoom },
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 3.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (timelineZoom == zoom) Mint else Midnight,
+                                    contentColor = if (timelineZoom == zoom) Midnight else White
+                                )
+                            ) { Text("${zoom}×", fontSize = 9.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("0:00", color = Muted, fontSize = 8.sp)
-                    Text("0:10", color = Muted, fontSize = 8.sp)
-                    Text("0:20", color = Muted, fontSize = 8.sp)
-                    Text("0:30", color = Muted, fontSize = 8.sp)
+                Text(
+                    "Showing ${StudioAudioTimelineViewportPolicy.visibleDurationMs(timelineZoom) / 1_000}s at once · swipe sideways to move along the mix",
+                    color = Muted, fontSize = 8.sp
+                )
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val viewportWidth = maxWidth
+                    val contentWidth = viewportWidth * timelineZoom.toFloat()
+                    Row(Modifier.fillMaxWidth().horizontalScroll(timelineScrollState)) {
+                        Column(Modifier.width(contentWidth)) {
+                            Canvas(Modifier.fillMaxWidth().height(34.dp)) {
+                                val interval = StudioAudioBeatGridPolicy.gridIntervalMs(currentProject.bpm, currentProject.beatDivision)
+                                val tickCount = (StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS / interval).toInt()
+                                val showSubdivisions = interval / StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS * size.width >= 4.dp.toPx()
+                                for (tick in 0..tickCount) {
+                                    val isBar = tick % (currentProject.beatDivision * 4) == 0
+                                    val isBeat = tick % currentProject.beatDivision == 0
+                                    if (isBar || isBeat || showSubdivisions) {
+                                        val x = (tick * interval / StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS * size.width).toFloat()
+                                        val tickHeight = when { isBar -> size.height; isBeat -> size.height * 0.68f; else -> size.height * 0.34f }
+                                        val color = when { isBar -> Gold; isBeat -> Mint; else -> Color(0xFF52636D) }
+                                        drawLine(color, Offset(x, size.height - tickHeight), Offset(x, size.height), if (isBar) 2.dp.toPx() else 1.dp.toPx())
+                                    }
+                                }
+                                tracks.forEach { track ->
+                                    val x = (track.startOffsetMs.coerceIn(0L, StudioAudioTimelineViewportPolicy.DURATION_MS).toFloat() /
+                                        StudioAudioTimelineViewportPolicy.DURATION_MS * size.width)
+                                    drawLine(White, Offset(x, size.height * 0.42f), Offset(x, size.height), 2.dp.toPx(), cap = StrokeCap.Round)
+                                }
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("0:00", color = Muted, fontSize = 8.sp)
+                                Text("0:10", color = Muted, fontSize = 8.sp)
+                                Text("0:20", color = Muted, fontSize = 8.sp)
+                                Text("0:30", color = Muted, fontSize = 8.sp)
+                            }
+                        }
+                    }
                 }
                 Text("The grid guides track start positions in the 30-second arrangement window. It does not time-stretch audio or alter clip trims.",
                     color = Muted, fontSize = 9.sp, lineHeight = 13.sp)
@@ -514,7 +560,8 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 if (previewUri == track.uri) previewPlayer.volume = it
                             }, valueRange = 0f..1f)
                             val clipDurationMs = if (track.durationMs > 0L) (track.clipEndMs - track.clipStartMs).coerceIn(1L, track.durationMs) else track.durationMs
-                            val maxFade = (clipDurationMs / 1000f).coerceAtMost(8f)
+                            val outputClipDurationMs = StudioTempoAutomationPolicy.outputDurationMs(track.tempoPoints, clipDurationMs)
+                            val maxFade = (outputClipDurationMs / 1000f).coerceAtMost(8f)
                             Text("STEREO PAN  ·  ${if (track.pan < -0.01f) "L ${(-track.pan * 100).toInt()}%" else if (track.pan > 0.01f) "R ${(track.pan * 100).toInt()}%" else "CENTRE"}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = track.pan, onValueChange = {
                                 tracks[index] = track.copy(pan = it); exported = null
@@ -578,14 +625,57 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 } else requested
                                 tracks[index] = track.copy(startOffsetMs = position); exported = null
                             }, valueRange = 0f..StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS.toFloat())
-                            Text("FADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text("FADE IN / CROSSFADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = (track.fadeInMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
                                 tracks[index] = track.copy(fadeInMs = (it * 1000f).toLong()); exported = null
                             }, valueRange = 0f..maxFade.coerceAtLeast(0.1f), enabled = track.durationMs > 0L)
-                            Text("FADE OUT  ·  ${String.format(Locale.US, "%.1f", track.fadeOutMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text("FADE OUT / CROSSFADE OUT  ·  ${String.format(Locale.US, "%.1f", track.fadeOutMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = (track.fadeOutMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
                                 tracks[index] = track.copy(fadeOutMs = (it * 1000f).toLong()); exported = null
                             }, valueRange = 0f..maxFade.coerceAtLeast(0.1f), enabled = track.durationMs > 0L)
+                            Text("EQUAL-POWER CROSSFADE: overlap two tracks, then match the outgoing fade-out and incoming fade-in durations.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
+                            Text("TEMPO AUTOMATION  ·  PITCH PRESERVED", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            val tempoStartSpeed = track.tempoPoints.firstOrNull()?.speed ?: 1f
+                            val tempoEndSpeed = track.tempoPoints.lastOrNull()?.speed ?: 1f
+                            Text("START SPEED  ·  ${String.format(Locale.US, "%.2f", tempoStartSpeed)}×", color = Mint, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            Slider(
+                                value = tempoStartSpeed,
+                                onValueChange = { value ->
+                                    tracks[index] = track.copy(
+                                        tempoPoints = StudioTempoAutomationPolicy.twoPointRamp(value, tempoEndSpeed, clipDurationMs)
+                                    )
+                                    exported = null
+                                },
+                                valueRange = StudioTempoAutomationPolicy.MIN_SPEED..StudioTempoAutomationPolicy.MAX_SPEED,
+                                steps = 29,
+                                enabled = track.durationMs > 0L
+                            )
+                            Text("END SPEED  ·  ${String.format(Locale.US, "%.2f", tempoEndSpeed)}×", color = Mint, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            Slider(
+                                value = tempoEndSpeed,
+                                onValueChange = { value ->
+                                    tracks[index] = track.copy(
+                                        tempoPoints = StudioTempoAutomationPolicy.twoPointRamp(tempoStartSpeed, value, clipDurationMs)
+                                    )
+                                    exported = null
+                                },
+                                valueRange = StudioTempoAutomationPolicy.MIN_SPEED..StudioTempoAutomationPolicy.MAX_SPEED,
+                                steps = 29,
+                                enabled = track.durationMs > 0L
+                            )
+                            if (track.tempoPoints.isNotEmpty()) {
+                                Text("RENDERED CLIP  ·  ${formatMixTime(outputClipDurationMs)}", color = Muted, fontSize = 8.sp)
+                                Button(
+                                    onClick = { tracks[index] = track.copy(tempoPoints = emptyList()); exported = null },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Gold)
+                                ) { Text("RESET TEMPO TO 1.00×", fontSize = 8.sp) }
+                            }
+                            Text(
+                                if (track.durationMs > 0L) "A smooth 50 ms speed curve changes this track's timing while preserving musical pitch. It does not change the project's beat-grid BPM."
+                                else "Tempo automation needs readable audio duration metadata.",
+                                color = Muted, fontSize = 8.sp, lineHeight = 12.sp
+                            )
                             if (track.durationMs <= 0L) Text("Fade controls need readable duration metadata for this file.", color = Muted, fontSize = 9.sp)
                         }
                     }
@@ -610,7 +700,13 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                     val effects = Effects(
                         listOf(
                             ToInt16PcmAudioProcessor(),
-                            StudioTrackGainProcessor(track.gain, track.pan, if (track.durationMs > 0L) track.clipEndMs - track.clipStartMs else track.durationMs, track.fadeInMs, track.fadeOutMs),
+                            StudioTrackGainProcessor(
+                                track.gain,
+                                track.pan,
+                                outputClipDurationMs,
+                                track.fadeInMs.coerceAtMost(outputClipDurationMs),
+                                track.fadeOutMs.coerceAtMost(outputClipDurationMs)
+                            ),
                             StudioTrackToneProcessor(track.lowGainDb, track.midGainDb, track.highGainDb, track.reverbMix)
                         ),
                         emptyList()
@@ -621,7 +717,16 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 .setStartPositionMs(track.clipStartMs).setEndPositionMs(track.clipEndMs).build())
                         }
                     }.build()
-                    val item = EditedMediaItem.Builder(sourceMediaItem).setEffects(effects).build()
+                    val itemBuilder = EditedMediaItem.Builder(sourceMediaItem).setEffects(effects)
+                    if (track.tempoPoints.isNotEmpty()) {
+                        itemBuilder.setSpeed(
+                            StudioTempoAutomationPolicy.speedParameters(
+                                track.tempoPoints,
+                                if (track.durationMs > 0L) track.clipEndMs - track.clipStartMs else 0L
+                            )
+                        )
+                    }
+                    val item = itemBuilder.build()
                     val sequenceItems = if (track.startOffsetMs > 0L) {
                         val silence = createStudioTimelineSilence(context, track.startOffsetMs)
                         temporarySilenceFiles += silence
@@ -630,15 +735,30 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                     EditedMediaItemSequence.Builder(sequenceItems).build()
                 }
                 val composition = Composition.Builder(sequences).build()
-                val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Mix_${System.currentTimeMillis()}.mp4")
+                val output = File(File(context.filesDir, "studio-exports").apply { mkdirs() }, "NeaRer_Mix_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}.m4a")
                 val transformer = Transformer.Builder(context).setAudioMimeType(MimeTypes.AUDIO_AAC)
                     .addListener(object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
-                            exporting = false
                             temporarySilenceFiles.forEach { it.delete() }
-                            exported = output.takeIf { it.exists() && it.length() > 0L }
-                            message = if (exported != null) "Mix rendered · ${output.length() / 1024L} KB. Original recordings and source tracks remain untouched."
-                                else "The render finished but no output file was found. Please try again."
+                            exportValidationScope.launch {
+                                val inspection = withContext(Dispatchers.IO) {
+                                    runCatching { inspectStudioAudioExport(output) }.getOrNull()
+                                }
+                                val usableOutput = StudioAudioExportPolicy.hasUsableOutput(
+                                    fileExists = output.exists(),
+                                    fileLengthBytes = output.length(),
+                                    hasAudioTrack = inspection?.hasAudioTrack == true,
+                                    durationMs = inspection?.durationMs ?: 0L
+                                )
+                                exporting = false
+                                exported = output.takeIf { usableOutput }
+                                if (usableOutput) {
+                                    message = "Mix rendered and checked · ${output.length() / 1024L} KB · ${formatMixTime(inspection!!.durationMs)}. Original recordings and source tracks remain untouched."
+                                } else {
+                                    output.delete()
+                                    message = "The render completed but failed audio-file verification (missing audio track, unreadable duration or empty output). Please try again."
+                                }
+                            }
                         }
                         override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
                             exporting = false
@@ -684,7 +804,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 Text("SHARE FINISHED MIX")
             }
         }
-        Text("Each named project saves its own tempo, beat grid, snap preference, clip trims, start positions and mix controls locally. Export applies real source clipping, timeline offsets, volume, pan, fades, EQ and reverb without changing original files. Tempo-based snapping guides placement; it does not time-stretch audio.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
+        Text("Each named project saves its own tempo automation, beat grid, snap preference, clip trims, start positions and mix controls locally. Tempo automation uses pitch-preserving speed changes on individual tracks; beat-grid BPM still controls placement snapping only. Export leaves original source files untouched.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
 }
 
@@ -718,6 +838,26 @@ private fun readStudioAudioDuration(context: android.content.Context, uri: Uri):
         retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
     } catch (_: Exception) {
         0L
+    } finally {
+        runCatching { retriever.release() }
+    }
+}
+
+private data class StudioAudioExportInspection(
+    val hasAudioTrack: Boolean,
+    val durationMs: Long
+)
+
+/** Verifies the completed container is readable and actually contains an audio track. */
+private fun inspectStudioAudioExport(file: File): StudioAudioExportInspection {
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(file.absolutePath)
+        StudioAudioExportInspection(
+            hasAudioTrack = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) != null,
+            durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+        )
     } finally {
         runCatching { retriever.release() }
     }
