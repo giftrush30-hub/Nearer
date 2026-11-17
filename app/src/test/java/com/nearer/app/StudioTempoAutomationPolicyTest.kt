@@ -51,27 +51,28 @@ class StudioTempoAutomationPolicyTest {
         )
     }
 
-    @Test fun providerSamplesRampOnFiftyMillisecondBoundaries() {
+    @Test fun providerSamplesRampOnTwentyMillisecondBoundaries() {
         val provider = StudioTempoAutomationSpeedProvider(
             listOf(StudioTempoPoint(0, 1f), StudioTempoPoint(200, 2f)),
             durationMs = 1_000
         )
         assertEquals(1f, provider.getSpeed(0), 0.0001f)
-        assertEquals(1.25f, provider.getSpeed(50_000), 0.0001f)
+        assertEquals(1.1f, provider.getSpeed(20_000), 0.0001f)
+        assertEquals(1.2f, provider.getSpeed(40_000), 0.0001f)
         assertEquals(1.5f, provider.getSpeed(100_000), 0.0001f)
-        assertEquals(1.75f, provider.getSpeed(150_000), 0.0001f)
+        assertEquals(1.9f, provider.getSpeed(180_000), 0.0001f)
         assertEquals(2f, provider.getSpeed(200_000), 0.0001f)
-        assertEquals(50_000L, provider.getNextSpeedChangeTimeUs(0))
-        assertEquals(100_000L, provider.getNextSpeedChangeTimeUs(50_000))
-        assertEquals(150_000L, provider.getNextSpeedChangeTimeUs(100_000))
-        assertEquals(200_000L, provider.getNextSpeedChangeTimeUs(150_000))
+        assertEquals(20_000L, provider.getNextSpeedChangeTimeUs(0))
+        assertEquals(40_000L, provider.getNextSpeedChangeTimeUs(20_000))
+        assertEquals(60_000L, provider.getNextSpeedChangeTimeUs(40_000))
+        assertEquals(200_000L, provider.getNextSpeedChangeTimeUs(180_000))
         assertEquals(C.TIME_UNSET, provider.getNextSpeedChangeTimeUs(200_000))
     }
 
     @Test fun outputDurationUsesTheSameSampledTempoCurve() {
         val points = listOf(StudioTempoPoint(0, 1f), StudioTempoPoint(200, 2f))
         assertEquals(200L, StudioTempoAutomationPolicy.outputDurationMs(emptyList(), 200L))
-        assertEquals(152L, StudioTempoAutomationPolicy.outputDurationMs(points, 200L))
+        assertEquals(144L, StudioTempoAutomationPolicy.outputDurationMs(points, 200L))
         assertEquals(0L, StudioTempoAutomationPolicy.outputDurationMs(points, 0L))
     }
 
@@ -84,9 +85,10 @@ class StudioTempoAutomationPolicyTest {
             ),
             durationMs = 1_000
         )
-        assertEquals(250_000L, provider.getNextSpeedChangeTimeUs(0))
-        assertEquals(250_000L, provider.getNextSpeedChangeTimeUs(200_000))
-        assertEquals(300_000L, provider.getNextSpeedChangeTimeUs(250_000))
+        assertEquals(220_000L, provider.getNextSpeedChangeTimeUs(0))
+        assertEquals(220_000L, provider.getNextSpeedChangeTimeUs(200_000))
+        assertEquals(240_000L, provider.getNextSpeedChangeTimeUs(220_000))
+        assertEquals(300_000L, provider.getNextSpeedChangeTimeUs(280_000))
         assertEquals(C.TIME_UNSET, provider.getNextSpeedChangeTimeUs(300_000))
     }
 
