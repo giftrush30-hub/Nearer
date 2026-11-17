@@ -78,7 +78,7 @@ The earlier architecture documents exist on `chore/architecture-quality-foundati
 
 ### P1 — Open pull request coordination
 
-At the time of the initial branch inventory, 11 pull requests were open. PR #269 then merged into main during this audit refresh, so 10 remain open at the audited baseline. The relevant coordination set includes:
+At the initial branch inventory, 11 pull requests were open. The latest refresh found 12 open pull requests, including this organisation PR and newly opened Studio Audio work. PR counts are time-sensitive; use the live pull request list for current status. The relevant coordination set includes:
 - PR #234 — architecture and quality foundation (draft, old baseline, reported merge conflicts).
 - PR #250 — architecture cleanup combined with durable HyperTransfer work (draft, older base).
 - PR #269 — Studio Audio projects/timeline (merged into main at `9cd557ce3cf1fb4de65a9985cf0ef1bdd42f0270`; its exact-head CI run completed successfully).
@@ -181,3 +181,8 @@ These are proposed package ownership areas, not a requirement to create all of t
 - Android Developers — [Guide to app modularization](https://developer.android.com/topic/modularization)
 
 The guiding principle is to improve separation of concerns and testability while preserving the offline-first app, existing data and working user journeys.
+
+
+## Department ownership follow-up
+
+A separate [Department and Package Ownership Plan](NEARER_DEPARTMENT_OWNERSHIP_PLAN_2026-11-17.md) now maps the current source into proposed feature/core ownership areas and defines dependency direction. It is deliberately a target map, not a bulk-move instruction.
