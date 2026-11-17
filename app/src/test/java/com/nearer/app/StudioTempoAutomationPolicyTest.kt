@@ -122,6 +122,32 @@ class StudioTempoAutomationPolicyTest {
         assertTrue(points.all { it.speed in StudioTempoAutomationPolicy.MIN_SPEED..StudioTempoAutomationPolicy.MAX_SPEED })
     }
 
+    @Test fun providerReturnsTheFollowingChangeWhenQueriedExactlyAtABoundary() {
+        val provider = StudioTempoAutomationSpeedProvider(
+            listOf(
+                StudioTempoPoint(0, 1f),
+                StudioTempoPoint(40, 1.5f),
+                StudioTempoPoint(80, 2f)
+            ),
+            durationMs = 200
+        )
+        // Media3 requires the next change, not the current one, at an exact boundary.
+        assertEquals(80_000L, provider.getNextSpeedChangeTimeUs(40_000))
+        assertEquals(100_000L, provider.getNextSpeedChangeTimeUs(80_000))
+        assertEquals(C.TIME_UNSET, provider.getNextSpeedChangeTimeUs(100_000))
+        assertEquals(2f, provider.getSpeed(199_999), 0.0001f)
+    }
+
+    @Test fun keyframeLimitPreservesTheFinalAutomationIntent() {
+        val raw = (0..50).map { index ->
+            StudioTempoPoint(index * 600L, 0.5f + index / 50f)
+        }
+        val points = StudioTempoAutomationPolicy.normalize(raw, durationMs = 30_000)
+        assertEquals(StudioTempoAutomationPolicy.MAX_KEYFRAMES, points.size)
+        assertEquals(30_000L, points.last().timeMs)
+        assertEquals(1.5f, points.last().speed, 0.0001f)
+    }
+
     @Test fun speedParametersExplicitlyPreservePitch() {
         val parameters = StudioTempoAutomationPolicy.speedParameters(
             listOf(StudioTempoPoint(0, 1f), StudioTempoPoint(500, 1.5f)),
