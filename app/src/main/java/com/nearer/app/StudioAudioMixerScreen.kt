@@ -5,6 +5,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -29,10 +31,14 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +57,7 @@ import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import java.io.File
 import java.util.Locale
@@ -136,7 +143,29 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     var finalMixSelected by remember { mutableStateOf(false) }
     var finalMixPlaying by remember { mutableStateOf(false) }
     var expandedTrackEffects by remember { mutableStateOf(setOf<String>()) }
+    val waveformByUri = remember { mutableStateMapOf<String, List<Float>>() }
+    var waveformRequestUri by remember { mutableStateOf<String?>(null) }
+    var waveformLoadingUri by remember { mutableStateOf<String?>(null) }
     val previewPlayer = remember(context) { ExoPlayer.Builder(context).build() }
+
+    LaunchedEffect(waveformRequestUri) {
+        val key = waveformRequestUri ?: return@LaunchedEffect
+        val target = tracks.firstOrNull { it.uri.toString() == key }
+        if (target != null && waveformByUri[key] == null) {
+            waveformLoadingUri = key
+            try {
+                val waveform = StudioAudioWaveformExtractor.extract(context, target.uri, target.durationMs)
+                waveformByUri[key] = waveform.peaks
+                message = "Real audio waveform generated · ${waveform.peaks.size} amplitude windows."
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                message = "Waveform unavailable: ${error.message ?: "this audio format could not be decoded"}"
+            } finally {
+                if (waveformLoadingUri == key) waveformLoadingUri = null
+            }
+        }
+    }
 
     DisposableEffect(previewPlayer) {
         val playbackListener = object : Player.Listener {
@@ -300,6 +329,42 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                     if (previewUri == track.uri) { previewPlayer.stop(); previewUri = null }
                                     exported = null
                                 }.padding(4.dp))
+                            }
+                            val waveformKey = track.uri.toString()
+                            val waveformPeaks = waveformByUri[waveformKey]
+                            if (waveformPeaks == null) {
+                                Button(
+                                    onClick = { waveformRequestUri = waveformKey },
+                                    enabled = waveformLoadingUri == null,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Mint)
+                                ) {
+                                    Text(if (waveformLoadingUri == waveformKey) "DECODING AUDIO WAVEFORM…" else "GENERATE REAL WAVEFORM")
+                                }
+                            } else {
+                                Text("REAL AUDIO WAVEFORM · SELECTED CLIP HIGHLIGHTED", color = Mint, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                Canvas(
+                                    modifier = Modifier.fillMaxWidth().height(54.dp)
+                                        .background(Panel, RoundedCornerShape(8.dp))
+                                ) {
+                                    val gap = 2.dp.toPx()
+                                    val barWidth = ((size.width - gap * (waveformPeaks.size - 1)) / waveformPeaks.size).coerceAtLeast(1f)
+                                    val startFraction = if (track.durationMs > 0L) track.clipStartMs.toFloat() / track.durationMs else 0f
+                                    val endFraction = if (track.durationMs > 0L) track.clipEndMs.toFloat() / track.durationMs else 1f
+                                    waveformPeaks.forEachIndexed { bar, amplitude ->
+                                        val fraction = (bar + 0.5f) / waveformPeaks.size
+                                        val selected = fraction >= startFraction && fraction <= endFraction
+                                        val x = bar * (barWidth + gap) + barWidth / 2f
+                                        val halfHeight = (amplitude.coerceIn(0f, 1f) * size.height * 0.46f).coerceAtLeast(1.2f)
+                                        drawLine(
+                                            color = if (selected) Color(0xFF35D6B0) else Color(0xFF52636D),
+                                            start = Offset(x, size.height / 2f - halfHeight),
+                                            end = Offset(x, size.height / 2f + halfHeight),
+                                            strokeWidth = barWidth.coerceAtLeast(1f),
+                                            cap = StrokeCap.Round
+                                        )
+                                    }
+                                }
                             }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Mute layer", color = Muted, fontSize = 11.sp)
