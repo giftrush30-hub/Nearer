@@ -71,6 +71,22 @@ internal object StudioTempoAutomationPolicy {
     fun speedParameters(points: List<StudioTempoPoint>, durationMs: Long): SpeedParameters =
         SpeedParameters(StudioTempoAutomationSpeedProvider(points, durationMs), /* shouldMaintainPitch= */ true)
 
+    /** Calculates rendered duration using the same 50 ms speed samples as the provider. */
+    fun outputDurationMs(points: List<StudioTempoPoint>, sourceDurationMs: Long): Long {
+        val safeDuration = sourceDurationMs.coerceAtLeast(0L)
+        if (safeDuration == 0L) return 0L
+        val normalized = normalize(points, safeDuration)
+        var sourceCursorMs = 0L
+        var outputDurationMs = 0.0
+        while (sourceCursorMs < safeDuration) {
+            val speed = speedAt(normalized, sourceCursorMs).coerceIn(MIN_SPEED, MAX_SPEED)
+            val segmentMs = minOf(STEP_MS, safeDuration - sourceCursorMs)
+            outputDurationMs += segmentMs.toDouble() / speed.toDouble()
+            sourceCursorMs += segmentMs
+        }
+        return outputDurationMs.roundToLong().coerceAtLeast(1L)
+    }
+
     fun nextChangeTimeUs(timeUs: Long, points: List<StudioTempoPoint>): Long {
         if (points.size < 2 || points.all { it.speed == points.first().speed }) return C.TIME_UNSET
         val currentMs = timeUs.coerceAtLeast(0L) / 1_000L
