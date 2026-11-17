@@ -26,8 +26,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun PremiumChatsScreen(
@@ -63,6 +67,13 @@ internal fun PremiumChatsScreen(
     draft: String,
     onDraftChange: (String) -> Unit,
     onSendMessage: (String, ChatMessage?) -> Unit,
+    onMarkConversationRead: (String?) -> Unit,
+    readReceiptsEnabled: Boolean,
+    onReadReceiptsEnabledChange: (Boolean) -> Unit,
+    onRequestNotifications: () -> Unit,
+    typingIndicator: Boolean,
+    onTyping: (Boolean) -> Unit,
+    onDeleteMessageForEveryone: (String) -> Boolean,
     onDeleteMessage: (String) -> Boolean,
     onEditMessage: (String, String) -> Boolean,
     onReactToMessage: (String, String) -> Unit,
@@ -89,13 +100,51 @@ internal fun PremiumChatsScreen(
         return
     }
 
+    LaunchedEffect(selectedMeshRecipientId, chatReady, messages.size) {
+        if (chatReady || selectedMeshRecipientId != null) onMarkConversationRead(selectedMeshRecipientId)
+    }
+    var typingSignalActive by remember(selectedMeshRecipientId) { mutableStateOf(false) }
+    LaunchedEffect(draft, selectedMeshRecipientId, chatReady) {
+        if (draft.isBlank() || !chatReady) {
+            if (typingSignalActive) {
+                onTyping(false)
+                typingSignalActive = false
+            }
+        } else {
+            delay(300)
+            onTyping(true)
+            typingSignalActive = true
+            delay(1_800)
+            onTyping(false)
+            typingSignalActive = false
+        }
+    }
+    DisposableEffect(selectedMeshRecipientId) {
+        onDispose { if (typingSignalActive) onTyping(false) }
+    }
+
     var recipientMenuExpanded by remember { mutableStateOf(false) }
     var replyingTo by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
     var editingMessage by remember(selectedMeshRecipientId) { mutableStateOf<ChatMessage?>(null) }
     var expandedMessageActions by remember { mutableStateOf<String?>(null) }
     var reactingToMessageId by remember { mutableStateOf<String?>(null) }
     var pendingDeleteMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var pendingDeleteForEveryone by remember { mutableStateOf<ChatMessage?>(null) }
     val context = LocalContext.current
+    pendingDeleteForEveryone?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteForEveryone = null },
+            title = { Text("Delete for everyone?") },
+            text = { Text("This removes the message from both phones after the other phone receives the deletion. Only delivered messages can be recalled.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (onDeleteMessageForEveryone(target.id) && replyingTo?.id == target.id) replyingTo = null
+                    pendingDeleteForEveryone = null
+                }) { Text("Delete for everyone", color = Color(0xFFE6A0A0)) }
+            },
+            dismissButton = { TextButton(onClick = { pendingDeleteForEveryone = null }) { Text("Cancel") } }
+        )
+    }
     pendingDeleteMessage?.let { target ->
         AlertDialog(
             onDismissRequest = { pendingDeleteMessage = null },
@@ -140,6 +189,26 @@ internal fun PremiumChatsScreen(
             Text("‹  All chats", color = NeaRerPalette.Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable(onClick = onBackToInbox).padding(vertical = 3.dp))
             Text("YOUR CONVERSATIONS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Read receipts", color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (readReceiptsEnabled) "Show when you have read a message." else "Read receipts are turned off.",
+                        color = Muted, fontSize = 10.sp
+                    )
+                }
+                Switch(checked = readReceiptsEnabled, onCheckedChange = onReadReceiptsEnabledChange)
+            }
+            Button(
+                onClick = onRequestNotifications,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = NeaRerPalette.RaisedPanel, contentColor = NeaRerPalette.Mint)
+            ) { Text("Enable private message alerts", fontSize = 11.sp) }
             Text("Chats", color = White, fontSize = 29.sp, fontWeight = FontWeight.ExtraBold)
             Text("Private conversations, closer than ever.", color = Muted, fontSize = 13.sp)
         }
@@ -341,7 +410,7 @@ internal fun PremiumChatsScreen(
                                         modifier = Modifier.fillMaxWidth(0.88f)
                                     ) {
                                         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                            if (!message.replyToPreview.isNullOrBlank()) {
+                                            if (!message.deletedForEveryone && !message.replyToPreview.isNullOrBlank()) {
                                                 Surface(color = NeaRerPalette.Midnight, shape = RoundedCornerShape(9.dp)) {
                                                     Column(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                                         Text(message.replyToSender ?: "Reply", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -349,10 +418,24 @@ internal fun PremiumChatsScreen(
                                                     }
                                                 }
                                             }
-                                            Text(message.body, color = White, fontSize = 14.sp, lineHeight = 20.sp)
+                                            Text(
+                                                if (message.deletedForEveryone) "This message was deleted" else message.body,
+                                                color = if (message.deletedForEveryone) Muted else White,
+                                                fontSize = 14.sp,
+                                                lineHeight = 20.sp
+                                            )
                                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                    Text(if (message.outgoing) ChatDeliveryLabelPolicy.label(message.delivery) else "Received", color = if (message.outgoing) NeaRerPalette.Mint else Muted, fontSize = 9.sp)
+                                                    Text(
+                                                        when {
+                                                            message.deletedForEveryone -> "Deleted"
+                                                            message.outgoing && message.readAt > 0L -> "Read"
+                                                            message.outgoing -> ChatDeliveryLabelPolicy.label(message.delivery)
+                                                            else -> "Received"
+                                                        },
+                                                        color = if (message.outgoing) NeaRerPalette.Mint else Muted,
+                                                        fontSize = 9.sp
+                                                    )
                                                     if (message.editVersion > 0) Text("Edited", color = Gold, fontSize = 9.sp)
                                                 }
                                                 Box {
@@ -362,14 +445,14 @@ internal fun PremiumChatsScreen(
                                                         expanded = expandedMessageActions == message.id,
                                                         onDismissRequest = { expandedMessageActions = null }
                                                     ) {
-                                                        DropdownMenuItem(
+                                                        if (!message.deletedForEveryone) DropdownMenuItem(
                                                             text = { Text("React") },
                                                             onClick = {
                                                                 reactingToMessageId = if (reactingToMessageId == message.id) null else message.id
                                                                 expandedMessageActions = null
                                                             }
                                                         )
-                                                        if (message.outgoing) {
+                                                        if (message.outgoing && !message.deletedForEveryone) {
                                                             DropdownMenuItem(
                                                                 text = { Text("Edit") },
                                                                 onClick = {
@@ -380,11 +463,11 @@ internal fun PremiumChatsScreen(
                                                                 }
                                                             )
                                                         }
-                                                        DropdownMenuItem(
+                                                        if (!message.deletedForEveryone) DropdownMenuItem(
                                                             text = { Text("Reply") },
                                                             onClick = { replyingTo = message; expandedMessageActions = null }
                                                         )
-                                                        DropdownMenuItem(
+                                                        if (!message.deletedForEveryone) DropdownMenuItem(
                                                             text = { Text("Copy message") },
                                                             onClick = {
                                                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -393,6 +476,18 @@ internal fun PremiumChatsScreen(
                                                                 expandedMessageActions = null
                                                             }
                                                         )
+                                                        if (ChatDeletePolicy.canDeleteForEveryone(
+                                                                message.outgoing, message.delivery, message.readAt, message.deletedForEveryone
+                                                            )
+                                                        ) {
+                                                            DropdownMenuItem(
+                                                                text = { Text("Delete for everyone") },
+                                                                onClick = {
+                                                                    pendingDeleteForEveryone = message
+                                                                    expandedMessageActions = null
+                                                                }
+                                                            )
+                                                        }
                                                         DropdownMenuItem(
                                                             text = { Text("Delete for me") },
                                                             onClick = {
@@ -449,6 +544,9 @@ internal fun PremiumChatsScreen(
                         }
                     }
 
+                    if (typingIndicator) {
+                        Text("Typing…", color = NeaRerPalette.Mint, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    }
                     if (chatNotice.isNotBlank()) {
                         Text(chatNotice, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                     }

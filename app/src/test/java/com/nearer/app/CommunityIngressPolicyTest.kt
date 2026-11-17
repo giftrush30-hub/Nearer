@@ -49,6 +49,31 @@ class CommunityIngressPolicyTest {
         ))
     }
 
+    @Test fun validatesGroupReadReceiptAgainstAuthenticatedReaderAndBounds() {
+        val now = System.currentTimeMillis()
+        val valid = packet("group_read_receipt") {
+            put("code", "123456")
+            put("readerPeerId", sender)
+            put("messageIds", JSONArray(listOf("message-1", "message-2")))
+            put("readAt", now)
+        }
+        assertTrue(CommunityIngressPolicy.isValid(valid, sender))
+        val spoofed = packet("group_read_receipt") {
+            put("code", "123456")
+            put("readerPeerId", "ABCDEF")
+            put("messageIds", JSONArray(listOf("message-1")))
+            put("readAt", now)
+        }
+        assertFalse(CommunityIngressPolicy.isValid(spoofed, sender))
+        val duplicated = packet("group_read_receipt") {
+            put("code", "123456")
+            put("readerPeerId", sender)
+            put("messageIds", JSONArray(listOf("message-1", "message-1")))
+            put("readAt", now)
+        }
+        assertFalse(CommunityIngressPolicy.isValid(duplicated, sender))
+    }
+
     @Test fun rejectsUnknownAndOversizedPackets() {
         assertFalse(CommunityIngressPolicy.isValid(packet("admin_override"), sender))
         assertFalse(CommunityIngressPolicy.isValid("x".repeat(24 * 1024 + 1), sender))
