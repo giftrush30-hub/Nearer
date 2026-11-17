@@ -270,7 +270,14 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
         title = { Text("Delete this project?") },
         text = { Text("Only the saved arrangement is removed. Your original audio files are never deleted.") },
         confirmButton = { Button(onClick = {
-            projects.removeAll { it.id == currentProjectId }
+            val remainingProjects = StudioAudioProjectLibraryCodec.delete(
+                projects = projects.toList(),
+                projectId = currentProjectId,
+                replacementId = java.util.UUID.randomUUID().toString(),
+                updatedAtMs = System.currentTimeMillis()
+            )
+            projects.clear()
+            projects.addAll(remainingProjects)
             val replacement = projects.first()
             tracks.clear()
             tracks.addAll(replacement.tracks.map { saved -> StudioMixTrack(
