@@ -68,6 +68,21 @@ class StudioAudioProjectCodecTest {
         assertEquals(0L, restored.startOffsetMs)
     }
 
+    @Test fun extremeImportedTrimTimestampsDoNotOverflow() {
+        val raw = org.json.JSONObject()
+            .put("version", 5)
+            .put("tracks", org.json.JSONArray().put(org.json.JSONObject()
+                .put("uri", "content://audio/extreme")
+                .put("durationMs", Long.MAX_VALUE)
+                .put("clipStartMs", Long.MAX_VALUE)
+                .put("clipEndMs", Long.MIN_VALUE)
+            )).toString()
+        val restored = StudioAudioProjectCodec.decode(raw).single()
+        assertEquals(Long.MAX_VALUE, restored.durationMs)
+        assertEquals(Long.MAX_VALUE, restored.clipStartMs)
+        assertEquals(Long.MAX_VALUE, restored.clipEndMs)
+    }
+
     @Test fun clampsTimelineValuesToSourceAndThirtySecondOffsetLimit() {
         val raw = """{"version":4,"tracks":[{"uri":"content://audio/x","durationMs":10000,"clipStartMs":9000,"clipEndMs":20000,"startOffsetMs":90000}]}"""
         val restored = StudioAudioProjectCodec.decode(raw).single()
