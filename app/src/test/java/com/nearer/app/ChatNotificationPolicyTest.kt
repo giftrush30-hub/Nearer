@@ -19,7 +19,9 @@ class ChatNotificationPolicyTest {
         assertFalse(ChatNotificationPolicy.isUserVisibleMessageBody("NR_TYPING:{\"typing\":true}"))
         assertFalse(ChatNotificationPolicy.isUserVisibleMessageBody("NR_DELETE:{\"messageId\":\"m1\"}"))
         assertFalse(ChatNotificationPolicy.isUserVisibleMessageBody("NR_READ_RECEIPT:{\"messageIds\":[\"m1\"]}"))
+        assertTrue(ChatNotificationPolicy.isUserVisibleMessageBody("NR_COMMUNITY:{\"type\":\"group_message\"}"))
         assertFalse(ChatNotificationPolicy.isUserVisibleMessageBody("NR_COMMUNITY:{\"type\":\"group_read_receipt\"}"))
+        assertFalse(ChatNotificationPolicy.isUserVisibleMessageBody("NR_COMMUNITY:not-json"))
     }
 
     @Test fun notificationIdIsStableAndNonNegative() {
