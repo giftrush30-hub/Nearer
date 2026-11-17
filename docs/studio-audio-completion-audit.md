@@ -25,6 +25,8 @@ This integration branch is rebuilt on the parallel workstream's current PR #284 
 
 - Project codec version 5 stores tempo keyframes; versions 1–4 load with no tempo automation and remain normal speed.
 - Imported source recordings are not modified.
+- The project library creates a fresh empty starter arrangement if the user deletes the final saved project; regression tests cover both last-project deletion and deleting one project while preserving the others.
+- Project trim-range decoding clamps the minimum end position without overflowing when malformed imported timestamps use `Long.MAX_VALUE`; a regression test covers the extreme boundary.
 - This branch is based on PR #284's current head; exact-head validation must run here before integration. The parallel PR #284 remains independently owned.
 - Exact-head JVM tests, manifest validation, Android lint and installable debug APK build are required.
 - Physical device listening at 0.5×, 1×, 1.5× and 2× is still required. No physical test or studio-grade guarantee is claimed.
