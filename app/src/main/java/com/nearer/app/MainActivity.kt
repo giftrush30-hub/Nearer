@@ -2061,13 +2061,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyIncomingTyping(raw: String, actorPeerId: String): Boolean {
-        val packet = try { JSONObject(raw) } catch (_: Exception) { return false }
+        // Typing is ephemeral: malformed, unauthenticated or expired hints are safely
+        // discarded and acknowledged rather than being retained for replay forever.
+        val packet = try { JSONObject(raw) } catch (_: Exception) { return true }
         val typing = packet.optBoolean("typing", false)
         val expiresAt = packet.optLong("expiresAt", 0L)
         val now = System.currentTimeMillis()
-        if (!ChatTypingPolicy.isValid(packet.optInt("version", 0), typing, expiresAt, now) ||
-            !ChatReactionPolicy.isValidActor(actorPeerId)
-        ) return false
+        if (!ChatReactionPolicy.isValidActor(actorPeerId) ||
+            !ChatTypingPolicy.isValid(packet.optInt("version", 0), typing, expiresAt, now)
+        ) return true
         if (!typing) {
             if (typingPeerId == actorPeerId) {
                 typingPeerId = null

@@ -132,6 +132,21 @@ class NearbyTransportService : Service() {
             replyToSender: String?,
             acknowledge: () -> Boolean
         ) {
+            if (body.startsWith("NR_TYPING:")) {
+                val peerId = nearbyTransport.stableIdentityForEndpoint(id)
+                val listener = uiListener
+                if (listener != null && peerId.isNotBlank()) {
+                    runCatching {
+                        listener.onMessageWithReply(
+                            peerId, senderName, messageId, body,
+                            replyToMessageId, replyToPreview, replyToSender, acknowledge
+                        )
+                    }.onFailure { runCatching { acknowledge() } }
+                } else {
+                    runCatching { acknowledge() }
+                }
+                return
+            }
             val peerId = nearbyTransport.stableIdentityForEndpoint(id)
             if (peerId.isBlank()) {
                 nearbyTransport.releasePendingIncomingMessage(messageId)
@@ -177,6 +192,20 @@ class NearbyTransportService : Service() {
             replyToSender: String?,
             acknowledge: () -> Boolean
         ) {
+            if (body.startsWith("NR_TYPING:")) {
+                val listener = uiListener
+                if (listener != null) {
+                    runCatching {
+                        listener.onMeshMessageWithReply(
+                            originPeerId, senderName, messageId, body,
+                            replyToMessageId, replyToPreview, replyToSender, acknowledge
+                        )
+                    }.onFailure { runCatching { acknowledge() } }
+                } else {
+                    runCatching { acknowledge() }
+                }
+                return
+            }
             val entry = NearbyIncomingMessageInbox.Entry(
                 messageId, originPeerId, senderName, body,
                 replyToMessageId, replyToPreview, replyToSender, mesh = true
