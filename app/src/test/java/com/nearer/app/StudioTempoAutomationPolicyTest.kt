@@ -24,6 +24,19 @@ class StudioTempoAutomationPolicyTest {
         assertEquals(1.25f, points.last().speed, 0.0001f)
     }
 
+    @Test fun extremeKeyframeTimestampsClampBeforeGridSnappingWithoutOverflow() {
+        val points = StudioTempoAutomationPolicy.normalize(
+            listOf(
+                StudioTempoPoint(Long.MAX_VALUE, 1.75f),
+                StudioTempoPoint(Long.MIN_VALUE, 0.75f)
+            ),
+            durationMs = 30_000L
+        )
+        assertEquals(0L, points.first().timeMs)
+        assertEquals(30_000L, points.last().timeMs)
+        assertEquals(1.75f, points.last().speed, 0.0001f)
+    }
+
     @Test fun insertsNeutralStartWhenFirstKeyframeStartsLater() {
         val points = StudioTempoAutomationPolicy.normalize(
             listOf(StudioTempoPoint(500, 1.5f)),
