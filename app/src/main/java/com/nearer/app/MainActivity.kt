@@ -300,6 +300,7 @@ class MainActivity : ComponentActivity() {
                     connectedDeviceName = name
                     chatReady = true
                     sendPendingReadReceipts(stableId)
+                    selectedCommunityCode?.let(::sendGroupReadReceipts)
                     resumeLudoAfterReconnect(name, stableId)
                     connectionMessage = "Secure nearby connection active"
                     approvalMessage = "Connection approved"
@@ -1011,6 +1012,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         nearbyServiceBinder?.replayPendingMessages()
         (selectedMeshRecipientId ?: hybridConnectedStableId)?.let(::sendPendingReadReceipts)
+        selectedCommunityCode?.let(::sendGroupReadReceipts)
         val filter = IntentFilter().apply {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
