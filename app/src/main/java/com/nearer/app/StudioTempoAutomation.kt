@@ -67,7 +67,7 @@ internal object StudioTempoAutomationPolicy {
         return (previous.speed + (next.speed - previous.speed) * progress).coerceIn(MIN_SPEED, MAX_SPEED)
     }
 
-    @OptIn(ExperimentalApi::class)
+    @OptIn(ExperimentalApi::class, UnstableApi::class)
     fun speedParameters(points: List<StudioTempoPoint>, durationMs: Long): SpeedParameters =
         SpeedParameters(StudioTempoAutomationSpeedProvider(points, durationMs), /* shouldMaintainPitch= */ true)
 
