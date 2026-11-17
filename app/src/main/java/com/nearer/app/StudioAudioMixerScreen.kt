@@ -93,10 +93,23 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     var message by remember { mutableStateOf("Build a layered mix from voice, music and sound effects stored on your phone.") }
     var exported by remember { mutableStateOf<File?>(null) }
     var previewUri by remember { mutableStateOf<Uri?>(null) }
+    var finalMixSelected by remember { mutableStateOf(false) }
+    var finalMixPlaying by remember { mutableStateOf(false) }
     var expandedTrackEffects by remember { mutableStateOf(setOf<String>()) }
     val previewPlayer = remember(context) { ExoPlayer.Builder(context).build() }
 
-    DisposableEffect(previewPlayer) { onDispose { previewPlayer.release() } }
+    DisposableEffect(previewPlayer) {
+        val playbackListener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                finalMixPlaying = isPlaying
+            }
+        }
+        previewPlayer.addListener(playbackListener)
+        onDispose {
+            previewPlayer.removeListener(playbackListener)
+            previewPlayer.release()
+        }
+    }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { selected ->
         selected.forEach { uri ->
@@ -145,6 +158,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 Text(if (previewUri == track.uri && previewPlayer.isPlaying) "PAUSE" else "SOURCE PREVIEW", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                                     if (previewUri == track.uri && previewPlayer.isPlaying) previewPlayer.pause()
                                     else {
+                                        finalMixSelected = false
                                         previewUri = track.uri
                                         previewPlayer.setMediaItem(MediaItem.fromUri(track.uri))
                                         previewPlayer.volume = track.gain.coerceIn(0f, 1f)
@@ -225,6 +239,9 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
             val activeTracks = tracks.toList().filterNot { it.muted }
             if (activeTracks.isEmpty()) message = "Unmute at least one track before exporting."
             else {
+                previewPlayer.pause()
+                finalMixSelected = false
+                previewUri = null
                 exporting = true; exported = null
                 message = "Rendering ${activeTracks.size} track(s) with their own volume and fade envelopes…"
                 val sequences = activeTracks.map { track ->
@@ -266,6 +283,22 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
         }
         Text(message, color = Muted, fontSize = 11.sp, lineHeight = 17.sp)
         exported?.let { file ->
+            Button(onClick = {
+                runCatching {
+                    if (finalMixSelected && previewPlayer.isPlaying) {
+                        previewPlayer.pause()
+                    } else {
+                        finalMixSelected = true
+                        previewUri = null
+                        previewPlayer.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+                        previewPlayer.volume = 1f
+                        previewPlayer.prepare()
+                        previewPlayer.play()
+                    }
+                }.onFailure { message = "Could not play the rendered mix: ${it.message ?: "playback unavailable"}" }
+            }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Gold)) {
+                Text(if (finalMixSelected && finalMixPlaying) "PAUSE FINAL MIX" else "▶  PLAY FINAL MIX")
+            }
             Button(onClick = {
                 runCatching {
                     val uri = FileProvider.getUriForFile(context, context.packageName + ".files", file)

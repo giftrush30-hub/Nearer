@@ -177,6 +177,6 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
             }
         }
         Text("NEXT IN STUDIO", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-        Text("Audio recording and trimming, video trimming and photo light/tone adjustments are now part of the offline editing foundation. The multitrack composition mixer now joins audio recording and trimming. Next: track gain, fades, panning, waveforms, live mix playback, captions, transitions, photo layers and motion graphics.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+        Text("Studio now includes offline multitrack mixing with per-track volume, pan, fades, three-band EQ and room reverb, saved project settings, rendered-mix playback and sharing. Recording, live pitch/key monitoring, vocal processing, video editing and photo adjustments are also in place. Remaining work is deeper timeline editing, richer waveforms, tempo automation, named projects and additional video/photo layers.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
     }
 }
