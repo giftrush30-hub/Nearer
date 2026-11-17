@@ -39,6 +39,18 @@ class StudioTempoAutomationPolicyTest {
         assertEquals(1.75f, StudioTempoAutomationPolicy.speedAt(points, 2_000), 0.0001f)
     }
 
+    @Test fun twoPointRampHandlesNeutralConstantAndChangingSpeeds() {
+        assertTrue(StudioTempoAutomationPolicy.twoPointRamp(1f, 1f, 5_000L).isEmpty())
+        assertEquals(
+            listOf(StudioTempoPoint(0L, 1.25f)),
+            StudioTempoAutomationPolicy.twoPointRamp(1.25f, 1.25f, 5_000L)
+        )
+        assertEquals(
+            listOf(StudioTempoPoint(0L, 0.75f), StudioTempoPoint(5_000L, 1.5f)),
+            StudioTempoAutomationPolicy.twoPointRamp(0.75f, 1.5f, 5_000L)
+        )
+    }
+
     @Test fun providerSamplesRampOnFiftyMillisecondBoundaries() {
         val provider = StudioTempoAutomationSpeedProvider(
             listOf(StudioTempoPoint(0, 1f), StudioTempoPoint(200, 2f)),
