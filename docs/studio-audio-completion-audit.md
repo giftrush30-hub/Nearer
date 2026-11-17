@@ -1,10 +1,10 @@
 # Studio Audio five-part completion — stacked implementation
 
-This branch is stacked on the parallel workstream's feat/studio-media3-111-final branch. It does not push to or alter that branch. The base supplies the Media3 1.11.1 / Android toolchain work needed for pitch-preserving speed parameters.
+This branch is stacked on the parallel workstream's feat/studio-pitch-monitor-safe-output-routing branch (PR #281). It does not push to or alter that branch. The base supplies Media3 1.11.1, API 36 build compatibility and verified headphone-only live-monitor routing.
 
 ## Work status
 
-1. **Vocal Pro quality:** smoothed sibilance envelope, Nyquist-safe filter cutoffs, compressor/de-esser/stereo/low-rate regression coverage. Listening acceptance remains.
+1. **Vocal Pro quality:** retain key-aware monophonic pitch correction with optional LPC formant compensation, then apply offline vocal polish (low-cut, presence, de-essing, gate, compression, air, stereo width, saturation, room ambience and output limiting). This pass improves the sibilance envelope, Nyquist-safe filter cutoffs and DSP regression coverage. The noise-reduction control is a downward gate/expander, not a spectral denoiser; pitch correction is for a single lead vocal, not chords. Listening acceptance remains.
 2. **Timeline navigation:** 1×/2×/4× zoom and horizontal scrolling are copied from merged main PR #275.
 3. **Tempo automation:** per-track start/end speed ramp, 0.50×–2.00×, 20 ms sampling, pitch-preserving Media3 speed parameters, bounded project codec v5 persistence, and output-duration calculation for fades.
 4. **Crossfades:** equal-power sine fade-in and cosine fade-out curves; matching overlapping track fades maintain constant combined power in the ideal aligned case. Fade lengths are clamped to clip duration.
@@ -25,7 +25,7 @@ This branch is stacked on the parallel workstream's feat/studio-media3-111-final
 
 - Project codec version 5 stores tempo keyframes; versions 1–4 load with no tempo automation and remain normal speed.
 - Imported source recordings are not modified.
-- The branch is stacked on the Media3 upgrade branch; final validation must run after the base branch is reconciled with current main.
+- The branch is stacked on PR #281; final validation must run after PR #281 is merged and this PR is retargeted to current main.
 - Exact-head JVM tests, manifest validation, Android lint and installable debug APK build are required.
 - Physical device listening at 0.5×, 1×, 1.5× and 2× is still required. No physical test or studio-grade guarantee is claimed.
 
