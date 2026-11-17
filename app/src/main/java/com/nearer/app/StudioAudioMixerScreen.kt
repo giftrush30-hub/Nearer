@@ -185,6 +185,11 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
         confirmButton = { Button(onClick = {
             val safeName = StudioAudioProjectLibraryCodec.normalizeName(projectNameDraft)
             if (creatingProject) {
+                val previousIndex = projects.indexOfFirst { it.id == currentProjectId }
+                if (previousIndex >= 0) projects[previousIndex] = projects[previousIndex].copy(
+                    tracks = tracks.map { it.toProjectState() },
+                    updatedAtMs = System.currentTimeMillis()
+                )
                 val created = StudioAudioProjectLibraryEntry(java.util.UUID.randomUUID().toString(), safeName, System.currentTimeMillis(), emptyList())
                 projects.add(created)
                 tracks.clear()
