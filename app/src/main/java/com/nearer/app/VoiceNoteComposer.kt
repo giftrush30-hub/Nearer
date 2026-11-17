@@ -149,29 +149,33 @@ internal fun VoiceNoteComposer(
         }
     }
 
-    val latestRecorder = androidx.compose.runtime.rememberUpdatedState(recorder)
-    val latestFile = androidx.compose.runtime.rememberUpdatedState(recordingFile)
-    val latestRecording = androidx.compose.runtime.rememberUpdatedState(recording)
     val lifecycleOwner = context as? LifecycleOwner
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP && latestRecording.value) {
-                runCatching { latestRecorder.value?.stop() }
-                runCatching { latestRecorder.value?.release() }
-                latestFile.value?.delete()
+            if (event == Lifecycle.Event.ON_STOP && recording) {
+                val active = recorder
+                val file = recordingFile
                 recorder = null
                 recordingFile = null
                 recording = false
+                runCatching { active?.stop() }
+                runCatching { active?.release() }
+                file?.delete()
                 notice = "Recording cancelled when NeaRer went into the background."
             }
         }
         lifecycleOwner?.lifecycle?.addObserver(observer)
         onDispose {
             lifecycleOwner?.lifecycle?.removeObserver(observer)
-            if (latestRecording.value) {
-                runCatching { latestRecorder.value?.stop() }
-                runCatching { latestRecorder.value?.release() }
-                latestFile.value?.delete()
+            if (recording) {
+                val active = recorder
+                val file = recordingFile
+                recorder = null
+                recordingFile = null
+                recording = false
+                runCatching { active?.stop() }
+                runCatching { active?.release() }
+                file?.delete()
             }
         }
     }
