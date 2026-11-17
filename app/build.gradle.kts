@@ -6,7 +6,8 @@ plugins {
 
 android {
     namespace = "com.nearer.app"
-    compileSdk = 35
+    // Media3 1.11.1 needs API 36 to compile; runtime minSdk/targetSdk remain unchanged.
+    compileSdk = 36
     ndkVersion = "27.2.12479018"
 
     defaultConfig {
@@ -68,10 +69,10 @@ dependencies {
     implementation("com.google.android.gms:play-services-nearby:19.5.1")
     implementation("com.google.zxing:core:3.5.3")
     implementation("androidx.documentfile:documentfile:1.0.1")
-    implementation("androidx.media3:media3-exoplayer:1.5.1")
-    implementation("androidx.media3:media3-ui:1.5.1")
-    implementation("androidx.media3:media3-transformer:1.5.1")
-    implementation("androidx.media3:media3-effect:1.5.1")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-ui:1.11.1")
+    implementation("androidx.media3:media3-transformer:1.11.1")
+    implementation("androidx.media3:media3-effect:1.11.1")
     implementation("com.google.oboe:oboe:1.11.0")
 
     testImplementation("junit:junit:4.13.2")
