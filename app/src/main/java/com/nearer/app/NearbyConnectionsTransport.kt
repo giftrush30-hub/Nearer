@@ -810,18 +810,7 @@ internal object IncomingFilePayloadPolicy {
                 if (outgoingStream != null) {
                     transferSpeedMeters.remove(payloadId)
                     outgoingStream.timeout?.let(deliveryHandler::removeCallbacks)
-                    outgoingStream.awaitingDecision = true
-                    outgoingStream.endpointId = ""
-                    outgoingStream.prepared.close()
-                    val peerId = outgoingStream.stablePeerId
-                    deliveryHandler.postDelayed({
-                        if (outgoingStream.endpointId.isBlank()) {
-                            val endpoint = synchronized(activeEndpoints) {
-                                activeEndpoints.firstOrNull { synchronized(names) { stableIds[it] == peerId } }
-                            }
-                            if (endpoint != null) resumeHyperStreamsForPeer(peerId, endpoint)
-                        }
-                    }, 1500L)
+                    scheduleHyperStreamRetry(outgoingStream)
                     listener.onFileStatus("HyperTransfer paused safely. Reconnecting or retrying from the last verified checkpoint…")
                 } else {
                     listener.onFileStatus("HyperTransfer was interrupted. Its last verified checkpoint has been kept.")
@@ -3002,11 +2991,15 @@ internal object IncomingFilePayloadPolicy {
                 sendHyperTransferControl(
                     endpointId,
                     TransferResumeStreamMetadataCodec.encode(metadata),
-                    onFailure = { fallbackHyperStreamToFile(next) }
+                    onFailure = {
+                        if (next.durableRecovery) scheduleHyperStreamRetry(next)
+                        else fallbackHyperStreamToFile(next)
+                    }
                 )
                 armHyperStreamTimeout(next)
             } catch (_: Exception) {
-                fallbackHyperStreamToFile(next)
+                if (next.durableRecovery) scheduleHyperStreamRetry(next)
+                else fallbackHyperStreamToFile(next)
             }
         }
     }
