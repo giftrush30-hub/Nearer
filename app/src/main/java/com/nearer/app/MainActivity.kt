@@ -683,6 +683,7 @@ class MainActivity : ComponentActivity() {
     private var incomingRateBytesPerSecond = 0L
     private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
+    private var activityResumed by mutableStateOf(false)
     private var readReceiptsEnabled by mutableStateOf(true)
     private var typingPeerId by mutableStateOf<String?>(null)
     private var typingExpiresAt by mutableStateOf(0L)
@@ -886,6 +887,7 @@ class MainActivity : ComponentActivity() {
                     receivedFiles = receivedFiles,
                     transferHistory = nearbyTransferHistory.toList(),
                     onSendMessage = ::sendChatMessage,
+                    activityResumed = activityResumed,
                     onMarkConversationRead = { peerId -> markConversationRead(peerId ?: hybridConnectedStableId) },
                     readReceiptsEnabled = readReceiptsEnabled,
                     onReadReceiptsEnabledChange = ::persistReadReceiptsEnabled,
@@ -1010,6 +1012,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        activityResumed = true
         nearbyServiceBinder?.replayPendingMessages()
         (selectedMeshRecipientId ?: hybridConnectedStableId)?.let(::sendPendingReadReceipts)
         selectedCommunityCode?.let(::sendGroupReadReceipts)
@@ -1057,6 +1060,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        activityResumed = false
         if (communityDataDirty) persistCommunityData()
         if (receiverRegistered) {
             runCatching { unregisterReceiver(receiver) }
@@ -4199,6 +4203,7 @@ private fun NeaRerHome(
     onExternalShareConsumed: () -> Unit,
     transferHistory: List<NearbyTransferRecord>,
     onSendMessage: (String, ChatMessage?) -> Unit,
+    activityResumed: Boolean,
     onMarkConversationRead: (String?) -> Unit,
     readReceiptsEnabled: Boolean,
     onReadReceiptsEnabledChange: (Boolean) -> Unit,
@@ -4946,6 +4951,7 @@ private fun NeaRerHome(
                     draft = draft,
                     onDraftChange = { draft = it.take(ChatEditPolicy.MAX_BODY_LENGTH) },
                     onSendMessage = { text, reply -> onSendMessage(text, reply); draft = "" },
+                    isChatVisible = activityResumed && selectedTab == "Chats",
                     onMarkConversationRead = onMarkConversationRead,
                     readReceiptsEnabled = readReceiptsEnabled,
                     onReadReceiptsEnabledChange = onReadReceiptsEnabledChange,

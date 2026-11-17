@@ -67,6 +67,7 @@ internal fun PremiumChatsScreen(
     draft: String,
     onDraftChange: (String) -> Unit,
     onSendMessage: (String, ChatMessage?) -> Unit,
+    isChatVisible: Boolean,
     onMarkConversationRead: (String?) -> Unit,
     readReceiptsEnabled: Boolean,
     onReadReceiptsEnabledChange: (Boolean) -> Unit,
@@ -100,12 +101,14 @@ internal fun PremiumChatsScreen(
         return
     }
 
-    LaunchedEffect(selectedMeshRecipientId, chatReady, messages.size) {
-        if (chatReady || selectedMeshRecipientId != null) onMarkConversationRead(selectedMeshRecipientId)
+    LaunchedEffect(selectedMeshRecipientId, chatReady, messages.size, isChatVisible) {
+        if (isChatVisible && (chatReady || selectedMeshRecipientId != null)) {
+            onMarkConversationRead(selectedMeshRecipientId)
+        }
     }
     var typingSignalActive by remember(selectedMeshRecipientId) { mutableStateOf(false) }
-    LaunchedEffect(draft, selectedMeshRecipientId, chatReady) {
-        if (draft.isBlank() || !chatReady) {
+    LaunchedEffect(draft, selectedMeshRecipientId, chatReady, isChatVisible) {
+        if (draft.isBlank() || !chatReady || !isChatVisible) {
             if (typingSignalActive) {
                 onTyping(false)
                 typingSignalActive = false
