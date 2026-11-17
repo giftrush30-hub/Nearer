@@ -62,6 +62,50 @@ class StudioAudioProjectLibraryCodecTest {
         assertEquals(original[1].tracks, restored[1].tracks)
     }
 
+    @Test fun tempoAutomationSurvivesNamedProjectLibraryRoundTripAndRename() {
+        val tempoTrack = StudioAudioProjectTrackState(
+            uri = "content://audio/library-tempo",
+            name = "Tempo lead",
+            durationMs = 45_000L,
+            muted = false,
+            gain = 0.9f,
+            pan = 0f,
+            fadeInMs = 250L,
+            fadeOutMs = 500L,
+            tempoPoints = listOf(
+                StudioTempoPoint(0L, 0.75f),
+                StudioTempoPoint(8_000L, 1.25f),
+                StudioTempoPoint(20_000L, 1.75f)
+            )
+        )
+        val original = listOf(
+            StudioAudioProjectLibraryEntry(
+                id = "tempo-project",
+                name = "Tempo arrangement",
+                updatedAtMs = 100L,
+                tracks = listOf(tempoTrack),
+                bpm = 128
+            )
+        )
+        val restored = StudioAudioProjectLibraryCodec.decode(
+            StudioAudioProjectLibraryCodec.encode(original)
+        )
+        assertEquals(tempoTrack, restored.single().tracks.single())
+
+        val renamed = StudioAudioProjectLibraryCodec.rename(
+            projects = restored,
+            projectId = "tempo-project",
+            rawName = "  Tempo   arrangement v2 ",
+            activeTracks = restored.single().tracks,
+            updatedAtMs = 200L
+        )
+        val afterRename = StudioAudioProjectLibraryCodec.decode(
+            StudioAudioProjectLibraryCodec.encode(renamed)
+        )
+        assertEquals("Tempo arrangement v2", afterRename.single().name)
+        assertEquals(tempoTrack.tempoPoints, afterRename.single().tracks.single().tempoPoints)
+    }
+
     @Test fun bpmAndBeatDivisionPersistIndependentlyPerProject() {
         val projects = listOf(
             project("one", "Fast Mix", "content://audio/one").copy(bpm = 137, beatDivision = 4, snapEnabled = false),
