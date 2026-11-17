@@ -36,7 +36,7 @@ The native diagnostics report the negotiated sample rate, output burst and buffe
 
 A route disconnect triggers Oboe's error callback and marks the engine disconnected. Oboe automatically stops and closes the disconnected stream before `onErrorAfterClose`; cleanup checks both the callback's disconnect flag and the current stream state. It skips already-disconnected/closed streams, requests stop only for active/transitional-start states, and closes an opened-but-not-started stream without an invalid `requestStop()` call. It only stops/closes the still-open peer stream, outside the real-time callback. The Kotlin control coroutine then makes one bounded native reopen attempt when a headphone output is still present. If native restart fails, it falls back to the Java compatibility path. A selected USB input is re-verified by device ID on every native open. USB input removal is also observed by the parent recorder's Android device callback, which updates the selected input and restarts the monitor with the new selection.
 
-The monitor observes headphone add/remove events while it is open and stops capture when the Activity leaves the foreground; returning to the app requires the user to explicitly enable monitoring again. It refuses to start mic-to-output monitoring without a detected headset/headphone/USB audio output, and stops if that output disappears, preventing speaker-to-microphone feedback. This is a device-class check rather than a guarantee that every connected accessory is physically worn or acoustically isolated.
+The monitor observes headphone add/remove events while it is open and restarts against the newly selected output ID when the user changes accessories. The native path verifies the selected output ID at stream-open time and checks it in diagnostics; the Java path registers an AudioRouting listener and pauses the AudioTrack immediately if Android changes the active route away from the selected headphone. The monitor refuses to start mic-to-output playback without a verified external headphone route and stops capture when that route disappears or changes, preventing silent fallback to the phone speaker. This is a device-routing check, not a guarantee that every connected accessory is physically worn or acoustically isolated.
 
 On API 30+, the native builder explicitly requests Android's privacy-sensitive mode when Oboe opens an AAudio input stream; Kotlin gates the flag by runtime API level because Android 11 added the underlying AAudio capability. Oboe documents this setting as AAudio-input-only, so it must not be described as a guarantee if Oboe selects a different backend. On API 27–29 the native path cannot explicitly set the flag; the default VoiceRecognition preset is privacy-sensitive, while the optional Unprocessed preset is not guaranteed to be. The Java AudioRecord path separately requests Android's privacy-sensitive mode on API 30+. Microphone capture still starts only after the user's explicit in-screen opt-in and the pitch monitor never saves microphone audio.
 
@@ -45,8 +45,8 @@ On API 30+, the native builder explicitly requests Android's privacy-sensitive m
 The code is integrated into the Android build. Automated checks compile the NDK target, run JVM tests (including PCM frame assembly, signal-level vocal processors and offline track DSP tests), and build/upload the debug APK. This does not prove physical-device performance. In addition to the microphone-monitor checks below, listen to a rendered multitrack mix with voice, music and effects on phone speakers, wired headphones and Bluetooth; compare the output against the source tracks and verify EQ/reverb tails, trim boundaries, track offsets, fades and pan placement. Required device testing includes:
 
 1. Phone built-in microphone and speaker/headphones.
-2. USB microphone plus wired/USB headphones on Android API 27+; verify the displayed input device ID matches the selected device.
-3. USB disconnect/reconnect while monitoring.
+2. USB microphone plus wired/USB headphones on Android API 27+; verify both displayed input and output device IDs match the selected devices. Also verify no microphone samples are played until the output route has been confirmed.
+3. USB microphone and headphone disconnect/reconnect while monitoring; verify output playback pauses immediately on route loss and does not fall back to the built-in speaker.
 4. Screen lock/unlock and app background/foreground.
 5. Competing microphone apps and microphone permission revocation.
 6. At least one older Android device and one newer device.
@@ -62,6 +62,8 @@ Do not publish a millisecond latency claim until those measurements exist. Bluet
 ## Architecture sources
 
 - Jetpack Compose Slider discrete/continuous interaction guidance: https://developer.android.com/develop/ui/compose/components/slider
+- Android `AudioTrack.setPreferredDevice()` is only a preference; `getRoutedDevice()` reports the actual active output while playing: https://developer.android.com/reference/android/media/AudioTrack
+- Oboe `AudioStreamBuilder.setDeviceId()` must be verified with the opened stream's `getDeviceId()`: https://github.com/google/oboe/blob/main/docs/FullGuide.md
 - Android low-latency checklist: https://developer.android.com/games/sdk/oboe/low-latency-audio
 - Android app audio latency guidance: https://source.android.com/docs/core/audio/latency/app
 - Oboe integration guide: https://github.com/google/oboe/blob/main/docs/GettingStarted.md
