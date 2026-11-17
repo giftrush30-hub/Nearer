@@ -12,4 +12,14 @@ class StudioAudioExportPolicyTest {
         assertFalse(StudioAudioExportPolicy.hasUsableOutput(true, 0L))
         assertFalse(StudioAudioExportPolicy.hasUsableOutput(false, 0L))
     }
+
+    @Test fun completedMixMustContainReadableAudioAndPositiveDuration() {
+        assertTrue(StudioAudioExportPolicy.hasUsableOutput(true, 4096L, true, 1L))
+        assertTrue(StudioAudioExportPolicy.hasUsableOutput(true, 4096L, true, 125_000L))
+        assertFalse(StudioAudioExportPolicy.hasUsableOutput(false, 4096L, true, 125_000L))
+        assertFalse(StudioAudioExportPolicy.hasUsableOutput(true, 0L, true, 125_000L))
+        assertFalse(StudioAudioExportPolicy.hasUsableOutput(true, 4096L, false, 125_000L))
+        assertFalse(StudioAudioExportPolicy.hasUsableOutput(true, 4096L, true, 0L))
+        assertFalse(StudioAudioExportPolicy.hasUsableOutput(true, 4096L, true, -50L))
+    }
 }
