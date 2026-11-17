@@ -5,6 +5,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StudioAudioExportPolicyTest {
+    @Test fun metadataMustExplicitlyReportYesForAnAudioTrack() {
+        assertTrue(StudioAudioExportPolicy.metadataReportsAudioTrack("yes"))
+        assertTrue(StudioAudioExportPolicy.metadataReportsAudioTrack("YES"))
+        assertFalse(StudioAudioExportPolicy.metadataReportsAudioTrack("no"))
+        assertFalse(StudioAudioExportPolicy.metadataReportsAudioTrack(null))
+        assertFalse(StudioAudioExportPolicy.metadataReportsAudioTrack(""))
+    }
+
     @Test fun acceptsOnlyExistingNonEmptyExportFiles() {
         assertTrue(StudioAudioExportPolicy.hasUsableOutput(true, 1L))
         assertTrue(StudioAudioExportPolicy.hasUsableOutput(true, 4096L))
