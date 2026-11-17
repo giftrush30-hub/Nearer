@@ -5022,6 +5022,7 @@ private fun NeaRerHome(
                 onSendGroupMessage, onBroadcast, onGameInvite, onAcceptGameInvite,
                 onRejectGameInvite, onGameMove, onGameChat, onGameRematch, onEndGame, profileAvatarId,
                 onOpenRoyalLudo = { showRoyalLudo = true },
+                isCommunityVisible = activityResumed && selectedTab == "Games",
                 onMarkGroupRead = onMarkGroupRead)
 
             }
@@ -5413,6 +5414,7 @@ private fun CommunityHub(
     onAccept: () -> Unit, onReject: () -> Unit, onMove: (String, Int) -> Unit, onGameChat: (String) -> Unit, onGameRematch: () -> Unit, onEndGame: () -> Unit,
     localAvatarId: String,
     onOpenRoyalLudo: () -> Unit,
+    isCommunityVisible: Boolean,
     onMarkGroupRead: (String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
@@ -5421,8 +5423,8 @@ private fun CommunityHub(
     var broadcastText by remember { mutableStateOf("") }
     var gameText by remember { mutableStateOf("") }
     val selected = groups.firstOrNull { it.code == selectedCode }
-    LaunchedEffect(selectedCode, messages.size, selected?.memberPeerIds) {
-        selectedCode?.let(onMarkGroupRead)
+    LaunchedEffect(selectedCode, messages.size, selected?.memberPeerIds, isCommunityVisible) {
+        if (isCommunityVisible) selectedCode?.let(onMarkGroupRead)
     }
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Panel) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
