@@ -25,6 +25,10 @@ The Oboe callback path uses separate single-producer/single-consumer float PCM r
 
 The native diagnostics report the negotiated sample rate, output burst and buffer size, actual low-latency and exclusive-sharing grants, actual input/output device IDs, Oboe xrun count when available, callback-level output underruns, capture-ring drops, stale-playback drops, stale-analysis drops and disconnection state. The UI must not interpret buffer duration as measured round-trip latency.
 
+### Pitch-preserving time-stretch investigation
+
+The app previously used Media3 1.5.1, whose default speed processor couples speed and pitch. Media3 1.11.1 adds `EditedMediaItem.Builder.setSpeed(SpeedParameters)`; the `shouldMaintainPitch` flag is passed through to the Transformer's `SpeedChangingAudioProcessor`, which leaves Sonic pitch at 1.0 while adjusting speed. Media3 1.11.1 requires compileSdk 36, so the isolated upgrade also moves the Android Gradle Plugin to 8.10.1 and CI Gradle to 8.11.1. The app's `targetSdk` remains 35 and `minSdk` remains 26; compile SDK and target SDK are deliberately kept separate. The next implementation step is to configure a constant speed curve with pitch preservation, verify that it is not combined with any separate speed-changing effect, and test output duration, pitch stability, clipping, and composition alignment. Until those tests pass, no pitch-preserving tempo adjustment is claimed. After the dependency upgrade, retain the API 26 minimum-install target and include a real-device smoke test on the oldest supported Android version; compileSdk 36 must not be mistaken for a new minimum OS requirement.
+
 ## Android and Oboe compatibility
 
 - The app minimum SDK is 26. Oboe supports older Android versions, but this integration deliberately uses the native path from API 27 (AAudio) and preserves Java fallback on API 26.
@@ -62,6 +66,9 @@ Do not publish a millisecond latency claim until those measurements exist. Bluet
 ## Architecture sources
 
 - Jetpack Compose Slider discrete/continuous interaction guidance: https://developer.android.com/develop/ui/compose/components/slider
+- Media3 1.11.1 stable release notes and pitch-preserving Transformer speed support: https://developer.android.com/jetpack/androidx/releases/media3
+- `EditedMediaItem.Builder.setSpeed(SpeedParameters)`: https://developer.android.com/reference/androidx/media3/transformer/EditedMediaItem.Builder
+- Android Gradle Plugin 8.10 API 36 compatibility: https://developer.android.com/build/releases/agp-8-10-0-release-notes
 - Android `AudioTrack.setPreferredDevice()` is only a preference; `getRoutedDevice()` reports the actual active output while playing: https://developer.android.com/reference/android/media/AudioTrack
 - Oboe `AudioStreamBuilder.setDeviceId()` must be verified with the opened stream's `getDeviceId()`: https://github.com/google/oboe/blob/main/docs/FullGuide.md
 - Android low-latency checklist: https://developer.android.com/games/sdk/oboe/low-latency-audio
