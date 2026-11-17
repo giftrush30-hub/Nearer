@@ -75,6 +75,21 @@ class StudioTempoAutomationPolicyTest {
         assertEquals(0L, StudioTempoAutomationPolicy.outputDurationMs(points, 0L))
     }
 
+    @Test fun providerSkipsFlatSectionsUntilTheCurveActuallyChanges() {
+        val provider = StudioTempoAutomationSpeedProvider(
+            listOf(
+                StudioTempoPoint(0, 1f),
+                StudioTempoPoint(200, 1f),
+                StudioTempoPoint(300, 2f)
+            ),
+            durationMs = 1_000
+        )
+        assertEquals(250_000L, provider.getNextSpeedChangeTimeUs(0))
+        assertEquals(250_000L, provider.getNextSpeedChangeTimeUs(200_000))
+        assertEquals(300_000L, provider.getNextSpeedChangeTimeUs(250_000))
+        assertEquals(C.TIME_UNSET, provider.getNextSpeedChangeTimeUs(300_000))
+    }
+
     @Test fun constantTempoDoesNotScheduleUnnecessaryChanges() {
         val provider = StudioTempoAutomationSpeedProvider(
             listOf(StudioTempoPoint(0, 1f), StudioTempoPoint(1_000, 1f)),
