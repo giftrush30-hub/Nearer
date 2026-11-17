@@ -1,5 +1,9 @@
 package com.nearer.app
 
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+
 /** Pure sample-frame envelope used by the offline mixer and its unit tests. */
 internal fun studioAudioGainAtFrame(
     frame: Long,
@@ -11,19 +15,25 @@ internal fun studioAudioGainAtFrame(
     val safeGain = baseGain.coerceIn(0f, 1f)
     val safeFrame = frame.coerceAtLeast(0L)
     var envelope = safeGain
+    val safeFadeInFrames = if (totalFrames > 0L) fadeInFrames.coerceAtMost(totalFrames) else fadeInFrames
+    val safeFadeOutFrames = if (totalFrames > 0L) fadeOutFrames.coerceAtMost(totalFrames) else fadeOutFrames
 
-    if (fadeInFrames > 0L && safeFrame < fadeInFrames) {
-        envelope *= (safeFrame.toFloat() / fadeInFrames.toFloat()).coerceIn(0f, 1f)
+    // Equal-power curves give a smoother perceived level when two tracks overlap:
+    // fade-in uses sine, while fade-out uses the complementary cosine curve.
+    if (safeFadeInFrames > 0L && safeFrame < safeFadeInFrames) {
+        val progress = (safeFrame.toDouble() / safeFadeInFrames.toDouble()).coerceIn(0.0, 1.0)
+        envelope *= sin(progress * PI * 0.5).toFloat()
     }
 
-    if (fadeOutFrames > 0L && totalFrames > 0L) {
-        val fadeStart = (totalFrames - fadeOutFrames).coerceAtLeast(0L)
+    if (safeFadeOutFrames > 0L && totalFrames > 0L) {
+        val fadeStart = (totalFrames - safeFadeOutFrames).coerceAtLeast(0L)
         if (safeFrame >= fadeStart) {
-            val remaining = (totalFrames - safeFrame).coerceAtLeast(0L)
-            envelope *= (remaining.toFloat() / fadeOutFrames.toFloat()).coerceIn(0f, 1f)
+            val progress = ((safeFrame - fadeStart).toDouble() / safeFadeOutFrames.toDouble())
+                .coerceIn(0.0, 1.0)
+            envelope *= cos(progress * PI * 0.5).toFloat()
         }
     }
-    return envelope
+    return envelope.coerceIn(0f, safeGain)
 }
 
 /** Stereo balance: the opposite channel is attenuated while the selected side stays full. */
