@@ -201,7 +201,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 Slider(value = track.highGainDb, onValueChange = { tracks[index] = track.copy(highGainDb = it); exported = null }, valueRange = -12f..12f)
                                 Text("ROOM REVERB  ·  ${(track.reverbMix * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 Slider(value = track.reverbMix, onValueChange = { tracks[index] = track.copy(reverbMix = it); exported = null }, valueRange = 0f..0.35f)
-                                Text("SOURCE PREVIEW IS UNPROCESSED; EQ, REVERB, PAN AND FADES ARE HEARD IN THE EXPORTED MIX.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
+                                Text("SOURCE PREVIEW APPLIES VOLUME ONLY; EQ, REVERB, PAN AND FADES APPLY ON EXPORT.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
                             }
                             Text("FADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = (track.fadeInMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
