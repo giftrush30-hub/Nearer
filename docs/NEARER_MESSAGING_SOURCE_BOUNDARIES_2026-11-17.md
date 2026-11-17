@@ -50,7 +50,7 @@ The tree also shows focused JVM tests for many chat policies, mesh protocol obje
 | Incoming durable staging | NearbyIncomingMessageInbox.kt | Encrypted local inbox keyed by normalized peer ID plus message ID; commits synchronously; preserves unreadable ciphertext rather than overwriting it with an empty queue. | Messaging delivery persistence |
 | ACK and retirement gates | NearbyInboxCommitPolicy.kt | Requires inbox and dedupe commit before sender acknowledgement; requires inbox, dedupe and chat-store commit before retiring staged entry. | Messaging delivery semantics |
 | Direct legacy fallback queue | DirectChatOutbox.kt | Encrypted durable queue for Wi-Fi Direct socket chat fallback; binds entries to peer identity and restores defensively. Not evidence of a universal outbox for every route. | Messaging outbox adapter; legacy fallback decision remains open |
-| Private route choice | ChatTransportRouter.kt | Chooses an approved direct route; tries Nearby Connections first, then Wi-Fi Direct; explicitly does not broadcast private chat through mesh. | Messaging delivery coordinator using Nearby route contract |
+| Private route choice policy | ChatTransportRouter.kt | Its implementation prefers Nearby Connections, then Wi-Fi Direct, and never broadcasts private chat through mesh. Its runtime caller has not yet been established from the inspected coordinators. | Messaging delivery coordinator using Nearby route contract |
 | Conversation list projection | ChatInboxPolicy.kt | Pure conversation-ID projection, latest-message grouping, recipient association and filtering/order logic. | Messaging domain/presentation policy |
 | Community packet gate | CommunityIngressPolicy.kt | Validates supported group and Ludo packet structure and transport identity; comments leave roster and live game-state authorization to stateful handlers. | Community/game protocol ingress |
 | Mesh route protocol | MeshRouteTable.kt | Verifies signed route advertisements, binds next hop to authenticated direct sender, validates path vectors and route freshness/withdrawal. | feature.mesh |
@@ -74,7 +74,7 @@ Direct-message and mesh-message branches have distinct receipt handling. Do not 
 
 ### 4.2 Outgoing direct route
 
-ChatTransportRouter is intentionally narrow. It tries Nearby Connections when ready and falls back to Wi-Fi Direct only when that route is ready. If neither succeeds, it returns no route so the message remains queued. This is a private direct-route selector, not a mesh route selector.
+ChatTransportRouter is intentionally narrow. It tries Nearby Connections when ready and falls back to Wi-Fi Direct only when that route is ready. If neither succeeds, it returns no route so the message remains queued. This is a private direct-route selector, not a mesh route selector. However, a focused search of the inspected MainActivity and NearbyConnectionsTransport sources did not find a reference to ChatTransportRouter or DirectChatOutbox. Their production caller graph must be traced across the full source tree before treating either as part of the active send path. The tests prove their local behaviour, not their integration.
 
 ### 4.3 Identity and cryptographic trust
 
@@ -125,7 +125,13 @@ The foreground service is responsible for durable staging, but the Activity list
 
 **Decision:** Make the contract explicit before changing packages: delivery event, durable staging result, dedupe/receipt result, domain commit result, and inbox retirement result. Do not let a UI callback accidentally become an acknowledgement of mere display.
 
-### Risk D — Source package does not express domain boundaries
+### Risk D — Chat history persistence is not encrypted by the current writer
+
+MainActivity.persistMessages serializes the locally retained chat history to JSON and writes it directly to the SharedPreferences key messages using commit(). The inspected writer does not pass that JSON through LocalDataCipher. This is distinct from NearbyIncomingMessageInbox and DirectChatOutbox, which do encrypt their stored payloads. Therefore, do not describe the entire chat history as encrypted at rest merely because the transport inbox/outbox are encrypted.
+
+**Decision:** Record this as a security and data-migration item for Messaging. Before changing storage, inspect the matching restore path, define a safe encrypted migration that preserves existing local history, and test corrupted/locked ciphertext and write failures. Do not silently clear history or change the storage format during a package-only refactor.
+
+### Risk E — Source package does not express domain boundaries
 
 The inspected files currently live in the broad com.nearer.app package. Ownership is not enforced by package structure. Moving files into feature packages without resolving dependencies could create cycles or accidental access to UI implementation details.
 
