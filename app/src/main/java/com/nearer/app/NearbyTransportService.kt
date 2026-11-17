@@ -166,9 +166,7 @@ class NearbyTransportService : Service() {
             }
             // Notify only after durable inbox commit. The text remains generic for lock-screen privacy.
             if (ChatNotificationPolicy.isUserVisibleMessageBody(body)) {
-                if (ChatNotificationPolicy.isUserVisibleMessageBody(body)) {
                 PrivateMessageNotification.show(applicationContext, messageId, isNewInboxEntry, inboxPersisted = true)
-            }
             }
             // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
             val dedupeCommitted = runCatching { acknowledge() }.getOrDefault(false)
@@ -218,7 +216,10 @@ class NearbyTransportService : Service() {
                 uiListener?.onStatus("NeaRer could not securely save an incoming nearby message. Delivery was not acknowledged.")
                 return
             }
-            PrivateMessageNotification.show(applicationContext, messageId, isNewInboxEntry, inboxPersisted = true)
+            // Mesh control packets are durable protocol events, not user-visible alerts.
+            if (ChatNotificationPolicy.isUserVisibleMessageBody(body)) {
+                PrivateMessageNotification.show(applicationContext, messageId, isNewInboxEntry, inboxPersisted = true)
+            }
             // The encrypted inbox is the durable delivery boundary; acknowledge only after it commits.
             val dedupeCommitted = runCatching { acknowledge() }.getOrDefault(false)
             dispatchInboxEntry(entry, dedupeCommitted)
