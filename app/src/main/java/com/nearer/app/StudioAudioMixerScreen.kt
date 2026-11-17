@@ -558,4 +558,28 @@ private fun createStudioTimelineSilence(context: android.content.Context, durati
         fun le(value: Int, bytes: Int) { repeat(bytes) { stream.write((value ushr (it * 8)) and 0xff) } }
         ascii("RIFF"); le(36 + dataSize, 4); ascii("WAVE")
         ascii("fmt "); le(16, 4); le(1, 2); le(channels, 2)
-        le(sampleRate, 4); le(sampleRate * channels * bitsPerSample / 8, 4)
+        le(channels * bitsPerSample / 8, 2); le(bitsPerSample, 2)
+        ascii("data"); le(dataSize, 4)
+        val silence = ByteArray(16 * 1024)
+        var remaining = dataSize
+        while (remaining > 0) { val count = minOf(remaining, silence.size); stream.write(silence, 0, count); remaining -= count }
+    }
+    return output
+}
+
+private fun readStudioAudioDuration(context: android.content.Context, uri: Uri): Long {
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(context, uri)
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+    } catch (_: Exception) {
+        0L
+    } finally {
+        runCatching { retriever.release() }
+    }
+}
+
+private fun formatMixTime(milliseconds: Long): String {
+    val seconds = (milliseconds / 1000L).coerceAtLeast(0L)
+    return String.format(Locale.US, "%d:%02d", seconds / 60L, seconds % 60L)
+}
