@@ -363,7 +363,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                             var activeHandle: Int? = null
                                             detectDragGestures(
                                                 onDragStart = { down ->
-                                                    val current = tracks.getOrNull(index)
+                                                    val current = tracks.firstOrNull { it.uri == track.uri }
                                                     if (current != null && current.durationMs > 0L) {
                                                         val startX = current.clipStartMs.toFloat() / current.durationMs * size.width
                                                         val endX = current.clipEndMs.toFloat() / current.durationMs * size.width
@@ -379,8 +379,9 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                                 },
                                                 onDrag = { change, _ ->
                                                     val handle = activeHandle
-                                                    val current = tracks.getOrNull(index)
-                                                    if (handle != null && current != null && current.durationMs > 0L) {
+                                                    val currentIndex = tracks.indexOfFirst { it.uri == track.uri }
+                                                    val current = tracks.getOrNull(currentIndex)
+                                                    if (handle != null && currentIndex >= 0 && current != null && current.durationMs > 0L) {
                                                         change.consume()
                                                         val fraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
                                                         val requestedMs = (fraction * current.durationMs).toLong()
@@ -393,7 +394,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                                                 current.clipStartMs, current.clipEndMs, requestedMs, current.durationMs
                                                             )
                                                         }
-                                                        tracks[index] = if (handle == 0) current.copy(clipStartMs = next)
+                                                        tracks[currentIndex] = if (handle == 0) current.copy(clipStartMs = next)
                                                             else current.copy(clipEndMs = next)
                                                         exported = null
                                                     }
@@ -471,7 +472,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 Text("CLIP PREVIEW PLAYS THE SELECTED SOURCE RANGE. EQ, REVERB, PAN AND FADES APPLY ON EXPORT.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
                             }
                             if (track.durationMs > 0L) {
-                                val minClip = 500L.coerceAtMost(track.durationMs)
+                                val minClip = StudioAudioClipRangePolicy.MIN_CLIP_MS.coerceAtMost(track.durationMs)
                                 val clipEnd = track.clipEndMs.coerceIn((track.clipStartMs + minClip).coerceAtMost(track.durationMs), track.durationMs)
                                 val clipStart = track.clipStartMs.coerceIn(0L, (clipEnd - minClip).coerceAtLeast(0L))
                                 Text("CLIP TIMELINE  ·  ${formatMixTime(clipStart)} – ${formatMixTime(clipEnd)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -485,12 +486,12 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 }
                                 Text("TRIM START · ${formatMixTime(clipStart)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 Slider(value = clipStart.toFloat(), onValueChange = { v ->
-                                    val next = v.toLong().coerceIn(0L, (clipEnd - minClip).coerceAtLeast(0L))
+                                    val next = StudioAudioClipRangePolicy.moveStart(clipStart, clipEnd, v.toLong(), track.durationMs)
                                     tracks[index] = track.copy(clipStartMs = next); exported = null
                                 }, valueRange = 0f..(clipEnd - minClip).coerceAtLeast(0L).toFloat(), enabled = track.durationMs > minClip)
                                 Text("TRIM END · ${formatMixTime(clipEnd)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 Slider(value = clipEnd.toFloat(), onValueChange = { v ->
-                                    val next = v.toLong().coerceIn((clipStart + minClip).coerceAtMost(track.durationMs), track.durationMs)
+                                    val next = StudioAudioClipRangePolicy.moveEnd(clipStart, clipEnd, v.toLong(), track.durationMs)
                                     tracks[index] = track.copy(clipEndMs = next); exported = null
                                 }, valueRange = (clipStart + minClip).coerceAtMost(track.durationMs).toFloat()..track.durationMs.toFloat(), enabled = track.durationMs > minClip)
                             }
