@@ -38,7 +38,7 @@ Tests inspected directly:
 - NearbyInboxCommitPolicyTest.kt
 - ChatTransportRouterTest.kt
 
-The tree also shows focused JVM tests for many chat policies, mesh protocol objects, identity, handshake and community policies. Their existence is evidence of test targets, not proof that every runtime path is covered.
+The tree also shows focused JVM tests for many chat policies, mesh protocol objects, identity, handshake and community policies. The inspected `NearbyInboxCommitPolicyTest` exercises only the pure boolean predicate; it does not exercise the service callback ordering, the direct transport ACK side effect, mesh final-receipt persistence, or process-restart replay. Those orchestration behaviours need dedicated seam-level regression tests before the service/transport boundary is refactored. Their existence is evidence of test targets, not proof that every runtime path is covered.
 
 ## 3. Confirmed responsibility map
 
@@ -48,7 +48,7 @@ The tree also shows focused JVM tests for many chat policies, mesh protocol obje
 | Nearby lifecycle | NearbyTransportService.kt | Foreground service owns long-lived NearbyConnectionsTransport, receives events without Activity, persists incoming messages, replays staged messages on attachment/restart, forwards events to attached listener. | core.nearby service/lifecycle adapter |
 | Radio/session transport | NearbyConnectionsTransport.kt | Uses Google Nearby Connections; owns endpoint/stable-ID mapping, authenticated peer handshake/session state, message callbacks, mesh state and file-payload machinery. | Split across core.nearby, core.security, feature.mesh and feature.share adapters |
 | Incoming durable staging | NearbyIncomingMessageInbox.kt | Encrypted local inbox keyed by normalized peer ID plus message ID; commits synchronously; preserves unreadable ciphertext rather than overwriting it with an empty queue. | Messaging delivery persistence |
-| ACK and retirement gates | NearbyInboxCommitPolicy.kt | Requires inbox and dedupe commit before sender acknowledgement; requires inbox, dedupe and chat-store commit before retiring staged entry. | Messaging delivery semantics |
+| ACK and retirement predicate | NearbyInboxCommitPolicy.kt | Pure boolean checks for inbox/dedupe readiness and inbox/dedupe/domain-commit retirement. The service invokes the transport callback after inbox commit; the callback itself persists dedupe before sending the direct encrypted ACK (or persists the mesh final receipt). The predicate result is used for the later retirement gate; it is not itself the network-ACK sender. | Messaging delivery semantics |
 | Direct legacy fallback queue | DirectChatOutbox.kt | Encrypted durable queue for Wi-Fi Direct socket chat fallback; binds entries to peer identity and restores defensively. Not evidence of a universal outbox for every route. | Messaging outbox adapter; legacy fallback decision remains open |
 | Private route choice policy | ChatTransportRouter.kt | Its implementation prefers Nearby Connections, then Wi-Fi Direct, and never broadcasts private chat through mesh. Its runtime caller has not yet been established from the inspected coordinators. | Messaging delivery coordinator using Nearby route contract |
 | Conversation list projection | ChatInboxPolicy.kt | Pure conversation-ID projection, latest-message grouping, recipient association and filtering/order logic. | Messaging domain/presentation policy |
@@ -63,12 +63,13 @@ The tree also shows focused JVM tests for many chat policies, mesh protocol obje
 The current service path has a deliberate sequence:
 
 1. Resolve the authenticated stable peer identity; do not use a temporary endpoint ID as durable conversation identity.
-2. Construct an inbox entry and write it to the encrypted NearbyIncomingMessageInbox.
-3. If that durable write fails, do not acknowledge the sender.
-4. Persist the appropriate dedupe/receipt state through the transport callback.
-5. Dispatch the staged event to the Activity listener.
-6. Retire the staged inbox entry only after the listener's existing chat/community storage callback reports success and the dedupe gate is satisfied.
-7. On listener reattachment or service recovery, replay staged entries and re-establish the dedupe boundary.
+2. Construct an inbox entry and synchronously commit it to the encrypted `NearbyIncomingMessageInbox`.
+3. If that durable write fails, release the pending dedupe reservation and do not invoke the transport acknowledgement callback.
+4. After the inbox commit, invoke the callback supplied by the transport. For a direct Nearby message, that callback persists the peer-scoped message-ID dedupe record and sends the encrypted ACK only if the dedupe write succeeds. For a mesh destination message, the callback persists dedupe and the signed final mesh receipt; it reports success only when both are committed.
+5. The service passes the callback result into `dispatchInboxEntry`. The `NearbyInboxCommitPolicy` pure predicate is used for the direct branch's retirement readiness; the mesh branch passes its receipt/dedupe result directly. The predicate itself does not send a network ACK.
+6. Dispatch the staged event to the Activity listener. The listener's completion callback represents the existing chat/community store commit, not merely UI display.
+7. Retire the staged inbox entry only after the listener reports successful domain persistence and the required dedupe/receipt result is true.
+8. On listener reattachment or service recovery, replay staged entries and re-establish dedupe plus direct ACK or mesh final-receipt state before retirement.
 
 Direct-message and mesh-message branches have distinct receipt handling. Do not flatten them into one generic acknowledgement path without proving semantics remain correct.
 
