@@ -115,6 +115,6 @@ class StudioTempoAutomationPolicyTest {
             durationMs = 1_000
         )
         assertTrue(parameters.shouldMaintainPitch)
-        assertEquals(1.25f, parameters.speedProvider.getSpeed(250_000), 0.0001f)
+        assertEquals(1.24f, parameters.speedProvider.getSpeed(240_000), 0.0001f)
     }
 }
