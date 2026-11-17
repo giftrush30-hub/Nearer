@@ -89,6 +89,18 @@ Several other open branches also target older main snapshots. A PR being open, g
 
 **Action:** keep a PR integration register with exact base/head SHAs, overlap areas, CI state and device-test requirements. Rebase or reconcile only with the owning workstream; never force-push or discard parallel work.
 
+### P1 — Concrete file overlap between open PRs
+
+A changed-file comparison of the open architecture and transfer PRs found real overlap:
+
+| PR pair | Shared files / concern | Organisation decision |
+|---|---|---|
+| #234 and #250 | `MainActivity.kt`, `NearbyConnectionsTransport.kt`, and the same extracted helper classes/tests (including AppInstallResultActivity, NearbyPerson, TransferByteFormatter, WifiDirectDeviceStatus, ChatTimeFormatter, IncomingFilePayloadPolicy, NeaRerAppBundleValidator and NearbyEndpointNameCodec) | Treat the architecture extraction batch as duplicated work. Select and reconcile one canonical implementation; do not merge both wholesale. |
+| #250 and #268 | `NearbyConnectionsTransport.kt`, `OutgoingHyperTransferStore.kt`, `VerifiedTransferReceiptStore.kt`, their tests, and `HYPERTRANSFER_RESUME_INTEGRATION_PLAN.md` | Coordinate the durable transfer integration with its dedicated PR. Review the combined final diff and exact-head tests before either branch is integrated. |
+| #234 and #270 | `StudioAudioWorkspaceScreen.kt` | Review the Android 8 compatibility changes against the current Studio work before merging; do not overwrite one branch with the other. |
+
+This overlap is why the organisation programme must coordinate PRs by changed-file ownership and exact base/head commits, not merely by PR titles.
+
 ### P1 — CI workflow ownership and triggers need clarification
 
 There are three workflow files:
