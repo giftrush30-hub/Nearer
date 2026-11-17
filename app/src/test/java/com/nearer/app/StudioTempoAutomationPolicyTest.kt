@@ -68,6 +68,13 @@ class StudioTempoAutomationPolicyTest {
         assertEquals(C.TIME_UNSET, provider.getNextSpeedChangeTimeUs(200_000))
     }
 
+    @Test fun outputDurationUsesTheSameSampledTempoCurve() {
+        val points = listOf(StudioTempoPoint(0, 1f), StudioTempoPoint(200, 2f))
+        assertEquals(200L, StudioTempoAutomationPolicy.outputDurationMs(emptyList(), 200L))
+        assertEquals(152L, StudioTempoAutomationPolicy.outputDurationMs(points, 200L))
+        assertEquals(0L, StudioTempoAutomationPolicy.outputDurationMs(points, 0L))
+    }
+
     @Test fun constantTempoDoesNotScheduleUnnecessaryChanges() {
         val provider = StudioTempoAutomationSpeedProvider(
             listOf(StudioTempoPoint(0, 1f), StudioTempoPoint(1_000, 1f)),
