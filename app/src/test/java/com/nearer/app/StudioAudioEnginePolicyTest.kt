@@ -47,6 +47,7 @@ class StudioAudioEnginePolicyTest {
     @Test fun ambiguousUsbAndBluetoothOutputsRequireExplicitHeadphoneConfirmation() {
         assertTrue(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_USB_DEVICE))
         assertTrue(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP))
+        assertTrue(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO))
         assertFalse(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES))
         assertFalse(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_USB_HEADSET))
         assertFalse(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_BLE_HEADSET))
