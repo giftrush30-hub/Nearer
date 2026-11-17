@@ -1,5 +1,6 @@
 package com.nearer.app
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -52,6 +53,19 @@ class StudioAudioEnginePolicyTest {
         assertFalse(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_USB_HEADSET))
         assertFalse(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_BLE_HEADSET))
         assertFalse(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER))
+    }
+
+    @Test fun addingAnotherHeadphonePreservesTheCurrentlySelectedOutput() {
+        assertEquals(21, StudioAudioEnginePolicy.selectAvailableOutputId(21, listOf(9, 21, 34)))
+    }
+
+    @Test fun removingTheSelectedOutputChoosesAnAvailableFallback() {
+        assertEquals(9, StudioAudioEnginePolicy.selectAvailableOutputId(21, listOf(9, 34)))
+    }
+
+    @Test fun noAvailableHeadphonesProducesNoSelectedOutput() {
+        assertEquals(null, StudioAudioEnginePolicy.selectAvailableOutputId(21, emptyList()))
+        assertEquals(9, StudioAudioEnginePolicy.selectAvailableOutputId(null, listOf(9, 34)))
     }
 
     @Test fun liveMonitorMustUseTheExactSelectedHeadphoneOutput() {
