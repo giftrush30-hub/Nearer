@@ -1865,12 +1865,12 @@ class MainActivity : ComponentActivity() {
         if (packet.optInt("version", 0) != 1 ||
             !ChatReactionPolicy.isValidActor(actorPeerId) ||
             targetId.isBlank() || targetId.length > 80) return false
-        val index = chatMessages.indexOfFirst {
-            it.id == targetId &&
-                ChatEditPolicy.mayApplyToMessage(it.conversationId, actorPeerId, it.outgoing)
-        }
+        val index = chatMessages.indexOfFirst { it.id == targetId }
         if (index < 0) return false
         val previous = chatMessages[index]
+        // A delayed edit must never resurrect content after delete-for-everyone.
+        if (previous.deletedForEveryone) return true
+        if (!ChatEditPolicy.mayApplyToMessage(previous.conversationId, actorPeerId, previous.outgoing)) return false
         return when (ChatEditPolicy.apply(previous.body, previous.editVersion, previous.editedAt, revision)) {
             ChatEditPolicy.ApplyResult.STALE,
             ChatEditPolicy.ApplyResult.ALREADY_APPLIED -> true
@@ -1899,6 +1899,10 @@ class MainActivity : ComponentActivity() {
         val previous = chatMessages[index]
         if (!previous.outgoing) {
             chatNotice = "You can only edit messages you sent."
+            return false
+        }
+        if (previous.deletedForEveryone) {
+            chatNotice = "A deleted message cannot be edited."
             return false
         }
         val revision = ChatEditPolicy.create(
@@ -1967,6 +1971,8 @@ class MainActivity : ComponentActivity() {
         }
         if (index < 0) return false
         val previous = chatMessages[index]
+        // Reactions queued before a delete are stale control events.
+        if (previous.deletedForEveryone) return true
         val updated = ChatReactionPolicy.set(previous.reactions, actorPeerId, emoji)
         chatMessages[index] = previous.copy(reactions = updated)
         if (persistMessages()) return true
@@ -1979,6 +1985,10 @@ class MainActivity : ComponentActivity() {
         val index = chatMessages.indexOfFirst { it.id == messageId }
         if (index < 0 || !ChatReactionPolicy.isValidEmoji(emoji)) return
         val target = chatMessages[index]
+        if (target.deletedForEveryone) {
+            chatNotice = "A deleted message cannot receive reactions."
+            return
+        }
         val peerId = target.conversationId
         val localPeerId = nearbyTransport?.localIdentityId().orEmpty()
         if (!ChatReactionPolicy.isValidActor(localPeerId) || !ChatReactionPolicy.isValidActor(peerId)) {
@@ -2353,6 +2363,10 @@ class MainActivity : ComponentActivity() {
     private fun sendChatMessage(rawText: String, replyTarget: ChatMessage? = null) {
         val body = rawText.trim()
         if (body.isEmpty()) return
+        if (replyTarget?.deletedForEveryone == true) {
+            chatNotice = "You cannot reply to a message that was deleted for everyone."
+            return
+        }
         val id = UUID.randomUUID().toString()
         val targetPeerId = selectedMeshRecipientId ?: hybridConnectedStableId
         val conversationIdForReply = targetPeerId ?: connectedDeviceName?.let { "direct:$it" }.orEmpty()
