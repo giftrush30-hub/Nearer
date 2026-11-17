@@ -63,22 +63,20 @@ class VerifiedTransferReceiptStoreTest {
     }
 
     @Test
-    fun rejectsSameSizeContentTamperingAfterReceiptWasRecorded() {
-        val root = Files.createTempDirectory("nearer-verified-receipt-tamper").toFile()
+    fun refusesToJournalFilesOutsideThePrivateReceivedDirectory() {
+        val root = Files.createTempDirectory("nearer-verified-receipt-path").toFile()
         try {
-            val received = File(root, "received").apply { mkdirs() }
-            val journal = File(root, "hypertransfer-completed")
-            val bytes = byteArrayOf(1, 2, 3, 4, 5)
-            val completed = File(received, "received.bin").apply { writeBytes(bytes) }
+            val outside = File(root, "outside.bin").apply { writeBytes(byteArrayOf(1, 2, 3)) }
             val metadata = TransferResumeStreamMetadataCodec.Metadata(
-                252L, "transfer-tamper",
-                TransferBundleItem("item-tamper", "clip.bin", "clip.bin", bytes.size.toLong(), null),
-                null, sha(bytes)
+                404L, "transfer-outside",
+                TransferBundleItem("item-outside", "clip.bin", "clip.bin", 3L, null),
+                null, sha(byteArrayOf(1, 2, 3))
             )
-            val store = VerifiedTransferReceiptStore(journal)
-            store.record(peer, metadata, completed, sha(bytes))
-            completed.writeBytes(byteArrayOf(9, 9, 9, 9, 9))
-            assertFalse(store.containsVerified(peer, metadata))
+            try {
+                VerifiedTransferReceiptStore(File(root, "hypertransfer-completed"))
+                    .record(peer, metadata, outside, sha(byteArrayOf(1, 2, 3)))
+                fail("A receipt must not reference files outside received/")
+            } catch (_: IllegalArgumentException) { }
         } finally {
             root.deleteRecursively()
         }

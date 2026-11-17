@@ -45,6 +45,22 @@ class OutgoingHyperTransferStoreTest {
     }
 
     @Test
+    fun refusesSourcesOutsideItsAppPrivateStagingDirectory() {
+        val root = Files.createTempDirectory("nearer-outgoing-path").toFile()
+        try {
+            val directory = File(root, "outgoing").apply { mkdirs() }
+            val external = File(root, "external.bin").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+            val bytes = external.readBytes()
+            try {
+                OutgoingHyperTransferStore(directory).persist("transfer-outside", peerA, item(bytes), sha(bytes), external)
+                fail("Outgoing source must be inside the durable staging folder")
+            } catch (_: IllegalArgumentException) { }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsSourceTamperingAndMissingSourceAfterRestart() {
         val root = Files.createTempDirectory("nearer-outgoing-corrupt").toFile()
         try {
