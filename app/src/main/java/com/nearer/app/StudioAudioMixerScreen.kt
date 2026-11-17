@@ -419,7 +419,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 Text("SHARE FINISHED MIX")
             }
         }
-        Text("Each track has independent volume, pan, fades, three-band EQ and room reverb. Changes are saved on this phone and applied during offline export; the original source files remain untouched. Source preview is intentionally unprocessed. Live simultaneous monitoring, tempo automation and multiple named projects remain future work.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
+        Text("Each named project keeps its own arrangement and track controls on this phone. Offline export applies volume, pan, fades, three-band EQ and room reverb without changing original source files. Source preview is intentionally unprocessed. Timeline trimming/positioning, waveform editing and tempo automation are still being completed.", color = Muted, fontSize = 10.sp, lineHeight = 16.sp)
     }
 }
 

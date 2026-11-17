@@ -4,7 +4,7 @@
 
 ### Offline multitrack Sound Desk
 
-The Sound Desk supports up to eight audio layers in one local project. Each layer has independent mute, volume, stereo pan, fade-in/fade-out, three-band low/mid/high EQ and room reverb. Project settings are auto-saved on the phone and older project versions migrate to flat EQ and dry processing. The original source files are never overwritten.
+The Sound Desk supports up to eight audio layers per local project. Users can create, open, rename and delete up to 20 named projects; each project independently saves its track order, mute, volume, stereo pan, fade-in/fade-out, three-band low/mid/high EQ and room reverb. The first launch migrates the former single-project preference into **My First Mix**. Project metadata is stored in a bounded, versioned local library; original imported/recorded audio files are never overwritten or deleted when a project is removed.
 
 The render path uses Media3 Transformer with parallel audio sequences and per-track PCM processors, then writes one AAC mix locally. Users can play the completed render in-app and share it. Individual source preview is deliberately labelled as source preview and does not pretend to include the full mix effects; the rendered mix is the authoritative effects preview. The render path is offline and does not upload audio.
 
