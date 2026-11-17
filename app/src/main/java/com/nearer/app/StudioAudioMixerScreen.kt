@@ -621,14 +621,15 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 } else requested
                                 tracks[index] = track.copy(startOffsetMs = position); exported = null
                             }, valueRange = 0f..StudioAudioBeatGridPolicy.MAX_TIMELINE_OFFSET_MS.toFloat())
-                            Text("FADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text("FADE IN / CROSSFADE IN  ·  ${String.format(Locale.US, "%.1f", track.fadeInMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = (track.fadeInMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
                                 tracks[index] = track.copy(fadeInMs = (it * 1000f).toLong()); exported = null
                             }, valueRange = 0f..maxFade.coerceAtLeast(0.1f), enabled = track.durationMs > 0L)
-                            Text("FADE OUT  ·  ${String.format(Locale.US, "%.1f", track.fadeOutMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text("FADE OUT / CROSSFADE OUT  ·  ${String.format(Locale.US, "%.1f", track.fadeOutMs / 1000f)}s", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = (track.fadeOutMs / 1000f).coerceIn(0f, maxFade), onValueChange = {
                                 tracks[index] = track.copy(fadeOutMs = (it * 1000f).toLong()); exported = null
                             }, valueRange = 0f..maxFade.coerceAtLeast(0.1f), enabled = track.durationMs > 0L)
+                            Text("EQUAL-POWER CROSSFADE: overlap two tracks, then match the outgoing fade-out and incoming fade-in durations.", color = Muted, fontSize = 8.sp, lineHeight = 12.sp)
                             if (track.durationMs <= 0L) Text("Fade controls need readable duration metadata for this file.", color = Muted, fontSize = 9.sp)
                         }
                     }
