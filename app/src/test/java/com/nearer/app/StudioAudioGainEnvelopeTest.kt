@@ -14,7 +14,7 @@ class StudioAudioGainEnvelopeTest {
     }
 
     @Test fun gainIsAppliedAlongsideEqualPowerFadeIn() {
-        val expected = 0.5f * sin(PI / 8.0).toFloat()
+        val expected = 0.5f * sin(PI / 4.0).toFloat()
         assertEquals(expected, studioAudioGainAtFrame(250, 2_000, 0.5f, 500, 0), 0.0001f)
         assertEquals(0.5f, studioAudioGainAtFrame(500, 2_000, 0.5f, 500, 0), 0.0001f)
     }
