@@ -148,7 +148,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
         tracks.addAll(project.tracks.map { saved -> StudioMixTrack(
             Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan,
             saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix,
-            saved.clipStartMs, saved.clipEndMs, saved.startOffsetMs
+            saved.clipStartMs, saved.clipEndMs, saved.startOffsetMs, saved.tempoPoints
         ) })
         currentProjectId = project.id
         exported = null
@@ -276,7 +276,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
             tracks.addAll(replacement.tracks.map { saved -> StudioMixTrack(
                 Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan,
                 saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix,
-                saved.clipStartMs, saved.clipEndMs, saved.startOffsetMs
+                saved.clipStartMs, saved.clipEndMs, saved.startOffsetMs, saved.tempoPoints
             ) })
             currentProjectId = replacement.id
             exported = null
