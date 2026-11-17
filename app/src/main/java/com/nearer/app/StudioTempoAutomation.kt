@@ -1,6 +1,8 @@
 package com.nearer.app
 
 import androidx.media3.common.C
+import androidx.media3.common.SpeedParameters
+import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.audio.SpeedProvider
 import kotlin.math.roundToLong
 
@@ -22,12 +24,12 @@ internal object StudioTempoAutomationPolicy {
     const val MAX_AUTOMATION_MS = 30_000L
 
     fun normalize(points: List<StudioTempoPoint>, durationMs: Long): List<StudioTempoPoint> {
-        val safeDuration = if (durationMs > 0L) durationMs else MAX_AUTOMATION_MS
+        val safeDuration = if (durationMs > 0L) durationMs.coerceAtMost(MAX_AUTOMATION_MS) else MAX_AUTOMATION_MS
         val byTime = points.map { point ->
             val snappedTime = (point.timeMs.coerceAtLeast(0L).toDouble() / STEP_MS).roundToLong() * STEP_MS
             StudioTempoPoint(
                 timeMs = snappedTime.coerceIn(0L, safeDuration),
-                speed = point.speed.coerceIn(MIN_SPEED, MAX_SPEED)
+                speed = if (point.speed.isFinite()) point.speed.coerceIn(MIN_SPEED, MAX_SPEED) else 1f
             )
         }.sortedBy { it.timeMs }
             .groupBy { it.timeMs }
@@ -53,6 +55,10 @@ internal object StudioTempoAutomationPolicy {
         val progress = ((time - previous.timeMs).toFloat() / span.toFloat()).coerceIn(0f, 1f)
         return (previous.speed + (next.speed - previous.speed) * progress).coerceIn(MIN_SPEED, MAX_SPEED)
     }
+
+    @OptIn(ExperimentalApi::class)
+    fun speedParameters(points: List<StudioTempoPoint>, durationMs: Long): SpeedParameters =
+        SpeedParameters(StudioTempoAutomationSpeedProvider(points, durationMs), /* shouldMaintainPitch= */ true)
 
     fun nextChangeTimeUs(timeUs: Long, points: List<StudioTempoPoint>): Long {
         if (points.size < 2 || points.all { it.speed == points.first().speed }) return C.TIME_UNSET
