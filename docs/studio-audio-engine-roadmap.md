@@ -53,7 +53,8 @@ The code is integrated into the Android build. Automated checks compile the NDK 
 7. Acoustic or electrical loopback measurements for round-trip latency and glitch rate.
 8. Create, reopen, rename and delete projects; verify independent track settings and confirm source audio files remain intact. Include an immediate rename followed by app restart.
 9. Generate waveforms for short, long, mono, stereo, silent and unsupported audio sources. Drag both waveform trim handles to the minimum, maximum and middle positions; verify the numeric sliders stay in sync.
-10. Change project BPM and quarter/eighth/sixteenth-note grid, toggle snapping, place tracks near grid boundaries and confirm saved settings survive project switching and app restart. Confirm legacy projects retain their original free-placement behavior.\n11. Switch timeline viewport between 1×, 2× and 4×, scroll to the end and back, and verify track-start markers remain aligned with the 30-second ruler without changing stored offsets.
+10. Change project BPM and quarter/eighth/sixteenth-note grid, toggle snapping, place tracks near grid boundaries and confirm saved settings survive project switching and app restart. Confirm legacy projects retain their original free-placement behavior.
+11. Switch timeline viewport between 1×, 2× and 4×, scroll to the end and back, and verify track-start markers remain aligned with the 30-second ruler without changing stored offsets.
 12. Export mixes with different trim ranges and timeline offsets; listen for correct start/end boundaries and absence of unwanted silence or truncation. Test Vocal Pro success and failure paths and confirm failed exports leave no partial output files.
 
 Do not publish a millisecond latency claim until those measurements exist. Bluetooth output can add substantial latency even when the input and processing path are native.
