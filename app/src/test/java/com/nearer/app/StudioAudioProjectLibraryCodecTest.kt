@@ -62,6 +62,54 @@ class StudioAudioProjectLibraryCodecTest {
         assertEquals(original[1].tracks, restored[1].tracks)
     }
 
+    @Test fun bpmAndBeatDivisionPersistIndependentlyPerProject() {
+        val projects = listOf(
+            project("one", "Fast Mix", "content://audio/one").copy(bpm = 137, beatDivision = 4, snapEnabled = false),
+            project("two", "Slow Mix", "content://audio/two").copy(bpm = 82, beatDivision = 1)
+        )
+        val restored = StudioAudioProjectLibraryCodec.decode(StudioAudioProjectLibraryCodec.encode(projects))
+        assertEquals(137, restored[0].bpm)
+        assertEquals(4, restored[0].beatDivision)
+        assertEquals(false, restored[0].snapEnabled)
+        assertEquals(82, restored[1].bpm)
+        assertEquals(1, restored[1].beatDivision)
+        assertEquals(true, restored[1].snapEnabled)
+    }
+
+    @Test fun versionOneProjectsMigrateToDefaultTempoWithoutLosingTracks() {
+        val track = StudioAudioProjectTrackState(
+            "content://audio/legacy", "Legacy vocal", 45_000L, false, 0.8f, 0f, 0L, 0L
+        )
+        val legacy = org.json.JSONObject()
+            .put("version", 1)
+            .put("projects", org.json.JSONArray().put(org.json.JSONObject()
+                .put("id", "legacy")
+                .put("name", "Old project")
+                .put("updatedAtMs", 55L)
+                .put("tracksJson", StudioAudioProjectCodec.encode(listOf(track))))
+            ).toString()
+        val migrated = StudioAudioProjectLibraryCodec.decode(legacy).single()
+        assertEquals(StudioAudioBeatGridPolicy.DEFAULT_BPM, migrated.bpm)
+        assertEquals(2, migrated.beatDivision)
+        assertEquals(false, migrated.snapEnabled)
+        assertEquals(track, migrated.tracks.single())
+    }
+
+    @Test fun invalidTempoAndSubdivisionAreNormalizedOnDecode() {
+        val raw = org.json.JSONObject()
+            .put("version", 2)
+            .put("projects", org.json.JSONArray().put(org.json.JSONObject()
+                .put("id", "one")
+                .put("name", "Mix")
+                .put("bpm", 999)
+                .put("beatDivision", 3)
+                .put("tracksJson", StudioAudioProjectCodec.encode(emptyList()))
+            )).toString()
+        val restored = StudioAudioProjectLibraryCodec.decode(raw).single()
+        assertEquals(StudioAudioBeatGridPolicy.MAX_BPM, restored.bpm)
+        assertEquals(2, restored.beatDivision)
+    }
+
     @Test fun malformedAndUnknownVersionsAreSafe() {
         assertTrue(StudioAudioProjectLibraryCodec.decode("not-json").isEmpty())
         assertTrue(StudioAudioProjectLibraryCodec.decode("""{"version":99,"projects":[]}""").isEmpty())
