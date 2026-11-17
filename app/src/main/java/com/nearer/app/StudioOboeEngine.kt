@@ -5,14 +5,14 @@ internal object StudioOboeEngine {
         System.loadLibrary("nearer_audio")
     }.isSuccess
 
-    external fun nativeStart(inputDeviceId: Int, preferUnprocessedInput: Boolean, privacySensitiveCapture: Boolean): Boolean
+    external fun nativeStart(inputDeviceId: Int, outputDeviceId: Int, preferUnprocessedInput: Boolean, privacySensitiveCapture: Boolean): Boolean
     external fun nativeStop()
     external fun nativeReadAnalysis(destination: FloatArray): Int
     external fun nativeGetStats(): LongArray
     external fun nativeIsRunning(): Boolean
 
-    fun start(inputDeviceId: Int?, preferUnprocessedInput: Boolean): Boolean =
-        available && runCatching { nativeStart(inputDeviceId ?: -1, preferUnprocessedInput, StudioAudioEnginePolicy.usePrivacySensitiveCapture(android.os.Build.VERSION.SDK_INT)) }.getOrDefault(false)
+    fun start(inputDeviceId: Int?, outputDeviceId: Int, preferUnprocessedInput: Boolean): Boolean =
+        available && runCatching { nativeStart(inputDeviceId ?: -1, outputDeviceId, preferUnprocessedInput, StudioAudioEnginePolicy.usePrivacySensitiveCapture(android.os.Build.VERSION.SDK_INT)) }.getOrDefault(false)
 
     fun stop() {
         if (available) runCatching { nativeStop() }
@@ -36,6 +36,20 @@ internal object StudioAudioEnginePolicy {
     /** A preferred input is accepted only when Android reports that it is actually routed. */
     fun matchesPreferredInput(preferredInputId: Int?, routedInputId: Int?): Boolean =
         preferredInputId == null || preferredInputId == routedInputId
+
+    /** Live microphone playback is allowed only on a selected external headphone output. */
+    fun isHeadphoneOutputType(type: Int): Boolean = type in setOf(
+        android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+        android.media.AudioDeviceInfo.TYPE_USB_HEADSET,
+        android.media.AudioDeviceInfo.TYPE_USB_DEVICE,
+        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+    )
+
+    /** The active output must match the exact external headphone route selected by Android. */
+    fun matchesPreferredOutput(preferredOutputId: Int?, routedOutputId: Int?): Boolean =
+        preferredOutputId != null && preferredOutputId == routedOutputId
 
     /** AAudio input-preset selection is only applied on API 28+ by this integration. */
     fun useUnprocessedInput(apiLevel: Int, requested: Boolean): Boolean =
