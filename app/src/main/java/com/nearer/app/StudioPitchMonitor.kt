@@ -342,10 +342,12 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                             // not that the capture stream has actually switched to it.
                             // Give Android a short bounded window to publish the active route.
                             var routedToRequestedInput = false
-                            repeat(10) {
-                                if (audioRecord.routedDevice?.id == preferredInputId) {
+                            for (attempt in 0 until 10) {
+                                if (StudioAudioEnginePolicy.matchesPreferredInput(
+                                        preferredInputId, audioRecord.routedDevice?.id
+                                    )) {
                                     routedToRequestedInput = true
-                                    return@repeat
+                                    break
                                 }
                                 android.os.SystemClock.sleep(50L)
                             }
