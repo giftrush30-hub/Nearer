@@ -3061,6 +3061,7 @@ internal object IncomingFilePayloadPolicy {
             !restoringHyperTransfers.add(peerId)) return
         try {
             transferPreparation.execute {
+                var waitingForStreamEngine = false
                 try {
                     outgoingHyperStore.restoreForPeer(peerId).forEach { record ->
                         if (!authenticatedEndpoints.contains(endpointId) ||
@@ -3069,6 +3070,7 @@ internal object IncomingFilePayloadPolicy {
                         val item = TransferBundleItem(record.itemId, record.relativePath, record.displayName, record.sizeBytes, record.mimeType)
                         val prepared = runCatching { streamPayloadBridge.prepareOutgoingPayload() }.getOrNull()
                         if (prepared == null) {
+                            waitingForStreamEngine = true
                             listener.onFileStatus("A saved transfer is waiting for the nearby stream engine to become ready.")
                             return@forEach
                         }
@@ -3097,6 +3099,13 @@ internal object IncomingFilePayloadPolicy {
                     }
                 } finally {
                     restoringHyperTransfers.remove(peerId)
+                    if (waitingForStreamEngine &&
+                        authenticatedEndpoints.contains(endpointId) &&
+                        synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) }) {
+                        deliveryHandler.postDelayed({
+                            restoreOutgoingHyperTransfers(peerId, endpointId)
+                        }, 5_000L)
+                    }
                 }
             }
         } catch (_: java.util.concurrent.RejectedExecutionException) {
