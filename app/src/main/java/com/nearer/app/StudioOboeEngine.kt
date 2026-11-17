@@ -33,6 +33,10 @@ internal object StudioAudioEnginePolicy {
     fun useOboe(apiLevel: Int, preferredInputId: Int?): Boolean =
         apiLevel >= 27
 
+    /** A preferred input is accepted only when Android reports that it is actually routed. */
+    fun matchesPreferredInput(preferredInputId: Int?, routedInputId: Int?): Boolean =
+        preferredInputId == null || preferredInputId == routedInputId
+
     /** AAudio input-preset selection is only applied on API 28+ by this integration. */
     fun useUnprocessedInput(apiLevel: Int, requested: Boolean): Boolean =
         requested && apiLevel >= 28

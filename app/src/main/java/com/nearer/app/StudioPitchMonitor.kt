@@ -333,7 +333,26 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                                 "Android could not route the live monitor to the selected USB microphone. Reconnect it or choose Phone Default."
                             }
                         }
-                        if (audioRecord.state == AudioRecord.STATE_INITIALIZED) audioRecord.startRecording()
+                        check(audioRecord.state == AudioRecord.STATE_INITIALIZED) {
+                            "Android could not initialise the selected microphone."
+                        }
+                        audioRecord.startRecording()
+                        if (preferredInputId != null) {
+                            // setPreferredDevice() confirms that the device is a valid preference,
+                            // not that the capture stream has actually switched to it.
+                            // Give Android a short bounded window to publish the active route.
+                            var routedToRequestedInput = false
+                            repeat(10) {
+                                if (audioRecord.routedDevice?.id == preferredInputId) {
+                                    routedToRequestedInput = true
+                                    return@repeat
+                                }
+                                android.os.SystemClock.sleep(50L)
+                            }
+                            check(routedToRequestedInput) {
+                                "Android did not activate the selected USB microphone. Reconnect it or choose Phone Default."
+                            }
+                        }
                     }
             }.getOrNull()
         }
