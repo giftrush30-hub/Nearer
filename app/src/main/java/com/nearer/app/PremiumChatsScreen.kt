@@ -107,7 +107,7 @@ internal fun PremiumChatsScreen(
         }
     }
     var typingSignalActive by remember(selectedMeshRecipientId) { mutableStateOf(false) }
-    LaunchedEffect(draft, selectedMeshRecipientId, chatReady, isChatVisible) {
+    LaunchedEffect(draft, selectedMeshRecipientId, chatReady) {
         if (draft.isBlank() || !chatReady || !isChatVisible) {
             if (typingSignalActive) {
                 onTyping(false)
@@ -115,6 +115,7 @@ internal fun PremiumChatsScreen(
             }
         } else {
             delay(300)
+            if (!isChatVisible) return@LaunchedEffect
             onTyping(true)
             typingSignalActive = true
             delay(1_800)
@@ -122,7 +123,11 @@ internal fun PremiumChatsScreen(
             typingSignalActive = false
         }
     }
-    DisposableEffect(selectedMeshRecipientId) {
+    DisposableEffect(selectedMeshRecipientId, isChatVisible) {
+        if (!isChatVisible && typingSignalActive) {
+            onTyping(false)
+            typingSignalActive = false
+        }
         onDispose { if (typingSignalActive) onTyping(false) }
     }
 
