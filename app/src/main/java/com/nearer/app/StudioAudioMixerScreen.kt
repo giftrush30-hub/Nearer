@@ -18,6 +18,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -79,15 +81,47 @@ private data class StudioMixTrack(
 internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val projectPreferences = remember(context) { context.getSharedPreferences("nearer_studio_audio_project", android.content.Context.MODE_PRIVATE) }
-    val tracks = remember(context) {
-        mutableStateListOf<StudioMixTrack>().apply {
-            addAll(StudioAudioProjectCodec.decode(projectPreferences.getString("tracks_v1", null)).mapNotNull { saved ->
-                runCatching { StudioMixTrack(Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan, saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix) }.getOrNull()
-            })
+    val projects = remember(context) {
+        mutableStateListOf<StudioAudioProjectLibraryEntry>().apply {
+            addAll(StudioAudioProjectLibraryCodec.decode(projectPreferences.getString("projects_v1", null)))
+            if (isEmpty()) add(StudioAudioProjectLibraryEntry(
+                id = "studio-default", name = "My First Mix", updatedAtMs = System.currentTimeMillis(),
+                tracks = StudioAudioProjectCodec.decode(projectPreferences.getString("tracks_v1", null))
+            ))
         }
     }
-    LaunchedEffect(tracks.map { it.toProjectState() }) {
-        projectPreferences.edit().putString("tracks_v1", StudioAudioProjectCodec.encode(tracks.map { it.toProjectState() })).apply()
+    var currentProjectId by remember(context) { mutableStateOf(projects.first().id) }
+    val tracks = remember(context) {
+        mutableStateListOf<StudioMixTrack>().apply {
+            addAll(projects.first().tracks.map { saved -> StudioMixTrack(
+                Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan,
+                saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix
+            ) })
+        }
+    }
+    LaunchedEffect(currentProjectId, tracks.map { it.toProjectState() }) {
+        val index = projects.indexOfFirst { it.id == currentProjectId }
+        if (index >= 0) {
+            projects[index] = projects[index].copy(tracks = tracks.map { it.toProjectState() }, updatedAtMs = System.currentTimeMillis())
+            projectPreferences.edit().putString("projects_v1", StudioAudioProjectLibraryCodec.encode(projects.toList())).remove("tracks_v1").apply()
+        }
+    }
+    var showProjectPicker by remember { mutableStateOf(false) }
+    var showProjectNameDialog by remember { mutableStateOf(false) }
+    var showDeleteProjectDialog by remember { mutableStateOf(false) }
+    var projectNameDraft by remember { mutableStateOf("") }
+    var creatingProject by remember { mutableStateOf(true) }
+    val currentProject = projects.firstOrNull { it.id == currentProjectId } ?: projects.first()
+    fun switchProject(project: StudioAudioProjectLibraryEntry) {
+        val oldIndex = projects.indexOfFirst { it.id == currentProjectId }
+        if (oldIndex >= 0) projects[oldIndex] = projects[oldIndex].copy(tracks = tracks.map { it.toProjectState() }, updatedAtMs = System.currentTimeMillis())
+        tracks.clear()
+        tracks.addAll(project.tracks.map { saved -> StudioMixTrack(
+            Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan,
+            saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix
+        ) })
+        currentProjectId = project.id
+        exported = null
     }
     var exporting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Build a layered mix from voice, music and sound effects stored on your phone.") }
@@ -128,6 +162,60 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
         exported = null
     }
 
+    if (showProjectPicker) AlertDialog(
+        onDismissRequest = { showProjectPicker = false },
+        title = { Text("Your Studio projects") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            projects.sortedByDescending { it.updatedAtMs }.forEach { project ->
+                Button(onClick = { switchProject(project); showProjectPicker = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (project.id == currentProjectId) Mint else Panel,
+                        contentColor = if (project.id == currentProjectId) Midnight else White
+                    )) { Text("${if (project.id == currentProjectId) "✓  " else ""}${project.name} · ${project.tracks.size} tracks") }
+            }
+        } },
+        confirmButton = { Button(onClick = { showProjectPicker = false }) { Text("CLOSE") } }
+    )
+    if (showProjectNameDialog) AlertDialog(
+        onDismissRequest = { showProjectNameDialog = false },
+        title = { Text(if (creatingProject) "Create a project" else "Rename project") },
+        text = { OutlinedTextField(value = projectNameDraft, onValueChange = { projectNameDraft = it.take(48) },
+            label = { Text("Project name") }, singleLine = true) },
+        confirmButton = { Button(onClick = {
+            val safeName = StudioAudioProjectLibraryCodec.normalizeName(projectNameDraft)
+            if (creatingProject) {
+                val created = StudioAudioProjectLibraryEntry(java.util.UUID.randomUUID().toString(), safeName, System.currentTimeMillis(), emptyList())
+                projects.add(created)
+                tracks.clear()
+                currentProjectId = created.id
+                exported = null
+            } else {
+                val index = projects.indexOfFirst { it.id == currentProjectId }
+                if (index >= 0) projects[index] = projects[index].copy(name = safeName, updatedAtMs = System.currentTimeMillis())
+            }
+            showProjectNameDialog = false
+        }) { Text(if (creatingProject) "CREATE" else "SAVE") } },
+        dismissButton = { Button(onClick = { showProjectNameDialog = false }) { Text("CANCEL") } }
+    )
+    if (showDeleteProjectDialog) AlertDialog(
+        onDismissRequest = { showDeleteProjectDialog = false },
+        title = { Text("Delete this project?") },
+        text = { Text("Only the saved arrangement is removed. Your original audio files are never deleted.") },
+        confirmButton = { Button(onClick = {
+            projects.removeAll { it.id == currentProjectId }
+            val replacement = projects.first()
+            tracks.clear()
+            tracks.addAll(replacement.tracks.map { saved -> StudioMixTrack(
+                Uri.parse(saved.uri), saved.name, saved.durationMs, saved.muted, saved.gain, saved.pan,
+                saved.fadeInMs, saved.fadeOutMs, saved.lowGainDb, saved.midGainDb, saved.highGainDb, saved.reverbMix
+            ) })
+            currentProjectId = replacement.id
+            exported = null
+            showDeleteProjectDialog = false
+        }) { Text("DELETE") } },
+        dismissButton = { Button(onClick = { showDeleteProjectDialog = false }) { Text("CANCEL") } }
+    )
     Column(
         Modifier.fillMaxSize().background(Midnight).verticalScroll(rememberScrollState()).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -138,7 +226,24 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
         }
         Text("Mix every layer.", color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
         Text("A phone-friendly multitrack desk. Balance each layer, shape its entrance and ending, reorder the arrangement, then render one local mix.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
-        Text("● PROJECT AUTO-SAVED ON THIS PHONE", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Surface(color = Panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("PROJECT LIBRARY  ·  ${projects.size}/20", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text(currentProject.name, color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text("${tracks.size} audio layers · Saved locally on this phone", color = Muted, fontSize = 10.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Button(onClick = { showProjectPicker = true }, modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) { Text("OPEN", fontSize = 9.sp) }
+                    Button(onClick = { creatingProject = true; projectNameDraft = ""; showProjectNameDialog = true },
+                        enabled = projects.size < 20, modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) { Text("＋ NEW", fontSize = 9.sp) }
+                    Button(onClick = { creatingProject = false; projectNameDraft = currentProject.name; showProjectNameDialog = true },
+                        modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("RENAME", fontSize = 9.sp) }
+                    Button(onClick = { showDeleteProjectDialog = true }, enabled = projects.size > 1,
+                        colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Muted)) { Text("×") }
+                }
+            }
+        }
         Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
             Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
