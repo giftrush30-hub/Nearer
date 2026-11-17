@@ -505,8 +505,29 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
                 val count = withContext(Dispatchers.IO) {
                     val read = recorder.read(pcm, 0, pcm.size, AudioRecord.READ_BLOCKING)
                     if (read > 0 && monitorTrack != null && !outputRouteLost.get()) {
-                        val written = monitorTrack.write(pcm, 0, read, AudioTrack.WRITE_BLOCKING)
-                        if (written < 0) -2 else read
+                        // Poll the active route on the audio worker as well as listening for
+                        // routing callbacks, so a delayed main-thread callback cannot keep
+                        // forwarding microphone samples after Android changes the output.
+                        if (!StudioAudioEnginePolicy.matchesPreferredOutput(
+                                selectedOutputId,
+                                monitorTrack.routedDevice?.id
+                            )
+                        ) {
+                            outputRouteLost.set(true)
+                            runCatching { monitorTrack.pause() }
+                            -2
+                        } else {
+                            val written = monitorTrack.write(pcm, 0, read, AudioTrack.WRITE_BLOCKING)
+                            val routeStillSelected = StudioAudioEnginePolicy.matchesPreferredOutput(
+                                selectedOutputId,
+                                monitorTrack.routedDevice?.id
+                            )
+                            if (written < 0 || !routeStillSelected) {
+                                outputRouteLost.set(true)
+                                runCatching { monitorTrack.pause() }
+                                -2
+                            } else read
+                        }
                     } else read
                 }
                 if (outputRouteLost.get()) {
