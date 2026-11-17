@@ -388,44 +388,90 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
             return@LaunchedEffect
         }
 
+        val outputRouteLost = AtomicBoolean(false)
+        var outputRoutingListener: AudioRouting.OnRoutingChangedListener? = null
+        var monitorOutputError: String? = null
         val monitorTrack = if (monitorEnabled) {
-            runCatching {
-                val minOutputBuffer = AudioTrack.getMinBufferSize(
-                    sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT
-                )
-                check(minOutputBuffer > 0) { "No compatible audio output is available." }
-                val outputBufferFrames = StudioAudioBufferPolicy.bufferFrames(minOutputBuffer, framesPerBurst, 512)
-                AudioTrack.Builder()
-                    .setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                            .build()
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val selectedOutput = audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                        ?.firstOrNull { it.id == selectedOutputId && it.isSink && StudioAudioEnginePolicy.isHeadphoneOutputType(it.type) }
+                    check(selectedOutput != null) { "The selected headphone output was disconnected." }
+                    val minOutputBuffer = AudioTrack.getMinBufferSize(
+                        sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT
                     )
-                    .setAudioFormat(
-                        AudioFormat.Builder()
-                            .setSampleRate(sampleRate)
-                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                            .build()
-                    )
-                    .setTransferMode(AudioTrack.MODE_STREAM)
-                    .setBufferSizeInBytes(outputBufferFrames * 2)
-                    .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
-                    .build()
-                    .also { track ->
-                        check(track.state == AudioTrack.STATE_INITIALIZED) { "Android could not initialise the monitoring output." }
+                    check(minOutputBuffer > 0) { "No compatible audio output is available." }
+                    val outputBufferFrames = StudioAudioBufferPolicy.bufferFrames(minOutputBuffer, framesPerBurst, 512)
+                    val track = AudioTrack.Builder()
+                        .setAudioAttributes(
+                            AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_MEDIA)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                                .build()
+                        )
+                        .setAudioFormat(
+                            AudioFormat.Builder()
+                                .setSampleRate(sampleRate)
+                                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                .build()
+                        )
+                        .setTransferMode(AudioTrack.MODE_STREAM)
+                        .setBufferSizeInBytes(outputBufferFrames * 2)
+                        .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+                        .build()
+                    try {
+                        check(track.state == AudioTrack.STATE_INITIALIZED) {
+                            "Android could not initialise the monitoring output."
+                        }
+                        check(track.setPreferredDevice(selectedOutput)) {
+                            "Android rejected the selected headphone output."
+                        }
                         val targetFrames = maxOf(framesPerBurst * 3, 512)
                         if (android.os.Build.VERSION.SDK_INT >= 24) {
                             runCatching { track.setBufferSizeInFrames(targetFrames.coerceAtMost(track.bufferSizeInFrames)) }
                         }
+                        // No microphone samples are written until the active route is verified.
                         track.play()
+                        var routedToHeadphones = false
+                        for (attempt in 0 until 10) {
+                            if (StudioAudioEnginePolicy.matchesPreferredOutput(selectedOutputId, track.routedDevice?.id)) {
+                                routedToHeadphones = true
+                                break
+                            }
+                            android.os.SystemClock.sleep(50L)
+                        }
+                        check(routedToHeadphones) {
+                            "Android did not activate the selected headphone output. Live microphone playback was not started."
+                        }
+                        val listener = AudioRouting.OnRoutingChangedListener { routing ->
+                            if (!StudioAudioEnginePolicy.matchesPreferredOutput(selectedOutputId, routing.routedDevice?.id)) {
+                                outputRouteLost.set(true)
+                                (routing as? AudioTrack)?.pause()
+                            }
+                        }
+                        outputRoutingListener = listener
+                        track.addOnRoutingChangedListener(listener, android.os.Handler(android.os.Looper.getMainLooper()))
+                        track
+                    } catch (error: Exception) {
+                        runCatching { track.pause() }
+                        runCatching { track.flush() }
+                        runCatching { track.release() }
+                        throw error
                     }
-            }.getOrElse {
-                status = "Live monitor unavailable: ${it.message ?: "audio output could not start"}"
-                null
+                }.onFailure { monitorOutputError = it.message }.getOrNull()
             }
         } else null
+
+        if (monitorEnabled && monitorTrack == null) {
+            withContext(Dispatchers.IO) {
+                if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) runCatching { recorder.stop() }
+                runCatching { recorder.release() }
+            }
+            monitorEnabled = false
+            status = "Live monitor unavailable: ${monitorOutputError ?: "the headphone route could not be verified"}. No microphone audio was sent to the speaker."
+            return@LaunchedEffect
+        }
 
         val chunkSize = 512
         val pcm = ShortArray(chunkSize)
@@ -434,19 +480,35 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
         val pitchFramesJava = pitchFrames
         try {
             while (isActive) {
+                if (outputRouteLost.get()) {
+                    status = "Headphone output changed. Live microphone playback stopped to prevent speaker feedback."
+                    monitorEnabled = false
+                    break
+                }
                 val count = withContext(Dispatchers.IO) {
                     val read = recorder.read(pcm, 0, pcm.size, AudioRecord.READ_BLOCKING)
-                    if (read > 0 && monitorTrack != null) {
+                    if (read > 0 && monitorTrack != null && !outputRouteLost.get()) {
                         val written = monitorTrack.write(pcm, 0, read, AudioTrack.WRITE_BLOCKING)
                         if (written < 0) -2 else read
                     } else read
                 }
-                if (count == -2) {
-                    status = "Live monitor output was interrupted."
-                    continue
+                if (outputRouteLost.get()) {
+                    status = "Headphone output changed. Live microphone playback stopped to prevent speaker feedback."
+                    monitorEnabled = false
+                    break
                 }
-                if (count <= 0) {
-                    status = "Microphone read interrupted."
+                if (count == -2) {
+                    status = "Live monitor output was interrupted. Monitoring stopped."
+                    monitorEnabled = false
+                    break
+                }
+                if (count < 0) {
+                    status = "Microphone stream stopped or was disconnected."
+                    monitorEnabled = false
+                    break
+                }
+                if (count == 0) {
+                    delay(4)
                     continue
                 }
                 for (i in 0 until count) {
@@ -470,8 +532,13 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
             }
         } finally {
             withContext(Dispatchers.IO) {
-                runCatching { monitorTrack?.pause() }
-                runCatching { monitorTrack?.flush() }
+                monitorTrack?.let { track ->
+                    outputRoutingListener?.let { listener ->
+                        runCatching { track.removeOnRoutingChangedListener(listener) }
+                    }
+                    runCatching { track.pause() }
+                    runCatching { track.flush() }
+                }
                 runCatching { monitorTrack?.release() }
                 runCatching { recorder.stop() }
                 recorder.release()
