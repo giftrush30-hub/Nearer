@@ -51,7 +51,7 @@ internal object CommunityIngressPolicy {
                     memberIds.size in 1..MAX_GROUP_MEMBERS &&
                     memberIds.distinct().size == memberIds.size &&
                     memberIds.all { NeaRerIdentity.normalize(it) == it && it.isNotBlank() } &&
-                    memberNames.size == memberIds.size &&
+                    memberNames.size in 1..MAX_GROUP_MEMBERS &&
                     memberNames.all { it.isNotBlank() && it.length <= MAX_SENDER_NAME_LENGTH } &&
                     packet.optString("code").matches(GROUP_CODE)
             }

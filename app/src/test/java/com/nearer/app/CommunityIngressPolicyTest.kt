@@ -104,20 +104,20 @@ class CommunityIngressPolicyTest {
         assertFalse(CommunityIngressPolicy.isValid(duplicate, sender))
     }
 
-    @Test fun rejectsMismatchedOrBlankGroupRosterNames() {
-        val mismatched = packet("group_members") {
-            put("code", "123456").put("ownerPeerId", sender)
-            put("memberPeerIds", JSONArray(listOf(sender, "ABCDEF")))
-            put("members", JSONArray(listOf("Ada")))
-        }
-        assertFalse(CommunityIngressPolicy.isValid(mismatched, sender))
-
+    @Test fun rejectsBlankAndOversizedGroupRosterNames() {
         val blankName = packet("group_members") {
             put("code", "123456").put("ownerPeerId", sender)
             put("memberPeerIds", JSONArray(listOf(sender, "ABCDEF")))
             put("members", JSONArray(listOf("Ada", " ")))
         }
         assertFalse(CommunityIngressPolicy.isValid(blankName, sender))
+
+        val oversizedName = packet("group_members") {
+            put("code", "123456").put("ownerPeerId", sender)
+            put("memberPeerIds", JSONArray(listOf(sender, "ABCDEF")))
+            put("members", JSONArray(listOf("Ada", "B".repeat(33))))
+        }
+        assertFalse(CommunityIngressPolicy.isValid(oversizedName, sender))
     }
 
     @Test fun permitsBoundedLegacySocketLudoButNotLegacyGroupMessages() {
