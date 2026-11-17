@@ -78,10 +78,10 @@ The earlier architecture documents exist on `chore/architecture-quality-foundati
 
 ### P1 — Open pull request coordination
 
-At the time of this audit, 11 pull requests are open. The set includes:
+At the time of the initial branch inventory, 11 pull requests were open. PR #269 then merged into main during this audit refresh, so 10 remain open at the audited baseline. The relevant coordination set includes:
 - PR #234 — architecture and quality foundation (draft, old baseline, reported merge conflicts).
 - PR #250 — architecture cleanup combined with durable HyperTransfer work (draft, older base).
-- PR #269 — Studio Audio projects/timeline (draft; latest run was in progress during this audit).
+- PR #269 — Studio Audio projects/timeline (merged into main at `9cd557ce3cf1fb4de65a9985cf0ef1bdd42f0270`; its exact-head CI run completed successfully).
 - PR #270 — Android 8 compatibility guards (draft; latest recorded validation succeeded).
 - PR #268 — durable HyperTransfer sender work (not draft).
 
