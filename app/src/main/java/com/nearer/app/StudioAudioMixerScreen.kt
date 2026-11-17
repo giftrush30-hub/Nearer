@@ -697,6 +697,13 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                 message = "Rendering ${activeTracks.size} track(s) with their own volume and fade envelopes…"
                 val temporarySilenceFiles = mutableListOf<File>()
                 val sequences = activeTracks.map { track ->
+                    val sourceClipDurationMs = if (track.durationMs > 0L) {
+                        (track.clipEndMs - track.clipStartMs).coerceAtLeast(1L)
+                    } else track.durationMs
+                    val outputClipDurationMs = StudioTempoAutomationPolicy.outputDurationMs(
+                        track.tempoPoints,
+                        sourceClipDurationMs
+                    )
                     val effects = Effects(
                         listOf(
                             ToInt16PcmAudioProcessor(),
@@ -722,7 +729,7 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                         itemBuilder.setSpeed(
                             StudioTempoAutomationPolicy.speedParameters(
                                 track.tempoPoints,
-                                if (track.durationMs > 0L) track.clipEndMs - track.clipStartMs else 0L
+                                sourceClipDurationMs
                             )
                         )
                     }
