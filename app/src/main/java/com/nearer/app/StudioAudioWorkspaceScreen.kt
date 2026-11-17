@@ -206,10 +206,10 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
                                 output = file
                                 elapsedSeconds = 0
                                 recording = true
-                                message = if (supportsUnprocessedInput) {
-                                    "Recording with the device's unprocessed microphone path. Tap stop when finished."
-                                } else {
-                                    "Recording with Android's voice-recognition input fallback. Tap stop when finished."
+                                message = when {
+                                    usbRoutingUnavailable -> "Android 8 cannot route MediaRecorder directly to USB microphones. This take is using the phone's default input."
+                                    supportsUnprocessedInput -> "Recording with the device's unprocessed microphone path. Tap stop when finished."
+                                    else -> "Recording with Android's voice-recognition input fallback. Tap stop when finished."
                                 }
                             }.onFailure { error ->
                                 runCatching { recorder?.release() }
