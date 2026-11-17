@@ -16,7 +16,7 @@ This audit is based on the latest shared `main` at `366f5bdcbbbc4bc52a0abb8fecfc
 
 - De-essing now follows a smoothed sibilance-band envelope (2 ms attack / 55 ms release) instead of applying gain reduction directly to every waveform peak. This is intended to reduce harsh, buzzy modulation.
 - Filter cutoff calculations are clamped below Nyquist (45% of the actual input sample rate), avoiding invalid high-frequency filter settings on low-rate sources.
-- Regression coverage now checks stronger attenuation of a 7 kHz sibilance test tone than a 220 Hz vocal fundamental, and verifies that an 8 kHz input can be configured and processed.
+- Regression coverage now checks stronger attenuation of a 7 kHz sibilance test tone than a 220 Hz vocal fundamental, stronger compression on a sustained loud tone, centre collapse at zero stereo width, and 8 kHz input configuration.
 - The processor documentation explicitly avoids claiming spectral denoising, a physical condenser microphone model, or true-peak mastering. The current noise-control stage remains a gate/expander, and the limiter remains sample-peak based.
 
 ## Equal-power crossfade behaviour
