@@ -12,6 +12,23 @@ Status: the one-to-one Point-to-Point mode is implemented, but no physical-devic
 
 The code-level acceptance gate is `HyperTransferPerformanceGate`. It converts the 280 MB/s decimal target to MiB/s and requires both the absolute target and 7× measured baseline, with at least five successful runs for each app.
 
+## Hardware feasibility: the 280 MB/s target is not universal
+
+280 MB/s decimal is **2.24 Gbit/s of application payload**. A device's advertised Wi-Fi PHY rate is not its file-transfer goodput, and both phones must support a sufficiently fast direct link.
+
+For a concrete compatibility example, the Galaxy A40 (SM-A405FN family) is specified as dual-band Wi-Fi 5 / 802.11ac with VHT80 and Wi-Fi Direct. Even a theoretical two-spatial-stream 802.11ac link at 80 MHz tops out at about **866.7 Mbit/s PHY** (about 108 MB/s before protocol overhead), well below the 2.24 Gbit/s application target. The exact spatial-stream capability of a particular handset must be queried; do not assume MIMO means two streams.
+
+Consequences:
+- Keep the app compatible with older Wi-Fi 5 phones, but do not promise 280 MB/s on them.
+- Use them for compatibility, stability, resume, and realistic baseline testing.
+- Reserve the 280 MB/s acceptance test for phone pairs whose reported radio capabilities can plausibly exceed the target, with substantial PHY headroom.
+- Query actual Android capabilities and current radio availability on both devices; never infer capability from model name alone.
+- If either endpoint is the bottleneck, the pair cannot pass the absolute target regardless of software tuning.
+
+Reference specifications:
+- Galaxy A40 Wi-Fi 5 / VHT80 / Wi-Fi Direct: https://www.phonemore.com/specs/samsung/galaxy-a40-sm-a405fnds/
+- 802.11ac 80 MHz, two-stream theoretical ceiling: https://www.tec.gov.in/pdf/TSTP/TSTP_WiFiAP_GR_2022_v3.0_final_copy_May_2022_issue_f.pdf
+
 ## What the research says
 
 1. **Google Nearby strategy guidance.** Cluster is designed for many-to-many connectivity and is lower bandwidth; Star is one-to-many and higher bandwidth; Point-to-Point is one-to-one and explicitly the highest-throughput topology. This supports using Point-to-Point for a dedicated single-recipient bulk-transfer session while preserving Cluster for messaging/mesh.
@@ -77,7 +94,7 @@ For each phone pair and each direction:
 
 `HyperTransferTransportPolicy` now provides a pure Kotlin decision layer for the next transport phase:
 
-- It checks capability on **both** phones, including Android API level, hardware support and the relevant permission state.
+- It checks capability on **both** phones, including Android API level, hardware support, relevant permission state, and current Wi-Fi Direct / Wi-Fi Aware radio availability. Static hardware support alone is not enough.
 - It treats Wi-Fi Direct TCP and Wi-Fi Aware TCP as candidates, not assumed winners.
 - An alternative can be selected only when there are at least five successful runs for the exact device-pair key and transfer direction, all with integrity verification, and a positive measured median byte rate.
 - It chooses the fastest qualified profile for that exact pair/direction. A result measured on another pair or in the opposite direction cannot influence selection.
@@ -112,7 +129,7 @@ The protocol includes:
 - Rejection of negative sizes, mismatched transfer IDs, truncated streams, insufficient free storage, and destination collisions.
 - Cancellation by closing the active socket, plus socket and temporary-file cleanup on exit.
 
-Loopback JVM tests cover a 512 KiB transfer, empty files, wrong transfer IDs, and preservation of an existing destination. These tests exercise the TCP framing/data plane on a local socket; they do not prove Wi-Fi Direct radio performance, Android lifecycle correctness, or interoperability with the current Nearby protocol.
+Loopback JVM tests cover a 512 KiB transfer, empty files, wrong transfer IDs, corrupted payload rejection, preservation of an existing destination, and stalled-peer read-timeout cleanup. The engine uses a configurable 30-second socket read timeout by default; this is an idle-read bound, not a total transfer-duration limit. These tests exercise the TCP framing/data plane on a local socket; they do not prove Wi-Fi Direct radio performance, Android lifecycle correctness, or interoperability with the current Nearby protocol.
 
 The sender and receiver must use this exact protocol version and transfer ID. A later integration must add authenticated peer/session negotiation before opening the data socket; the transfer ID alone is not authentication. The coordinator must also apply socket read/connect timeouts and ensure the socket is bound/routed through the intended Wi-Fi Direct network.
 
