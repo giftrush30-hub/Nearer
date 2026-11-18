@@ -28,17 +28,20 @@ internal object HyperTransferSessionTranscript {
      */
     fun create(
         transferId: String,
-        sender: PeerMaterial,
-        receiver: PeerMaterial,
+        local: PeerMaterial,
+        remote: PeerMaterial,
+        localIsSender: Boolean,
         protocolVersion: Int = PROTOCOL_VERSION
     ): ByteArray {
         require(protocolVersion == PROTOCOL_VERSION) { "Unsupported HyperTransfer protocol version" }
         require(transferId.matches(Regex("^[a-fA-F0-9]{64}$"))) { "Invalid transfer ID" }
+        validate(local)
+        validate(remote)
+        val sender = if (localIsSender) local else remote
+        val receiver = if (localIsSender) remote else local
         val senderId = requireNotNull(NeaRerIdentity.normalize(sender.peerId)) { "Invalid sender peer identity" }
         val receiverId = requireNotNull(NeaRerIdentity.normalize(receiver.peerId)) { "Invalid receiver peer identity" }
         require(senderId != receiverId) { "A peer cannot transfer to itself" }
-        validate(sender)
-        validate(receiver)
 
         val normalizedSender = sender.copy(peerId = senderId)
         val normalizedReceiver = receiver.copy(peerId = receiverId)
