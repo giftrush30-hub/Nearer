@@ -53,13 +53,13 @@ internal object NearbyLanFileSender {
 
             fun awaitExpected(expected: NearbyTransferFileChunkCodec.Ack, next: () -> Unit) {
                 ackWaiter.await(expected) { result ->
-                    when (result) {
-                        is Result.Success -> {
-                            if (result.value == expected) next()
+                    result.fold(
+                        onSuccess = { received ->
+                            if (received == expected) next()
                             else fail(IllegalStateException("Receiver ACK did not match the expected committed prefix"))
-                        }
-                        is Result.Failure -> fail(result.exception)
-                    }
+                        },
+                        onFailure = ::fail
+                    )
                 }
             }
 
