@@ -12,6 +12,7 @@ public enum NeaRerTransferFileStreamErrorV1: Error, Equatable {
     case destinationExists
     case unsafeDestination
     case alreadyFinished
+    case invalidAcknowledgement
 }
 
 public final class NeaRerTransferFileStreamWriterV1 {
