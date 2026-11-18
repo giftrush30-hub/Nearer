@@ -18,6 +18,8 @@ import java.io.Closeable
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
+import java.net.Inet4Address
 import java.net.ServerSocket
 import java.net.Socket
 
@@ -78,7 +80,7 @@ internal class WifiDirectConnectionCoordinator(
                 addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
             }
             if (Build.VERSION.SDK_INT >= 33) appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            else @Suppress("DEPRECATION") appContext.registerReceiver(receiver, filter)
+            else { @Suppress("DEPRECATION") appContext.registerReceiver(receiver, filter) }
             registered = true
         }
         channel = p2pManager.initialize(appContext, callbackHandler.looper, this)
@@ -118,8 +120,9 @@ internal class WifiDirectConnectionCoordinator(
         requireConnected()
         require(port in 1..65535)
         require(backlog > 0)
+        val localP2pAddress = findLocalP2pAddress()
         val socket = ServerSocket()
-        try { socket.reuseAddress = false; socket.bind(InetSocketAddress(port), backlog); return socket }
+        try { socket.reuseAddress = false; socket.bind(InetSocketAddress(localP2pAddress, port), backlog); return socket }
         catch (error: IOException) { try { socket.close() } catch (_: IOException) { }; throw error }
     }
 
@@ -130,7 +133,12 @@ internal class WifiDirectConnectionCoordinator(
         require(!link.isGroupOwner) { "The group owner must accept a server socket." }
         require(port in 1..65535 && connectTimeoutMillis > 0)
         val socket = Socket()
-        try { socket.tcpNoDelay = true; socket.connect(InetSocketAddress(link.groupOwnerAddress, port), connectTimeoutMillis); return socket }
+        try {
+            socket.tcpNoDelay = true
+            socket.bind(InetSocketAddress(findLocalP2pAddress()))
+            socket.connect(InetSocketAddress(link.groupOwnerAddress, port), connectTimeoutMillis)
+            return socket
+        }
         catch (error: IOException) { try { socket.close() } catch (_: IOException) { }; throw error }
     }
 
@@ -182,6 +190,26 @@ internal class WifiDirectConnectionCoordinator(
                 }
             }
         } catch (_: SecurityException) { fail("Wi-Fi Direct permission was revoked.") }
+    }
+
+    /**
+     * Restricts listeners and clients to the Wi-Fi Direct interface. Failing
+     * closed is safer than exposing a bulk-transfer listener on ordinary Wi-Fi
+     * or mobile-data interfaces.
+     */
+    @Throws(IOException::class)
+    private fun findLocalP2pAddress(): Inet4Address {
+        val interfaces = NetworkInterface.getNetworkInterfaces() ?: throw IOException("No network interfaces are available")
+        while (interfaces.hasMoreElements()) {
+            val networkInterface = interfaces.nextElement()
+            if (!networkInterface.name.startsWith("p2p", ignoreCase = true) || !networkInterface.isUp) continue
+            val addresses = networkInterface.inetAddresses
+            while (addresses.hasMoreElements()) {
+                val address = addresses.nextElement()
+                if (address is Inet4Address && !address.isLoopbackAddress && !address.isLinkLocalAddress) return address
+            }
+        }
+        throw IOException("The Wi-Fi Direct network interface is not ready")
     }
 
     private fun missingRuntimePermissions(): List<String> {
