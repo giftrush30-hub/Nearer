@@ -3,6 +3,8 @@ import Foundation
 import Network
 import NeaRerWire
 
+public enum NearbyTransportSecurityError: Error { case connectionUnavailable, peerNotAuthenticated }
+
 /// TCP/Bonjour adapter for local Wi-Fi and Apple's iPhone-to-iPhone peer-to-peer Wi-Fi.
 /// Android interoperation requires the separately specified Android TCP/Bonjour adapter.
 public final class NetworkFrameworkPeerTransport: NearbyPeerTransport, @unchecked Sendable {
@@ -18,6 +20,7 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport, @unchecke
     private var browser: NWBrowser?
     private var discovered: [String: NWEndpoint] = [:]
     private var connections: [String: NWConnection] = [:]
+    private var authenticatedEndpoints = Set<String>()
     private var decoders: [String: TransportFrameDecoder] = [:]
 
     public init(peerID: String) throws {
@@ -109,6 +112,15 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport, @unchecke
         }
     }
 
+    /// Called only after the v3 proof, signed recipient binding and explicit trust decision succeed.
+    public func setPeerAuthenticated(_ authenticated: Bool, endpointID: String) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            if authenticated { self.authenticatedEndpoints.insert(endpointID) }
+            else { self.authenticatedEndpoints.remove(endpointID) }
+        }
+    }
+
     /// Streams a file in bounded chunks. Network.framework completion is used as
     /// backpressure: the next chunk is read only after the previous frame is processed.
     /// The receiver must still verify NRSM metadata, per-chunk offsets and final SHA-256.
@@ -117,7 +129,11 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport, @unchecke
                                completion: @escaping (Result<NeaRerTransferFileEndV1, Error>) -> Void) {
         queue.async { [weak self] in
             guard let self, let connection = self.connections[endpointID] else {
-                completion(.failure(TransportFrameError.emptyFrame))
+                completion(.failure(NearbyTransportSecurityError.connectionUnavailable))
+                return
+            }
+            guard self.authenticatedEndpoints.contains(endpointID) else {
+                completion(.failure(NearbyTransportSecurityError.peerNotAuthenticated))
                 return
             }
             do {
@@ -191,6 +207,7 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport, @unchecke
             self.listener = nil
             for key in Array(self.connections.keys) { self.removeConnection(key, cancel: true) }
             self.discovered.removeAll()
+            self.authenticatedEndpoints.removeAll()
             self.onStateChanged?(.idle)
         }
     }
@@ -251,6 +268,7 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport, @unchecke
     }
 
     private func removeConnection(_ endpointID: String, cancel: Bool) {
+        authenticatedEndpoints.remove(endpointID)
         if let connection = connections.removeValue(forKey: endpointID), cancel {
             connection.cancel()
         }
