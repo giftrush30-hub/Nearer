@@ -68,8 +68,13 @@ internal object TransferBenchmarkReport {
         } + "\n"
     }
 
-    private fun escape(value: String): String =
-        if (value.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) {
-            "\"" + value.replace("\"", "\"\"") + "\""
+    private fun escape(value: String): String {
+        // CSV quoting alone does not stop spreadsheet formula execution.
+        val safe = if (value.firstOrNull() in setOf('=', '+', '-', '@', '\t', '\r')) {
+            "'$value"
         } else value
+        return if (safe.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) {
+            "\"" + safe.replace("\"", "\"\"") + "\""
+        } else safe
+    }
 }
