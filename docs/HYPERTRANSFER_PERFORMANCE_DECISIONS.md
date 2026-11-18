@@ -226,3 +226,11 @@ The acceptance API now has a strict `evaluateControlled` entry point. It refuses
 - benchmark-condition key (room/placement, radio settings and other controlled setup).
 
 Each side must contain at least five successful runs, and each successful run must have transferred the exact comparison-file byte count. Failed attempts remain in the run list and are excluded from the median goodput rather than silently converted into fast successes. The 280 MB/s absolute target and 7× measured Xender target must both pass. This prevents mixing a NeaRer result from one phone pair/file/direction with an unrelated Xender baseline.
+
+
+## High-bandwidth TCP window tuning (18 November 2026)
+
+- The secure and compatibility TCP engines now request a 4 MiB send/receive socket buffer by default, with a bounded configurable range of 64 KiB to 16 MiB. The streaming buffer remains independently configurable from 8 KiB to 1 MiB (default 256 KiB); secure AEAD records remain capped at 256 KiB.
+- Wi-Fi Direct client sockets request send and receive windows before connect. The group-owner listener requests a receive window before bind/accept. The engine re-applies the configured socket hints once the connected socket is handed to it.
+- Bulk TCP keeps Nagle enabled because the writer batches large records through buffered streams; interactive messages remain on Nearby. These socket options are kernel hints, not guaranteed allocations or throughput promises. Record effective getSendBufferSize()/getReceiveBufferSize() values on each device during physical profiling.
+- This is a measured-bottleneck candidate, not evidence of a 280 MB/s result. The production app still does not route file bytes through the authenticated Wi-Fi Direct engine; service-owned P2P lifecycle integration and exact-device benchmark runs remain hard blockers.
