@@ -14,14 +14,14 @@ class TransferResumeCodecGoldenVectorTest {
             transferId = "x",
             itemId = "i",
             relativePath = "a",
-            expectedSizeBytes = 10L,
+            expectedSizeBytes = 8_388_608L,
             sourceModifiedAtMillis = null,
             committedOffsetBytes = 4L * 1024L * 1024L,
             prefixSha256 = digest
         )
         val actual = TransferResumeMessageCodec.encode(7L, proposal)
             .joinToString("") { "%02x".format(it) }
-        val expected = "4e525253010000000000000007000178000169000161000000000000000a00000000004000000040" + "00".repeat(32)
+        val expected = "4e52525301000000000000000700017800016900016100000000008000000000000000004000000040" + "30".repeat(64)
         assertEquals(expected, actual)
         val decoded = TransferResumeMessageCodec.decode(expected.hexToBytes())
         assertEquals(7L, decoded.payloadId)
