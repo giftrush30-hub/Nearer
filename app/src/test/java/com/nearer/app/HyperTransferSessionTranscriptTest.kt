@@ -4,7 +4,6 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HyperTransferSessionTranscriptTest {
@@ -20,8 +19,8 @@ class HyperTransferSessionTranscriptTest {
     fun transcriptIsDeterministicForTheSameTransferRolesAndPeerMaterial() {
         val sender = peer("23456789ABCD", 1)
         val receiver = peer("EFGHJKMNPQRS", 2)
-        val fromSender = HyperTransferSessionTranscript.create("a".repeat(64), sender, receiver)
-        val fromReceiver = HyperTransferSessionTranscript.create("a".repeat(64), sender, receiver)
+        val fromSender = HyperTransferSessionTranscript.create("a".repeat(64), sender, receiver, localIsSender = true)
+        val fromReceiver = HyperTransferSessionTranscript.create("a".repeat(64), receiver, sender, localIsSender = false)
         assertArrayEquals(fromSender, fromReceiver)
     }
 
@@ -30,7 +29,7 @@ class HyperTransferSessionTranscriptTest {
         val sender = peer("23456789ABCD", 1)
         val receiver = peer("EFGHJKMNPQRS", 2)
         val first = HyperTransferSessionTranscript.create("a".repeat(64), sender, receiver)
-        val second = HyperTransferSessionTranscript.create("b".repeat(64), sender, receiver)
+        val second = HyperTransferSessionTranscript.create("b".repeat(64), sender, receiver, localIsSender = true)
         assertFalse(first.contentEquals(second))
     }
 
@@ -38,8 +37,8 @@ class HyperTransferSessionTranscriptTest {
     fun senderAndReceiverRolesAreBoundIntoTranscript() {
         val first = peer("23456789ABCD", 1)
         val second = peer("EFGHJKMNPQRS", 2)
-        val forward = HyperTransferSessionTranscript.create("c".repeat(64), first, second)
-        val reverse = HyperTransferSessionTranscript.create("c".repeat(64), second, first)
+        val forward = HyperTransferSessionTranscript.create("c".repeat(64), first, second, localIsSender = true)
+        val reverse = HyperTransferSessionTranscript.create("c".repeat(64), second, first, localIsSender = true)
         assertFalse(forward.contentEquals(reverse))
     }
 
@@ -47,9 +46,9 @@ class HyperTransferSessionTranscriptTest {
     fun peerKeysAndNoncesAreBoundIntoTranscript() {
         val sender = peer("23456789ABCD", 1)
         val receiver = peer("EFGHJKMNPQRS", 2)
-        val baseline = HyperTransferSessionTranscript.create("d".repeat(64), sender, receiver)
+        val baseline = HyperTransferSessionTranscript.create("d".repeat(64), sender, receiver, localIsSender = true)
         val changed = receiver.copy(nonce = ByteArray(32) { 99 })
-        val altered = HyperTransferSessionTranscript.create("d".repeat(64), sender, changed)
+        val altered = HyperTransferSessionTranscript.create("d".repeat(64), sender, changed, localIsSender = true)
         assertNotEquals(baseline.toList(), altered.toList())
     }
 
@@ -57,10 +56,10 @@ class HyperTransferSessionTranscriptTest {
     fun rejectsInvalidTransferIdsAndSamePeer() {
         val sender = peer("23456789ABCD", 1)
         assertThrows(IllegalArgumentException::class.java) {
-            HyperTransferSessionTranscript.create("not-a-transfer-id", sender, peer("EFGHJKMNPQRS", 2))
+            HyperTransferSessionTranscript.create("not-a-transfer-id", sender, peer("EFGHJKMNPQRS", 2), localIsSender = true)
         }
         assertThrows(IllegalArgumentException::class.java) {
-            HyperTransferSessionTranscript.create("e".repeat(64), sender, sender)
+            HyperTransferSessionTranscript.create("e".repeat(64), sender, sender, localIsSender = true)
         }
     }
 
@@ -69,10 +68,10 @@ class HyperTransferSessionTranscriptTest {
         val sender = peer("23456789ABCD", 1)
         val receiver = peer("EFGHJKMNPQRS", 2).copy(nonce = byteArrayOf(1, 2))
         assertThrows(IllegalArgumentException::class.java) {
-            HyperTransferSessionTranscript.create("f".repeat(64), sender, receiver)
+            HyperTransferSessionTranscript.create("f".repeat(64), sender, receiver, localIsSender = true)
         }
         assertThrows(IllegalArgumentException::class.java) {
-            HyperTransferSessionTranscript.create("f".repeat(64), sender, peer("EFGHJKMNPQRS", 2), protocolVersion = 2)
+            HyperTransferSessionTranscript.create("f".repeat(64), sender, peer("EFGHJKMNPQRS", 2), localIsSender = true, protocolVersion = 2)
         }
     }
 }
