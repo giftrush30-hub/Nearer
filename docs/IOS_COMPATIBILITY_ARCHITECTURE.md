@@ -96,6 +96,30 @@ CoreBluetooth can provide a low-bandwidth discovery/control fallback on iOS, but
 
 This matrix is a design target, not a statement that any iOS transport has already been implemented or physically verified.
 
+## Implemented iOS foundation on the compatibility branch
+
+The isolated branch now contains more than the initial wire layer:
+
+- Swift bounded codecs for `peer_hello_v3`, `peer_proof_v3`, and `secure_packet_v1`.
+- CryptoKit P-256 signature verification/signing, P-256 ECDH, HKDF-SHA256 directional key derivation and AES-GCM packet sealing/opening. The macOS Swift workflow has passed compilation and tests for this adapter.
+- Swift v3 transcript encoder with a deterministic vector asserted by Kotlin and Swift.
+- Swift port of Android's `NRB1` version-1 transfer bundle manifest, with safe-path validation and a shared golden byte vector.
+- Bounded, incremental, four-byte-length-prefixed TCP frame codec. It handles TCP fragmentation/coalescing and caps control frames at 1 MiB; large file contents must not be buffered through this codec.
+- A Network.framework adapter that advertises/browses the `_nearer-v1._tcp` Bonjour service and opts into Apple's peer-to-peer Wi-Fi path. The endpoint handle is explicitly untrusted until the NeaRer cryptographic handshake succeeds.
+- iOS local-network privacy and Bonjour declarations plus an example Wi-Fi Aware entitlement plist.
+
+The Network.framework adapter is a native iOS implementation foundation, not yet a complete app feature. The Android side does not yet advertise the same TCP/Bonjour service, and no iPhone has yet been physically tested against it. The Wi-Fi Aware path still needs the iOS 26 paired-device API adapter, Android Wi-Fi Aware implementation, entitlement approval and real-device interoperability validation.
+
+### LAN transport contract
+
+- Bonjour service type: `_nearer-v1._tcp`.
+- Bonjour instance name: current NeaRer peer ID (display name is learned only after authenticated handshake).
+- Stream framing: unsigned 32-bit big-endian payload length followed by exactly that many bytes.
+- Maximum framed control/chat payload: 1,048,576 bytes.
+- The transport endpoint is not a NeaRer identity and must never be auto-trusted.
+- The NeaRer v3 hello/proof handshake is the first application frame before private message traffic.
+- File data uses a separate bounded streaming path; never load a whole file into memory or treat a single control frame as a large-file transfer.
+
 ## Shared NeaRer protocol contract
 
 The native apps must share application semantics, not platform SDK internals.
