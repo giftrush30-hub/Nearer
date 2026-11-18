@@ -17,6 +17,26 @@ internal object HyperTransferPerformanceGate {
     val TARGET_MEBIBYTES_PER_SECOND: Double
         get() = TARGET_MEGABYTES_PER_SECOND * 1_000_000.0 / (1024.0 * 1024.0)
 
+    data class ControlledEvidence(
+        val devicePairKey: String,
+        val direction: HyperTransferTransportPolicy.Direction,
+        val fileSha256: String,
+        val fileBytes: Long,
+        val conditionsKey: String,
+        val runs: List<TransferBenchmarkRun>
+    ) {
+        init {
+            require(devicePairKey.isNotBlank())
+            require(fileSha256.matches(Regex("^[a-fA-F0-9]{64}$")))
+            require(fileBytes > 0L)
+            require(conditionsKey.isNotBlank())
+            require(runs.isNotEmpty())
+            require(runs.all { !it.succeeded || it.bytesTransferred == fileBytes }) {
+                "Successful benchmark runs must transfer the exact comparison file size"
+            }
+        }
+    }
+
     data class Result(
         val nearerMedianMiBPerSecond: Double,
         val xenderMedianMiBPerSecond: Double,
@@ -29,6 +49,31 @@ internal object HyperTransferPerformanceGate {
         val goalAchieved: Boolean
             get() = meetsAbsoluteTarget && meetsSevenTimesTarget &&
                 hasEnoughNeaRerRuns && hasEnoughXenderRuns
+    }
+
+    /**
+     * Strict comparison entry point. It prevents an apparently impressive
+     * speedup from being assembled from different phones, files, directions,
+     * or test environments.
+     */
+    fun evaluateControlled(
+        nearer: ControlledEvidence,
+        xender: ControlledEvidence
+    ): Result {
+        require(nearer.devicePairKey == xender.devicePairKey) { "Device pair mismatch" }
+        require(nearer.direction == xender.direction) { "Transfer direction mismatch" }
+        require(nearer.fileSha256.equals(xender.fileSha256, ignoreCase = true)) { "Test file SHA-256 mismatch" }
+        require(nearer.fileBytes == xender.fileBytes) { "Test file size mismatch" }
+        require(nearer.conditionsKey == xender.conditionsKey) { "Benchmark conditions mismatch" }
+        val nearerSummary = TransferBenchmarkMetrics.summarize(nearer.runs)
+        val xenderSummary = TransferBenchmarkMetrics.summarize(xender.runs)
+        require(nearerSummary.successfulRuns >= MINIMUM_SUCCESSFUL_RUNS) {
+            "NeaRer needs at least five successful controlled runs"
+        }
+        require(xenderSummary.successfulRuns >= MINIMUM_SUCCESSFUL_RUNS) {
+            "Xender needs at least five successful controlled runs"
+        }
+        return evaluate(nearerSummary, xenderSummary)
     }
 
     fun evaluate(
