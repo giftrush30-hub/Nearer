@@ -10,10 +10,13 @@ public enum NeaRerPeerVerificationCodeV1 {
         guard !transcript.isEmpty else { throw NeaRerWireError.invalidField("empty verification transcript") }
         #if canImport(CryptoKit)
         let digest = SHA256.hash(data: transcript)
-        let value = (UInt32(digest[digest.startIndex]) << 24)
-            | (UInt32(digest[digest.startIndex + 1]) << 16)
-            | (UInt32(digest[digest.startIndex + 2]) << 8)
-            | UInt32(digest[digest.startIndex + 3])
+        let first = UInt32(digest[digest.startIndex])
+        let second = UInt32(digest[digest.startIndex + 1])
+        let third = UInt32(digest[digest.startIndex + 2])
+        let fourth = UInt32(digest[digest.startIndex + 3])
+        let highWord = (first << 24) | (second << 16)
+        let lowWord = (third << 8) | fourth
+        let value = highWord | lowWord
         let code = String(value % 1_000_000)
         return String(repeating: "0", count: 6 - code.count) + code
         #else
