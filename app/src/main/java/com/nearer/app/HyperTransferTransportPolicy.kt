@@ -28,7 +28,10 @@ internal object HyperTransferTransportPolicy {
         val wifiDirectHardwareSupported: Boolean,
         val wifiDirectPermissionGranted: Boolean,
         val wifiAwareHardwareSupported: Boolean,
-        val wifiAwarePermissionGranted: Boolean
+        val wifiAwarePermissionGranted: Boolean,
+        /** Current framework/radio availability, not just a static feature flag. */
+        val wifiDirectAvailableNow: Boolean = false,
+        val wifiAwareAvailableNow: Boolean = false
     )
 
     data class BenchmarkProfile(
@@ -58,12 +61,14 @@ internal object HyperTransferTransportPolicy {
         Transport.WIFI_DIRECT_TCP ->
             local.apiLevel >= 26 && remote.apiLevel >= 26 &&
                 local.wifiDirectHardwareSupported && remote.wifiDirectHardwareSupported &&
-                local.wifiDirectPermissionGranted && remote.wifiDirectPermissionGranted
+                local.wifiDirectPermissionGranted && remote.wifiDirectPermissionGranted &&
+                local.wifiDirectAvailableNow && remote.wifiDirectAvailableNow
 
         Transport.WIFI_AWARE_TCP ->
             local.apiLevel >= 26 && remote.apiLevel >= 26 &&
                 local.wifiAwareHardwareSupported && remote.wifiAwareHardwareSupported &&
-                local.wifiAwarePermissionGranted && remote.wifiAwarePermissionGranted
+                local.wifiAwarePermissionGranted && remote.wifiAwarePermissionGranted &&
+                local.wifiAwareAvailableNow && remote.wifiAwareAvailableNow
     }
 
     fun choose(
