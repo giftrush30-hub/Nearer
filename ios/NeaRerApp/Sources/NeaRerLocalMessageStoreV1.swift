@@ -13,6 +13,8 @@ struct NeaRerStoredMessageV1: Codable, Equatable, Identifiable {
 /// Small encrypted local conversation store. The JSON payload is sealed with
 /// AES-GCM; its random 256-bit key is stored in a device-only Keychain item.
 enum NeaRerLocalMessageStoreV1 {
+    private static let maximumMessageCount = 10_000
+    private static let maximumDatabaseBytes = 64 * 1024 * 1024
     private static let keychainService = "com.nearer.ios.message-store.v1"
     private static let keychainAccount = "database-key"
 
@@ -20,16 +22,31 @@ enum NeaRerLocalMessageStoreV1 {
         let url = try storeURL()
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         let encrypted = try Data(contentsOf: url)
-        guard !encrypted.isEmpty else { return [] }
+        guard !encrypted.isEmpty, encrypted.count <= maximumDatabaseBytes else {
+            throw NSError(domain: "com.nearer.message-store", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "The encrypted local message database exceeds its safety limit"])
+        }
         let box = try AES.GCM.SealedBox(combined: encrypted)
         let plaintext = try AES.GCM.open(box, using: SymmetricKey(data: loadOrCreateKey()))
-        return try JSONDecoder().decode([NeaRerStoredMessageV1].self, from: plaintext)
+        let messages = try JSONDecoder().decode([NeaRerStoredMessageV1].self, from: plaintext)
+        guard messages.count <= maximumMessageCount,
+              messages.allSatisfy({ !$0.id.isEmpty && $0.id.utf8.count <= 80 && $0.peerID.utf8.count <= 12 && $0.senderID.utf8.count <= 12 && $0.text.utf8.count <= 16_000 }) else {
+            throw NSError(domain: "com.nearer.message-store", code: 3,
+                          userInfo: [NSLocalizedDescriptionKey: "The local message database contains invalid records"])
+        }
+        return messages
     }
 
     static func append(_ message: NeaRerStoredMessageV1) throws -> [NeaRerStoredMessageV1] {
         var messages = try load()
         guard !messages.contains(where: { $0.id == message.id }) else { return messages }
+        guard message.text.utf8.count <= 16_000, message.id.utf8.count <= 80,
+              message.peerID.utf8.count <= 12, message.senderID.utf8.count <= 12 else {
+            throw NSError(domain: "com.nearer.message-store", code: 4,
+                          userInfo: [NSLocalizedDescriptionKey: "Message exceeds the local storage limits"])
+        }
         messages.append(message)
+        if messages.count > maximumMessageCount { messages.removeFirst(messages.count - maximumMessageCount) }
         let plaintext = try JSONEncoder().encode(messages)
         let box = try AES.GCM.seal(plaintext, using: SymmetricKey(data: loadOrCreateKey()))
         guard let encrypted = box.combined else {
