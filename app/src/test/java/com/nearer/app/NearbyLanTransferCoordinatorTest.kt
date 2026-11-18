@@ -85,5 +85,30 @@ class NearbyLanTransferCoordinatorTest {
         root.deleteRecursively()
     }
 
+    @Test
+    fun unauthenticatedEndpointCannotStartIncomingTransfer() {
+        val root = File(System.getProperty("java.io.tmpdir"), "nearer-auth-${UUID.randomUUID()}")
+        val metadata = TransferResumeStreamMetadataCodec.Metadata(
+            5L, "blocked",
+            TransferBundleItem("i", "file.bin", "file.bin", 1L, null),
+            null, "0".repeat(64)
+        )
+        var requests = 0
+        val listener = object : NearbyLanTransferCoordinator.Listener {
+            override fun onIncomingTransferRequest(endpointId: String, metadata: TransferResumeStreamMetadataCodec.Metadata) {
+                requests++
+            }
+            override fun onFileReceived(endpointId: String, metadata: TransferResumeStreamMetadataCodec.Metadata, file: File) {}
+            override fun onTransferError(endpointId: String, message: String) {}
+        }
+        val coordinator = NearbyLanTransferCoordinator(
+            root, { false }, { _, _, callback -> callback(null) }, listener
+        )
+        assertFalse(coordinator.receiveFrame("untrusted-peer", TransferResumeStreamMetadataCodec.encode(metadata)))
+        assertEquals(0, requests)
+        coordinator.close()
+        root.deleteRecursively()
+    }
+
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 }
