@@ -159,7 +159,7 @@ public struct NeaRerTransferManifestV1: Equatable {
 private struct BinaryWriter {
     var data = Data()
     mutating func write(_ value: UInt8) { data.append(value) }
-    mutating func write(_ value: Bool) { write(value ? 1 : 0) }
+    mutating func write(_ value: Bool) { write(value ? UInt8(1) : UInt8(0)) }
     mutating func write(_ value: UInt32) {
         write(UInt8((value >> 24) & 0xff)); write(UInt8((value >> 16) & 0xff))
         write(UInt8((value >> 8) & 0xff)); write(UInt8(value & 0xff))
