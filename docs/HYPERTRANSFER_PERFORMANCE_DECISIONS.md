@@ -185,3 +185,15 @@ The new helper has JVM tests for deterministic encoding, transfer-ID binding, se
 - If a PSK is configured on the Aware network specifier, treat it as link-layer protection only. Still perform NeaRer's pinned signing-key proof and the transfer-bound transcript verification before accepting file bytes.
 
 Official implementation reference: https://developer.android.com/develop/connectivity/wifi/wifi-aware
+
+
+## Mandatory security gate before connecting the TCP prototype
+
+The current `WifiDirectTcpTransferEngine` sends the file bytes in plaintext over its socket. Its SHA-256 trailer detects accidental corruption, but does **not** provide confidentiality, peer authentication or protection against an active attacker who can alter the stream and recompute the checksum. The transfer ID is also not a credential.
+
+Therefore this prototype is suitable only for isolated loopback testing at this stage. It must not be exposed as a production file-transfer route or wired to the app UI/service yet. Before integration, implement and test an authenticated encrypted record layer:
+1. Complete the transfer-bound transcript proof using both peers' pinned signing keys and the existing trust/approval policy.
+2. Derive directional keys from the authenticated ephemeral ECDH exchange and the exact transcript (reuse the established NeaRer cryptographic primitives where compatible; do not invent a second identity store).
+3. Encrypt and authenticate every data record and control/ACK frame with an AEAD construction, using unique nonces and transfer/session-bound associated data. Enforce strict frame-size limits, sequence/replay checks, cancellation and key zeroization.
+4. Verify that an altered, replayed, reordered, cross-session or unauthenticated frame is rejected before any received file is published.
+5. Only then connect the socket path to the service-owned transfer lifecycle, preserving user approval, safe destination handling, integrity verification and recovery.
