@@ -826,12 +826,11 @@ class MainActivity : ComponentActivity() {
             channel = null
             statusMessage = "Wi-Fi Direct could not initialise on this phone. Bluetooth nearby features can still be used."
         }
-        // SmartConnect uses the flexible multi-peer strategy by default.
-        // Do not require both people to find and enable a matching speed mode.
-        ultraSpeedMode = false
-        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
-            .putBoolean("ultra_speed_mode", false)
-            .apply()
+        // Respect the user's saved transfer strategy. Ultra Speed uses Nearby's
+        // one-to-one P2P strategy and must match on both phones; resetting this
+        // preference here silently disabled the mode after every app restart.
+        ultraSpeedMode = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            .getBoolean("ultra_speed_mode", false)
         ultraSpeedRestartRequired = false
         nearbyTransport = null
         nearbyTransport?.setMeshTransitEnabled(false)
