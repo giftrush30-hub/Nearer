@@ -65,8 +65,8 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport, @unchecke
                 let current = Set(results.map { String(describing: $0.endpoint) })
                 let previous = Set(self.discovered.keys)
                 for result in results {
+                    if case let .service(name, _, _, _) = result.endpoint, name == self.peerID { continue }
                     let key = String(describing: result.endpoint)
-                    guard key != self.peerID else { continue }
                     self.discovered[key] = result.endpoint
                     self.onPeerFound?(NearbyTransportPeer(endpointID: key, transport: "network-framework"))
                 }
