@@ -56,7 +56,7 @@ final class AndroidCryptoGoldenVectorTests: XCTestCase {
 
     func testAndroidPeerProofDomainAndFingerprintFixture() {
         let challenge = Data("NeaRer Android iPhone signature fixture".utf8)
-        let signature = hex("3045022100829350f5dea320fd1c49a8b24074ba14d8c428235c67159762a9f0d38d7a1698022032d10c3b1a2dda2e7ed58549916b363b0761d4671ce15ef8a0ed4099a6f79f30")
+        let signature = hex("304502207e31700985a269fe326027c9809ae2751f669b5897117096350d34952bf570ee0221009a0243bed67481475f3b2b45306c3d4a341523c864e5754e3f4b90bd4ac4a031")
         XCTAssertTrue(NeaRerCryptoV3.verifyChallenge(
             peerID: "AAAAAB", signingPublicKeyDER: alicePublicDER,
             transcript: challenge, signatureDER: signature
