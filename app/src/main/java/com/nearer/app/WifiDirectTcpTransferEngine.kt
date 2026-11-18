@@ -229,9 +229,13 @@ internal class WifiDirectTcpTransferEngine(
         expectedTransferId: String,
         channel: HyperTransferSecureChannel,
         cancellation: Cancellation = Cancellation(),
-        listener: ProgressListener = ProgressListener { }
+        listener: ProgressListener = ProgressListener { },
+        expectedSha256: String? = null
     ): ReceiveResult {
         require(expectedTransferId.matches(Regex("^[a-fA-F0-9]{64}$"))) { "Invalid expected transfer ID" }
+        require(expectedSha256 == null || expectedSha256.matches(Regex("^[a-fA-F0-9]{64}$"))) {
+            "Invalid expected SHA-256"
+        }
         val parent = destination.absoluteFile.parentFile ?: throw IOException("Destination must have a parent directory")
         if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create destination directory")
         if (destination.exists()) throw IOException("Destination already exists")
@@ -278,6 +282,12 @@ internal class WifiDirectTcpTransferEngine(
             if (receivedHash.size != SHA256_BYTES) throw IOException("Invalid encrypted integrity record")
             val actualHash = digest.digest()
             if (!MessageDigest.isEqual(receivedHash, actualHash)) throw IOException("Encrypted transfer integrity verification failed")
+            if (expectedSha256 != null) {
+                val offeredHash = expectedSha256.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                if (!MessageDigest.isEqual(offeredHash, actualHash)) {
+                    throw IOException("Received file did not match the approved HyperTransfer offer")
+                }
+            }
             if (destination.exists()) throw IOException("Destination appeared during transfer")
             Files.move(part.toPath(), destination.toPath())
             published = true
