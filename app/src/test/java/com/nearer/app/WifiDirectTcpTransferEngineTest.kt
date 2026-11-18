@@ -188,6 +188,54 @@ class WifiDirectTcpTransferEngineTest {
     }
 
 
+    @Test fun secureReceiveRejectsBytesThatDoNotMatchTheApprovedOfferHash() {
+        val root = java.nio.file.Files.createTempDirectory("nearer-tcp-offer-hash").toFile()
+        val server = ServerSocket(0)
+        val executor = Executors.newSingleThreadExecutor()
+        val id = "d".repeat(64)
+        val senderKeys = NearbyMessageCrypto.newEphemeralKeyPair()
+        val receiverKeys = NearbyMessageCrypto.newEphemeralKeyPair()
+        val transcript = MessageDigest.getInstance("SHA-256").digest("offer-bound-session".toByteArray())
+        val senderChannel = HyperTransferSecureChannel.establish(
+            senderKeys.private, receiverKeys.public, transcript, id,
+            "23456789ABCD", "EFGHJKMNPQRS", true
+        )
+        val receiverChannel = HyperTransferSecureChannel.establish(
+            receiverKeys.private, senderKeys.public, transcript, id,
+            "23456789ABCD", "EFGHJKMNPQRS", false
+        )
+        try {
+            val source = File(root, "source.bin").apply { writeBytes("approved bytes".toByteArray()) }
+            val destination = File(root, "must-not-publish.bin")
+            val receive = executor.submit<Throwable?> {
+                try {
+                    server.accept().use {
+                        engine.receiveSecure(
+                            it, destination, id, receiverChannel,
+                            expectedSha256 = "0".repeat(64)
+                        )
+                    }
+                    null
+                } catch (error: Throwable) { error }
+            }
+            try {
+                Socket("127.0.0.1", server.localPort).use {
+                    WifiDirectTcpTransferEngine(socketReadTimeoutMillis = 200)
+                        .sendSecure(it, source, id, senderChannel)
+                }
+            } catch (_: Exception) { }
+            val error = receive.get(5, TimeUnit.SECONDS)
+            assertTrue(error is java.io.IOException)
+            assertTrue(error?.message.orEmpty().contains("approved HyperTransfer offer"))
+            assertFalse(destination.exists())
+            assertTrue(root.listFiles().orEmpty().none { it.name.endsWith(".part") })
+        } finally {
+            server.close()
+            executor.shutdownNow()
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun secureSenderTimesOutWhenReceiverStallsBeforeAck() {
         val root = java.nio.file.Files.createTempDirectory("nearer-tcp-secure-timeout").toFile()
         val server = ServerSocket(0)
