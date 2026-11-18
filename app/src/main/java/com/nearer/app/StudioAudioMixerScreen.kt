@@ -518,8 +518,24 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                                                 current.clipStartMs, current.clipEndMs, requestedMs, current.durationMs
                                                             )
                                                         }
-                                                        tracks[currentIndex] = if (handle == 0) current.copy(clipStartMs = next)
-                                                            else current.copy(clipEndMs = next)
+                                                        val nextClipDurationMs = if (handle == 0) {
+                                                            (current.clipEndMs - next).coerceAtLeast(1L)
+                                                        } else {
+                                                            (next - current.clipStartMs).coerceAtLeast(1L)
+                                                        }
+                                                        tracks[currentIndex] = if (handle == 0) current.copy(
+                                                            clipStartMs = next,
+                                                            tempoPoints = StudioTempoAutomationPolicy.retimeForClipDuration(
+                                                                current.tempoPoints,
+                                                                nextClipDurationMs
+                                                            )
+                                                        ) else current.copy(
+                                                            clipEndMs = next,
+                                                            tempoPoints = StudioTempoAutomationPolicy.retimeForClipDuration(
+                                                                current.tempoPoints,
+                                                                nextClipDurationMs
+                                                            )
+                                                        )
                                                         exported = null
                                                     }
                                                 },
@@ -612,12 +628,26 @@ internal fun StudioAudioMixerScreen(onBack: () -> Unit) {
                                 Text("TRIM START · ${formatMixTime(clipStart)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 Slider(value = clipStart.toFloat(), onValueChange = { v ->
                                     val next = StudioAudioClipRangePolicy.moveStart(clipStart, clipEnd, v.toLong(), track.durationMs)
-                                    tracks[index] = track.copy(clipStartMs = next); exported = null
+                                    val nextClipDurationMs = (clipEnd - next).coerceAtLeast(1L)
+                                    tracks[index] = track.copy(
+                                        clipStartMs = next,
+                                        tempoPoints = StudioTempoAutomationPolicy.retimeForClipDuration(
+                                            track.tempoPoints,
+                                            nextClipDurationMs
+                                        )
+                                    ); exported = null
                                 }, valueRange = 0f..(clipEnd - minClip).coerceAtLeast(0L).toFloat(), enabled = track.durationMs > minClip)
                                 Text("TRIM END · ${formatMixTime(clipEnd)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 Slider(value = clipEnd.toFloat(), onValueChange = { v ->
                                     val next = StudioAudioClipRangePolicy.moveEnd(clipStart, clipEnd, v.toLong(), track.durationMs)
-                                    tracks[index] = track.copy(clipEndMs = next); exported = null
+                                    val nextClipDurationMs = (next - clipStart).coerceAtLeast(1L)
+                                    tracks[index] = track.copy(
+                                        clipEndMs = next,
+                                        tempoPoints = StudioTempoAutomationPolicy.retimeForClipDuration(
+                                            track.tempoPoints,
+                                            nextClipDurationMs
+                                        )
+                                    ); exported = null
                                 }, valueRange = (clipStart + minClip).coerceAtMost(track.durationMs).toFloat()..track.durationMs.toFloat(), enabled = track.durationMs > minClip)
                             }
                             Text("TRACK START POSITION · ${formatMixTime(track.startOffsetMs)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
