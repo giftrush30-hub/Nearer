@@ -10,7 +10,9 @@ class HyperTransferTransportPolicyTest {
         wifiDirectHardwareSupported = true,
         wifiDirectPermissionGranted = true,
         wifiAwareHardwareSupported = true,
-        wifiAwarePermissionGranted = true
+        wifiAwarePermissionGranted = true,
+        wifiDirectAvailableNow = true,
+        wifiAwareAvailableNow = true
     )
 
     private fun profile(
@@ -97,6 +99,41 @@ class HyperTransferTransportPolicyTest {
         val noAware = capable.copy(wifiAwareHardwareSupported = false)
         assertFalse(HyperTransferTransportPolicy.isEligible(
             HyperTransferTransportPolicy.Transport.WIFI_AWARE_TCP, capable, noAware
+        ))
+    }
+
+    @Test fun directRouteRequiresCurrentAvailabilityOnBothPhones() {
+        val localRadioUnavailable = capable.copy(wifiDirectAvailableNow = false)
+        assertFalse(HyperTransferTransportPolicy.isEligible(
+            HyperTransferTransportPolicy.Transport.WIFI_DIRECT_TCP,
+            localRadioUnavailable, capable
+        ))
+        val remoteAwareUnavailable = capable.copy(wifiAwareAvailableNow = false)
+        assertFalse(HyperTransferTransportPolicy.isEligible(
+            HyperTransferTransportPolicy.Transport.WIFI_AWARE_TCP,
+            capable, remoteAwareUnavailable
+        ))
+        // A radio being temporarily unavailable must not block the established Nearby fallback.
+        val decision = HyperTransferTransportPolicy.choose(
+            localRadioUnavailable, localRadioUnavailable, "phone-a|phone-b",
+            HyperTransferTransportPolicy.Direction.LOCAL_TO_REMOTE,
+            listOf(profile(HyperTransferTransportPolicy.Transport.WIFI_DIRECT_TCP, 250_000_000L))
+        )
+        assertEquals(HyperTransferTransportPolicy.Transport.NEARBY_POINT_TO_POINT, decision.transport)
+    }
+
+    @Test fun hardwareAndPermissionAloneDoNotQualifyDirectRoutes() {
+        val staleCapabilities = capable.copy(
+            wifiDirectAvailableNow = false,
+            wifiAwareAvailableNow = false
+        )
+        assertFalse(HyperTransferTransportPolicy.isEligible(
+            HyperTransferTransportPolicy.Transport.WIFI_DIRECT_TCP,
+            staleCapabilities, capable
+        ))
+        assertFalse(HyperTransferTransportPolicy.isEligible(
+            HyperTransferTransportPolicy.Transport.WIFI_AWARE_TCP,
+            staleCapabilities, capable
         ))
     }
 
