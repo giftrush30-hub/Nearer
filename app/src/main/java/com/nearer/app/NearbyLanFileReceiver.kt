@@ -49,6 +49,16 @@ internal class NearbyLanFileReceiver(
         output = FileOutputStream(stagingFile)
     }
 
+    /** Initial zero-offset ACK; send only after the user accepts the incoming transfer. */
+    @Synchronized
+    fun initialAck(): NearbyTransferFileChunkCodec.Ack {
+        check(!finished && bytesWritten == 0L)
+        val emptyDigest = MessageDigest.getInstance("SHA-256").digest().toHex()
+        return NearbyTransferFileChunkCodec.Ack(
+            metadata.payloadId, metadata.transferId, metadata.item.id, 0L, emptyDigest
+        )
+    }
+
     /** Returns an ACK only at a durable checkpoint boundary. */
     @Synchronized
     fun append(chunk: NearbyTransferFileChunkCodec.Chunk): NearbyTransferFileChunkCodec.Ack? {
@@ -64,7 +74,7 @@ internal class NearbyLanFileReceiver(
         output.write(chunk.data)
         digest.update(chunk.data)
         bytesWritten += chunk.data.size.toLong()
-        if (bytesWritten % checkpointIntervalBytes == 0L) {
+        if (bytesWritten < metadata.item.sizeBytes && bytesWritten % checkpointIntervalBytes == 0L) {
             output.fd.sync()
             val checkpoint = try {
                 (digest.clone() as MessageDigest).digest()
