@@ -126,10 +126,13 @@ internal val White = Color(0xFFF6F8FC)
 internal val BrandBlue = Color(0xFF2563EB)
 internal val Gold = Color(0xFFFFD12D)
 
+private data class PendingHyperTransferOfferUi(
+    val endpointId: String,
+    val peerId: String,
+    val offer: HyperTransferTcpOfferCodec.Offer
+)
+
 class MainActivity : ComponentActivity() {
-    private var wifiManager: WifiP2pManager? = null
-    private var channel: WifiP2pManager.Channel? = null
-    private var receiverRegistered = false
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
     private var nearbyServiceBinder: NearbyTransportService.LocalBinder? = null
@@ -149,6 +152,8 @@ class MainActivity : ComponentActivity() {
             nearbyServiceBinding = false
             nearbyTransport = local.transport()
             local.attachUiListener(nearbyListener)
+            local.attachWifiDirectUiListener(wifiDirectUiListener)
+            local.startWifiDirect()
             runCatching { nearbyTransport?.setDisplayName(displayName) }
             runCatching { nearbyTransport?.setMeshTransitEnabled(false) }
             runCatching { restoreReceivedFiles() }
@@ -539,12 +544,18 @@ class MainActivity : ComponentActivity() {
                     val peak = snapshot.peakWindowBytesPerSecond.toLong().coerceAtLeast(0L)
                     if (incoming) {
                         incomingRateBytesPerSecond = rate
+                        incomingAverageRateBytesPerSecond = snapshot.averageBytesPerSecond.toLong().coerceAtLeast(0L)
+                        incomingPeakRateBytesPerSecond = peak
                         incomingTransferName = name
                     } else {
                         outgoingRateBytesPerSecond = rate
+                        outgoingAverageRateBytesPerSecond = snapshot.averageBytesPerSecond.toLong().coerceAtLeast(0L)
+                        outgoingPeakRateBytesPerSecond = peak
                         activeOutgoingFileName = name
                         activeOutgoingFileBytes = total
-                        outgoingTransferId = "nearby:$payloadId"
+                        if (outgoingTransferId?.startsWith("hyper:") != true) {
+                            outgoingTransferId = "nearby:$payloadId"
+                        }
                     }
                     val fraction = snapshot.progressFraction
                         ?: if (total > 0L) (transferred.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
@@ -569,6 +580,29 @@ class MainActivity : ComponentActivity() {
                     } else "$action $name…"
                 }
             }
+            override fun onIncomingHyperTransferOffer(
+                id: String, peerId: String, offer: HyperTransferTcpOfferCodec.Offer
+            ) {
+                runOnUiThread {
+                    if (pendingHyperTransferOffer == null) {
+                        pendingHyperTransferOffer = PendingHyperTransferOfferUi(id, peerId, offer)
+                    } else {
+                        // Never replace an offer while the user is reviewing it.
+                        nearbyServiceBinder?.respondToHyperTransferTcpOffer(id, offer.transferId, false)
+                    }
+                }
+            }
+            override fun onHyperTransferOfferDecision(
+                id: String, peerId: String, decision: HyperTransferTcpOfferCodec.Decision
+            ) {
+                runOnUiThread {
+                    chatNotice = if (decision.accepted) {
+                        "The recipient approved the secure transfer. Establishing the protected Wi-Fi Direct session…"
+                    } else {
+                        "The recipient declined the secure transfer."
+                    }
+                }
+            }
             override fun onFileReceived(id: String, name: String, file: File) {
                 val isAppBundle = isNeaRerAppBundle(file)
                 runOnUiThread {
@@ -576,6 +610,9 @@ class MainActivity : ComponentActivity() {
                     incomingProgress = 0f
                     val catalogSaved = rememberReceivedFile(name, file, isAppBundle)
                     recordNearbyTransfer("Received", name, file.length(), "Complete")
+                    incomingRateBytesPerSecond = 0L
+                    incomingAverageRateBytesPerSecond = 0L
+                    incomingPeakRateBytesPerSecond = 0L
                     chatNotice = when {
                         !catalogSaved -> "Received $name, but NeaRer could not save its library details. Keep the app's received files folder intact."
                         isAppBundle -> "Received an app bundle: $name. Review it and tap Install when ready."
@@ -614,6 +651,36 @@ class MainActivity : ComponentActivity() {
                         incomingTransferName = null
                         incomingProgress = 0f
                     }
+                    if (message.startsWith("Verified and saved on the recipient's phone:")) {
+                        val wasHyperTransfer = outgoingTransferId?.startsWith("hyper:") == true
+                        if (wasHyperTransfer) {
+                            outgoingTransferId = null
+                            outgoingProgress = 0f
+                            if (nearbyQueueTotal > 0) {
+                                recordNearbyTransfer("Sent", activeOutgoingFileName, activeOutgoingFileBytes, "Complete")
+                                deleteGeneratedFolderArchive(currentNearbyQueuedFile)
+                                activeOutgoingFileName = "shared-file"
+                                activeOutgoingFileBytes = 0L
+                                currentNearbyQueuedFile = null
+                                nearbyQueueCompleted += 1
+                                persistNearbyFileQueue()
+                                startNextNearbyQueuedFile()
+                            } else {
+                                completeDirectQueuedFile(true)
+                            }
+                        }
+                    }
+                    if (message.startsWith("HyperTransfer stopped safely:") ||
+                        message.startsWith("Secure HyperTransfer authentication failed.") ||
+                        message.startsWith("Could not prepare the secure HyperTransfer file:") ||
+                        message.startsWith("The secure HyperTransfer offer could not be sent.") ||
+                        message.startsWith("The recipient declined ")) {
+                        if (outgoingTransferId?.startsWith("hyper:") == true) {
+                            outgoingTransferId = null
+                            outgoingProgress = 0f
+                            if (nearbyQueueTotal > 0) persistNearbyFileQueue()
+                        }
+                    }
                 }
             }
     }
@@ -638,6 +705,7 @@ class MainActivity : ComponentActivity() {
     private var incomingRequesterName by mutableStateOf<String?>(null)
     private var approvalMessage by mutableStateOf("Waiting for app approval")
     private var pairingCode by mutableStateOf<String?>(null)
+    private var pendingHyperTransferOffer by mutableStateOf<PendingHyperTransferOfferUi?>(null)
     private var chatReady by mutableStateOf(false)
     private var transportStarted = false
     private var serverSocket: ServerSocket? = null
@@ -679,8 +747,15 @@ class MainActivity : ComponentActivity() {
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
     // These rates come from the transport's monotonic rolling-window meter.
-    private var outgoingRateBytesPerSecond = 0L
-    private var incomingRateBytesPerSecond = 0L
+    private var outgoingRateBytesPerSecond by mutableStateOf(0L)
+    private var incomingRateBytesPerSecond by mutableStateOf(0L)
+    private var outgoingAverageRateBytesPerSecond by mutableStateOf(0L)
+    private var incomingAverageRateBytesPerSecond by mutableStateOf(0L)
+    private var outgoingPeakRateBytesPerSecond by mutableStateOf(0L)
+    private var incomingPeakRateBytesPerSecond by mutableStateOf(0L)
+    // The legacy Wi-Fi Direct socket path uses the same monotonic goodput meter.
+    private var directOutgoingSpeedMeter = TransferSpeedMeter()
+    private val directIncomingSpeedMeters = ConcurrentHashMap<String, TransferSpeedMeter>()
     private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var activityResumed by mutableStateOf(false)
@@ -690,63 +765,49 @@ class MainActivity : ComponentActivity() {
     private var typingExpiresAt by mutableStateOf(0L)
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
+    private val wifiDirectUiListener = object : WifiDirectUiListener {
+        override fun onStateChanged(state: String, detail: String) {
+            runOnUiThread {
+                scanning = state == WifiDirectConnectionCoordinator.State.DISCOVERING.name
+                if (state == WifiDirectConnectionCoordinator.State.FAILED.name) {
+                    finishDiscovery()
+                    statusMessage = detail
+                } else if (state == WifiDirectConnectionCoordinator.State.DISCONNECTED.name &&
+                    (transportStarted || connectedDeviceName != null)) {
+                    updateConnectionState(WifiP2pInfo())
+                } else if (state == WifiDirectConnectionCoordinator.State.DISCOVERING.name) {
+                    statusMessage = detail
+                }
+            }
+        }
 
-    private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> {
-                    val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1)
-                    if (state == WifiP2pManager.WIFI_P2P_STATE_DISABLED) {
-                        scanning = false
-                        statusMessage = "Turn on Wi-Fi to discover nearby phones."
-                    } else {
-                        statusMessage = "Wi-Fi Direct is ready. Tap Find people nearby."
+        override fun onPeersChanged(peers: List<WifiDirectPeerSnapshot>) {
+            runOnUiThread {
+                nearbyDevices.clear()
+                nearbyDevices.addAll(peers.map { peer ->
+                    WifiP2pDevice().apply {
+                        deviceName = peer.name
+                        deviceAddress = peer.address
+                        status = peer.status
                     }
+                })
+                if (scanning) finishDiscovery()
+                statusMessage = if (nearbyDevices.isEmpty()) {
+                    "No nearby Wi-Fi Direct devices found yet. Keep both phones nearby and scan again."
+                } else {
+                    "${nearbyDevices.size} nearby device(s) found. Select one to request a connection."
                 }
-                WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
-                    if (hasDiscoveryPermission()) {
-                        wifiManager?.requestPeers(channel) { peers ->
-                            nearbyDevices.clear()
-                            nearbyDevices.addAll(peers.deviceList)
-                            finishDiscovery()
-                            statusMessage = if (nearbyDevices.isEmpty()) {
-                                "No nearby Wi-Fi Direct devices found yet. Keep both phones nearby and scan again."
-                            } else {
-                                "${nearbyDevices.size} nearby device(s) found. Select one to request a connection."
-                            }
-                        }
-                    }
+            }
+        }
+
+        override fun onLinkReady(isGroupOwner: Boolean, groupOwnerAddress: java.net.InetAddress) {
+            runOnUiThread {
+                val info = WifiP2pInfo().apply {
+                    groupFormed = true
+                    this.isGroupOwner = isGroupOwner
+                    this.groupOwnerAddress = groupOwnerAddress
                 }
-                WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION -> {
-                    val state = intent.getIntExtra(WifiP2pManager.EXTRA_DISCOVERY_STATE, -1)
-                    if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STARTED) {
-                        scanning = true
-                        statusMessage = "Searching nearby…"
-                    } else if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STOPPED && scanning) {
-                        if (hasDiscoveryPermission()) {
-                            wifiManager?.requestPeers(channel) { peers ->
-                                nearbyDevices.clear()
-                                nearbyDevices.addAll(peers.deviceList)
-                                finishDiscovery()
-                                if (nearbyDevices.isEmpty() && hybridPeers.isEmpty()) {
-                                    statusMessage = "No nearby phones found yet. Keep Bluetooth and Wi-Fi ON on both phones, then search again."
-                                } else {
-                                    statusMessage = "Nearby search finished. Select a phone below to connect."
-                                }
-                            }
-                        } else {
-                            finishDiscovery()
-                            statusMessage = "Nearby search finished. Check the Nearby devices permission if no phones appear."
-                        }
-                    }
-                }
-                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
-                    if (hasDiscoveryPermission()) {
-                        wifiManager?.requestConnectionInfo(channel) { info ->
-                            updateConnectionState(info)
-                        }
-                    }
-                }
+                updateConnectionState(info)
             }
         }
     }
@@ -804,26 +865,14 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
         window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
         window.decorView.systemUiVisibility = 0
-        try {
-            wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
-            channel = wifiManager?.initialize(this, mainLooper, null)
-        } catch (error: Exception) {
-            wifiManager = null
-            channel = null
-            statusMessage = "Wi-Fi Direct could not initialise on this phone. Bluetooth nearby features can still be used."
-        }
-        // SmartConnect uses the flexible multi-peer strategy by default.
-        // Do not require both people to find and enable a matching speed mode.
-        ultraSpeedMode = false
-        getSharedPreferences("nearer_local", Context.MODE_PRIVATE).edit()
-            .putBoolean("ultra_speed_mode", false)
-            .apply()
+        // Respect the user's saved transfer strategy. Ultra Speed uses Nearby's
+        // one-to-one P2P strategy and must match on both phones; resetting this
+        // preference here silently disabled the mode after every app restart.
+        ultraSpeedMode = getSharedPreferences("nearer_local", Context.MODE_PRIVATE)
+            .getBoolean("ultra_speed_mode", false)
         ultraSpeedRestartRequired = false
         nearbyTransport = null
         nearbyTransport?.setMeshTransitEnabled(false)
-        if (wifiManager == null && statusMessage == "Ready to find nearby Android phones.") {
-            statusMessage = "Wi-Fi Direct is unavailable. Bluetooth nearby features may still work."
-        }
         runCatching { restoreLocalData() }.onFailure {
             statusMessage = "NeaRer opened, but some saved local data could not be restored."
         }
@@ -883,6 +932,12 @@ class MainActivity : ComponentActivity() {
                     connectedPeerStableId = hybridConnectedStableId,
                     messages = chatMessages,
                     chatNotice = chatNotice,
+                    incomingRateBytesPerSecond = incomingRateBytesPerSecond,
+                    incomingAverageRateBytesPerSecond = incomingAverageRateBytesPerSecond,
+                    incomingPeakRateBytesPerSecond = incomingPeakRateBytesPerSecond,
+                    outgoingRateBytesPerSecond = outgoingRateBytesPerSecond,
+                    outgoingAverageRateBytesPerSecond = outgoingAverageRateBytesPerSecond,
+                    outgoingPeakRateBytesPerSecond = outgoingPeakRateBytesPerSecond,
                     externalShareUris = pendingExternalShareUris,
                     onExternalShareConsumed = { pendingExternalShareUris = emptyList() },
                     receivedFiles = receivedFiles,
@@ -959,7 +1014,44 @@ class MainActivity : ComponentActivity() {
                         onComplete = ::completeOnboarding
                     )
                 }
+                pendingHyperTransferOffer?.let { pending ->
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { decideHyperTransferOffer(false) },
+                        containerColor = Panel,
+                        title = { Text("Incoming secure file transfer", color = Gold, fontWeight = FontWeight.Bold) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("${pending.peerId} wants to send:", color = White)
+                                Text(pending.offer.name, color = Mint, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "${android.text.format.Formatter.formatShortFileSize(this@MainActivity, pending.offer.sizeBytes)} • SHA-256 checked after transfer",
+                                    color = Muted
+                                )
+                                Text("Accept only if you expected this file. Nothing is received until you approve.", color = Muted)
+                            }
+                        },
+                        confirmButton = {
+                            Button(onClick = { decideHyperTransferOffer(true) }) { Text("Accept file") }
+                        },
+                        dismissButton = {
+                            Button(onClick = { decideHyperTransferOffer(false) }) { Text("Decline") }
+                        }
+                    )
+                }
             }
+        }
+    }
+
+    private fun decideHyperTransferOffer(accepted: Boolean) {
+        val pending = pendingHyperTransferOffer ?: return
+        val sent = nearbyServiceBinder?.respondToHyperTransferTcpOffer(
+            pending.endpointId, pending.offer.transferId, accepted
+        ) == true
+        pendingHyperTransferOffer = null
+        chatNotice = when {
+            !sent -> "NeaRer could not send your HyperTransfer decision. Ask the sender to retry."
+            accepted -> "You approved ${pending.offer.name}. Waiting for the secure Wi-Fi Direct transfer session…"
+            else -> "You declined ${pending.offer.name}."
         }
     }
 
@@ -1017,26 +1109,6 @@ class MainActivity : ComponentActivity() {
         activityResumed = true
         nearbyServiceBinder?.replayPendingMessages()
         (selectedMeshRecipientId ?: hybridConnectedStableId)?.let(::sendPendingReadReceipts)
-        val filter = IntentFilter().apply {
-            addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
-            addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
-            addAction(WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION)
-            addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
-        }
-        if (!receiverRegistered) {
-            try {
-                if (Build.VERSION.SDK_INT >= 33) {
-                    registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
-                } else {
-                    @Suppress("DEPRECATION")
-                    registerReceiver(receiver, filter)
-                }
-                receiverRegistered = true
-            } catch (error: Exception) {
-                receiverRegistered = false
-                statusMessage = "NeaRer opened with limited Wi-Fi discovery: ${error.javaClass.simpleName}. Bluetooth nearby features may still be available."
-            }
-        }
         // Retry any local community receipt write that failed during a previous
         // ACK callback before the activity was paused or the process was reclaimed.
         if (communityDataDirty) persistCommunityData()
@@ -1049,6 +1121,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         finishDiscovery()
         nearbyServiceBinder?.detachUiListener(nearbyListener)
+        nearbyServiceBinder?.detachWifiDirectUiListener(wifiDirectUiListener)
         nearbyServiceBinder = null
         if (nearbyServiceBound) runCatching { unbindService(nearbyServiceConnection) }
         nearbyServiceBound = false
@@ -1063,10 +1136,6 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         activityResumed = false
         if (communityDataDirty) persistCommunityData()
-        if (receiverRegistered) {
-            runCatching { unregisterReceiver(receiver) }
-            receiverRegistered = false
-        }
         super.onPause()
     }
 
@@ -1215,16 +1284,8 @@ class MainActivity : ComponentActivity() {
         finishDiscovery()
         hybridSearching = false
         nearbyTransport?.stopSearching()
-        val manager = wifiManager
-        val activeChannel = channel
-        if (manager != null && activeChannel != null) {
-            try {
-                manager.stopPeerDiscovery(activeChannel, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() { statusMessage = "Search stopped. You can search again whenever you are ready." }
-                    override fun onFailure(reason: Int) { statusMessage = "Search stopped. Android reported code $reason." }
-                })
-            } catch (_: SecurityException) { statusMessage = "Search stopped. Check nearby-device permission before searching again." }
-        } else statusMessage = "Search stopped."
+        nearbyServiceBinder?.stopWifiDirectDiscovery()
+        statusMessage = "Nearby search stopped. You can search again whenever you are ready."
     }
 
     private fun updateMeshRelayEnabled(enabled: Boolean) {
@@ -1371,8 +1432,6 @@ class MainActivity : ComponentActivity() {
             statusMessage = "Nearby discovery is paused. On Android 8–11, turn Location on before searching for nearby phones."
             return
         }
-        // Start Nearby Connections whenever at least one suitable radio is already enabled.
-        // Android no longer silently enables radios for apps; the user stays in control.
         nearbyTransport?.start()
         hybridSearching = true
         if (!wifiOn) {
@@ -1385,94 +1444,50 @@ class MainActivity : ComponentActivity() {
             statusMessage = "Bluetooth discovery is running. Allow Nearby devices permission to add Wi-Fi Direct discovery."
             return
         }
-        val manager = wifiManager ?: run { finishDiscovery(); statusMessage = "This phone does not provide Wi-Fi Direct."; return }
-        val activeChannel = channel ?: run { finishDiscovery(); statusMessage = "Bluetooth discovery is active, but Wi-Fi Direct is unavailable."; return }
-
+        val binder = nearbyServiceBinder
+        if (binder == null) {
+            ensureNearbyServiceBound()
+            statusMessage = "Preparing NeaRer's background nearby service. Search will be ready shortly."
+            return
+        }
         finishDiscovery()
-        val generation = discoveryGeneration
         scanning = true
         statusMessage = "Looking for nearby phones. Keep NeaRer open on both devices…"
+        val generation = discoveryGeneration
         val timeout = Runnable {
             if (generation == discoveryGeneration && scanning) {
-                try {
-                    manager.requestPeers(activeChannel) { peers ->
-                        if (generation != discoveryGeneration) return@requestPeers
-                        nearbyDevices.clear()
-                        nearbyDevices.addAll(peers.deviceList)
-                        finishDiscovery()
-                        statusMessage = if (nearbyDevices.isEmpty()) "No Wi-Fi Direct phones found in 20 seconds. Check Wi-Fi on both phones, Location for Wi-Fi Direct, and keep NeaRer open." else "${nearbyDevices.size} nearby phone(s) found. Choose one to connect."
-                    }
-                } catch (_: SecurityException) {
-                    finishDiscovery()
-                    statusMessage = "Android blocked nearby discovery. Check NeaRer's Nearby devices permission."
+                finishDiscovery()
+                statusMessage = if (nearbyDevices.isEmpty()) {
+                    "No Wi-Fi Direct phones found in 20 seconds. Check Wi-Fi on both phones, Location for Wi-Fi Direct, and keep NeaRer open."
+                } else {
+                    "${nearbyDevices.size} nearby phone(s) found. Choose one to connect."
                 }
             }
         }
         discoveryTimeout = timeout
         discoveryHandler.postDelayed(timeout, 20_000L)
-        try {
-            manager.discoverPeers(activeChannel, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() {
-                    if (generation == discoveryGeneration) statusMessage = "Search is active. Waiting for nearby phones…"
-                }
-                override fun onFailure(reason: Int) {
-                    if (generation != discoveryGeneration) return
-                    finishDiscovery()
-                    statusMessage = when (reason) {
-                        WifiP2pManager.BUSY -> "Android Wi-Fi is busy. Wait a few seconds and try again."
-                        WifiP2pManager.ERROR -> "Android could not start nearby search. Check Wi-Fi and Location settings."
-                        WifiP2pManager.P2P_UNSUPPORTED -> "This phone does not support Wi-Fi Direct."
-                        else -> "Nearby search could not start (code $reason). Check phone settings and retry."
-                    }
-                }
-            })
-        } catch (_: SecurityException) {
-            finishDiscovery()
-            statusMessage = "Android denied nearby-device access. Allow Nearby devices in app permissions."
-        }
+        binder.discoverWifiDirectPeers()
     }
+
     private fun connectToDevice(device: WifiP2pDevice) {
         if (!hasDiscoveryPermission()) {
             statusMessage = "Nearby-device permission is needed before connecting."
             startDiscovery()
             return
         }
-        val manager = wifiManager ?: run {
-            statusMessage = "This phone does not provide Wi-Fi Direct support."
-            return
-        }
-        val activeChannel = channel ?: run {
-            statusMessage = "The nearby connection service is not ready. Please reopen NeaRer."
+        val binder = nearbyServiceBinder ?: run {
+            statusMessage = "NeaRer's background nearby service is not ready. Please retry."
+            ensureNearbyServiceBound()
             return
         }
         if (device.status == WifiP2pDevice.CONNECTED) {
             statusMessage = "This device already reports a Wi-Fi Direct connection."
             return
         }
-
         connectingAddress = device.deviceAddress
         statusMessage = "Sending a connection invitation to ${device.deviceName.ifBlank { "nearby device" }}…"
         connectionMessage = "Waiting for the other phone to approve"
-
-        val config = WifiP2pConfig().apply {
-            deviceAddress = device.deviceAddress
-            wps.setup = WpsInfo.PBC
-        }
-        manager.connect(activeChannel, config, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                statusMessage = "Invitation sent. The other phone may need to accept the Wi-Fi Direct prompt."
-            }
-
-            override fun onFailure(reason: Int) {
-                connectingAddress = null
-                connectionMessage = "Not connected"
-                statusMessage = when (reason) {
-                    WifiP2pManager.BUSY -> "Wi-Fi is busy. Wait a moment, then try again."
-                    WifiP2pManager.P2P_UNSUPPORTED -> "This phone does not support Wi-Fi Direct."
-                    else -> "Could not send the connection request (code $reason). Try again."
-                }
-            }
-        })
+        binder.connectWifiDirectPeer(device.deviceAddress)
     }
 
     private fun updateConnectionState(info: WifiP2pInfo) {
@@ -1639,7 +1654,6 @@ class MainActivity : ComponentActivity() {
         activeGame = null
         incomingGameInvite = null
         gameChatMessages.clear()
-        val activeChannel = channel
         transportStarted = false
         closePeerTransport()
         connectedDeviceName = null
@@ -1647,22 +1661,9 @@ class MainActivity : ComponentActivity() {
         pairingCode = null
         connectionMessage = "Disconnecting…"
         statusMessage = "Closing the nearby NeaRer connection…"
-        val manager = wifiManager
-        if (activeChannel != null && manager != null) {
-            manager.removeGroup(activeChannel, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() {
-                    connectionMessage = "Not connected"
-                    statusMessage = "Disconnected. You can find nearby people again."
-                }
-                override fun onFailure(reason: Int) {
-                    connectionMessage = "Connection may still be active"
-                    statusMessage = "Android could not close the Wi-Fi Direct group (code $reason)."
-                }
-            })
-        } else {
-            connectionMessage = "Wi-Fi Direct is unavailable"
-            statusMessage = "This phone does not support the current NeaRer connection method."
-        }
+        nearbyServiceBinder?.disconnectWifiDirectGroup()
+        connectionMessage = "Not connected"
+        statusMessage = "Disconnected. You can find nearby people again."
     }
 
     private fun approveIncoming() {
@@ -3538,6 +3539,14 @@ class MainActivity : ComponentActivity() {
 
     private fun cancelOutgoingFileTransfer() {
         val id = outgoingTransferId ?: return
+        if (id.startsWith("hyper:")) {
+            val payloadId = id.substringAfter("hyper:").toLongOrNull()
+            if (payloadId != null) nearbyServiceBinder?.cancelHyperTransferTcpFile(payloadId)
+            outgoingTransferId = null
+            outgoingProgress = 0f
+            chatNotice = "Cancelling secure HyperTransfer…"
+            return
+        }
         if (id.startsWith("nearby:")) {
             val payloadId = id.substringAfter("nearby:").toLongOrNull()
             val endpoint = hybridConnectedEndpoint
@@ -3753,6 +3762,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
         } catch (_: Exception) { }
+        val hyperPayloadId = nearbyServiceBinder?.sendHyperTransferTcpFile(endpoint, uri, fileName)
+        if (hyperPayloadId != null) {
+            outgoingTransferId = "hyper:" + hyperPayloadId
+            outgoingProgress = 0f
+            chatNotice = "Preparing secure file " + (nearbyQueueCompleted + 1) + " of " + nearbyQueueTotal + ": " + fileName + "…"
+            return
+        }
         val payloadId = nearbyTransport?.sendFile(endpoint, uri, fileName)
         if (payloadId != null) {
             outgoingTransferId = "nearby:" + payloadId
@@ -3883,6 +3899,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             } catch (_: Exception) { }
+            val hyperPayloadId = nearbyServiceBinder?.sendHyperTransferTcpFile(endpoint, uri, fileName)
+            if (hyperPayloadId != null) {
+                outgoingTransferId = "hyper:$hyperPayloadId"
+                outgoingProgress = 0f
+                chatNotice = "Preparing encrypted HyperTransfer for $fileName…"
+                return
+            }
             val payloadId = nearbyTransport?.sendFile(endpoint, uri, fileName)
             if (payloadId != null) {
                 outgoingTransferId = "nearby:$payloadId"
@@ -3921,6 +3944,10 @@ class MainActivity : ComponentActivity() {
                     val buffer = ByteArray(12 * 1024)
                     val digest = MessageDigest.getInstance("SHA-256")
                     var sentBytes = 0L
+                    directOutgoingSpeedMeter = TransferSpeedMeter()
+                    outgoingRateBytesPerSecond = 0L
+                    outgoingAverageRateBytesPerSecond = 0L
+                    outgoingPeakRateBytesPerSecond = 0L
                     while (true) {
                         val count = stream.read(buffer)
                         if (count < 0) break
@@ -3929,6 +3956,7 @@ class MainActivity : ComponentActivity() {
                             throw IllegalStateException("Transfer cancelled")
                         }
                         sentBytes += count
+                        val speedSnapshot = directOutgoingSpeedMeter.record(sentBytes, fileSize)
                         digest.update(buffer, 0, count)
                         val chunk = Base64.getEncoder().encodeToString(buffer.copyOf(count))
                         if (!sendWireLine("FILE_CHUNK|$id|0|$chunk")) throw IllegalStateException("Connection lost during transfer")
@@ -3937,6 +3965,9 @@ class MainActivity : ComponentActivity() {
                             val progress = if (fileSize > 0L) " • ${(fraction * 100).toInt()}%" else " • ${sentBytes / 1024} KB"
                             runOnUiThread {
                                 outgoingProgress = fraction
+                                outgoingRateBytesPerSecond = speedSnapshot.recentBytesPerSecond.toLong().coerceAtLeast(0L)
+                                outgoingAverageRateBytesPerSecond = speedSnapshot.averageBytesPerSecond.toLong().coerceAtLeast(0L)
+                                outgoingPeakRateBytesPerSecond = speedSnapshot.peakWindowBytesPerSecond.toLong().coerceAtLeast(0L)
                                 chatNotice = "Sending $fileName$progress"
                             }
                         }
@@ -4035,8 +4066,12 @@ class MainActivity : ComponentActivity() {
                                             throw IllegalStateException("Not enough free storage to continue receiving this file.")
                                         }
                                         transfer.receivedBytes += bytes.size
+                                        val speedSnapshot = directIncomingSpeedMeters
+                                            .getOrPut(parts[1]) { TransferSpeedMeter() }
+                                            .record(transfer.receivedBytes, transfer.expectedBytes)
                                         if (transfer.expectedBytes > 0L && transfer.receivedBytes > transfer.expectedBytes) {
                                             incomingTransfers.remove(parts[1])?.close()
+                                            directIncomingSpeedMeters.remove(parts[1])
                                             transfer.file.delete()
                                             runOnUiThread {
                                                 incomingTransferName = null
@@ -4051,6 +4086,10 @@ class MainActivity : ComponentActivity() {
                                             } else 0f
                                             runOnUiThread {
                                                 incomingProgress = fraction
+                                                incomingRateBytesPerSecond = speedSnapshot.recentBytesPerSecond.toLong().coerceAtLeast(0L)
+                                                incomingAverageRateBytesPerSecond = speedSnapshot.averageBytesPerSecond.toLong().coerceAtLeast(0L)
+                                                incomingPeakRateBytesPerSecond = speedSnapshot.peakWindowBytesPerSecond.toLong().coerceAtLeast(0L)
+                                                incomingTransferName = transfer.name
                                                 chatNotice = if (transfer.expectedBytes > 0L) {
                                                     "Receiving ${transfer.name} • ${(fraction * 100).toInt()}%"
                                                 } else {
@@ -4200,6 +4239,12 @@ private fun NeaRerHome(
     connectedPeerStableId: String?,
     messages: List<ChatMessage>,
     chatNotice: String,
+    incomingRateBytesPerSecond: Long,
+    incomingAverageRateBytesPerSecond: Long,
+    incomingPeakRateBytesPerSecond: Long,
+    outgoingRateBytesPerSecond: Long,
+    outgoingAverageRateBytesPerSecond: Long,
+    outgoingPeakRateBytesPerSecond: Long,
     receivedFiles: List<ReceivedFile>,
     externalShareUris: List<Uri>,
     onExternalShareConsumed: () -> Unit,
@@ -4270,6 +4315,14 @@ private fun NeaRerHome(
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     val context = LocalContext.current
+    fun formatLiveRate(bytesPerSecond: Long): String {
+        val rate = bytesPerSecond.coerceAtLeast(0L)
+        return when {
+            rate >= 1_000_000L -> String.format(java.util.Locale.US, "%.1f MB/s", rate / 1_000_000.0)
+            rate >= 1_000L -> String.format(java.util.Locale.US, "%.0f KB/s", rate / 1_000.0)
+            else -> "0 KB/s"
+        }
+    }
     val folderPreferences = remember(context) {
         context.getSharedPreferences("nearer_folder_browser", Context.MODE_PRIVATE)
     }
@@ -4636,6 +4689,46 @@ private fun NeaRerHome(
                 )
             }
 
+            // Keep the live transfer meter visible when the user navigates away
+            // from Chats to the file centre, People, Games or another section.
+            if (selectedTab != "Chats" && (outgoingTransferId != null || incomingTransferName != null)) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().animateContentSize(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Panel
+                ) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("HYPERTRANSFER • LIVE SPEED", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        if (outgoingTransferId != null) {
+                            Text("Sending • NOW  ${formatLiveRate(outgoingRateBytesPerSecond)}", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("AVG  ${formatLiveRate(outgoingAverageRateBytesPerSecond)}   •   PEAK  ${formatLiveRate(outgoingPeakRateBytesPerSecond)}", color = Muted, fontSize = 11.sp)
+                            LinearProgressIndicator(
+                                progress = { outgoingProgress },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Gold,
+                                trackColor = Midnight
+                            )
+                            Button(
+                                onClick = onCancelTransfer,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(11.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)
+                            ) { Text("Cancel transfer") }
+                        }
+                        incomingTransferName?.let { name ->
+                            Text("Receiving $name • NOW  ${formatLiveRate(incomingRateBytesPerSecond)}", color = Mint, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("AVG  ${formatLiveRate(incomingAverageRateBytesPerSecond)}   •   PEAK  ${formatLiveRate(incomingPeakRateBytesPerSecond)}", color = Muted, fontSize = 11.sp)
+                            LinearProgressIndicator(
+                                progress = { incomingProgress },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Mint,
+                                trackColor = Midnight
+                            )
+                        }
+                    }
+                }
+            }
+
             if (selectedTab == "Home") {
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = Panel) {
                     Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -4951,6 +5044,12 @@ private fun NeaRerHome(
                     usingNearbyConnections = usingNearbyConnections,
                     messages = messages,
                     chatNotice = chatNotice,
+                    incomingRateBytesPerSecond = incomingRateBytesPerSecond,
+                    incomingAverageRateBytesPerSecond = incomingAverageRateBytesPerSecond,
+                    incomingPeakRateBytesPerSecond = incomingPeakRateBytesPerSecond,
+                    outgoingRateBytesPerSecond = outgoingRateBytesPerSecond,
+                    outgoingAverageRateBytesPerSecond = outgoingAverageRateBytesPerSecond,
+                    outgoingPeakRateBytesPerSecond = outgoingPeakRateBytesPerSecond,
                     draft = draft,
                     onDraftChange = { draft = it.take(ChatEditPolicy.MAX_BODY_LENGTH) },
                     onSendMessage = { text, reply -> onSendMessage(text, reply); draft = "" },

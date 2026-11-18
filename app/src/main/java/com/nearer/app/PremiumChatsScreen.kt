@@ -64,6 +64,12 @@ internal fun PremiumChatsScreen(
     usingNearbyConnections: Boolean,
     messages: List<ChatMessage>,
     chatNotice: String,
+    incomingRateBytesPerSecond: Long,
+    incomingAverageRateBytesPerSecond: Long,
+    incomingPeakRateBytesPerSecond: Long,
+    outgoingRateBytesPerSecond: Long,
+    outgoingAverageRateBytesPerSecond: Long,
+    outgoingPeakRateBytesPerSecond: Long,
     draft: String,
     onDraftChange: (String) -> Unit,
     onSendMessage: (String, ChatMessage?) -> Unit,
@@ -91,6 +97,15 @@ internal fun PremiumChatsScreen(
     incomingProgress: Float,
     onCancelTransfer: () -> Unit
 ) {
+    fun formatTransferRate(bytesPerSecond: Long): String {
+        val safeRate = bytesPerSecond.coerceAtLeast(0L)
+        return when {
+            safeRate >= 1_000_000L -> String.format(Locale.US, "%.1f MB/s", safeRate / 1_000_000.0)
+            safeRate >= 1_000L -> String.format(Locale.US, "%.0f KB/s", safeRate / 1_000.0)
+            else -> "0 KB/s"
+        }
+    }
+
     if (selectedMeshRecipientId == null && !chatReady) {
         PremiumChatsInboxScreen(
             meshRecipients = meshRecipients,
@@ -657,6 +672,13 @@ internal fun PremiumChatsScreen(
                     if (chatReady && directConversation) incomingTransferName?.let { incomingName ->
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Receiving $incomingName", color = White, fontSize = 11.sp)
+                            Text(
+                                "NOW  ${formatTransferRate(incomingRateBytesPerSecond)}   •   AVG  ${formatTransferRate(incomingAverageRateBytesPerSecond)}",
+                                color = NeaRerPalette.Mint,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text("Peak ${formatTransferRate(incomingPeakRateBytesPerSecond)}", color = Muted, fontSize = 10.sp)
                             LinearProgressIndicator(
                                 progress = { incomingProgress },
                                 modifier = Modifier.fillMaxWidth(),
@@ -668,6 +690,13 @@ internal fun PremiumChatsScreen(
                     if (chatReady && directConversation && outgoingTransferId != null) {
                         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             Text("Sending file…", color = White, fontSize = 11.sp)
+                            Text(
+                                "NOW  ${formatTransferRate(outgoingRateBytesPerSecond)}   •   AVG  ${formatTransferRate(outgoingAverageRateBytesPerSecond)}",
+                                color = Gold,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text("Peak ${formatTransferRate(outgoingPeakRateBytesPerSecond)}", color = Muted, fontSize = 10.sp)
                             LinearProgressIndicator(
                                 progress = { outgoingProgress },
                                 modifier = Modifier.fillMaxWidth(),

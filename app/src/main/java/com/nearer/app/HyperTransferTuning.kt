@@ -15,7 +15,7 @@ import android.os.PowerManager
 internal object HyperTransferTuning {
     const val BUFFER_SMALL = 32 * 1024
     const val BUFFER_BALANCED = 128 * 1024
-    const val BUFFER_FAST = 256 * 1024
+    const val BUFFER_FAST = 1024 * 1024
 
     private const val LOW_MEMORY_BYTES = 192L * 1024L * 1024L
 
