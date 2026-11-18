@@ -37,9 +37,11 @@ internal class HyperTransferSecureChannel private constructor(
 ) {
     private var sendSequence = 0L
     private var receiveSequence = 0L
+    @Volatile private var closed = false
 
     @Synchronized
     fun seal(plaintext: ByteArray): ByteArray {
+        check(!closed) { "HyperTransfer secure channel is closed" }
         check(sendSequence >= 0L && sendSequence < Long.MAX_VALUE) { "HyperTransfer send sequence exhausted" }
         require(plaintext.size in 1..MAX_PLAINTEXT_BYTES) { "Invalid HyperTransfer record size" }
         val sequence = sendSequence
@@ -55,6 +57,7 @@ internal class HyperTransferSecureChannel private constructor(
 
     @Synchronized
     fun open(record: ByteArray): ByteArray {
+        check(!closed) { "HyperTransfer secure channel is closed" }
         require(record.size in (SEQUENCE_BYTES + TAG_BYTES + 1)..(SEQUENCE_BYTES + TAG_BYTES + MAX_PLAINTEXT_BYTES)) {
             "Invalid encrypted HyperTransfer record length"
         }
@@ -104,6 +107,8 @@ internal class HyperTransferSecureChannel private constructor(
 
     @Synchronized
     fun close() {
+        if (closed) return
+        closed = true
         sendKey.fill(0)
         receiveKey.fill(0)
         sendNoncePrefix.fill(0)
@@ -135,7 +140,9 @@ internal class HyperTransferSecureChannel private constructor(
             localIsSender: Boolean
         ): HyperTransferSecureChannel {
             require(transferId.matches(Regex("^[a-fA-F0-9]{64}$")))
-            require(senderId.isNotBlank() && receiverId.isNotBlank() && senderId != receiverId)
+            require(NeaRerIdentity.normalize(senderId) == senderId) { "Invalid sender peer identity" }
+            require(NeaRerIdentity.normalize(receiverId) == receiverId) { "Invalid receiver peer identity" }
+            require(senderId != receiverId)
             require(transcript.size in 1..16 * 1024)
             val agreement = KeyAgreement.getInstance("ECDH")
             agreement.init(localPrivateKey)
