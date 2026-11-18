@@ -159,3 +159,16 @@ The receiver journal, prefix hashing, negotiation codecs and partial writer are 
 - https://dl.ifip.org/db/conf/networking/networking2024/1571003562.pdf
 - https://www.ijcaonline.org/archives/volume156/number12/irfan-2016-ijca-912582.pdf
 - https://blogs.windows.com/devices/2015/09/22/xender-transfer-files-via-wi-fi/
+
+
+## Transfer-bound authenticated-session transcript foundation (implemented, not wired)
+
+`HyperTransferSessionTranscript` now creates a canonical, length-prefixed transcript for a single file-transfer session. It binds:
+- The protocol version and the stable HyperTransfer transfer ID.
+- Explicit sender and receiver identities (the roles are not sorted away).
+- Both peers' stable signing public keys, fresh 32-byte nonces, ephemeral ECDH public keys and recipient encryption public keys.
+- A domain-separation label specific to HyperTransfer authenticated sessions.
+
+Both peers must construct the transcript with the same sender/receiver roles, then sign the exact bytes with their device-bound `SecurePeerIdentity.signDetached` key and verify the other signature against the signing public key already trusted for that stable peer identity. A public key merely supplied by the connecting peer is not trusted just because its signature verifies; identity-key continuity / first-contact confirmation remains a required part of the caller.
+
+The new helper has JVM tests for deterministic encoding, transfer-ID binding, sender/receiver role binding, peer nonce/key binding, invalid IDs, invalid nonce lengths and unsupported protocol versions. It is a transcript-construction foundation only: no TCP socket handshake, trust-store lookup, SAS confirmation UI, capability negotiation, replay state or transfer-service integration is claimed complete. Bulk data must remain blocked until both identity proofs are verified and the user's existing peer-trust / transfer-approval policy has been satisfied.
