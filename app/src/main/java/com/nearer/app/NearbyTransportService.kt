@@ -43,17 +43,18 @@ class NearbyTransportService : Service() {
             val peerId = nearbyTransport.stableIdentityForEndpoint(endpointId)
             if (hyperTransferApprovals.recordOutgoingOffer(endpointId, peerId, offer) != HyperTransferApprovalLedger.OfferResult.ADDED) return false
             val sent = nearbyTransport.sendHyperTransferTcpOffer(endpointId, offer)
-            if (!sent) hyperTransferApprovals.clearEndpoint(endpointId)
+            if (!sent) hyperTransferApprovals.removeOffer(endpointId, peerId, offer.transferId, HyperTransferApprovalLedger.Direction.OUTGOING)
             return sent
         }
 
         fun respondToHyperTransferTcpOffer(endpointId: String, transferId: String, accepted: Boolean): Boolean {
             val peerId = nearbyTransport.stableIdentityForEndpoint(endpointId)
-            val sent = nearbyTransport.respondToHyperTransferTcpOffer(endpointId, transferId, accepted)
-            if (sent && !hyperTransferApprovals.decideIncoming(endpointId, peerId, transferId, accepted)) {
+            if (!hyperTransferApprovals.decideIncoming(endpointId, peerId, transferId, accepted)) {
                 lastStatus = "The HyperTransfer approval was stale or did not match its pending offer."
                 return false
             }
+            val sent = nearbyTransport.respondToHyperTransferTcpOffer(endpointId, transferId, accepted)
+            if (!sent) hyperTransferApprovals.rollbackIncomingDecision(endpointId, peerId, transferId, accepted)
             return sent
         }
 
