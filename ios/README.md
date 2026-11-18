@@ -19,13 +19,13 @@ This is the isolated native iOS work area. Android's production Nearby messaging
 - [x] Isolated Android NSD/Bonjour/TCP adapter using the same service type and frame format; not yet connected to the active production messaging service.
 - [x] Native SwiftUI iPhone app shell, device-only Keychain identity and nearby discovery screen.
 - [x] Connected nearby discovery to the v3 hello/proof handshake, signed recipient-binding exchange and session-key derivation.
-- [x] Added explicit first-contact fingerprint approval UI; discovered Bonjour names are never automatically trusted.
+- [x] Added explicit first-contact six-digit code and signing-key fingerprint approval UI; discovered Bonjour names are never automatically trusted.\n- [x] Direct encrypted text chat over approved sessions, with bounded AES-GCM encrypted local message persistence and device-only Keychain storage key.
 - [x] XcodeGen project definition, local Swift package dependencies, local-network privacy description and Bonjour declaration.
 - [x] macOS Swift CI and Android build/test CI workflows.
 
 ## Not complete yet
 
-- [ ] Verify live Android ↔ iPhone handshake and encrypted message exchange on physical devices; deterministic fixture parity is covered by automated tests.
+- [ ] Verify live Android ↔ iPhone and iPhone ↔ iPhone handshake and encrypted message exchange on physical devices; deterministic fixture parity is covered by automated tests.
 - [ ] Wire the Keychain trust vault and six-digit approval prompt into the live Bonjour handshake, including a monotonic local binding-sequence counter.\n- [ ] Connect authenticated sessions to the native iOS transport and implement the same durable inbox/outbox, ACK and conversation semantics as Android.
 - [ ] Implement a bounded, back-pressured file stream with receiver staging, prefix verification, whole-file digest verification and atomic finalization on iOS.
 - [ ] Implement the iOS 26 Wi-Fi Aware paired-device adapter and obtain Apple's entitlement approval.
@@ -63,4 +63,4 @@ A Swift Package can be developed without paid Apple Developer membership. Device
 
 ## Safety and integration boundary
 
-Do not add plaintext mode, a second identity format, a duplicate Android message store, or an unreviewed replacement for the current Android Nearby service. A Bonjour service name is discovery metadata, never authenticated identity. The NeaRer v3 handshake, first-contact verification, key-change rejection and durable message semantics must pass before private messaging is enabled.
+Do not add plaintext mode, a second identity format, a duplicate Android message store, or an unreviewed replacement for the current Android Nearby service. A Bonjour service name is discovery metadata, never authenticated identity. The NeaRer v3 handshake, first-contact verification, key-change rejection and durable delivery semantics must pass before private messaging is advertised as production-ready.
