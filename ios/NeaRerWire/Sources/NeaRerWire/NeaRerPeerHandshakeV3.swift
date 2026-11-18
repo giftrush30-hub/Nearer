@@ -59,6 +59,11 @@ public struct NeaRerPeerHandshakeV3 {
         )
     }
 
+    /// Short-authentication string to compare on both devices before first-contact approval.
+    public func verificationCode(with remoteHello: PeerHelloV3) throws -> String {
+        try NeaRerPeerVerificationCodeV1.fromTranscript(transcript(with: remoteHello))
+    }
+
     /// Six-digit short authentication string for a user-confirmed first contact.
     /// Both peers derive the same code from the signed v3 transcript.
     public func verificationCode(with remoteHello: PeerHelloV3) throws -> String {
