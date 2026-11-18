@@ -101,7 +101,7 @@ This matrix is a design target, not a statement that any iOS transport has alrea
 The isolated branch now contains more than the initial wire layer:
 
 - Swift bounded codecs for `peer_hello_v3`, `peer_proof_v3`, and `secure_packet_v1`.
-- CryptoKit P-256 signature verification/signing, P-256 ECDH, HKDF-SHA256 directional key derivation and AES-GCM packet sealing/opening. The macOS Swift workflow has passed compilation and tests for this adapter.
+- CryptoKit P-256 signature verification/signing, P-256 ECDH, HKDF-SHA256 directional key derivation and AES-GCM packet sealing/opening. Deterministic P-256, HKDF, AES-GCM and ECDSA fixtures are asserted by both Swift and Kotlin test suites; live device interoperability remains separate.
 - Swift v3 transcript encoder with a deterministic vector asserted by Kotlin and Swift.
 - Swift port of Android's `NRB1` version-1 transfer bundle manifest, with safe-path validation and a shared golden byte vector.
 - Bounded, incremental, four-byte-length-prefixed TCP frame codec. It handles TCP fragmentation/coalescing and caps control frames at 1 MiB; large file contents must not be buffered through this codec.
@@ -138,7 +138,7 @@ The native apps must share application semantics, not platform SDK internals.
 - Proof: `peer_proof_v3`, fields `peerId`, `signature`.
 - Chat cipher envelope: `secure_packet_v1`, fields `version=1`, `id`, `nonce`, `ciphertext`.
 - Base64 is standard RFC 4648 without line breaks.
-- The iOS wire module validates bounded envelope shape and field sizes. It reproduces the Android v3 handshake transcript byte-for-byte; the same golden vector is asserted by Swift and Kotlin tests. A CryptoKit adapter implements P-256 signatures, ECDH, HKDF-SHA256 and AES-GCM. The transfer manifest, resume messages and single-file stream metadata now have matching Swift/Kotlin golden-vector tests. These codec tests establish byte compatibility for their fixtures; they do not replace end-to-end Android↔iPhone cryptographic and device tests.
+- The iOS wire module validates bounded envelope shape and field sizes. It reproduces the Android v3 handshake transcript byte-for-byte; the same golden vector is asserted by Swift and Kotlin tests. A CryptoKit adapter implements P-256 signatures, ECDH, HKDF-SHA256 and AES-GCM. The transfer manifest, resume messages and single-file stream metadata now have matching Swift/Kotlin golden-vector tests. The deterministic crypto fixtures and codec vectors establish algorithm/wire compatibility for the covered cases; they do not replace a complete handshake, durable messaging integration or end-to-end Android↔iPhone device tests.
 
 ### Cryptographic interoperability gate
 
