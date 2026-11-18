@@ -96,6 +96,17 @@ class HyperTransferSecureChannelTest {
         }
     }
 
+
+    @Test
+    fun closedChannelRejectsFurtherEncryptionAndDecryption() {
+        val pair = channels()
+        val record = pair.sender.seal(byteArrayOf(9))
+        pair.receiver.close()
+        assertThrows(IllegalStateException::class.java) { pair.receiver.open(record) }
+        pair.sender.close()
+        assertThrows(IllegalStateException::class.java) { pair.sender.seal(byteArrayOf(1)) }
+    }
+
     @Test
     fun nonceSequenceIsEncodedAsUnsignedMonotonicLong() {
         val pair = channels()
