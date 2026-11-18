@@ -260,7 +260,13 @@ internal object IncomingFilePayloadPolicy {
         File(resumeDirectory, "partials"),
         TransferResumeJournal(File(resumeDirectory, "journal"))
     )
-    private val resumeCoordinator = TransferResumeCoordinator(resumeStore, TransferResumeStreamWriter(resumeStore))
+    // Adapt the production Nearby receive writer to available memory and thermal state.
+    // Capable cool phones get 1 MiB writes; low-memory/hot phones back off safely.
+    private val resumeReceiveBufferBytes = HyperTransferTuning.receiveBufferBytes(appContext)
+    private val resumeCoordinator = TransferResumeCoordinator(
+        resumeStore,
+        TransferResumeStreamWriter(resumeStore, resumeReceiveBufferBytes)
+    )
     private val streamPayloadBridge = NearbyStreamPayloadBridge(resumeCoordinator, fileIo)
     // Hash large files away from the UI thread before the receiver is given the payload.
     private val transferPreparation = Executors.newFixedThreadPool(2)
