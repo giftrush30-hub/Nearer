@@ -72,13 +72,28 @@ For each phone pair and each direction:
 6. Report median and range, not only peak. Repeat after thermal cooldown; note throttling and battery drain.
 7. Repeat on a low/mid-range phone and a modern high-end phone. A result on one pair is not a universal claim.
 
+
+
+## Evidence-based transport selection policy (implemented on the feature branch)
+
+`HyperTransferTransportPolicy` now provides a pure Kotlin decision layer for the next transport phase:
+
+- It checks capability on **both** phones, including Android API level, hardware support and the relevant permission state.
+- It treats Wi-Fi Direct TCP and Wi-Fi Aware TCP as candidates, not assumed winners.
+- An alternative can be selected only when there are at least five successful runs for the exact device-pair key and transfer direction, all with integrity verification, and a positive measured median byte rate.
+- It chooses the fastest qualified profile for that exact pair/direction. A result measured on another pair or in the opposite direction cannot influence selection.
+- If no alternative qualifies, it falls back to the existing Nearby Point-to-Point route when both phones support it; otherwise it reports that no mutually available route exists.
+
+This policy is deliberately **not yet wired to a Wi-Fi Direct or Wi-Fi Aware socket transport**. It prevents premature route promotion while those transports are still being built and measured. The next implementation stage is the actual Wi-Fi Direct group-owner/client lifecycle, socket connection, bounded streaming, cancellation, integrity verification and cleanup, with permission/lifecycle handling tested on real Android devices.
+
 ## Implementation sequence
 
 - [x] Explicit High-Speed one-to-one mode and Point-to-Point selection.
 - [x] Existing throughput meter and repeated-run median summary.
 - [x] Report both MiB/s and decimal MB/s in benchmark summaries.
 - [x] Add a testable 280 MB/s + 7× + five-run acceptance gate.
-- [ ] Add capability/version negotiation and safe compatibility fallback.
+- [x] Add capability- and evidence-based transport selection policy with unit tests.
+- [ ] Add capability/version negotiation and connect the policy to real transport implementations.
 - [ ] Add a benchmark screen/export that captures the complete test record.
 - [ ] Build and compare a Wi-Fi Direct TCP prototype against Nearby Point-to-Point.
 - [ ] Evaluate Wi-Fi Aware only on devices reporting the required feature.
