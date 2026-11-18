@@ -29,8 +29,9 @@ public enum NeaRerRecipientMessageCryptoV1 {
                                  created: createdAtMilliseconds, expires: expiresAtMilliseconds,
                                  hopLimit: hopLimit)
         let salt = Data(SHA256.hash(data: aad))
-        let key = HKDF<SHA256>.deriveKey(inputKeyMaterial: sharedSecret, salt: salt,
-                                         info: keyInfo, outputByteCount: 32)
+        let key = sharedSecret.hkdfDerivedSymmetricKey(
+            using: SHA256.self, salt: salt, sharedInfo: keyInfo, outputByteCount: 32
+        )
         let nonce = AES.GCM.Nonce()
         let box = try AES.GCM.seal(plaintext, using: key, nonce: nonce, authenticating: aad)
         var combined = Data(box.ciphertext)
@@ -57,9 +58,10 @@ public enum NeaRerRecipientMessageCryptoV1 {
         let aad = associatedData(originID: originID, destinationID: destinationID, packetID: packetID,
                                  created: createdAtMilliseconds, expires: expiresAtMilliseconds,
                                  hopLimit: hopLimit)
-        let key = HKDF<SHA256>.deriveKey(inputKeyMaterial: sharedSecret,
-                                         salt: Data(SHA256.hash(data: aad)),
-                                         info: keyInfo, outputByteCount: 32)
+        let key = sharedSecret.hkdfDerivedSymmetricKey(
+            using: SHA256.self, salt: Data(SHA256.hash(data: aad)),
+            sharedInfo: keyInfo, outputByteCount: 32
+        )
         let split = payload.ciphertextAndTag.count - 16
         let nonce = try AES.GCM.Nonce(data: payload.nonce)
         let box = try AES.GCM.SealedBox(nonce: nonce,
