@@ -18,6 +18,8 @@ This is the isolated native iOS work area. Android's production Nearby messaging
 - [x] Native iOS Network.framework Bonjour/TCP adapter with Apple's peer-to-peer Wi-Fi option.
 - [x] Isolated Android NSD/Bonjour/TCP adapter using the same service type and frame format; not yet connected to the active production messaging service.
 - [x] Native SwiftUI iPhone app shell, device-only Keychain identity and nearby discovery screen.
+- [x] Connected nearby discovery to the v3 hello/proof handshake, signed recipient-binding exchange and session-key derivation.
+- [x] Added explicit first-contact fingerprint approval UI; discovered Bonjour names are never automatically trusted.
 - [x] XcodeGen project definition, local Swift package dependencies, local-network privacy description and Bonjour declaration.
 - [x] macOS Swift CI and Android build/test CI workflows.
 
