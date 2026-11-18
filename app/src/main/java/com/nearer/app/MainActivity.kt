@@ -692,6 +692,9 @@ class MainActivity : ComponentActivity() {
     private var incomingAverageRateBytesPerSecond by mutableStateOf(0L)
     private var outgoingPeakRateBytesPerSecond by mutableStateOf(0L)
     private var incomingPeakRateBytesPerSecond by mutableStateOf(0L)
+    // The legacy Wi-Fi Direct socket path uses the same monotonic goodput meter.
+    private var directOutgoingSpeedMeter = TransferSpeedMeter()
+    private val directIncomingSpeedMeters = ConcurrentHashMap<String, TransferSpeedMeter>()
     private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var activityResumed by mutableStateOf(false)
@@ -3932,6 +3935,10 @@ class MainActivity : ComponentActivity() {
                     val buffer = ByteArray(12 * 1024)
                     val digest = MessageDigest.getInstance("SHA-256")
                     var sentBytes = 0L
+                    directOutgoingSpeedMeter = TransferSpeedMeter()
+                    outgoingRateBytesPerSecond = 0L
+                    outgoingAverageRateBytesPerSecond = 0L
+                    outgoingPeakRateBytesPerSecond = 0L
                     while (true) {
                         val count = stream.read(buffer)
                         if (count < 0) break
@@ -3940,6 +3947,7 @@ class MainActivity : ComponentActivity() {
                             throw IllegalStateException("Transfer cancelled")
                         }
                         sentBytes += count
+                        val speedSnapshot = directOutgoingSpeedMeter.record(sentBytes, fileSize)
                         digest.update(buffer, 0, count)
                         val chunk = Base64.getEncoder().encodeToString(buffer.copyOf(count))
                         if (!sendWireLine("FILE_CHUNK|$id|0|$chunk")) throw IllegalStateException("Connection lost during transfer")
@@ -3948,6 +3956,9 @@ class MainActivity : ComponentActivity() {
                             val progress = if (fileSize > 0L) " • ${(fraction * 100).toInt()}%" else " • ${sentBytes / 1024} KB"
                             runOnUiThread {
                                 outgoingProgress = fraction
+                                outgoingRateBytesPerSecond = speedSnapshot.recentBytesPerSecond.toLong().coerceAtLeast(0L)
+                                outgoingAverageRateBytesPerSecond = speedSnapshot.averageBytesPerSecond.toLong().coerceAtLeast(0L)
+                                outgoingPeakRateBytesPerSecond = speedSnapshot.peakWindowBytesPerSecond.toLong().coerceAtLeast(0L)
                                 chatNotice = "Sending $fileName$progress"
                             }
                         }
@@ -4046,8 +4057,12 @@ class MainActivity : ComponentActivity() {
                                             throw IllegalStateException("Not enough free storage to continue receiving this file.")
                                         }
                                         transfer.receivedBytes += bytes.size
+                                        val speedSnapshot = directIncomingSpeedMeters
+                                            .getOrPut(parts[1]) { TransferSpeedMeter() }
+                                            .record(transfer.receivedBytes, transfer.expectedBytes)
                                         if (transfer.expectedBytes > 0L && transfer.receivedBytes > transfer.expectedBytes) {
                                             incomingTransfers.remove(parts[1])?.close()
+                                            directIncomingSpeedMeters.remove(parts[1])
                                             transfer.file.delete()
                                             runOnUiThread {
                                                 incomingTransferName = null
@@ -4062,6 +4077,10 @@ class MainActivity : ComponentActivity() {
                                             } else 0f
                                             runOnUiThread {
                                                 incomingProgress = fraction
+                                                incomingRateBytesPerSecond = speedSnapshot.recentBytesPerSecond.toLong().coerceAtLeast(0L)
+                                                incomingAverageRateBytesPerSecond = speedSnapshot.averageBytesPerSecond.toLong().coerceAtLeast(0L)
+                                                incomingPeakRateBytesPerSecond = speedSnapshot.peakWindowBytesPerSecond.toLong().coerceAtLeast(0L)
+                                                incomingTransferName = transfer.name
                                                 chatNotice = if (transfer.expectedBytes > 0L) {
                                                     "Receiving ${transfer.name} • ${(fraction * 100).toInt()}%"
                                                 } else {
