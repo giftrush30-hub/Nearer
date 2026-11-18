@@ -9,9 +9,13 @@ import java.io.IOException
 internal object NearbyLanFrameCodec {
     const val MAX_FRAME_BYTES = 1_048_576
 
-    fun encode(payload: ByteArray): ByteArray {
+    fun validate(payload: ByteArray) {
         require(payload.isNotEmpty()) { "Empty LAN frames are not allowed" }
         require(payload.size <= MAX_FRAME_BYTES) { "LAN frame exceeds 1 MiB" }
+    }
+
+    fun encode(payload: ByteArray): ByteArray {
+        validate(payload)
         val result = ByteArray(payload.size + 4)
         val size = payload.size
         result[0] = (size ushr 24).toByte()
@@ -34,8 +38,9 @@ internal object NearbyLanFrameCodec {
     }
 
     fun write(output: DataOutputStream, payload: ByteArray) {
-        val encoded = encode(payload)
-        output.write(encoded)
+        validate(payload)
+        output.writeInt(payload.size)
+        output.write(payload)
         output.flush()
     }
 }
