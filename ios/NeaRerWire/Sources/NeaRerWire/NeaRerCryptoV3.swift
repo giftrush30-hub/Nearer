@@ -22,6 +22,40 @@ public enum NeaRerCryptoV3 {
         return publicKey.isValidSignature(signature, for: transcript)
     }
 
+    /// Matches Android SecurePeerIdentity.signChallenge / verifyChallenge exactly.
+    /// Android signs a domain-separated message containing the peer ID, SHA-256
+    /// fingerprint of its signing key, and base64 of the v3 transcript challenge.
+    public static func signChallenge(peerID: String, signingPublicKeyDER: Data,
+                                     transcript: Data, using privateKey: P256.Signing.PrivateKey) throws -> Data {
+        let message = try peerProofMessage(peerID: peerID, signingPublicKeyDER: signingPublicKeyDER,
+                                           transcript: transcript)
+        return try privateKey.signature(for: message).derRepresentation
+    }
+
+    public static func verifyChallenge(peerID: String, signingPublicKeyDER: Data,
+                                        transcript: Data, signatureDER: Data) -> Bool {
+        guard let message = try? peerProofMessage(peerID: peerID,
+                                                  signingPublicKeyDER: signingPublicKeyDER,
+                                                  transcript: transcript),
+              let publicKey = try? P256.Signing.PublicKey(derRepresentation: signingPublicKeyDER),
+              let signature = try? P256.Signing.ECDSASignature(derRepresentation: signatureDER) else {
+            return false
+        }
+        return publicKey.isValidSignature(signature, for: message)
+    }
+
+    private static func peerProofMessage(peerID: String, signingPublicKeyDER: Data,
+                                         transcript: Data) throws -> Data {
+        guard NeaRerIdentity.normalize(peerID) == peerID,
+              (64...512).contains(signingPublicKeyDER.count) else {
+            throw NeaRerWireError.invalidField("peer proof identity")
+        }
+        let fingerprint = Data(SHA256.hash(data: signingPublicKeyDER))
+            .map { String(format: "%02x", $0) }.joined()
+        let challenge = transcript.base64EncodedString()
+        return Data("NeaRer-peer-proof-v1\\n\\(peerID)\\n\\(fingerprint)\\n\\(challenge)".utf8)
+    }
+
     /// Matches Android SecurePeerIdentity.signChallenge() including its proof domain,
     /// SHA-256 public-key fingerprint, and Base64 transcript encoding.
     public static func signPeerProof(peerID: String, transcript: Data,
