@@ -14,7 +14,7 @@ import java.util.UUID
  * finalizes only after both declared and computed SHA-256 values match.
  */
 internal class NearbyLanFileReceiver(
-    private val metadata: TransferResumeStreamMetadataCodec.Metadata,
+    val metadata: TransferResumeStreamMetadataCodec.Metadata,
     destinationDirectory: File,
     private val checkpointIntervalBytes: Long = 4L * 1024L * 1024L
 ) : AutoCloseable {
