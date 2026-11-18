@@ -17,6 +17,7 @@ struct NearbyHomeView: View {
                     identityCard
                     discoveryCard
                     peerList
+                    verificationQueue
                     privacyNote
                 }
                 .padding(20)
@@ -132,6 +133,68 @@ struct NearbyHomeView: View {
                             .font(.caption.bold()).foregroundStyle(gold)
                     }
                     .padding(13).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+                }
+            }
+        }
+    }
+
+    private var verificationQueue: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            if !model.pendingApprovals.isEmpty {
+                Text("VERIFY THIS DEVICE")
+                    .font(.caption2.weight(.bold)).tracking(1.5)
+                    .foregroundStyle(gold)
+                ForEach(model.pendingApprovals) { pending in
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "checkmark.shield.fill")
+                                .font(.title2).foregroundStyle(gold)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Peer authenticated").font(.subheadline.bold())
+                                Text("NeaRer ID: \(pending.peerID)")
+                                    .font(.caption).foregroundStyle(.white.opacity(0.65))
+                            }
+                        }
+                        Text("Compare this signing-key fingerprint with the other device. Only approve if both devices show the same fingerprint.")
+                            .font(.caption).foregroundStyle(.white.opacity(0.65))
+                        Text(pending.fingerprint)
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .textSelection(.enabled)
+                            .foregroundStyle(gold)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 10))
+                        HStack(spacing: 10) {
+                            Button("Decline") { model.rejectPeer(pending) }
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.white.opacity(0.8))
+                                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                            Button("Approve device") { model.approvePeer(pending) }
+                                .font(.subheadline.bold())
+                                .foregroundStyle(navy)
+                                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                .background(gold, in: RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                    .padding(16)
+                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(gold.opacity(0.35)))
+                }
+            }
+            if !model.securePeerIDs.isEmpty {
+                Text("TRUSTED NEARBY DEVICES")
+                    .font(.caption2.weight(.bold)).tracking(1.5)
+                    .foregroundStyle(gold)
+                ForEach(model.securePeerIDs.sorted(), id: \.self) { trustedID in
+                    HStack(spacing: 10) {
+                        Image(systemName: "lock.shield.fill").foregroundStyle(gold)
+                        Text(trustedID).font(.subheadline.monospaced().bold())
+                        Spacer()
+                        Text("Verified").font(.caption.bold()).foregroundStyle(.green)
+                    }
+                    .padding(13)
+                    .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
                 }
             }
         }
