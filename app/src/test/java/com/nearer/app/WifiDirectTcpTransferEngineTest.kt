@@ -86,6 +86,37 @@ class WifiDirectTcpTransferEngineTest {
         } finally { server.close(); executor.shutdownNow(); root.deleteRecursively() }
     }
 
+    @Test fun receiveTimesOutWhenPeerStallsBeforeHeaderAndCleansUp() {
+        val root = java.nio.file.Files.createTempDirectory("nearer-tcp-timeout").toFile()
+        val server = ServerSocket(0)
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val destination = File(root, "stalled.bin")
+            val shortTimeoutEngine = WifiDirectTcpTransferEngine(
+                bufferBytes = 16 * 1024,
+                socketReadTimeoutMillis = 150
+            )
+            val future = executor.submit<Throwable?> {
+                try {
+                    server.accept().use { shortTimeoutEngine.receive(it, destination, "stalled-session") }
+                    null
+                } catch (error: Throwable) {
+                    error
+                }
+            }
+            Socket("127.0.0.1", server.localPort).use {
+                val error = future.get(5, TimeUnit.SECONDS)
+                assertTrue(error is java.net.SocketTimeoutException)
+            }
+            assertFalse(destination.exists())
+            assertTrue(root.listFiles().orEmpty().none { it.name.endsWith(".part") })
+        } finally {
+            server.close()
+            executor.shutdownNow()
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun refusesToOverwriteExistingDestination() {
         val root = java.nio.file.Files.createTempDirectory("nearer-tcp-overwrite").toFile()
         try {
