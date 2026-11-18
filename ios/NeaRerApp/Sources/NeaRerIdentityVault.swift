@@ -36,6 +36,56 @@ enum NeaRerIdentityVault {
         )
     }
 
+    /// Allocates a monotonic device-local sequence for signed recipient-key bindings.
+    /// The value is persisted in Keychain so reconnects cannot replay sequence 1.
+    static func nextRecipientBindingSequence() throws -> UInt64 {
+        let account = "recipient-binding-sequence"
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let current: UInt64
+        if status == errSecItemNotFound {
+            current = 0
+        } else if status == errSecSuccess, let data = result as? Data, data.count == 8 {
+            current = data.reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
+        } else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+        }
+        guard current < UInt64(Int64.max) else {
+            throw NSError(domain: "com.nearer.identity", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "Recipient binding sequence is exhausted"])
+        }
+        let next = current + 1
+        var encoded = Data()
+        for shift in stride(from: 56, through: 0, by: -8) {
+            encoded.append(UInt8((next >> UInt64(shift)) & 0xff))
+        }
+        if status == errSecItemNotFound {
+            var insert = query
+            insert.removeValue(forKey: kSecReturnData as String)
+            insert.removeValue(forKey: kSecMatchLimit as String)
+            insert[kSecValueData as String] = encoded
+            insert[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            let addStatus = SecItemAdd(insert as CFDictionary, nil)
+            guard addStatus == errSecSuccess else {
+                throw NSError(domain: NSOSStatusErrorDomain, code: Int(addStatus))
+            }
+        } else {
+            let update = [kSecValueData as String: encoded]
+            let updateStatus = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+            guard updateStatus == errSecSuccess else {
+                throw NSError(domain: NSOSStatusErrorDomain, code: Int(updateStatus))
+            }
+        }
+        return next
+    }
+
     private static func item(account: String, create: () throws -> Data) throws -> Data {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
