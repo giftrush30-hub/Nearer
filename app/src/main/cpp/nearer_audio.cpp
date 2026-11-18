@@ -72,7 +72,7 @@ class DuplexEngine final : public oboe::AudioStreamDataCallback,
                            public oboe::AudioStreamErrorCallback,
                            public std::enable_shared_from_this<DuplexEngine> {
 public:
-    bool start(int32_t inputDeviceId, bool preferUnprocessedInput, bool privacySensitiveCapture) {
+    bool start(int32_t inputDeviceId, int32_t outputDeviceId, bool preferUnprocessedInput, bool privacySensitiveCapture) {
         playbackRing_.reset();
         analysisRing_.reset();
         disconnected_.store(false, std::memory_order_relaxed);
@@ -107,6 +107,7 @@ public:
                 ->setSharingMode(sharing)
                 ->setDataCallback(dataCallback)
                 ->setErrorCallback(errorCallback);
+            if (outputDeviceId >= 0) builder.setDeviceId(outputDeviceId);
             return builder.openStream(output_);
         };
 
@@ -119,6 +120,12 @@ public:
             return false;
         }
         outputRaw_.store(output_.get(), std::memory_order_release);
+        // Never play live microphone audio through an implicit/default route. The
+        // Kotlin layer selected a wired/USB/Bluetooth headphone; verify Oboe opened it.
+        if (outputDeviceId >= 0 && output_->getDeviceId() != outputDeviceId) {
+            closeStreams();
+            return false;
+        }
 
         auto openInput = [&](oboe::SharingMode sharing) {
             oboe::AudioStreamBuilder builder;
@@ -359,12 +366,12 @@ std::shared_ptr<DuplexEngine> gEngine;
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_nearer_app_StudioOboeEngine_nativeStart(
-    JNIEnv*, jobject, jint inputDeviceId, jboolean preferUnprocessedInput,
-    jboolean privacySensitiveCapture) {
+    JNIEnv*, jobject, jint inputDeviceId, jint outputDeviceId,
+    jboolean preferUnprocessedInput, jboolean privacySensitiveCapture) {
     std::lock_guard<std::mutex> lock(gEngineMutex);
     if (gEngine) gEngine->stop();
     auto engine = std::make_shared<DuplexEngine>();
-    if (!engine->start(inputDeviceId, preferUnprocessedInput == JNI_TRUE,
+    if (!engine->start(inputDeviceId, outputDeviceId, preferUnprocessedInput == JNI_TRUE,
                        privacySensitiveCapture == JNI_TRUE)) {
         gEngine.reset();
         return JNI_FALSE;

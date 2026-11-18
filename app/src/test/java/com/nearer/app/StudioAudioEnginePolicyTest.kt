@@ -31,6 +31,37 @@ class StudioAudioEnginePolicyTest {
         assertTrue(StudioAudioEnginePolicy.matchesPreferredInput(null, null))
     }
 
+    @Test fun onlyExternalHeadphoneOutputTypesAreAllowedForLiveMonitoring() {
+        assertTrue(StudioAudioEnginePolicy.isHeadphoneOutputType(android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET))
+        assertTrue(StudioAudioEnginePolicy.isHeadphoneOutputType(android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES))
+        assertTrue(StudioAudioEnginePolicy.isHeadphoneOutputType(android.media.AudioDeviceInfo.TYPE_USB_HEADSET))
+        assertTrue(StudioAudioEnginePolicy.isHeadphoneOutputType(android.media.AudioDeviceInfo.TYPE_USB_DEVICE))
+        assertTrue(StudioAudioEnginePolicy.isHeadphoneOutputType(android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP))
+        assertTrue(StudioAudioEnginePolicy.isHeadphoneOutputType(android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO))
+        assertTrue(StudioAudioEnginePolicy.isHeadphoneOutputType(android.media.AudioDeviceInfo.TYPE_BLE_HEADSET))
+        assertFalse(StudioAudioEnginePolicy.isHeadphoneOutputType(android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER))
+        assertFalse(StudioAudioEnginePolicy.isHeadphoneOutputType(android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER))
+        assertFalse(StudioAudioEnginePolicy.isHeadphoneOutputType(android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE))
+    }
+
+    @Test fun ambiguousUsbAndBluetoothOutputsRequireExplicitHeadphoneConfirmation() {
+        assertTrue(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_USB_DEVICE))
+        assertTrue(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP))
+        assertTrue(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO))
+        assertFalse(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES))
+        assertFalse(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_USB_HEADSET))
+        assertFalse(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_BLE_HEADSET))
+        assertFalse(StudioAudioEnginePolicy.requiresOutputConfirmation(android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER))
+    }
+
+    @Test fun liveMonitorMustUseTheExactSelectedHeadphoneOutput() {
+        assertTrue(StudioAudioEnginePolicy.matchesPreferredOutput(21, 21))
+        assertFalse(StudioAudioEnginePolicy.matchesPreferredOutput(21, 9))
+        assertFalse(StudioAudioEnginePolicy.matchesPreferredOutput(21, null))
+        assertFalse(StudioAudioEnginePolicy.matchesPreferredOutput(null, 21))
+        assertFalse(StudioAudioEnginePolicy.matchesPreferredOutput(null, null))
+    }
+
     @Test fun unprocessedPresetIsOnlyRequestedFromApi28() {
         assertFalse(StudioAudioEnginePolicy.useUnprocessedInput(27, true))
         assertTrue(StudioAudioEnginePolicy.useUnprocessedInput(28, true))
