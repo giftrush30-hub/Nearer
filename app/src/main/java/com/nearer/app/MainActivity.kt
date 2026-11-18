@@ -127,9 +127,6 @@ internal val BrandBlue = Color(0xFF2563EB)
 internal val Gold = Color(0xFFFFD12D)
 
 class MainActivity : ComponentActivity() {
-    private var wifiManager: WifiP2pManager? = null
-    private var channel: WifiP2pManager.Channel? = null
-    private var receiverRegistered = false
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
     private var nearbyServiceBinder: NearbyTransportService.LocalBinder? = null
@@ -149,6 +146,8 @@ class MainActivity : ComponentActivity() {
             nearbyServiceBinding = false
             nearbyTransport = local.transport()
             local.attachUiListener(nearbyListener)
+            local.attachWifiDirectUiListener(wifiDirectUiListener)
+            local.startWifiDirect()
             runCatching { nearbyTransport?.setDisplayName(displayName) }
             runCatching { nearbyTransport?.setMeshTransitEnabled(false) }
             runCatching { restoreReceivedFiles() }
@@ -704,63 +703,49 @@ class MainActivity : ComponentActivity() {
     private var typingExpiresAt by mutableStateOf(0L)
     private var statusMessage by mutableStateOf("Ready to find nearby Android phones.")
     private val nearbyDevices = mutableStateListOf<WifiP2pDevice>()
+    private val wifiDirectUiListener = object : WifiDirectUiListener {
+        override fun onStateChanged(state: String, detail: String) {
+            runOnUiThread {
+                scanning = state == WifiDirectConnectionCoordinator.State.DISCOVERING.name
+                if (state == WifiDirectConnectionCoordinator.State.FAILED.name) {
+                    finishDiscovery()
+                    statusMessage = detail
+                } else if (state == WifiDirectConnectionCoordinator.State.DISCONNECTED.name &&
+                    (transportStarted || connectedDeviceName != null)) {
+                    updateConnectionState(WifiP2pInfo())
+                } else if (state == WifiDirectConnectionCoordinator.State.DISCOVERING.name) {
+                    statusMessage = detail
+                }
+            }
+        }
 
-    private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> {
-                    val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1)
-                    if (state == WifiP2pManager.WIFI_P2P_STATE_DISABLED) {
-                        scanning = false
-                        statusMessage = "Turn on Wi-Fi to discover nearby phones."
-                    } else {
-                        statusMessage = "Wi-Fi Direct is ready. Tap Find people nearby."
+        override fun onPeersChanged(peers: List<WifiDirectPeerSnapshot>) {
+            runOnUiThread {
+                nearbyDevices.clear()
+                nearbyDevices.addAll(peers.map { peer ->
+                    WifiP2pDevice().apply {
+                        deviceName = peer.name
+                        deviceAddress = peer.address
+                        status = peer.status
                     }
+                })
+                if (scanning) finishDiscovery()
+                statusMessage = if (nearbyDevices.isEmpty()) {
+                    "No nearby Wi-Fi Direct devices found yet. Keep both phones nearby and scan again."
+                } else {
+                    "${nearbyDevices.size} nearby device(s) found. Select one to request a connection."
                 }
-                WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
-                    if (hasDiscoveryPermission()) {
-                        wifiManager?.requestPeers(channel) { peers ->
-                            nearbyDevices.clear()
-                            nearbyDevices.addAll(peers.deviceList)
-                            finishDiscovery()
-                            statusMessage = if (nearbyDevices.isEmpty()) {
-                                "No nearby Wi-Fi Direct devices found yet. Keep both phones nearby and scan again."
-                            } else {
-                                "${nearbyDevices.size} nearby device(s) found. Select one to request a connection."
-                            }
-                        }
-                    }
+            }
+        }
+
+        override fun onLinkReady(isGroupOwner: Boolean, groupOwnerAddress: java.net.InetAddress) {
+            runOnUiThread {
+                val info = WifiP2pInfo().apply {
+                    groupFormed = true
+                    this.isGroupOwner = isGroupOwner
+                    this.groupOwnerAddress = groupOwnerAddress
                 }
-                WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION -> {
-                    val state = intent.getIntExtra(WifiP2pManager.EXTRA_DISCOVERY_STATE, -1)
-                    if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STARTED) {
-                        scanning = true
-                        statusMessage = "Searching nearby…"
-                    } else if (state == WifiP2pManager.WIFI_P2P_DISCOVERY_STOPPED && scanning) {
-                        if (hasDiscoveryPermission()) {
-                            wifiManager?.requestPeers(channel) { peers ->
-                                nearbyDevices.clear()
-                                nearbyDevices.addAll(peers.deviceList)
-                                finishDiscovery()
-                                if (nearbyDevices.isEmpty() && hybridPeers.isEmpty()) {
-                                    statusMessage = "No nearby phones found yet. Keep Bluetooth and Wi-Fi ON on both phones, then search again."
-                                } else {
-                                    statusMessage = "Nearby search finished. Select a phone below to connect."
-                                }
-                            }
-                        } else {
-                            finishDiscovery()
-                            statusMessage = "Nearby search finished. Check the Nearby devices permission if no phones appear."
-                        }
-                    }
-                }
-                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
-                    if (hasDiscoveryPermission()) {
-                        wifiManager?.requestConnectionInfo(channel) { info ->
-                            updateConnectionState(info)
-                        }
-                    }
-                }
+                updateConnectionState(info)
             }
         }
     }
@@ -818,14 +803,6 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = android.graphics.Color.rgb(7, 24, 42)
         window.navigationBarColor = android.graphics.Color.rgb(7, 24, 42)
         window.decorView.systemUiVisibility = 0
-        try {
-            wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
-            channel = wifiManager?.initialize(this, mainLooper, null)
-        } catch (error: Exception) {
-            wifiManager = null
-            channel = null
-            statusMessage = "Wi-Fi Direct could not initialise on this phone. Bluetooth nearby features can still be used."
-        }
         // Respect the user's saved transfer strategy. Ultra Speed uses Nearby's
         // one-to-one P2P strategy and must match on both phones; resetting this
         // preference here silently disabled the mode after every app restart.
@@ -834,9 +811,6 @@ class MainActivity : ComponentActivity() {
         ultraSpeedRestartRequired = false
         nearbyTransport = null
         nearbyTransport?.setMeshTransitEnabled(false)
-        if (wifiManager == null && statusMessage == "Ready to find nearby Android phones.") {
-            statusMessage = "Wi-Fi Direct is unavailable. Bluetooth nearby features may still work."
-        }
         runCatching { restoreLocalData() }.onFailure {
             statusMessage = "NeaRer opened, but some saved local data could not be restored."
         }
@@ -1036,26 +1010,6 @@ class MainActivity : ComponentActivity() {
         activityResumed = true
         nearbyServiceBinder?.replayPendingMessages()
         (selectedMeshRecipientId ?: hybridConnectedStableId)?.let(::sendPendingReadReceipts)
-        val filter = IntentFilter().apply {
-            addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
-            addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
-            addAction(WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION)
-            addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
-        }
-        if (!receiverRegistered) {
-            try {
-                if (Build.VERSION.SDK_INT >= 33) {
-                    registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
-                } else {
-                    @Suppress("DEPRECATION")
-                    registerReceiver(receiver, filter)
-                }
-                receiverRegistered = true
-            } catch (error: Exception) {
-                receiverRegistered = false
-                statusMessage = "NeaRer opened with limited Wi-Fi discovery: ${error.javaClass.simpleName}. Bluetooth nearby features may still be available."
-            }
-        }
         // Retry any local community receipt write that failed during a previous
         // ACK callback before the activity was paused or the process was reclaimed.
         if (communityDataDirty) persistCommunityData()
@@ -1068,6 +1022,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         finishDiscovery()
         nearbyServiceBinder?.detachUiListener(nearbyListener)
+        nearbyServiceBinder?.detachWifiDirectUiListener(wifiDirectUiListener)
         nearbyServiceBinder = null
         if (nearbyServiceBound) runCatching { unbindService(nearbyServiceConnection) }
         nearbyServiceBound = false
@@ -1082,10 +1037,6 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         activityResumed = false
         if (communityDataDirty) persistCommunityData()
-        if (receiverRegistered) {
-            runCatching { unregisterReceiver(receiver) }
-            receiverRegistered = false
-        }
         super.onPause()
     }
 
@@ -1234,16 +1185,8 @@ class MainActivity : ComponentActivity() {
         finishDiscovery()
         hybridSearching = false
         nearbyTransport?.stopSearching()
-        val manager = wifiManager
-        val activeChannel = channel
-        if (manager != null && activeChannel != null) {
-            try {
-                manager.stopPeerDiscovery(activeChannel, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() { statusMessage = "Search stopped. You can search again whenever you are ready." }
-                    override fun onFailure(reason: Int) { statusMessage = "Search stopped. Android reported code $reason." }
-                })
-            } catch (_: SecurityException) { statusMessage = "Search stopped. Check nearby-device permission before searching again." }
-        } else statusMessage = "Search stopped."
+        nearbyServiceBinder?.stopWifiDirectDiscovery()
+        statusMessage = "Nearby search stopped. You can search again whenever you are ready."
     }
 
     private fun updateMeshRelayEnabled(enabled: Boolean) {
@@ -1390,8 +1333,6 @@ class MainActivity : ComponentActivity() {
             statusMessage = "Nearby discovery is paused. On Android 8–11, turn Location on before searching for nearby phones."
             return
         }
-        // Start Nearby Connections whenever at least one suitable radio is already enabled.
-        // Android no longer silently enables radios for apps; the user stays in control.
         nearbyTransport?.start()
         hybridSearching = true
         if (!wifiOn) {
@@ -1404,94 +1345,50 @@ class MainActivity : ComponentActivity() {
             statusMessage = "Bluetooth discovery is running. Allow Nearby devices permission to add Wi-Fi Direct discovery."
             return
         }
-        val manager = wifiManager ?: run { finishDiscovery(); statusMessage = "This phone does not provide Wi-Fi Direct."; return }
-        val activeChannel = channel ?: run { finishDiscovery(); statusMessage = "Bluetooth discovery is active, but Wi-Fi Direct is unavailable."; return }
-
+        val binder = nearbyServiceBinder
+        if (binder == null) {
+            ensureNearbyServiceBound()
+            statusMessage = "Preparing NeaRer's background nearby service. Search will be ready shortly."
+            return
+        }
         finishDiscovery()
-        val generation = discoveryGeneration
         scanning = true
         statusMessage = "Looking for nearby phones. Keep NeaRer open on both devices…"
+        val generation = discoveryGeneration
         val timeout = Runnable {
             if (generation == discoveryGeneration && scanning) {
-                try {
-                    manager.requestPeers(activeChannel) { peers ->
-                        if (generation != discoveryGeneration) return@requestPeers
-                        nearbyDevices.clear()
-                        nearbyDevices.addAll(peers.deviceList)
-                        finishDiscovery()
-                        statusMessage = if (nearbyDevices.isEmpty()) "No Wi-Fi Direct phones found in 20 seconds. Check Wi-Fi on both phones, Location for Wi-Fi Direct, and keep NeaRer open." else "${nearbyDevices.size} nearby phone(s) found. Choose one to connect."
-                    }
-                } catch (_: SecurityException) {
-                    finishDiscovery()
-                    statusMessage = "Android blocked nearby discovery. Check NeaRer's Nearby devices permission."
+                finishDiscovery()
+                statusMessage = if (nearbyDevices.isEmpty()) {
+                    "No Wi-Fi Direct phones found in 20 seconds. Check Wi-Fi on both phones, Location for Wi-Fi Direct, and keep NeaRer open."
+                } else {
+                    "${nearbyDevices.size} nearby phone(s) found. Choose one to connect."
                 }
             }
         }
         discoveryTimeout = timeout
         discoveryHandler.postDelayed(timeout, 20_000L)
-        try {
-            manager.discoverPeers(activeChannel, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() {
-                    if (generation == discoveryGeneration) statusMessage = "Search is active. Waiting for nearby phones…"
-                }
-                override fun onFailure(reason: Int) {
-                    if (generation != discoveryGeneration) return
-                    finishDiscovery()
-                    statusMessage = when (reason) {
-                        WifiP2pManager.BUSY -> "Android Wi-Fi is busy. Wait a few seconds and try again."
-                        WifiP2pManager.ERROR -> "Android could not start nearby search. Check Wi-Fi and Location settings."
-                        WifiP2pManager.P2P_UNSUPPORTED -> "This phone does not support Wi-Fi Direct."
-                        else -> "Nearby search could not start (code $reason). Check phone settings and retry."
-                    }
-                }
-            })
-        } catch (_: SecurityException) {
-            finishDiscovery()
-            statusMessage = "Android denied nearby-device access. Allow Nearby devices in app permissions."
-        }
+        binder.discoverWifiDirectPeers()
     }
+
     private fun connectToDevice(device: WifiP2pDevice) {
         if (!hasDiscoveryPermission()) {
             statusMessage = "Nearby-device permission is needed before connecting."
             startDiscovery()
             return
         }
-        val manager = wifiManager ?: run {
-            statusMessage = "This phone does not provide Wi-Fi Direct support."
-            return
-        }
-        val activeChannel = channel ?: run {
-            statusMessage = "The nearby connection service is not ready. Please reopen NeaRer."
+        val binder = nearbyServiceBinder ?: run {
+            statusMessage = "NeaRer's background nearby service is not ready. Please retry."
+            ensureNearbyServiceBound()
             return
         }
         if (device.status == WifiP2pDevice.CONNECTED) {
             statusMessage = "This device already reports a Wi-Fi Direct connection."
             return
         }
-
         connectingAddress = device.deviceAddress
         statusMessage = "Sending a connection invitation to ${device.deviceName.ifBlank { "nearby device" }}…"
         connectionMessage = "Waiting for the other phone to approve"
-
-        val config = WifiP2pConfig().apply {
-            deviceAddress = device.deviceAddress
-            wps.setup = WpsInfo.PBC
-        }
-        manager.connect(activeChannel, config, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                statusMessage = "Invitation sent. The other phone may need to accept the Wi-Fi Direct prompt."
-            }
-
-            override fun onFailure(reason: Int) {
-                connectingAddress = null
-                connectionMessage = "Not connected"
-                statusMessage = when (reason) {
-                    WifiP2pManager.BUSY -> "Wi-Fi is busy. Wait a moment, then try again."
-                    WifiP2pManager.P2P_UNSUPPORTED -> "This phone does not support Wi-Fi Direct."
-                    else -> "Could not send the connection request (code $reason). Try again."
-                }
-            }
-        })
+        binder.connectWifiDirectPeer(device.deviceAddress)
     }
 
     private fun updateConnectionState(info: WifiP2pInfo) {
@@ -1658,7 +1555,6 @@ class MainActivity : ComponentActivity() {
         activeGame = null
         incomingGameInvite = null
         gameChatMessages.clear()
-        val activeChannel = channel
         transportStarted = false
         closePeerTransport()
         connectedDeviceName = null
@@ -1666,22 +1562,9 @@ class MainActivity : ComponentActivity() {
         pairingCode = null
         connectionMessage = "Disconnecting…"
         statusMessage = "Closing the nearby NeaRer connection…"
-        val manager = wifiManager
-        if (activeChannel != null && manager != null) {
-            manager.removeGroup(activeChannel, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() {
-                    connectionMessage = "Not connected"
-                    statusMessage = "Disconnected. You can find nearby people again."
-                }
-                override fun onFailure(reason: Int) {
-                    connectionMessage = "Connection may still be active"
-                    statusMessage = "Android could not close the Wi-Fi Direct group (code $reason)."
-                }
-            })
-        } else {
-            connectionMessage = "Wi-Fi Direct is unavailable"
-            statusMessage = "This phone does not support the current NeaRer connection method."
-        }
+        nearbyServiceBinder?.disconnectWifiDirectGroup()
+        connectionMessage = "Not connected"
+        statusMessage = "Disconnected. You can find nearby people again."
     }
 
     private fun approveIncoming() {
