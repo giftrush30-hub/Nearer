@@ -126,6 +126,12 @@ internal val White = Color(0xFFF6F8FC)
 internal val BrandBlue = Color(0xFF2563EB)
 internal val Gold = Color(0xFFFFD12D)
 
+private data class PendingHyperTransferOfferUi(
+    val endpointId: String,
+    val peerId: String,
+    val offer: HyperTransferTcpOfferCodec.Offer
+)
+
 class MainActivity : ComponentActivity() {
     private var scanning by mutableStateOf(false)
     private var nearbyTransport: NearbyConnectionsTransport? = null
@@ -572,6 +578,29 @@ class MainActivity : ComponentActivity() {
                     } else "$action $name…"
                 }
             }
+            override fun onIncomingHyperTransferOffer(
+                id: String, peerId: String, offer: HyperTransferTcpOfferCodec.Offer
+            ) {
+                runOnUiThread {
+                    if (pendingHyperTransferOffer == null) {
+                        pendingHyperTransferOffer = PendingHyperTransferOfferUi(id, peerId, offer)
+                    } else {
+                        // Never replace an offer while the user is reviewing it.
+                        nearbyServiceBinder?.respondToHyperTransferTcpOffer(id, offer.transferId, false)
+                    }
+                }
+            }
+            override fun onHyperTransferOfferDecision(
+                id: String, peerId: String, decision: HyperTransferTcpOfferCodec.Decision
+            ) {
+                runOnUiThread {
+                    chatNotice = if (decision.accepted) {
+                        "The recipient approved the secure transfer. Establishing the protected Wi-Fi Direct session…"
+                    } else {
+                        "The recipient declined the secure transfer."
+                    }
+                }
+            }
             override fun onFileReceived(id: String, name: String, file: File) {
                 val isAppBundle = isNeaRerAppBundle(file)
                 runOnUiThread {
@@ -644,6 +673,7 @@ class MainActivity : ComponentActivity() {
     private var incomingRequesterName by mutableStateOf<String?>(null)
     private var approvalMessage by mutableStateOf("Waiting for app approval")
     private var pairingCode by mutableStateOf<String?>(null)
+    private var pendingHyperTransferOffer by mutableStateOf<PendingHyperTransferOfferUi?>(null)
     private var chatReady by mutableStateOf(false)
     private var transportStarted = false
     private var serverSocket: ServerSocket? = null
@@ -952,7 +982,44 @@ class MainActivity : ComponentActivity() {
                         onComplete = ::completeOnboarding
                     )
                 }
+                pendingHyperTransferOffer?.let { pending ->
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { decideHyperTransferOffer(false) },
+                        containerColor = Panel,
+                        title = { Text("Incoming secure file transfer", color = Gold, fontWeight = FontWeight.Bold) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("${pending.peerId} wants to send:", color = White)
+                                Text(pending.offer.name, color = Mint, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "${android.text.format.Formatter.formatShortFileSize(this@MainActivity, pending.offer.sizeBytes)} • SHA-256 checked after transfer",
+                                    color = Muted
+                                )
+                                Text("Accept only if you expected this file. Nothing is received until you approve.", color = Muted)
+                            }
+                        },
+                        confirmButton = {
+                            Button(onClick = { decideHyperTransferOffer(true) }) { Text("Accept file") }
+                        },
+                        dismissButton = {
+                            Button(onClick = { decideHyperTransferOffer(false) }) { Text("Decline") }
+                        }
+                    )
+                }
             }
+        }
+    }
+
+    private fun decideHyperTransferOffer(accepted: Boolean) {
+        val pending = pendingHyperTransferOffer ?: return
+        val sent = nearbyServiceBinder?.respondToHyperTransferTcpOffer(
+            pending.endpointId, pending.offer.transferId, accepted
+        ) == true
+        pendingHyperTransferOffer = null
+        chatNotice = when {
+            !sent -> "NeaRer could not send your HyperTransfer decision. Ask the sender to retry."
+            accepted -> "You approved ${pending.offer.name}. Waiting for the secure Wi-Fi Direct transfer session…"
+            else -> "You declined ${pending.offer.name}."
         }
     }
 
