@@ -138,7 +138,7 @@ final class NearbyHomeModel: ObservableObject {
             authenticatedPeerIDsByEndpoint[pending.endpointID] = remoteHello.peerID
             securePeerIDs.insert(remoteHello.peerID)
             pendingApprovals.removeAll { $0.endpointID == pending.endpointID }
-            status = "Secure peer verification completed for \(remoteHello.peerID). Messaging storage is the next integration step."
+            status = "Secure peer verification completed for \(remoteHello.peerID). You can now exchange encrypted text messages."
         } catch {
             status = "Peer trust was not saved: \(error.localizedDescription)"
         }
@@ -309,7 +309,7 @@ final class NearbyHomeModel: ObservableObject {
             deviceID: identity.peerID,
             signingPublicKeyDER: identity.signingPublicKeyDER,
             recipientEncryptionPublicKeyDER: identity.recipientEncryptionPublicKeyDER,
-            sequence: 1,
+            sequence: try NeaRerIdentityVault.nextRecipientBindingSequence(),
             issuedAtMilliseconds: now,
             expiresAtMilliseconds: now + 24 * 60 * 60 * 1_000
         ) { bytes in
