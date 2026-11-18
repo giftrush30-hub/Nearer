@@ -109,6 +109,75 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport, @unchecke
         }
     }
 
+    /// Streams a file in bounded chunks. Network.framework completion is used as
+    /// backpressure: the next chunk is read only after the previous frame is processed.
+    /// The receiver must still verify NRSM metadata, per-chunk offsets and final SHA-256.
+    public func sendFileStream(to endpointID: String, fileURL: URL,
+                               metadata: NeaRerTransferStreamMetadataV1,
+                               completion: @escaping (Result<NeaRerTransferFileEndV1, Error>) -> Void) {
+        queue.async { [weak self] in
+            guard let self, let connection = self.connections[endpointID] else {
+                completion(.failure(TransportFrameError.emptyFrame))
+                return
+            }
+            do {
+                let writer = try NeaRerTransferFileStreamWriterV1(fileURL: fileURL, metadata: metadata)
+                let metadataBytes = try NeaRerTransferStreamMetadataCodecV1.encode(metadata)
+                let frame = try TransportFrameCodec.encode(metadataBytes)
+                connection.send(content: frame, completion: .contentProcessed { [weak self] error in
+                    guard let self else { writer.close(); return }
+                    if let error {
+                        writer.close()
+                        completion(.failure(error))
+                    } else {
+                        self.sendNextFileChunk(writer, connection: connection, completion: completion)
+                    }
+                })
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+
+    private func sendNextFileChunk(
+        _ writer: NeaRerTransferFileStreamWriterV1,
+        connection: NWConnection,
+        completion: @escaping (Result<NeaRerTransferFileEndV1, Error>) -> Void
+    ) {
+        do {
+            if let chunk = try writer.nextChunk() {
+                let chunkBytes = try NeaRerTransferFileChunkCodecV1.encodeChunk(chunk)
+                let frame = try TransportFrameCodec.encode(chunkBytes)
+                connection.send(content: frame, completion: .contentProcessed { [weak self] error in
+                    guard let self else { writer.close(); return }
+                    if let error {
+                        writer.close()
+                        self.onStateChanged?(.failed("File chunk send failed: \(error)"))
+                        completion(.failure(error))
+                    } else {
+                        self.sendNextFileChunk(writer, connection: connection, completion: completion)
+                    }
+                })
+            } else {
+                let end = try writer.finish()
+                let endBytes = try NeaRerTransferFileChunkCodecV1.encodeEnd(end)
+                let frame = try TransportFrameCodec.encode(endBytes)
+                connection.send(content: frame, completion: .contentProcessed { [weak self] error in
+                    if let error {
+                        writer.close()
+                        self?.onStateChanged?(.failed("File end record send failed: \(error)"))
+                        completion(.failure(error))
+                    } else {
+                        completion(.success(end))
+                    }
+                })
+            }
+        } catch {
+            writer.close()
+            completion(.failure(error))
+        }
+    }
+
     public func disconnect(from endpointID: String) {
         queue.async { [weak self] in self?.removeConnection(endpointID, cancel: true) }
     }
@@ -202,6 +271,11 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport {
     public func start() throws { onStateChanged?(.failed("Apple Network framework unavailable on this platform")) }
     public func connect(to endpointID: String) {}
     public func send(_ frame: Data, to endpointID: String) {}
+    public func sendFileStream(to endpointID: String, fileURL: URL,
+                               metadata: NeaRerTransferStreamMetadataV1,
+                               completion: @escaping (Result<NeaRerTransferFileEndV1, Error>) -> Void) {
+        completion(.failure(TransportFrameError.emptyFrame))
+    }
     public func disconnect(from endpointID: String) {}
     public func stop() { onStateChanged?(.idle) }
 }
