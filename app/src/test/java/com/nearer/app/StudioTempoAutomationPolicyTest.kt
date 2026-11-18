@@ -65,6 +65,40 @@ class StudioTempoAutomationPolicyTest {
         )
     }
 
+    @Test fun retimingTwoPointRampKeepsBothSpeedTargetsAtNewClipBoundaries() {
+        val original = StudioTempoAutomationPolicy.twoPointRamp(0.75f, 1.75f, 10_000L)
+
+        val shortened = StudioTempoAutomationPolicy.retimeForClipDuration(original, 4_000L)
+        assertEquals(listOf(0L, 4_000L), shortened.map { it.timeMs })
+        assertEquals(0.75f, shortened.first().speed, 0.0001f)
+        assertEquals(1.75f, shortened.last().speed, 0.0001f)
+        assertEquals(1.75f, StudioTempoAutomationPolicy.speedAt(shortened, 4_000L), 0.0001f)
+
+        val extended = StudioTempoAutomationPolicy.retimeForClipDuration(original, 20_000L)
+        assertEquals(listOf(0L, 20_000L), extended.map { it.timeMs })
+        assertEquals(0.75f, extended.first().speed, 0.0001f)
+        assertEquals(1.75f, extended.last().speed, 0.0001f)
+        assertEquals(1.75f, StudioTempoAutomationPolicy.speedAt(extended, 20_000L), 0.0001f)
+    }
+
+    @Test fun retimingPreservesNeutralAndMultiKeyframeSemantics() {
+        assertTrue(StudioTempoAutomationPolicy.retimeForClipDuration(emptyList(), 5_000L).isEmpty())
+        assertTrue(
+            StudioTempoAutomationPolicy.retimeForClipDuration(
+                listOf(StudioTempoPoint(0L, 1f), StudioTempoPoint(10_000L, 1f)),
+                5_000L
+            ).isEmpty()
+        )
+        val multi = listOf(
+            StudioTempoPoint(0L, 1f),
+            StudioTempoPoint(1_000L, 1.25f),
+            StudioTempoPoint(4_000L, 1.5f)
+        )
+        val retained = StudioTempoAutomationPolicy.retimeForClipDuration(multi, 2_000L)
+        assertEquals(listOf(0L, 1_000L, 2_000L), retained.map { it.timeMs })
+        assertEquals(1.5f, retained.last().speed, 0.0001f)
+    }
+
     @Test fun providerSamplesRampOnTwentyMillisecondBoundaries() {
         val provider = StudioTempoAutomationSpeedProvider(
             listOf(StudioTempoPoint(0, 1f), StudioTempoPoint(200, 2f)),
