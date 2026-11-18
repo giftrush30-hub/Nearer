@@ -80,3 +80,28 @@ These pieces are foundations, not an active production route. The legacy plainte
 - These source/test changes are committed after the previously successful Android CI run. **They have not yet been validated by a new CI run.** The prior passing JVM/manifest/APK results do not validate these new commits.
 - Production service integration remains deliberately disabled: MainActivity currently owns an independent Wi-Fi Direct manager, discovery receiver, group state, and legacy approval socket. The new coordinator must not be started alongside it. A safe migration must move the complete lifecycle and UI contract together, not simply create a second P2P manager in NearbyTransportService.
 - User will perform physical phone testing. Engineering-side work still needs to complete integration, add benchmark capture/export, run CI on the current head, and provide the physical-test protocol/results template.
+
+
+## Verified source call-site inventory (18 November 2026)
+
+This inventory was checked against the current PR head `a294cffd550f8b20830b6f04d46cfc068c8053b3` before planning the ownership migration.
+
+| Responsibility | Current source location | Observed behavior |
+|---|---|---|
+| P2P manager initialization | `app/src/main/java/com/nearer/app/MainActivity.kt`, `onCreate` | Activity calls `getSystemService(WIFI_P2P_SERVICE)` and `WifiP2pManager.initialize(this, mainLooper, null)`. |
+| P2P event receiver | `MainActivity.kt`, receiver around lines 706–780 | Activity handles Wi-Fi state, peer-list, discovery-state and connection-state broadcasts; peer and connection details are requested from its manager/channel. |
+| Receiver lifecycle | `MainActivity.kt`, `onResume` / matching pause cleanup | Activity registers the P2P receiver as it resumes. This is UI lifecycle-bound today. |
+| Discovery and stop | `MainActivity.kt`, `stopDiscovery` / `startDiscovery` | Activity directly calls `stopPeerDiscovery`, `requestPeers` and `discoverPeers`; timeout and visible state are Activity fields. |
+| Connect and group state | `MainActivity.kt`, `connectToDevice` / `updateConnectionState` | Activity directly calls `connect`, tracks the selected device and decides when to start the legacy approval socket. |
+| Legacy socket | `MainActivity.kt`, `startApprovalServer` / `connectToApprovalServer` | Activity starts/joins port 8988 and exchanges `NEARER_HELLO` plus a short pairing/acceptance exchange. This is a separate legacy protocol, not the new secure TCP framing. |
+| Long-lived Nearby owner | `NearbyTransportService.kt`, `LocalBinder` and `onCreate` | Binder exposes `NearbyConnectionsTransport`, listener attach/detach and inbox replay. It does not expose a Wi-Fi Direct coordinator or P2P operations. |
+| Authenticated file transport | `NearbyConnectionsTransport.kt`, payload callbacks and Hyper stream methods | Existing authenticated endpoint checks, metadata/stream matching, resume negotiation, progress, SHA-256 completion receipts, cancellation and retry are owned here. |
+| New secure TCP engine | `WifiDirectTcpTransferEngine.kt` | Secure socket send/receive is a standalone engine accepting a socket and authenticated channel; no production caller was found in the transport/service call-site audit. |
+
+### Consequence for the migration
+
+The first production integration change must be a coordinated ownership migration, not a new manager field added to the service. The service needs to become the sole P2P owner; the Activity must stop initializing a manager, registering its own P2P receiver, issuing discovery/connect/group commands, and hosting/joining the old socket. The binder then needs explicit, lifecycle-safe commands and immutable state snapshots/events for the Activity UI.
+
+Only after that owner migration is independently validated should the authenticated HyperTransfer session be bound to the existing transfer identity and approval state. The current Nearby stream protocol already has substantial resume, retry, progress and receipt semantics; the TCP route must either preserve those semantics or deliberately start with non-resumable one-file transfers and keep Nearby as the fallback. A secure-channel failure must never trigger a plaintext retry.
+
+**No production code was changed by this audit update.** It narrows the next code change and records the verified call sites so the owner migration can be reviewed against the actual source rather than guessed.
