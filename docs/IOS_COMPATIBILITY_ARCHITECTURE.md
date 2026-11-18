@@ -31,7 +31,7 @@ Do not replace the Android Nearby service, create a second Android chat store, o
 
 ## Transport research and decisions
 
-### 1. Wi-Fi Aware: preferred internet-free cross-platform path
+### 1. Wi-Fi Aware: preferred Apple-native path; Android interoperability remains experimental
 
 Apple's Wi-Fi Aware framework arrived on iOS 26 and is supported on iPhone 12 and later. It provides secure device-to-device discovery, pairing and high-throughput peer-to-peer networking without a router, cellular link, internet or cloud server. Apple documents pairing through DeviceDiscoveryUI and data connections through Network.framework.
 
@@ -91,7 +91,7 @@ CoreBluetooth can provide a low-bandwidth discovery/control fallback on iOS, but
 | Android ↔ Android | Existing Nearby Connections | Existing tested Android local transfer routes | Preserve current behavior |
 | iPhone ↔ iPhone, iOS 26+ | Wi-Fi Aware | Network.framework peer-to-peer Wi-Fi / local LAN | Wi-Fi Aware entitlement and user pairing |
 | iPhone ↔ iPhone, earlier iOS | Network.framework peer-to-peer Wi-Fi | Same local Wi-Fi / user-assisted hotspot | Apple-only peer-to-peer route |
-| Android ↔ iPhone, both Wi-Fi Aware capable | Wi-Fi Aware | Same local Wi-Fi / user-assisted hotspot | Both devices must expose Wi-Fi Aware capability |
+| Android ↔ iPhone | Same local Wi-Fi / user-assisted hotspot with standard TCP/Bonjour | Experimental Wi-Fi Aware pairing; future BLE bootstrap + Wi-Fi data | Do not assume NAN capability alone guarantees Apple pairing compatibility |
 | Android ↔ iPhone, no shared Wi-Fi Aware | Same local Wi-Fi / hotspot | Future custom BLE bootstrap + user-assisted Wi-Fi data path | No universal automatic offline route is promised |
 
 This matrix is a design target, not a statement that any iOS transport has already been implemented or physically verified.
@@ -108,7 +108,7 @@ The isolated branch now contains more than the initial wire layer:
 - A Network.framework adapter that advertises/browses the `_nearer-v1._tcp` Bonjour service and opts into Apple's peer-to-peer Wi-Fi path. The endpoint handle is explicitly untrusted until the NeaRer cryptographic handshake succeeds.
 - iOS local-network privacy and Bonjour declarations plus an example Wi-Fi Aware entitlement plist.
 
-The Network.framework adapter is a native iOS implementation foundation, not yet a complete app feature. The Android side does not yet advertise the same TCP/Bonjour service, and no iPhone has yet been physically tested against it. The Wi-Fi Aware path still needs the iOS 26 paired-device API adapter, Android Wi-Fi Aware implementation, entitlement approval and real-device interoperability validation.
+The Network.framework adapter is a native iOS implementation foundation, not yet a complete app feature. The Android adapter now advertises the same TCP/Bonjour service in an isolated class, but it is not integrated into the production messaging service. No iPhone has yet been physically tested against it. The Wi-Fi Aware path still needs the iOS 26 paired-device API adapter, Android Wi-Fi Aware implementation, entitlement approval and real-device interoperability validation.
 
 ### LAN transport contract
 
@@ -138,7 +138,7 @@ The native apps must share application semantics, not platform SDK internals.
 - Proof: `peer_proof_v3`, fields `peerId`, `signature`.
 - Chat cipher envelope: `secure_packet_v1`, fields `version=1`, `id`, `nonce`, `ciphertext`.
 - Base64 is standard RFC 4648 without line breaks.
-- The iOS wire module validates bounded envelope shape and field sizes. It reproduces the Android v3 handshake transcript byte-for-byte; the same golden vector is now asserted by both Swift and Kotlin tests. A CryptoKit adapter has also been added for P-256 signatures, ECDH, HKDF-SHA256 and AES-GCM. That adapter is awaiting macOS CI verification and deterministic Android↔iOS cryptographic vectors; it is not yet approved for live peer trust.
+- The iOS wire module validates bounded envelope shape and field sizes. It reproduces the Android v3 handshake transcript byte-for-byte; the same golden vector is asserted by Swift and Kotlin tests. A CryptoKit adapter implements P-256 signatures, ECDH, HKDF-SHA256 and AES-GCM. The transfer manifest, resume messages and single-file stream metadata now have matching Swift/Kotlin golden-vector tests. These codec tests establish byte compatibility for their fixtures; they do not replace end-to-end Android↔iPhone cryptographic and device tests.
 
 ### Cryptographic interoperability gate
 
