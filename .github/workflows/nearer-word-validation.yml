@@ -1,0 +1,156 @@
+name: NeaRer Word validation
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: nearer-word-validation-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  bible-pack-tooling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Test Bible pack and lexicon tooling
+        run: python -m unittest discover -s tools -p "test_*.py"
+      - name: Build and verify public-domain WEBP pack
+        run: |
+          curl --fail --location --retry 3 https://ebible.org/Scriptures/engwebp_usfm.zip --output /tmp/engwebp_usfm.zip
+          python tools/build_nearer_bible_pack_from_usfm.py /tmp/engwebp_usfm.zip build/nearer-word-webp.zip \
+            --pack-id webp-eng-2026 --translation-id WEBP --translation-name "World English Bible" \
+            --language-tag en --language-name English --abbreviation WEBP --canon-id protestant-66 \
+            --source-id ebible.org --license-id public-domain \
+            --attribution "World English Bible text from eBible.org; public domain; preserve the text faithfully and observe trademark conditions."
+          python tools/verify_nearer_bible_pack.py build/nearer-word-webp.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nearer-word-webp-bible-pack
+          path: build/nearer-word-webp.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  original-language-lexicons:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Download licensed Greek and Hebrew source lexicons
+        run: |
+          mkdir -p build/stepbible
+          curl --fail --location --retry 3 "https://raw.githubusercontent.com/STEPBible/STEPBible-Data/master/Lexicons/TBESG%20-%20Translators%20Brief%20lexicon%20of%20Extended%20Strongs%20for%20Greek%20-%20STEPBible.org%20CC%20BY.txt" -o build/stepbible/TBESG.txt
+          curl --fail --location --retry 3 "https://raw.githubusercontent.com/openscriptures/HebrewLexicon/master/HebrewStrong.xml" -o build/stepbible/OpenScriptures-HebrewStrong.xml
+          echo 'TBESG source header and data sample:'; sed -n '10,35p' build/stepbible/TBESG.txt
+      - name: Convert source lexicons to NeaRer JSONL
+        run: |
+          python tools/build_nearer_word_stepbible_lexicon.py \
+            --greek build/stepbible/TBESG.txt --output build/stepbible/nearer-word-lexicon.jsonl
+          python tools/build_nearer_word_oshb_lexicon.py \
+            --input build/stepbible/OpenScriptures-HebrewStrong.xml \
+            --output build/stepbible/nearer-word-lexicon-hbo.jsonl
+          cat > build/stepbible/ATTRIBUTION.txt <<'EOF'
+          Greek lexicon: STEPBible-Data TBESG, created for STEPBible.org based on work at Tyndale House Cambridge and others; CC BY 4.0.
+          Source: https://github.com/STEPBible/STEPBible-Data
+          Hebrew lexicon: Open Scriptures Hebrew Bible Project HebrewStrong.xml; CC BY 4.0. Credit the Open Scriptures Hebrew Bible Project.
+          Source: https://github.com/openscriptures/HebrewLexicon
+          Conversion differences: source data converted to NeaRer JSONL; HTML markup stripped from Greek definition fields; duplicate identical rows removed; no verse-to-English-translation alignments generated.
+          Important: STEPBible TBESH was deliberately excluded because its own file header says permission from Online Bible should be obtained before applying its brief definitions in another project.
+          EOF
+          : > build/stepbible/empty-alignments.ndjson
+          python tools/package_nearer_word_lexicon_pack.py --entries build/stepbible/nearer-word-lexicon-grc.jsonl --alignments build/stepbible/empty-alignments.ndjson --output build/stepbible/nearer-word-greek-lexicon.zip --source-name "STEPBible TBESG Greek lexicon" --source-url "https://github.com/STEPBible/STEPBible-Data" --license-id "CC-BY-4.0" --attribution "Credit STEPBible.org / Tyndale House Cambridge. CC BY 4.0. NeaRer converted TSV to JSONL and stripped HTML markup."
+          python tools/package_nearer_word_lexicon_pack.py --entries build/stepbible/nearer-word-lexicon-hbo.jsonl --alignments build/stepbible/empty-alignments.ndjson --output build/stepbible/nearer-word-hebrew-lexicon.zip --source-name "Open Scriptures HebrewStrong lexicon" --source-url "https://github.com/openscriptures/HebrewLexicon" --license-id "CC-BY-4.0" --attribution "Credit the Open Scriptures Hebrew Bible Project. CC BY 4.0. NeaRer converted XML to JSONL."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nearer-word-stepbible-lexicon-jsonl
+          path: |
+            build/stepbible/nearer-word-lexicon-grc.jsonl
+            build/stepbible/nearer-word-lexicon-hbo.jsonl
+            build/stepbible/nearer-word-greek-lexicon.zip
+            build/stepbible/nearer-word-hebrew-lexicon.zip
+            build/stepbible/ATTRIBUTION.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  bsb-word-alignment:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Build public-domain Berean Standard Bible and word alignments
+        run: |
+          python tools/build_nearer_word_bsb_interlinear.py --output-dir build/bsb --workers 8
+          : > build/bsb/empty-entries.ndjson
+          python tools/package_nearer_word_lexicon_pack.py --entries build/bsb/empty-entries.ndjson --alignments build/bsb/alignments.ndjson --output build/bsb/nearer-word-bsb-word-alignments.zip --source-name "Berean Standard Bible Interlinear word annotations" --source-url "https://bible.helloao.org/docs/reference/datasets/" --license-id "public-domain" --attribution "Berean Standard Bible text and interlinear tables are dedicated to the public domain. Source: Berean Bible / Free Use Bible API. NeaRer matched interlinear English gloss phrases in BSB word order and converted successful matches to token-index alignments."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nearer-word-bsb-text-and-word-alignment-packs
+          path: |
+            build/bsb/nearer-word-bsb-v1.zip
+            build/bsb/nearer-word-bsb-word-alignments.zip
+            build/bsb/scripture.ndjson
+            build/bsb/alignments.ndjson
+          if-no-files-found: error
+          retention-days: 30
+
+  android-emulator-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Run SQLite word-alignment test on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
+          disable-animations: true
+          script: |
+            adb wait-for-device
+            gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest
+
+  android-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build debug APK independently of unrelated JVM test failures
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nearer-word-synced-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
