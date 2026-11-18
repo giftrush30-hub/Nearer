@@ -124,7 +124,8 @@ public struct NeaRerRecipientIdentityBindingV1: Equatable {
                               recipientEncryptionPublicKeyDER: Data, sequence: UInt64,
                               issuedAtMilliseconds: Int64, expiresAtMilliseconds: Int64,
                               sign: (Data) throws -> Data) throws -> NeaRerRecipientIdentityBindingV1 {
-        guard isP256(signingPublicKeyDER), isP256(recipientEncryptionPublicKeyDER),\n              let fingerprint = sha256(signingPublicKeyDER) else {
+        guard isP256(signingPublicKeyDER), isP256(recipientEncryptionPublicKeyDER),
+              let fingerprint = sha256(signingPublicKeyDER) else {
             throw NeaRerWireError.invalidPublicKey
         }
         let unsigned = NeaRerRecipientIdentityBindingV1(
