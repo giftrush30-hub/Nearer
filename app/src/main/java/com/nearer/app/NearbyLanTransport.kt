@@ -126,7 +126,6 @@ internal class NearbyLanTransport(
                 completion(null)
             } catch (error: Exception) {
                 removeConnection(endpointId)
-                if (!closed.get()) listener.onTransportError("LAN send failed: ${error.message}")
                 completion(error)
             }
         }
