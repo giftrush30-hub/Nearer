@@ -131,6 +131,24 @@ internal class NearbyLanTransport(
         }
     }
 
+    fun sendFile(
+        endpointId: String,
+        source: java.io.File,
+        metadata: TransferResumeStreamMetadataCodec.Metadata,
+        completion: (Result<Unit>) -> Unit
+    ) {
+        if (!connections.containsKey(endpointId)) {
+            completion(Result.failure(IOException("Peer connection is unavailable")))
+            return
+        }
+        NearbyLanFileSender.send(
+            source,
+            metadata,
+            NearbyLanFrameSink { frame, callback -> sendFrame(endpointId, frame, callback) },
+            completion
+        )
+    }
+
     private fun registerBonjourService() {
         // Registration waits for the listener's ephemeral port to be ready.
         executor.execute {
