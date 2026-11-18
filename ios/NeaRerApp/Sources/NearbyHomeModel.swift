@@ -16,6 +16,7 @@ final class NearbyHomeModel: ObservableObject {
         let endpointID: String
         let peerID: String
         let fingerprint: String
+        let verificationCode: String
         var id: String { endpointID }
     }
 
@@ -346,12 +347,14 @@ final class NearbyHomeModel: ObservableObject {
         guard trust != .keyChanged else {
             throw NeaRerPeerTrustErrorV1.keyChanged
         }
+        guard let handshake = handshakes[endpointID] else { throw NeaRerPeerTrustErrorV1.invalidPeer }
         let fingerprint = Data(SHA256.hash(data: hello.signingPublicKeyDER))
             .map { String(format: "%02X", $0) }.joined()
+        let verificationCode = try handshake.verificationCode(with: hello)
         if !pendingApprovals.contains(where: { $0.endpointID == endpointID }) {
             pendingApprovals.append(PendingApproval(
                 endpointID: endpointID, peerID: hello.peerID,
-                fingerprint: fingerprint
+                fingerprint: fingerprint, verificationCode: verificationCode
             ))
         }
         status = "Peer \(hello.peerID) authenticated. Check the fingerprint and approve to trust this device."
