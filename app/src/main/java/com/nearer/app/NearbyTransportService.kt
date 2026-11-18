@@ -39,11 +39,34 @@ class NearbyTransportService : Service() {
     inner class LocalBinder : Binder() {
         fun transport(): NearbyConnectionsTransport = nearbyTransport
 
-        fun sendHyperTransferTcpOffer(endpointId: String, offer: HyperTransferTcpOfferCodec.Offer): Boolean =
-            nearbyTransport.sendHyperTransferTcpOffer(endpointId, offer)
+        fun sendHyperTransferTcpOffer(endpointId: String, offer: HyperTransferTcpOfferCodec.Offer): Boolean {
+            val peerId = nearbyTransport.stableIdentityForEndpoint(endpointId)
+            if (hyperTransferApprovals.recordOutgoingOffer(endpointId, peerId, offer) != HyperTransferApprovalLedger.OfferResult.ADDED) return false
+            val sent = nearbyTransport.sendHyperTransferTcpOffer(endpointId, offer)
+            if (!sent) hyperTransferApprovals.clearEndpoint(endpointId)
+            return sent
+        }
 
-        fun respondToHyperTransferTcpOffer(endpointId: String, transferId: String, accepted: Boolean): Boolean =
-            nearbyTransport.respondToHyperTransferTcpOffer(endpointId, transferId, accepted)
+        fun respondToHyperTransferTcpOffer(endpointId: String, transferId: String, accepted: Boolean): Boolean {
+            val peerId = nearbyTransport.stableIdentityForEndpoint(endpointId)
+            val sent = nearbyTransport.respondToHyperTransferTcpOffer(endpointId, transferId, accepted)
+            if (sent && !hyperTransferApprovals.decideIncoming(endpointId, peerId, transferId, accepted)) {
+                lastStatus = "The HyperTransfer approval was stale or did not match its pending offer."
+                return false
+            }
+            return sent
+        }
+
+        /** One-shot approval for the exact offer; callers must still authenticate the socket identity. */
+        fun consumeHyperTransferApproval(
+            endpointId: String,
+            peerId: String,
+            offer: HyperTransferTcpOfferCodec.Offer,
+            outgoing: Boolean
+        ): Boolean = hyperTransferApprovals.consumeApproval(
+            endpointId, peerId, offer,
+            if (outgoing) HyperTransferApprovalLedger.Direction.OUTGOING else HyperTransferApprovalLedger.Direction.INCOMING
+        )
 
         fun attachWifiDirectUiListener(listener: WifiDirectUiListener) {
             wifiDirectUiListener = listener
@@ -128,6 +151,8 @@ class NearbyTransportService : Service() {
     @Volatile private var uiListener: NearbyConnectionsTransport.Listener? = null
     @Volatile private var lastStatus: String? = null
     private val inFlightMessageIds = ConcurrentHashMap.newKeySet<String>()
+    /** Approval state lives with the foreground service, not the Activity lifecycle. */
+    private val hyperTransferApprovals = HyperTransferApprovalLedger()
     @Volatile private var wifiDirectUiListener: WifiDirectUiListener? = null
     @Volatile private var wifiDirectCoordinator: WifiDirectConnectionCoordinator? = null
     @Volatile private var wifiDirectStarted = false
@@ -201,6 +226,7 @@ class NearbyTransportService : Service() {
         }
 
         override fun onDisconnected(id: String, stableId: String, name: String) {
+            hyperTransferApprovals.clearEndpoint(id)
             uiListener?.onDisconnected(id, stableId, name)
         }
 
@@ -352,13 +378,24 @@ class NearbyTransportService : Service() {
         override fun onIncomingHyperTransferOffer(
             id: String, peerId: String, offer: HyperTransferTcpOfferCodec.Offer
         ) {
-            uiListener?.onIncomingHyperTransferOffer(id, peerId, offer)
+            when (hyperTransferApprovals.recordIncomingOffer(id, peerId, offer)) {
+                HyperTransferApprovalLedger.OfferResult.ADDED,
+                HyperTransferApprovalLedger.OfferResult.DUPLICATE ->
+                    uiListener?.onIncomingHyperTransferOffer(id, peerId, offer)
+                HyperTransferApprovalLedger.OfferResult.CONFLICT,
+                HyperTransferApprovalLedger.OfferResult.REJECTED ->
+                    uiListener?.onFileStatus("A duplicate, conflicting, or excessive HyperTransfer offer was rejected.")
+            }
         }
 
         override fun onHyperTransferOfferDecision(
             id: String, peerId: String, decision: HyperTransferTcpOfferCodec.Decision
         ) {
-            uiListener?.onHyperTransferOfferDecision(id, peerId, decision)
+            if (hyperTransferApprovals.recordRemoteDecision(id, peerId, decision)) {
+                uiListener?.onHyperTransferOfferDecision(id, peerId, decision)
+            } else {
+                uiListener?.onFileStatus("A stale or mismatched HyperTransfer approval response was ignored.")
+            }
         }
     }
 
@@ -515,6 +552,7 @@ class NearbyTransportService : Service() {
         wifiDirectCoordinator?.close()
         wifiDirectCoordinator = null
         wifiDirectStarted = false
+        hyperTransferApprovals.clearAll()
         nearbyTransport.stop()
         super.onDestroy()
     }
