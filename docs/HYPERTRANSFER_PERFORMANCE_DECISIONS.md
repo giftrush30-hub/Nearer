@@ -31,10 +31,9 @@ The code-level acceptance gate is `HyperTransferPerformanceGate`. It converts th
 
 5. **Wi-Fi Aware.** Android's current developer documentation says Wi-Fi Aware can discover peers and establish a bidirectional Wi-Fi data path without an access point; it is intended for large data exchange and supports higher throughput than Bluetooth. Android 13 devices with hardware support can enable instant communication mode to reduce discovery/data-path setup latency for a short 30-second window, at extra power cost. AOSP's platform documentation makes clear that support depends on the device's Wi-Fi hardware/firmware and framework, so this is a capability-gated route, not a universal Android baseline.
    - https://developer.android.com/develop/connectivity/wifi/wifi-aware
-   - https://developer.android.com/develop/connectivity/wifi/wifi-aware
-- https://source.android.com/docs/core/connect/wifi-aware
-- https://www.mdpi.com/2078-2489/11/4/180
-- https://arxiv.org/abs/2604.07889
+   - https://source.android.com/docs/core/connect/wifi-aware
+   - https://www.mdpi.com/2078-2489/11/4/180
+   - https://arxiv.org/abs/2604.07889
 
 6. **Wi-Fi 6 ceiling context.** A 2024 experimental study using Galaxy S21 Ultra phones and an external Wi-Fi 6/6E router measured roughly 1.6 Gbit/s at 160 MHz in its setup. That is below 2.24 Gbit/s even before application overhead, and it was not a phone-to-phone Nearby test. It demonstrates why a 280 MB/s application target requires exceptional radio hardware and carefully chosen transport conditions.
    - https://dl.ifip.org/db/conf/networking/networking2024/1571003562.pdf
@@ -172,3 +171,17 @@ The receiver journal, prefix hashing, negotiation codecs and partial writer are 
 Both peers must construct the transcript with the same sender/receiver roles, then sign the exact bytes with their device-bound `SecurePeerIdentity.signDetached` key and verify the other signature against the signing public key already trusted for that stable peer identity. A public key merely supplied by the connecting peer is not trusted just because its signature verifies; identity-key continuity / first-contact confirmation remains a required part of the caller.
 
 The new helper has JVM tests for deterministic encoding, transfer-ID binding, sender/receiver role binding, peer nonce/key binding, invalid IDs, invalid nonce lengths and unsupported protocol versions. It is a transcript-construction foundation only: no TCP socket handshake, trust-store lookup, SAS confirmation UI, capability negotiation, replay state or transfer-service integration is claimed complete. Bulk data must remain blocked until both identity proofs are verified and the user's existing peer-trust / transfer-approval policy has been satisfied.
+
+
+## Wi-Fi Aware implementation constraints (verified against current Android documentation)
+
+- The app must declare `CHANGE_NETWORK_STATE` in addition to its existing Wi-Fi, network, Internet and nearby-device permissions before calling `ConnectivityManager.requestNetwork()`. Do not add this permission until the Wi-Fi Aware implementation is actually introduced.
+- Capability detection must check both `PackageManager.FEATURE_WIFI_AWARE` and the runtime `WifiAwareManager.isAvailable()` state. Hardware feature support alone is not enough.
+- Register for `WifiAwareManager.ACTION_WIFI_AWARE_STATE_CHANGED` before checking availability. If availability changes, discard all sessions and rebuild the route state rather than reusing stale discovery handles.
+- Android's documented data path is discovery publish/subscribe, peer message exchange, a publisher-side `ServerSocket`, then a `WifiAwareNetworkSpecifier` request from each peer. The subscriber obtains the publisher IPv6 address and port from `WifiAwareNetworkInfo` in `onCapabilitiesChanged()`.
+- Create the client socket with the specific `Network.getSocketFactory()` supplied by the Aware callback. Do not bind the whole app process to that network; NeaRer messaging and other connectivity must remain independent.
+- Always unregister the `ConnectivityManager.NetworkCallback` and close sockets/discovery sessions on cancellation, link loss and service shutdown.
+- Wi-Fi Aware can become unavailable when Wi-Fi is disabled or when Wi-Fi Direct, SoftAP or tethering is active on some hardware/firmware. The route selector must re-check availability at connection time and fall back without disturbing the active Nearby messaging route.
+- If a PSK is configured on the Aware network specifier, treat it as link-layer protection only. Still perform NeaRer's pinned signing-key proof and the transfer-bound transcript verification before accepting file bytes.
+
+Official implementation reference: https://developer.android.com/develop/connectivity/wifi/wifi-aware
