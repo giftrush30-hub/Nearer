@@ -213,7 +213,7 @@ class WifiDirectTcpTransferEngineTest {
             assertTrue("Expected an idle ACK read to time out, got $error",
                 error is java.net.SocketTimeoutException)
             assertTrue(peerReady.await(2, TimeUnit.SECONDS))
-            assertTrue(peer.get(3, TimeUnit.SECONDS) == Unit)
+            peer.get(3, TimeUnit.SECONDS)
         } finally {
             releasePeer.countDown()
             server.close()
