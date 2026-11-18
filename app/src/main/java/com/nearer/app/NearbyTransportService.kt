@@ -26,9 +26,52 @@ import java.util.concurrent.ConcurrentHashMap
  * inbox and removes each event only after its existing chat/community storage
  * callback confirms a successful commit.
  */
+data class WifiDirectPeerSnapshot(val name: String, val address: String, val status: Int)
+
+/** UI callbacks for the single service-owned Wi-Fi Direct control plane. */
+interface WifiDirectUiListener {
+    fun onStateChanged(state: String, detail: String)
+    fun onPeersChanged(peers: List<WifiDirectPeerSnapshot>)
+    fun onLinkReady(isGroupOwner: Boolean, groupOwnerAddress: java.net.InetAddress)
+}
+
 class NearbyTransportService : Service() {
     inner class LocalBinder : Binder() {
         fun transport(): NearbyConnectionsTransport = nearbyTransport
+
+        fun attachWifiDirectUiListener(listener: WifiDirectUiListener) {
+            wifiDirectUiListener = listener
+            listener.onStateChanged(wifiDirectState, wifiDirectDetail)
+            listener.onPeersChanged(wifiDirectPeers)
+            wifiDirectLink?.let { listener.onLinkReady(it.isGroupOwner, it.groupOwnerAddress) }
+        }
+
+        fun detachWifiDirectUiListener(listener: WifiDirectUiListener) {
+            if (wifiDirectUiListener === listener) wifiDirectUiListener = null
+        }
+
+        fun startWifiDirect() {
+            val coordinator = ensureWifiDirectCoordinator()
+            if (!wifiDirectStarted) wifiDirectStarted = coordinator.start()
+        }
+
+        fun discoverWifiDirectPeers() {
+            startWifiDirect()
+            if (wifiDirectStarted) wifiDirectCoordinator?.discoverPeers()
+        }
+
+        fun connectWifiDirectPeer(address: String) {
+            startWifiDirect()
+            if (wifiDirectStarted) wifiDirectCoordinator?.connectToPeer(address)
+        }
+
+        fun stopWifiDirectDiscovery() {
+            wifiDirectCoordinator?.stopDiscovery()
+        }
+
+        fun disconnectWifiDirectGroup() {
+            wifiDirectCoordinator?.removeGroup()
+        }
 
         fun attachUiListener(listener: NearbyConnectionsTransport.Listener) {
             uiListener = listener
@@ -79,6 +122,45 @@ class NearbyTransportService : Service() {
     @Volatile private var uiListener: NearbyConnectionsTransport.Listener? = null
     @Volatile private var lastStatus: String? = null
     private val inFlightMessageIds = ConcurrentHashMap.newKeySet<String>()
+    @Volatile private var wifiDirectUiListener: WifiDirectUiListener? = null
+    @Volatile private var wifiDirectCoordinator: WifiDirectConnectionCoordinator? = null
+    @Volatile private var wifiDirectStarted = false
+    @Volatile private var wifiDirectState = WifiDirectConnectionCoordinator.State.IDLE.name
+    @Volatile private var wifiDirectDetail = "Wi-Fi Direct has not been initialized."
+    @Volatile private var wifiDirectPeers: List<WifiDirectPeerSnapshot> = emptyList()
+    @Volatile private var wifiDirectLink: WifiDirectConnectionCoordinator.Link? = null
+
+    private fun ensureWifiDirectCoordinator(): WifiDirectConnectionCoordinator {
+        wifiDirectCoordinator?.let { return it }
+        return synchronized(this) {
+            wifiDirectCoordinator ?: WifiDirectConnectionCoordinator(
+                applicationContext,
+                object : WifiDirectConnectionCoordinator.Listener {
+                    override fun onStateChanged(state: WifiDirectConnectionCoordinator.State, detail: String) {
+                        wifiDirectState = state.name
+                        wifiDirectDetail = detail
+                        if (state == WifiDirectConnectionCoordinator.State.DISCONNECTED ||
+                            state == WifiDirectConnectionCoordinator.State.FAILED ||
+                            state == WifiDirectConnectionCoordinator.State.CLOSED) {
+                            wifiDirectLink = null
+                        }
+                        wifiDirectUiListener?.onStateChanged(state.name, detail)
+                    }
+
+                    override fun onPeersChanged(peers: List<WifiDirectConnectionCoordinator.Peer>) {
+                        val snapshot = peers.map { WifiDirectPeerSnapshot(it.name, it.address, it.status) }
+                        wifiDirectPeers = snapshot
+                        wifiDirectUiListener?.onPeersChanged(snapshot)
+                    }
+
+                    override fun onLinkReady(link: WifiDirectConnectionCoordinator.Link) {
+                        wifiDirectLink = link
+                        wifiDirectUiListener?.onLinkReady(link.isGroupOwner, link.groupOwnerAddress)
+                    }
+                }
+            ).also { wifiDirectCoordinator = it }
+        }
+    }
 
     private fun inboxKey(peerId: String, messageId: String): String = "${NeaRerIdentity.normalize(peerId).orEmpty()}|$messageId"
 
@@ -410,7 +492,11 @@ class NearbyTransportService : Service() {
 
     override fun onDestroy() {
         uiListener = null
+        wifiDirectUiListener = null
         inFlightMessageIds.clear()
+        wifiDirectCoordinator?.close()
+        wifiDirectCoordinator = null
+        wifiDirectStarted = false
         nearbyTransport.stop()
         super.onDestroy()
     }
