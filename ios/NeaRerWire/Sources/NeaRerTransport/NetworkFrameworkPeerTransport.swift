@@ -126,6 +126,7 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport, @unchecke
     /// The receiver must still verify NRSM metadata, per-chunk offsets and final SHA-256.
     public func sendFileStream(to endpointID: String, fileURL: URL,
                                metadata: NeaRerTransferStreamMetadataV1,
+                               awaitAck: @escaping NeaRerTransferAckWaiterV1,
                                completion: @escaping (Result<NeaRerTransferFileEndV1, Error>) -> Void) {
         queue.async { [weak self] in
             guard let self, let connection = self.connections[endpointID] else {
@@ -146,7 +147,17 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport, @unchecke
                         writer.close()
                         completion(.failure(error))
                     } else {
-                        self.sendNextFileChunk(writer, connection: connection, completion: completion)
+                        self.waitForTransferAck(NeaRerTransferFileStreamWriterV1.initialAck(for: metadata),
+                                                awaitAck: awaitAck) { result in
+                            switch result {
+                            case .success:
+                                self.sendNextFileChunk(writer, connection: connection,
+                                                       awaitAck: awaitAck, completion: completion)
+                            case .failure(let error):
+                                writer.close()
+                                completion(.failure(error))
+                            }
+                        }
                     }
                 })
             } catch {
@@ -155,9 +166,27 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport, @unchecke
         }
     }
 
+    private func waitForTransferAck(
+        _ expected: NeaRerTransferFileAckV1,
+        awaitAck: @escaping NeaRerTransferAckWaiterV1,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        awaitAck(expected) { result in
+            switch result {
+            case .success(let received) where received == expected:
+                completion(.success(()))
+            case .success:
+                completion(.failure(NeaRerTransferFileStreamErrorV1.invalidAcknowledgement))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     private func sendNextFileChunk(
         _ writer: NeaRerTransferFileStreamWriterV1,
         connection: NWConnection,
+        awaitAck: @escaping NeaRerTransferAckWaiterV1,
         completion: @escaping (Result<NeaRerTransferFileEndV1, Error>) -> Void
     ) {
         do {
@@ -170,8 +199,21 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport, @unchecke
                         writer.close()
                         self.onStateChanged?(.failed("File chunk send failed: \(error)"))
                         completion(.failure(error))
+                    } else if writer.bytesRead < writer.metadata.item.sizeBytes &&
+                                writer.bytesRead % NeaRerTransferFileStreamReceiverV1.checkpointIntervalBytes == 0 {
+                        self.waitForTransferAck(writer.currentAck(), awaitAck: awaitAck) { result in
+                            switch result {
+                            case .success:
+                                self.sendNextFileChunk(writer, connection: connection,
+                                                       awaitAck: awaitAck, completion: completion)
+                            case .failure(let error):
+                                writer.close()
+                                completion(.failure(error))
+                            }
+                        }
                     } else {
-                        self.sendNextFileChunk(writer, connection: connection, completion: completion)
+                        self.sendNextFileChunk(writer, connection: connection,
+                                               awaitAck: awaitAck, completion: completion)
                     }
                 })
             } else {
@@ -184,7 +226,17 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport, @unchecke
                         self?.onStateChanged?(.failed("File end record send failed: \(error)"))
                         completion(.failure(error))
                     } else {
-                        completion(.success(end))
+                        let finalAck = NeaRerTransferFileAckV1(
+                            payloadID: end.payloadID, transferID: end.transferID,
+                            itemID: end.itemID, committedOffsetBytes: end.totalSizeBytes,
+                            prefixSHA256: end.wholeFileSHA256
+                        )
+                        self?.waitForTransferAck(finalAck, awaitAck: awaitAck) { result in
+                            switch result {
+                            case .success: completion(.success(end))
+                            case .failure(let error): completion(.failure(error))
+                            }
+                        }
                     }
                 })
             }
@@ -292,6 +344,7 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport {
     public func setPeerAuthenticated(_ authenticated: Bool, endpointID: String) {}
     public func sendFileStream(to endpointID: String, fileURL: URL,
                                metadata: NeaRerTransferStreamMetadataV1,
+                               awaitAck: @escaping NeaRerTransferAckWaiterV1,
                                completion: @escaping (Result<NeaRerTransferFileEndV1, Error>) -> Void) {
         completion(.failure(TransportFrameError.emptyFrame))
     }
