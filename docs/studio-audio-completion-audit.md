@@ -15,6 +15,7 @@ This integration branch is rebuilt on the parallel workstream's current PR #284 
 - Automation keyframes are source-clip time in milliseconds.
 - Maximum 32 keyframes, bounded to the first 30 seconds.
 - Keyframe speeds are clamped to 0.50×–2.00×.
+- When a clip is trimmed after setting the visible two-point start/end ramp, the editor retimes the ramp endpoint to the new clip duration while preserving both selected speed targets. Imported multi-keyframe curves retain their internal timing and are safely bounded. Regression tests cover both shorter and longer trims.
 - A two-point start/end ramp is exposed in Sound Desk controls.
 - The speed provider samples a linearly interpolated curve every 20 ms, which creates a deterministic stepped approximation.
 - SpeedParameters.shouldMaintainPitch is explicitly true.
