@@ -161,7 +161,7 @@ final class NearbyHomeModel: ObservableObject {
                 session: keys, senderID: identity.peerID, recipientID: remotePeerID,
                 messageID: messageID, plaintext: Data(text.utf8)
             )
-            try transport.send(packet.encode(), to: endpoint)
+            transport.send(packet.encode(), to: endpoint)
             let stored = NeaRerStoredMessageV1(
                 id: messageID, peerID: remotePeerID, senderID: identity.peerID,
                 text: text, timestampMilliseconds: Int64(Date().timeIntervalSince1970 * 1_000)
