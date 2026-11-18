@@ -22,6 +22,34 @@ public enum NeaRerCryptoV3 {
         return publicKey.isValidSignature(signature, for: transcript)
     }
 
+    /// Matches Android SecurePeerIdentity.signChallenge() including its proof domain,
+    /// SHA-256 public-key fingerprint, and Base64 transcript encoding.
+    public static func signPeerProof(peerID: String, transcript: Data,
+                                     using privateKey: P256.Signing.PrivateKey) throws -> Data {
+        let publicDER = privateKey.publicKey.derRepresentation
+        return try privateKey.signature(for: peerProofMessage(peerID: peerID, publicKeyDER: publicDER,
+                                                               transcript: transcript)).derRepresentation
+    }
+
+    public static func verifyPeerProof(peerID: String, publicKeyDER: Data,
+                                       transcript: Data, signatureDER: Data) -> Bool {
+        guard NeaRerIdentity.normalize(peerID) != nil,
+              let publicKey = try? P256.Signing.PublicKey(derRepresentation: publicKeyDER),
+              let signature = try? P256.Signing.ECDSASignature(derRepresentation: signatureDER) else {
+            return false
+        }
+        return publicKey.isValidSignature(
+            signature,
+            for: peerProofMessage(peerID: peerID, publicKeyDER: publicKeyDER, transcript: transcript)
+        )
+    }
+
+    private static func peerProofMessage(peerID: String, publicKeyDER: Data, transcript: Data) -> Data {
+        let fingerprint = SHA256.hash(data: publicKeyDER).map { String(format: "%02x", $0) }.joined()
+        let challenge = transcript.base64EncodedString()
+        return Data("NeaRer-peer-proof-v1\\n\\(peerID)\\n\\(fingerprint)\\n\\(challenge)".utf8)
+    }
+
     /// Derives the same 64-byte HKDF output as Android NearbyMessageCrypto.deriveSession().
     public static func deriveSession(localID: String, remoteID: String,
                                      localPrivateKey: P256.KeyAgreement.PrivateKey,
