@@ -70,6 +70,10 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         }
         fun onFileReceived(id: String, name: String, file: File)
         fun onFileStatus(message: String)
+        /** A file offer is delivered only after its Nearby control envelope was authenticated. */
+        fun onIncomingHyperTransferOffer(id: String, peerId: String, offer: HyperTransferTcpOfferCodec.Offer) {}
+        /** Sender-side response to an exact transfer offer. */
+        fun onHyperTransferOfferDecision(id: String, peerId: String, decision: HyperTransferTcpOfferCodec.Decision) {}
     }
 
     /** Convenience base for service-owned listeners that override only selected events. */
@@ -85,6 +89,8 @@ class NearbyConnectionsTransport(context: Context, ultraSpeedMode: Boolean = fal
         override fun onFileProgress(id: String, payloadId: Long, name: String, transferred: Long, total: Long, incoming: Boolean) {}
         override fun onFileReceived(id: String, name: String, file: File) {}
         override fun onFileStatus(message: String) {}
+        override fun onIncomingHyperTransferOffer(id: String, peerId: String, offer: HyperTransferTcpOfferCodec.Offer) {}
+        override fun onHyperTransferOfferDecision(id: String, peerId: String, decision: HyperTransferTcpOfferCodec.Decision) {}
     }
 
     fun setListener(listener: Listener) {
@@ -1859,6 +1865,24 @@ internal object IncomingFilePayloadPolicy {
     }
 
     private fun handleHyperTransferControl(endpointId: String, controlBytes: ByteArray) {
+        if (!authenticatedEndpoints.contains(endpointId)) return
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (HyperTransferTcpOfferCodec.isOffer(controlBytes)) {
+            val offer = runCatching { HyperTransferTcpOfferCodec.decodeOffer(controlBytes) }.getOrNull()
+            if (offer == null || NeaRerIdentity.normalize(peerId) == null) {
+                listener.onFileStatus("An invalid HyperTransfer file offer was rejected.")
+            } else {
+                listener.onIncomingHyperTransferOffer(endpointId, peerId, offer)
+            }
+            return
+        }
+        if (HyperTransferTcpOfferCodec.isDecision(controlBytes)) {
+            val decision = runCatching { HyperTransferTcpOfferCodec.decodeDecision(controlBytes) }.getOrNull()
+            if (decision != null && NeaRerIdentity.normalize(peerId) != null) {
+                listener.onHyperTransferOfferDecision(endpointId, peerId, decision)
+            }
+            return
+        }
         if (TransferResumeStreamMetadataCodec.isEnvelope(controlBytes)) {
             handleHyperStreamMetadata(endpointId, controlBytes)
             return
@@ -1878,6 +1902,47 @@ internal object IncomingFilePayloadPolicy {
             }
             HyperTransferCompletionReceiptCodec.MAGIC -> handleHyperTransferCompletionReceipt(endpointId, controlBytes)
         }
+    }
+
+    /** Sends an offer only over the already authenticated and encrypted Nearby control channel. */
+    fun sendHyperTransferTcpOffer(endpointId: String, offer: HyperTransferTcpOfferCodec.Offer): Boolean {
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (!authenticatedEndpoints.contains(endpointId) ||
+            !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) } ||
+            NeaRerIdentity.normalize(peerId) == null) return false
+        return try {
+            sendHyperTransferControl(
+                endpointId,
+                HyperTransferTcpOfferCodec.encodeOffer(offer),
+                onFailure = { listener.onFileStatus("Could not deliver the secure HyperTransfer offer: ${it.localizedMessage ?: "retry"}") }
+            )
+            true
+        } catch (error: Exception) {
+            listener.onFileStatus("Could not prepare the secure HyperTransfer offer: ${error.localizedMessage ?: "retry"}")
+            false
+        }
+    }
+
+    /** Approval/decline is bound to the transfer ID and sent over the authenticated control channel. */
+    fun respondToHyperTransferTcpOffer(
+        endpointId: String,
+        transferId: String,
+        accepted: Boolean
+    ): Boolean {
+        val peerId = synchronized(names) { stableIds[endpointId].orEmpty() }
+        if (!authenticatedEndpoints.contains(endpointId) ||
+            !synchronized(activeEndpoints) { activeEndpoints.contains(endpointId) } ||
+            NeaRerIdentity.normalize(peerId) == null) return false
+        return try {
+            sendHyperTransferControl(
+                endpointId,
+                HyperTransferTcpOfferCodec.encodeDecision(
+                    HyperTransferTcpOfferCodec.Decision(transferId, accepted)
+                ),
+                onFailure = { listener.onFileStatus("Could not send the HyperTransfer approval response.") }
+            )
+            true
+        } catch (_: Exception) { false }
     }
 
     private fun handleHyperTransferCompletionReceipt(endpointId: String, raw: ByteArray) {
