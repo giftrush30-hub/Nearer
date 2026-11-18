@@ -97,6 +97,25 @@ class HyperTransferSecureChannelTest {
     }
 
 
+
+    @Test
+    fun encryptsOnlyTheRequestedBufferSliceWithoutChangingItsSurroundings() {
+        val pair = channels()
+        val backing = byteArrayOf(99, 1, 2, 3, 88, 77)
+        val record = pair.sender.seal(backing, 1, 3)
+        assertArrayEquals(byteArrayOf(1, 2, 3), pair.receiver.open(record))
+        assertArrayEquals(byteArrayOf(99, 1, 2, 3, 88, 77), backing)
+    }
+
+    @Test
+    fun rejectsInvalidBufferSlicesBeforeAdvancingSequence() {
+        val pair = channels()
+        val bytes = byteArrayOf(1, 2, 3)
+        assertThrows(IllegalArgumentException::class.java) { pair.sender.seal(bytes, -1, 2) }
+        assertThrows(IllegalArgumentException::class.java) { pair.sender.seal(bytes, 2, 2) }
+        assertArrayEquals(byteArrayOf(1), pair.receiver.open(pair.sender.seal(bytes, 0, 1)))
+    }
+
     @Test
     fun closedChannelRejectsFurtherEncryptionAndDecryption() {
         val pair = channels()
