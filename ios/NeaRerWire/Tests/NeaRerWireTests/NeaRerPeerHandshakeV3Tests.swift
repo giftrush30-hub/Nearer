@@ -30,6 +30,8 @@ final class NeaRerPeerHandshakeV3Tests: XCTestCase {
         XCTAssertTrue(alice.verify(bobProof, from: bobHello))
         XCTAssertTrue(bob.verify(aliceProof, from: aliceHello))
         XCTAssertFalse(alice.verify(bobProof, from: aliceHello))
+        XCTAssertEqual(try alice.verificationCode(with: bobHello), "129961")
+        XCTAssertEqual(try bob.verificationCode(with: aliceHello), "129961")
 
         let aliceKeys = try alice.deriveSessionKeys(with: bobHello)
         let bobKeys = try bob.deriveSessionKeys(with: aliceHello)
