@@ -156,8 +156,16 @@ struct NearbyHomeView: View {
                                     .font(.caption).foregroundStyle(.white.opacity(0.65))
                             }
                         }
-                        Text("Compare this signing-key fingerprint with the other device. Only approve if both devices show the same fingerprint.")
+                        Text("Compare this six-digit code with the other device. Approve only when both screens show the same code.")
                             .font(.caption).foregroundStyle(.white.opacity(0.65))
+                        Text(pending.verificationCode)
+                            .font(.system(size: 34, weight: .bold, design: .monospaced))
+                            .tracking(5)
+                            .foregroundStyle(gold)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                        Text("Signing-key fingerprint (additional check)")
+                            .font(.caption2.weight(.semibold)).foregroundStyle(.white.opacity(0.55))
                         Text(pending.fingerprint)
                             .font(.system(size: 11, weight: .semibold, design: .monospaced))
                             .textSelection(.enabled)
