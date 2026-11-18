@@ -15,6 +15,16 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - Nearby Connections file transfer, progress, cancellation and integrity checks.
 - Share Hub / OpenSend foundations for local file and app sharing.
 
+### HyperTransfer — offline file transfer reliability
+
+- Multi-file offers use a bounded, versioned manifest with safe relative-path validation; file bytes are streamed separately.
+- Stream-capable peers use Nearby STREAM with authenticated capability negotiation. Older peers retain the compatible FILE payload path.
+- Interrupted STREAM transfers can recover a receiver-side partial after app restart. Resume candidates are re-hashed, bound to the same authenticated stable sender, and accepted only after the sender validates the selected source's prefix.
+- The receiver syncs durable checkpoints, verifies the completed whole-file SHA-256, and publishes without overwriting an existing destination. A recipient receipt tells the sender whether the file was actually verified and saved.
+- Receive finalization is bounded to two workers; duplicate concurrent receives for the same transfer/item are rejected, while unrelated transfers can proceed independently.
+- Transfer progress reports application-level throughput, not Wi-Fi link/PHY speed. No fixed application-level file-size cap is imposed; actual capacity depends on storage, providers, memory, hardware and connection stability.
+- The adaptive LITE / FAST / TURBO policy in draft PR #218 now has an Android resource-profile provider (available memory/storage, low-memory/low-RAM flags and thermal status) plus symmetric negotiation and bounded buffer policy. It remains a foundation: live transfer-mode negotiation, radio switching and performance claims are not enabled.
+
 ### Community and game features
 - Local group creation and joining with a six-digit code.
 - Locally stored group membership and message history.
@@ -46,7 +56,7 @@ Batch Two adds signed, hash-linked per-hop acceptance proofs, compact packet/pro
 - First-contact trust uses trust-on-first-use key pinning. This detects a changed key on later connections, but it does **not** prove a real-world person's identity or prevent a first-contact man-in-the-middle attack.
 - File metadata and resume-control packets are authenticated by the direct Nearby connection but are not yet protected by the new end-to-end chat packet layer.
 - Multi-hop mesh relay is **disabled**. Do not enable it until recipient routing, encrypted store-and-forward packets, authenticated hop handling, delivery/expiry rules and multi-phone tests are complete.
-- Durable HyperTransfer checkpoints are not yet integrated with the actual interrupted Nearby FILE payload lifecycle. Do not claim process-death recovery or fully resumable transfers.
+- HyperTransfer's durable checkpoint and verified-restart path is integrated with authenticated Nearby STREAM payloads for stream-capable peers. The receiver offers only a checkpoint bound to the authenticated stable sender; the sender validates the source prefix before approving the exact resume offset; the receiver syncs checkpoints, verifies the whole-file SHA-256, and publishes without overwriting. Older peers and failed stream negotiation retain the established FILE fallback. This is source integration, not proof of real-device recovery: app-kill/restart, reconnect, cancellation, two-way transfer, zero-byte files and OEM filesystem behavior still require physical-phone tests.
 - Real-device testing is still required for two-phone discovery, chat, group messaging, large-file transfers, interrupted transfers, OpenSend hotspot compatibility, app installation and game behavior.
 - Delivery acknowledgements are not read receipts. Internet multiplayer and live voice calls are not implied by the offline game foundation.
 - File transfers have no fixed application-level size cap, but actual transfer size and speed remain constrained by device storage, Android providers, hardware and connection stability.
