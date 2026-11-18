@@ -135,6 +135,7 @@ internal class NearbyLanTransport(
         endpointId: String,
         source: java.io.File,
         metadata: TransferResumeStreamMetadataCodec.Metadata,
+        ackWaiter: NearbyLanAckWaiter,
         completion: (Result<Unit>) -> Unit
     ) {
         if (!connections.containsKey(endpointId)) {
@@ -145,6 +146,7 @@ internal class NearbyLanTransport(
             source,
             metadata,
             NearbyLanFrameSink { frame, callback -> sendFrame(endpointId, frame, callback) },
+            ackWaiter,
             completion
         )
     }
