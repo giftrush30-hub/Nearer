@@ -2,12 +2,16 @@
 import PackageDescription
 
 let package = Package(
-    name: "NeaRerWire",
+    name: "NeaRerPlatform",
     platforms: [.iOS(.v13), .macOS(.v12)],
-    products: [.library(name: "NeaRerWire", targets: ["NeaRerWire"])],
+    products: [
+        .library(name: "NeaRerWire", targets: ["NeaRerWire"]),
+        .library(name: "NeaRerTransport", targets: ["NeaRerTransport"])
+    ],
     targets: [
         .target(name: "NeaRerWire"),
-        .testTarget(name: "NeaRerWireTests", dependencies: ["NeaRerWire"])
+        .target(name: "NeaRerTransport", dependencies: ["NeaRerWire"]),
+        .testTarget(name: "NeaRerWireTests", dependencies: ["NeaRerWire", "NeaRerTransport"])
     ],
     swiftLanguageVersions: [.v5]
 )
