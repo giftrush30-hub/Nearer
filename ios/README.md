@@ -7,7 +7,7 @@ This is the isolated native iOS work area. Android's production Nearby messaging
 - [x] Research-backed Android/iPhone/iPhone transport matrix and platform limitations.
 - [x] Swift codecs for the current NeaRer v3 hello/proof and secure packet envelopes.
 - [x] Native v3 handshake coordinator and Android-compatible domain-separated proof verification.
-- [x] Signed recipient identity-binding codec and Android signature verification vector.
+- [x] Signed recipient identity-binding codec and Android signature verification vector.\n- [x] Shared six-digit first-contact verification code and Swift/Kotlin parity vector.\n- [x] TOFU/key-continuity policy plus device-only Keychain peer-pin vault; approval UI and live handshake wiring remain pending.
 - [x] CryptoKit P-256 signatures, ECDH, HKDF-SHA256 and AES-256-GCM adapter.
 - [x] Deterministic Android-generated P-256 / HKDF / AES-GCM and ECDSA fixtures verified by Swift and Kotlin test suites.
 - [x] Swift/Kotlin golden vector for the v3 handshake transcript.
@@ -24,7 +24,7 @@ This is the isolated native iOS work area. Android's production Nearby messaging
 ## Not complete yet
 
 - [ ] Verify live Android ↔ iPhone handshake and encrypted message exchange on physical devices; deterministic fixture parity is covered by automated tests.
-- [ ] Add persistent iOS TOFU pins, explicit first-contact approval and signed-binding sequence storage; then connect the verified handshake to the native iOS transport and durable messaging.
+- [ ] Wire the Keychain trust vault and six-digit approval prompt into the live Bonjour handshake, including a monotonic local binding-sequence counter.\n- [ ] Connect authenticated sessions to the native iOS transport and implement the same durable inbox/outbox, ACK and conversation semantics as Android.
 - [ ] Implement a bounded, back-pressured file stream with receiver staging, prefix verification, whole-file digest verification and atomic finalization on iOS.
 - [ ] Implement the iOS 26 Wi-Fi Aware paired-device adapter and obtain Apple's entitlement approval.
 - [ ] Prove Wi-Fi Aware interoperation with an actual Android device; API support on both platforms is not proof of compatible pairing.
