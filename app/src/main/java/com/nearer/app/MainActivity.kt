@@ -539,9 +539,13 @@ class MainActivity : ComponentActivity() {
                     val peak = snapshot.peakWindowBytesPerSecond.toLong().coerceAtLeast(0L)
                     if (incoming) {
                         incomingRateBytesPerSecond = rate
+                        incomingAverageRateBytesPerSecond = snapshot.averageBytesPerSecond.toLong().coerceAtLeast(0L)
+                        incomingPeakRateBytesPerSecond = peak
                         incomingTransferName = name
                     } else {
                         outgoingRateBytesPerSecond = rate
+                        outgoingAverageRateBytesPerSecond = snapshot.averageBytesPerSecond.toLong().coerceAtLeast(0L)
+                        outgoingPeakRateBytesPerSecond = peak
                         activeOutgoingFileName = name
                         activeOutgoingFileBytes = total
                         outgoingTransferId = "nearby:$payloadId"
@@ -576,6 +580,9 @@ class MainActivity : ComponentActivity() {
                     incomingProgress = 0f
                     val catalogSaved = rememberReceivedFile(name, file, isAppBundle)
                     recordNearbyTransfer("Received", name, file.length(), "Complete")
+                    incomingRateBytesPerSecond = 0L
+                    incomingAverageRateBytesPerSecond = 0L
+                    incomingPeakRateBytesPerSecond = 0L
                     chatNotice = when {
                         !catalogSaved -> "Received $name, but NeaRer could not save its library details. Keep the app's received files folder intact."
                         isAppBundle -> "Received an app bundle: $name. Review it and tap Install when ready."
@@ -679,8 +686,12 @@ class MainActivity : ComponentActivity() {
     private var incomingTransferName by mutableStateOf<String?>(null)
     private var incomingProgress by mutableStateOf(0f)
     // These rates come from the transport's monotonic rolling-window meter.
-    private var outgoingRateBytesPerSecond = 0L
-    private var incomingRateBytesPerSecond = 0L
+    private var outgoingRateBytesPerSecond by mutableStateOf(0L)
+    private var incomingRateBytesPerSecond by mutableStateOf(0L)
+    private var outgoingAverageRateBytesPerSecond by mutableStateOf(0L)
+    private var incomingAverageRateBytesPerSecond by mutableStateOf(0L)
+    private var outgoingPeakRateBytesPerSecond by mutableStateOf(0L)
+    private var incomingPeakRateBytesPerSecond by mutableStateOf(0L)
     private var pendingExternalShareUris by mutableStateOf<List<Uri>>(emptyList())
     private var chatNotice by mutableStateOf("Messages are sent directly between connected phones.")
     private var activityResumed by mutableStateOf(false)
@@ -4951,6 +4962,12 @@ private fun NeaRerHome(
                     usingNearbyConnections = usingNearbyConnections,
                     messages = messages,
                     chatNotice = chatNotice,
+                    incomingRateBytesPerSecond = incomingRateBytesPerSecond,
+                    incomingAverageRateBytesPerSecond = incomingAverageRateBytesPerSecond,
+                    incomingPeakRateBytesPerSecond = incomingPeakRateBytesPerSecond,
+                    outgoingRateBytesPerSecond = outgoingRateBytesPerSecond,
+                    outgoingAverageRateBytesPerSecond = outgoingAverageRateBytesPerSecond,
+                    outgoingPeakRateBytesPerSecond = outgoingPeakRateBytesPerSecond,
                     draft = draft,
                     onDraftChange = { draft = it.take(ChatEditPolicy.MAX_BODY_LENGTH) },
                     onSendMessage = { text, reply -> onSendMessage(text, reply); draft = "" },
