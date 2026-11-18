@@ -53,7 +53,7 @@ public enum NeaRerCryptoV3 {
         let fingerprint = Data(SHA256.hash(data: signingPublicKeyDER))
             .map { String(format: "%02x", $0) }.joined()
         let challenge = transcript.base64EncodedString()
-        return Data("NeaRer-peer-proof-v1\\n\\(peerID)\\n\\(fingerprint)\\n\\(challenge)".utf8)
+        return Data("NeaRer-peer-proof-v1\n\(peerID)\n\(fingerprint)\n\(challenge)".utf8)
     }
 
     /// Matches Android SecurePeerIdentity.signChallenge() including its proof domain,
