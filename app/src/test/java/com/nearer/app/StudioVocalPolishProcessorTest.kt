@@ -40,6 +40,36 @@ class StudioVocalPolishProcessorTest {
         return kotlin.math.sqrt(usable.map { it.toDouble() * it }.average()) / 32767.0
     }
 
+    @Test fun flushResetsVocalFilterAndDynamicsStateForTheNextTake() {
+        val processor = StudioVocalPolishProcessor(
+            StudioVocalProfile.WARM_CONDENSER,
+            StudioVocalControls(warmth = 0.7f, deEss = 0.4f, compression = 2f, ambience = 0.2f)
+        )
+        processor.configure(AudioProcessor.AudioFormat(48_000, 1, C.ENCODING_PCM_16BIT))
+        val samples = ShortArray(12_000) { index ->
+            (18_000.0 * sin(2.0 * PI * 7_000.0 * index / 48_000.0)).toInt().toShort()
+        }
+
+        fun renderTake(): ShortArray {
+            val input = ByteBuffer.allocateDirect(samples.size * 2).order(ByteOrder.nativeOrder())
+            samples.forEach { input.putShort(it) }
+            input.flip()
+            processor.queueInput(input)
+            val output = processor.output
+            return ShortArray(output.remaining() / 2) { output.short }
+        }
+
+        processor.flush()
+        val firstTake = renderTake()
+        processor.flush()
+        val secondTake = renderTake()
+
+        assertEquals(firstTake.size, secondTake.size)
+        assertTrue("A flushed processor must not carry filter/delay state into the next take",
+            firstTake.indices.all { firstTake[it] == secondTake[it] })
+        processor.reset()
+    }
+
     @Test fun monoInputBecomesStereoWithMatchingChannels() {
         val input = FloatArray(2_048) { index ->
             (0.25 * sin(2.0 * PI * 220.0 * index / 48_000.0)).toFloat()
