@@ -27,6 +27,8 @@ final class NearbyHomeModel: ObservableObject {
     @Published private(set) var identityError: String?
     @Published private(set) var pendingApprovals: [PendingApproval] = []
     @Published private(set) var securePeerIDs: Set<String> = []
+    @Published private(set) var messages: [NeaRerStoredMessageV1] = []
+    @Published var messageDraft = ""
 
     private var identity: NeaRerLocalIdentity?
     private var transport: NetworkFrameworkPeerTransport?
@@ -37,6 +39,7 @@ final class NearbyHomeModel: ObservableObject {
     private var localBindingsSent = Set<String>()
     private var remoteBindings: [String: NeaRerRecipientIdentityBindingV1] = [:]
     private var sessionKeys: [String: NeaRerCryptoV3.SessionKeys] = [:]
+    private var authenticatedPeerIDsByEndpoint: [String: String] = [:]
 
     init() {
         do {
@@ -44,6 +47,7 @@ final class NearbyHomeModel: ObservableObject {
             identity = loaded
             peerID = loaded.peerID
             status = "Your NeaRer identity is ready"
+            messages = (try? NeaRerLocalMessageStoreV1.load()) ?? []
         } catch {
             identityError = error.localizedDescription
             status = "Secure identity could not be created"
@@ -131,11 +135,42 @@ final class NearbyHomeModel: ObservableObject {
             }
             let keys = try handshake.deriveSessionKeys(with: remoteHello)
             sessionKeys[pending.endpointID] = keys
+            authenticatedPeerIDsByEndpoint[pending.endpointID] = remoteHello.peerID
             securePeerIDs.insert(remoteHello.peerID)
             pendingApprovals.removeAll { $0.endpointID == pending.endpointID }
             status = "Secure peer verification completed for \(remoteHello.peerID). Messaging storage is the next integration step."
         } catch {
             status = "Peer trust was not saved: \(error.localizedDescription)"
+        }
+    }
+
+    func sendMessage(to remotePeerID: String) {
+        let text = messageDraft
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              text.utf8.count <= 16_000,
+              let identity,
+              let endpoint = authenticatedPeerIDsByEndpoint.first(where: { $0.value == remotePeerID })?.key,
+              let keys = sessionKeys[endpoint],
+              let transport else {
+            status = "A verified connection is required before sending a message."
+            return
+        }
+        do {
+            let messageID = UUID().uuidString
+            let packet = try NeaRerCryptoV3.seal(
+                session: keys, senderID: identity.peerID, recipientID: remotePeerID,
+                messageID: messageID, plaintext: Data(text.utf8)
+            )
+            try transport.send(packet.encode(), to: endpoint)
+            let stored = NeaRerStoredMessageV1(
+                id: messageID, peerID: remotePeerID, senderID: identity.peerID,
+                text: text, timestampMilliseconds: Int64(Date().timeIntervalSince1970 * 1_000)
+            )
+            messages = try NeaRerLocalMessageStoreV1.append(stored)
+            messageDraft = ""
+            status = "Encrypted message handed to the nearby connection. Delivery acknowledgement is not implemented yet."
+        } catch {
+            status = "Message could not be encrypted or stored: \(error.localizedDescription)"
         }
     }
 
@@ -160,6 +195,7 @@ final class NearbyHomeModel: ObservableObject {
         localBindingsSent.removeAll()
         remoteBindings.removeAll()
         sessionKeys.removeAll()
+        authenticatedPeerIDsByEndpoint.removeAll()
         securePeerIDs.removeAll()
         status = "Nearby discovery is stopped"
     }
@@ -192,6 +228,28 @@ final class NearbyHomeModel: ObservableObject {
         }
     }
 
+    private func receiveSecureMessage(_ packet: SecurePacketV1, endpointID: String) throws {
+        guard let identity,
+              let remotePeerID = authenticatedPeerIDsByEndpoint[endpointID],
+              let keys = sessionKeys[endpointID] else {
+            throw NeaRerPeerTrustErrorV1.userApprovalRequired
+        }
+        let plaintext = try NeaRerCryptoV3.open(
+            session: keys, recipientID: identity.peerID,
+            senderID: remotePeerID, packet: packet
+        )
+        guard let text = String(data: plaintext, encoding: .utf8),
+              !text.isEmpty, text.utf8.count <= 16_000 else {
+            throw NeaRerWireError.invalidField("message text")
+        }
+        let stored = NeaRerStoredMessageV1(
+            id: packet.messageID, peerID: remotePeerID, senderID: remotePeerID,
+            text: text, timestampMilliseconds: Int64(Date().timeIntervalSince1970 * 1_000)
+        )
+        messages = try NeaRerLocalMessageStoreV1.append(stored)
+        status = "Received and saved an encrypted message from \(remotePeerID)."
+    }
+
     private func receiveHandshakeFrame(_ frame: Data, from endpointID: String) {
         guard let object = try? JSONSerialization.jsonObject(with: frame) as? [String: Any],
               let kind = object["kind"] as? String else {
@@ -207,6 +265,8 @@ final class NearbyHomeModel: ObservableObject {
                 try receiveProof(PeerProofV3.decode(frame), endpointID: endpointID)
             case "mesh_identity_binding_v1":
                 try receiveBinding(NeaRerRecipientIdentityBindingV1.decode(frame), endpointID: endpointID)
+            case "secure_packet_v1":
+                try receiveSecureMessage(SecurePacketV1.decode(frame), endpointID: endpointID)
             default:
                 status = "Ignored unsupported pre-session frame: \(kind)"
             }
@@ -311,5 +371,6 @@ final class NearbyHomeModel: ObservableObject {
         localBindingsSent.remove(endpointID)
         remoteBindings.removeValue(forKey: endpointID)
         sessionKeys.removeValue(forKey: endpointID)
+        authenticatedPeerIDsByEndpoint.removeValue(forKey: endpointID)
     }
 }
