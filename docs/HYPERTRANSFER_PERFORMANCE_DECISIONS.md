@@ -133,7 +133,9 @@ The sender and receiver must use this exact protocol version and transfer ID. A 
 
 `WifiDirectConnectionCoordinator` now provides an explicit Android-side control layer:
 - Registers for Wi-Fi Direct state, peer-list and connection-state broadcasts only after `start()`.
-- Checks the relevant runtime permission (Nearby Wi-Fi Devices on Android 13+, fine location on earlier versions) before initializing the P2P channel.
+- Checks the device's Wi-Fi Direct feature and the relevant runtime permission (Nearby Wi-Fi Devices on Android 13+, fine location on earlier versions) before initializing the P2P channel.
+- Checks Android's Location-mode requirement before peer discovery and explains that NeaRer does not read the user's location; Android's P2P discovery APIs can require Location mode even though the app only needs nearby-device access.
+- Binds the client socket to an ephemeral local address on the P2P interface, not an arbitrary Wi-Fi/mobile interface.
 - Exposes explicit peer discovery, group creation, and connection-to-selected-peer operations; it does not silently toggle Wi-Fi or start a hotspot.
 - Reports group-owner/client role and group-owner address when Android reports a formed group.
 - Provides server/client socket creation helpers that bind to an IPv4 address on a `p2p*` interface. It fails closed if that interface cannot be found, rather than listening on every network interface.
