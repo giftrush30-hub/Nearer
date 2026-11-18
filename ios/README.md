@@ -7,10 +7,17 @@ This directory is the isolated native iOS work area. It does not alter the Andro
 - [x] Research-backed platform and transport decision recorded in `docs/IOS_COMPATIBILITY_ARCHITECTURE.md`.
 - [x] Swift Package wire-envelope foundation added under `NeaRerWire/`.
 - [x] Existing NeaRer v3 hello/proof and secure-packet envelope names and bounded fields represented in Swift.
-- [x] Nine Swift unit tests pass on Swift 6.2.1 / Linux (Foundation-only wire and transcript layer).\n- [x] CryptoKit P-256 / HKDF-SHA256 / AES-GCM adapter and Apple-only tests added; macOS CI verification is pending.\n- [x] Kotlin-side transcript golden-vector regression test added; Android CI verification is pending.
+- [x] Swift envelope and transcript tests pass in local Foundation-only validation.
+- [x] CryptoKit P-256 / HKDF-SHA256 / AES-GCM adapter and Apple-only tests pass on macOS CI.
+- [x] Cross-platform transfer manifest codec and Android/Kotlin golden vector added.
+- [x] Bounded TCP frame codec and Network.framework LAN / Apple peer-to-peer adapter added.
+- [x] Local-network privacy and Bonjour service declarations added.
+- [x] CryptoKit P-256 / HKDF-SHA256 / AES-GCM adapter and Apple-only tests added; macOS CI verification is pending.
+- [x] Kotlin-side transcript golden-vector regression test added; Android CI verification is pending.
 - [ ] Verify CryptoKit/Security P-256 interoperability and deterministic Android↔iOS cryptographic golden vectors.
 - [ ] Native SwiftUI iOS app target and signing configuration.
-- [ ] Wi-Fi Aware / Network.framework / LAN transport adapters.
+- [ ] Wi-Fi Aware paired-device adapter and Apple entitlement approval.
+- [ ] Android TCP/Bonjour adapter for the shared local-LAN route.
 - [ ] Physical iPhone testing.
 
 ## Run the wire tests
@@ -21,7 +28,7 @@ From this directory:
 swift test
 ```
 
-The package intentionally uses Foundation only. This allows protocol envelope tests to run on Linux CI. It does not validate public-key mathematics or encryption. Those checks belong in the later Apple CryptoKit/Security adapter and must be run on macOS/iOS.
+The wire codecs and frame parser are Foundation-only and can run on Linux. The package also includes Apple CryptoKit and Network.framework implementations; their platform-specific compilation is covered by the macOS workflow. Physical device tests are still required.
 
 ## Planned native app prerequisites
 
