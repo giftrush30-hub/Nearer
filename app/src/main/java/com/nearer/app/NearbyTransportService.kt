@@ -39,7 +39,7 @@ class NearbyTransportService : Service() {
     inner class LocalBinder : Binder() {
         fun transport(): NearbyConnectionsTransport = nearbyTransport
 
-        fun sendHyperTransferTcpOffer(endpointId: String, offer: HyperTransferTcpOfferCodec.Offer): Boolean {
+        internal fun sendHyperTransferTcpOffer(endpointId: String, offer: HyperTransferTcpOfferCodec.Offer): Boolean {
             val peerId = nearbyTransport.stableIdentityForEndpoint(endpointId)
             if (hyperTransferApprovals.recordOutgoingOffer(endpointId, peerId, offer) != HyperTransferApprovalLedger.OfferResult.ADDED) return false
             val sent = nearbyTransport.sendHyperTransferTcpOffer(endpointId, offer)
@@ -59,7 +59,7 @@ class NearbyTransportService : Service() {
         }
 
         /** One-shot approval for the exact offer; callers must still authenticate the socket identity. */
-        fun consumeHyperTransferApproval(
+        internal fun consumeHyperTransferApproval(
             endpointId: String,
             peerId: String,
             offer: HyperTransferTcpOfferCodec.Offer,
