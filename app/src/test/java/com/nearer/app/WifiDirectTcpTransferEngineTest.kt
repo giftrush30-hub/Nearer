@@ -95,6 +95,45 @@ class WifiDirectTcpTransferEngineTest {
         } finally { root.deleteRecursively() }
     }
 
+
+    @Test fun encryptedTcpTransferPublishesOnlyAuthenticatedFileBytes() {
+        val root = java.nio.file.Files.createTempDirectory("nearer-tcp-secure").toFile()
+        val server = ServerSocket(0)
+        val executor = Executors.newSingleThreadExecutor()
+        val id = "a".repeat(64)
+        val transcript = MessageDigest.getInstance("SHA-256").digest("trusted-session-transcript".toByteArray())
+        val senderKeys = NearbyMessageCrypto.newEphemeralKeyPair()
+        val receiverKeys = NearbyMessageCrypto.newEphemeralKeyPair()
+        val senderChannel = HyperTransferSecureChannel.establish(
+            senderKeys.private, receiverKeys.public, transcript, id,
+            "23456789ABCD", "EFGHJKMNPQRS", true
+        )
+        val receiverChannel = HyperTransferSecureChannel.establish(
+            receiverKeys.private, senderKeys.public, transcript, id,
+            "23456789ABCD", "EFGHJKMNPQRS", false
+        )
+        try {
+            val source = File(root, "secure-source.bin").apply {
+                writeBytes(ByteArray(768 * 1024) { (it % 239).toByte() })
+            }
+            val destination = File(root, "secure-received.bin")
+            val future = executor.submit<WifiDirectTcpTransferEngine.ReceiveResult> {
+                server.accept().use { engine.receiveSecure(it, destination, id, receiverChannel) }
+            }
+            Socket("127.0.0.1", server.localPort).use {
+                assertEquals(sha256(source), engine.sendSecure(it, source, id, senderChannel))
+            }
+            val result = future.get(10, TimeUnit.SECONDS)
+            assertEquals(source.length(), result.bytesReceived)
+            assertArrayEquals(source.readBytes(), destination.readBytes())
+            assertEquals(sha256(source), result.sha256)
+        } finally {
+            server.close()
+            executor.shutdownNow()
+            root.deleteRecursively()
+        }
+    }
+
     private fun runTransfer(source: File, destination: File, id: String): WifiDirectTcpTransferEngine.ReceiveResult {
         val server = ServerSocket(0)
         val executor = Executors.newSingleThreadExecutor()
