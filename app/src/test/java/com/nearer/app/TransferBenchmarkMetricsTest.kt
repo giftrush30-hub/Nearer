@@ -22,13 +22,15 @@ class TransferBenchmarkMetricsTest {
         assertEquals(30_000L, summary.slowestElapsedMillis)
     }
 
-    @Test fun speedupUsesMedianDurations() {
+    @Test fun speedupUsesMeasuredThroughputRatherThanDurationAlone() {
         val faster = TransferBenchmarkMetrics.summarize(listOf(
-            TransferBenchmarkRun(1_000L, 5_000L, 100L, true)
+            TransferBenchmarkRun(10L * 1024 * 1024, 1_000L, 100L, true)
         ))
         val slower = TransferBenchmarkMetrics.summarize(listOf(
-            TransferBenchmarkRun(1_000L, 10_000L, 200L, true)
+            TransferBenchmarkRun(100L * 1024 * 1024, 20_000L, 200L, true)
         ))
+        // The second run takes 20x longer but transfers 10x more data:
+        // its measured throughput is 2x lower, not 20x lower.
         assertEquals(2.0, faster.speedupOver(slower), 0.0001)
     }
 
