@@ -83,6 +83,11 @@ internal class NearbyLanTransferCoordinator(
         pendingMetadata.remove(TransferKey(endpointId, payloadId))
     }
 
+    fun ackWaiter(endpointId: String): NearbyLanAckWaiter =
+        NearbyLanAckWaiter { expected, completion ->
+            awaitAck(endpointId, expected, completion)
+        }
+
     /** Waits for one exact ACK; unmatched early ACKs are safely queued by transfer key. */
     fun awaitAck(endpointId: String, expected: NearbyTransferFileChunkCodec.Ack,
                  completion: (Result<NearbyTransferFileChunkCodec.Ack>) -> Unit) {
