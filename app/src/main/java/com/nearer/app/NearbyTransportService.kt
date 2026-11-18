@@ -39,6 +39,15 @@ class NearbyTransportService : Service() {
     inner class LocalBinder : Binder() {
         fun transport(): NearbyConnectionsTransport = nearbyTransport
 
+        fun sendHyperTransferTcpFile(endpointId: String, uri: android.net.Uri, displayName: String): Long? {
+            val peerId = nearbyTransport.stableIdentityForEndpoint(endpointId)
+            return hyperTransferTcpManager?.sendFile(endpointId, peerId, uri, displayName)
+        }
+
+        fun cancelHyperTransferTcpFile(payloadId: Long) {
+            hyperTransferTcpManager?.cancel(payloadId)
+        }
+
         fun sendHyperTransferTcpOffer(endpointId: String, offer: HyperTransferTcpOfferCodec.Offer): Boolean {
             val peerId = nearbyTransport.stableIdentityForEndpoint(endpointId)
             if (hyperTransferApprovals.recordOutgoingOffer(endpointId, peerId, offer) != HyperTransferApprovalLedger.OfferResult.ADDED) return false
@@ -49,12 +58,7 @@ class NearbyTransportService : Service() {
 
         fun respondToHyperTransferTcpOffer(endpointId: String, transferId: String, accepted: Boolean): Boolean {
             val peerId = nearbyTransport.stableIdentityForEndpoint(endpointId)
-            val sent = nearbyTransport.respondToHyperTransferTcpOffer(endpointId, transferId, accepted)
-            if (sent && !hyperTransferApprovals.decideIncoming(endpointId, peerId, transferId, accepted)) {
-                lastStatus = "The HyperTransfer approval was stale or did not match its pending offer."
-                return false
-            }
-            return sent
+            return hyperTransferTcpManager?.decideIncoming(endpointId, peerId, transferId, accepted) == true
         }
 
         /** One-shot approval for the exact offer; callers must still authenticate the socket identity. */
@@ -153,6 +157,7 @@ class NearbyTransportService : Service() {
     private val inFlightMessageIds = ConcurrentHashMap.newKeySet<String>()
     /** Approval state lives with the foreground service, not the Activity lifecycle. */
     private val hyperTransferApprovals = HyperTransferApprovalLedger()
+    @Volatile private var hyperTransferTcpManager: HyperTransferTcpSessionManager? = null
     @Volatile private var wifiDirectUiListener: WifiDirectUiListener? = null
     @Volatile private var wifiDirectCoordinator: WifiDirectConnectionCoordinator? = null
     @Volatile private var wifiDirectStarted = false
@@ -186,6 +191,7 @@ class NearbyTransportService : Service() {
 
                     override fun onLinkReady(link: WifiDirectConnectionCoordinator.Link) {
                         wifiDirectLink = link
+                        hyperTransferTcpManager?.onLinkReady()
                         wifiDirectUiListener?.onLinkReady(link.isGroupOwner, link.groupOwnerAddress)
                     }
                 }
@@ -226,6 +232,7 @@ class NearbyTransportService : Service() {
         }
 
         override fun onDisconnected(id: String, stableId: String, name: String) {
+            hyperTransferTcpManager?.clearEndpoint(id)
             hyperTransferApprovals.clearEndpoint(id)
             uiListener?.onDisconnected(id, stableId, name)
         }
@@ -379,9 +386,9 @@ class NearbyTransportService : Service() {
             id: String, peerId: String, offer: HyperTransferTcpOfferCodec.Offer
         ) {
             when (hyperTransferApprovals.recordIncomingOffer(id, peerId, offer)) {
-                HyperTransferApprovalLedger.OfferResult.ADDED,
+                HyperTransferApprovalLedger.OfferResult.ADDED -> hyperTransferTcpManager?.receiveOffer(id, peerId, offer)
                 HyperTransferApprovalLedger.OfferResult.DUPLICATE ->
-                    uiListener?.onIncomingHyperTransferOffer(id, peerId, offer)
+                    uiListener?.onFileStatus("This HyperTransfer offer is already awaiting your decision.")
                 HyperTransferApprovalLedger.OfferResult.CONFLICT,
                 HyperTransferApprovalLedger.OfferResult.REJECTED ->
                     uiListener?.onFileStatus("A duplicate, conflicting, or excessive HyperTransfer offer was rejected.")
@@ -392,6 +399,7 @@ class NearbyTransportService : Service() {
             id: String, peerId: String, decision: HyperTransferTcpOfferCodec.Decision
         ) {
             if (hyperTransferApprovals.recordRemoteDecision(id, peerId, decision)) {
+                hyperTransferTcpManager?.remoteDecision(id, peerId, decision)
                 uiListener?.onHyperTransferOfferDecision(id, peerId, decision)
             } else {
                 uiListener?.onFileStatus("A stale or mismatched HyperTransfer approval response was ignored.")
@@ -409,6 +417,42 @@ class NearbyTransportService : Service() {
             applicationContext,
             ultraSpeedMode,
             serviceListener
+        )
+        hyperTransferTcpManager = HyperTransferTcpSessionManager(
+            context = applicationContext,
+            coordinator = { wifiDirectCoordinator },
+            currentLink = { wifiDirectLink },
+            sendOffer = { endpointId, offer ->
+                val peerId = nearbyTransport.stableIdentityForEndpoint(endpointId)
+                val registered = hyperTransferApprovals.recordOutgoingOffer(endpointId, peerId, offer) ==
+                    HyperTransferApprovalLedger.OfferResult.ADDED
+                registered && nearbyTransport.sendHyperTransferTcpOffer(endpointId, offer)
+            },
+            respondToOffer = { endpointId, transferId, accepted ->
+                val peerId = nearbyTransport.stableIdentityForEndpoint(endpointId)
+                val sent = nearbyTransport.respondToHyperTransferTcpOffer(endpointId, transferId, accepted)
+                sent && hyperTransferApprovals.decideIncoming(endpointId, peerId, transferId, accepted)
+            },
+            consumeApproval = { endpointId, peerId, offer, direction ->
+                hyperTransferApprovals.consumeApproval(endpointId, peerId, offer, direction)
+            },
+            listener = object : HyperTransferTcpSessionManager.Listener {
+                override fun onIncomingOffer(endpointId: String, peerId: String, offer: HyperTransferTcpOfferCodec.Offer) {
+                    uiListener?.onIncomingHyperTransferOffer(endpointId, peerId, offer)
+                }
+                override fun onProgress(
+                    endpointId: String, payloadId: Long, name: String, transferred: Long,
+                    total: Long, incoming: Boolean, speed: TransferSpeedSnapshot
+                ) {
+                    serviceListener.onFileTransferUpdate(endpointId, payloadId, name, transferred, total, incoming, speed)
+                }
+                override fun onReceived(endpointId: String, name: String, file: File) {
+                    serviceListener.onFileReceived(endpointId, name, file)
+                }
+                override fun onStatus(message: String) {
+                    serviceListener.onFileStatus(message)
+                }
+            }
         )
     }
 
@@ -552,6 +596,8 @@ class NearbyTransportService : Service() {
         wifiDirectCoordinator?.close()
         wifiDirectCoordinator = null
         wifiDirectStarted = false
+        hyperTransferTcpManager?.close()
+        hyperTransferTcpManager = null
         hyperTransferApprovals.clearAll()
         nearbyTransport.stop()
         super.onDestroy()
