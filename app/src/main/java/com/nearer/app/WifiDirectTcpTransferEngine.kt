@@ -16,8 +16,14 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Framed TCP file engine for a socket created by a separate Wi-Fi Direct coordinator. */
-internal class WifiDirectTcpTransferEngine(private val bufferBytes: Int = DEFAULT_BUFFER_BYTES) {
-    init { require(bufferBytes in MIN_BUFFER_BYTES..MAX_BUFFER_BYTES) }
+internal class WifiDirectTcpTransferEngine(
+    private val bufferBytes: Int = DEFAULT_BUFFER_BYTES,
+    private val socketReadTimeoutMillis: Int = DEFAULT_SOCKET_READ_TIMEOUT_MILLIS
+) {
+    init {
+        require(bufferBytes in MIN_BUFFER_BYTES..MAX_BUFFER_BYTES)
+        require(socketReadTimeoutMillis > 0) { "Socket read timeout must be positive" }
+    }
 
     data class Progress(val transferredBytes: Long, val totalBytes: Long) {
         val fraction: Double get() = if (totalBytes == 0L) 1.0 else transferredBytes.toDouble() / totalBytes
@@ -44,6 +50,7 @@ internal class WifiDirectTcpTransferEngine(private val bufferBytes: Int = DEFAUL
         require(id.size in 1..MAX_TRANSFER_ID_BYTES) { "Transfer ID is too long" }
         cancellation.attach(socket)
         try {
+            socket.soTimeout = socketReadTimeoutMillis
             cancellation.check()
             val size = source.length()
             val input = DataInputStream(BufferedInputStream(socket.getInputStream(), bufferBytes))
@@ -82,6 +89,7 @@ internal class WifiDirectTcpTransferEngine(private val bufferBytes: Int = DEFAUL
         if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create destination directory")
         if (destination.exists()) throw IOException("Destination already exists")
         cancellation.attach(socket)
+        socket.soTimeout = socketReadTimeoutMillis
         val part = File(parent, ".${destination.name}.${UUID.randomUUID()}.part")
         var published = false
         try {
@@ -152,6 +160,7 @@ internal class WifiDirectTcpTransferEngine(private val bufferBytes: Int = DEFAUL
         require(source.isFile && source.canRead()) { "Source file is not readable" }
         cancellation.attach(socket)
         try {
+            socket.soTimeout = socketReadTimeoutMillis
             cancellation.check()
             val size = source.length()
             val input = DataInputStream(BufferedInputStream(socket.getInputStream(), bufferBytes))
@@ -212,6 +221,7 @@ internal class WifiDirectTcpTransferEngine(private val bufferBytes: Int = DEFAUL
         if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create destination directory")
         if (destination.exists()) throw IOException("Destination already exists")
         cancellation.attach(socket)
+        socket.soTimeout = socketReadTimeoutMillis
         val part = File(parent, ".${destination.name}.${UUID.randomUUID()}.part")
         var published = false
         try {
@@ -275,6 +285,7 @@ internal class WifiDirectTcpTransferEngine(private val bufferBytes: Int = DEFAUL
         const val DEFAULT_BUFFER_BYTES = 256 * 1024
         const val MIN_BUFFER_BYTES = 8 * 1024
         const val MAX_BUFFER_BYTES = 1024 * 1024
+        const val DEFAULT_SOCKET_READ_TIMEOUT_MILLIS = 30_000
         private const val SECURE_MAGIC = 0x4E525345
         private const val SECURE_VERSION = 1
         private val ACK_BYTES = byteArrayOf(0x06)
