@@ -77,8 +77,13 @@ enum NeaRerIdentityVault {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(addStatus))
             }
         } else {
+            let updateQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: account
+            ]
             let update = [kSecValueData as String: encoded]
-            let updateStatus = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+            let updateStatus = SecItemUpdate(updateQuery as CFDictionary, update as CFDictionary)
             guard updateStatus == errSecSuccess else {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(updateStatus))
             }
