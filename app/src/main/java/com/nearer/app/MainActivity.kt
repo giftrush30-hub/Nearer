@@ -553,7 +553,9 @@ class MainActivity : ComponentActivity() {
                         outgoingPeakRateBytesPerSecond = peak
                         activeOutgoingFileName = name
                         activeOutgoingFileBytes = total
-                        outgoingTransferId = "nearby:$payloadId"
+                        if (outgoingTransferId?.startsWith("hyper:") != true) {
+                            outgoingTransferId = "nearby:$payloadId"
+                        }
                     }
                     val fraction = snapshot.progressFraction
                         ?: if (total > 0L) (transferred.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
@@ -648,6 +650,21 @@ class MainActivity : ComponentActivity() {
                     if (message.startsWith("Nearby file transfer failed")) {
                         incomingTransferName = null
                         incomingProgress = 0f
+                    }
+                    if (message.startsWith("Verified and saved on the recipient's phone:")) {
+                        val wasHyperTransfer = outgoingTransferId?.startsWith("hyper:") == true
+                        if (wasHyperTransfer) {
+                            outgoingTransferId = null
+                            outgoingProgress = 0f
+                            completeDirectQueuedFile(true)
+                        }
+                    }
+                    if (message.startsWith("HyperTransfer stopped safely:") ||
+                        message.startsWith("Secure HyperTransfer authentication failed.")) {
+                        if (outgoingTransferId?.startsWith("hyper:") == true) {
+                            outgoingTransferId = null
+                            outgoingProgress = 0f
+                        }
                     }
                 }
             }
@@ -3507,6 +3524,14 @@ class MainActivity : ComponentActivity() {
 
     private fun cancelOutgoingFileTransfer() {
         val id = outgoingTransferId ?: return
+        if (id.startsWith("hyper:")) {
+            val payloadId = id.substringAfter("hyper:").toLongOrNull()
+            if (payloadId != null) nearbyServiceBinder?.cancelHyperTransferTcpFile(payloadId)
+            outgoingTransferId = null
+            outgoingProgress = 0f
+            chatNotice = "Cancelling secure HyperTransfer…"
+            return
+        }
         if (id.startsWith("nearby:")) {
             val payloadId = id.substringAfter("nearby:").toLongOrNull()
             val endpoint = hybridConnectedEndpoint
@@ -3852,6 +3877,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             } catch (_: Exception) { }
+            val hyperPayloadId = nearbyServiceBinder?.sendHyperTransferTcpFile(endpoint, uri, fileName)
+            if (hyperPayloadId != null) {
+                outgoingTransferId = "hyper:$hyperPayloadId"
+                outgoingProgress = 0f
+                chatNotice = "Preparing encrypted HyperTransfer for $fileName…"
+                return
+            }
             val payloadId = nearbyTransport?.sendFile(endpoint, uri, fileName)
             if (payloadId != null) {
                 outgoingTransferId = "nearby:$payloadId"
