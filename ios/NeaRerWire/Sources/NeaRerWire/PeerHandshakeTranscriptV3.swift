@@ -10,7 +10,7 @@ public struct NeaRerHandshakeParticipantV3: Equatable {
 
     public init(peerID: String, nonce: Data, ephemeralPublicKeyDER: Data,
                 recipientEncryptionPublicKeyDER: Data) throws {
-        guard NeaRerIdentity.normalize(peerID) != nil else { throw NeaRerWireError.invalidPeerID }
+        guard NeaRerIdentity.normalize(peerID) == peerID else { throw NeaRerWireError.invalidPeerID }
         guard nonce.count == 32 else { throw NeaRerWireError.invalidField("nonce") }
         guard !ephemeralPublicKeyDER.isEmpty, ephemeralPublicKeyDER.count <= 512,
               !recipientEncryptionPublicKeyDER.isEmpty, recipientEncryptionPublicKeyDER.count <= 512 else {
