@@ -1,0 +1,27 @@
+name: iOS wire compatibility tests
+
+on:
+  push:
+    branches: [main, "platform/**"]
+    paths:
+      - "ios/NeaRerWire/**"
+      - ".github/workflows/ios-wire-tests.yml"
+  pull_request:
+    paths:
+      - "ios/NeaRerWire/**"
+      - ".github/workflows/ios-wire-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  swift-wire-tests:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Swift toolchain
+        run: swift --version
+      - name: Run NeaRer wire compatibility tests
+        working-directory: ios/NeaRerWire
+        run: swift test
