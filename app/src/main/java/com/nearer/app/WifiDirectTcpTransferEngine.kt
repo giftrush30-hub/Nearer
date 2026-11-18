@@ -11,7 +11,6 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.Socket
 import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -119,8 +118,10 @@ internal class WifiDirectTcpTransferEngine(private val bufferBytes: Int = DEFAUL
             val actualHash = digest.digest()
             if (!MessageDigest.isEqual(expectedHash, actualHash)) { output.writeByte(NACK); output.flush(); throw IOException("SHA-256 verification failed") }
             if (destination.exists()) { output.writeByte(NACK); output.flush(); throw IOException("Destination appeared during transfer") }
-            try { Files.move(part.toPath(), destination.toPath(), StandardCopyOption.ATOMIC_MOVE) }
-            catch (_: java.nio.file.AtomicMoveNotSupportedException) { Files.move(part.toPath(), destination.toPath()) }
+            // Do not request REPLACE_EXISTING or ATOMIC_MOVE: on some providers an
+            // atomic move may replace a destination created after the earlier
+            // existence check. The default move contract fails if the target exists.
+            Files.move(part.toPath(), destination.toPath())
             published = true
             output.writeByte(ACK); output.flush()
             return ReceiveResult(destination, received, hex(actualHash))
