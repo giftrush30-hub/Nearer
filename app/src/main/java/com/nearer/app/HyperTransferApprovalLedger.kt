@@ -106,5 +106,5 @@ internal class HyperTransferApprovalLedger(
         entries.entries.removeAll { it.value.createdAt < cutoff }
     }
 
-    private fun key(endpoint: String, transferId: String) = "$endpoint|$transferId".lowercase()
+    private fun key(endpoint: String, transferId: String) = "$endpoint|${transferId.lowercase()}"
 }
