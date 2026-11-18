@@ -28,7 +28,7 @@ public struct NeaRerRecipientIdentityBindingV1: Equatable {
     /// Exact Android RecipientIdentityBinding.signedBytes() layout.
     public func signedBytes() throws -> Data {
         guard NeaRerIdentity.normalize(deviceID) == deviceID,
-              signingKeyFingerprint.count == 32,
+              signingKeyFingerprint.count == 32, sequence <= UInt64(Int64.max),
               (64...512).contains(recipientEncryptionPublicKeyDER.count),
               issuedAtMilliseconds >= 0, expiresAtMilliseconds > issuedAtMilliseconds,
               expiresAtMilliseconds - issuedAtMilliseconds <= Self.maximumLifetimeMilliseconds else {
@@ -124,7 +124,7 @@ public struct NeaRerRecipientIdentityBindingV1: Equatable {
                               recipientEncryptionPublicKeyDER: Data, sequence: UInt64,
                               issuedAtMilliseconds: Int64, expiresAtMilliseconds: Int64,
                               sign: (Data) throws -> Data) throws -> NeaRerRecipientIdentityBindingV1 {
-        guard let fingerprint = sha256(signingPublicKeyDER) else {
+        guard isP256(signingPublicKeyDER), isP256(recipientEncryptionPublicKeyDER),\n              let fingerprint = sha256(signingPublicKeyDER) else {
             throw NeaRerWireError.invalidPublicKey
         }
         let unsigned = NeaRerRecipientIdentityBindingV1(
