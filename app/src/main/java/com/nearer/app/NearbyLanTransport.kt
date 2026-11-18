@@ -102,15 +102,12 @@ internal class NearbyLanTransport(
     }
 
     fun sendFrame(endpointId: String, frame: ByteArray) {
-        require(frame.isNotEmpty()) { "Empty LAN frames are not allowed" }
-        require(frame.size <= MAX_FRAME_BYTES) { "LAN control frame exceeds 1 MiB" }
+        NearbyLanFrameCodec.encode(frame) // Validate bounds before queueing asynchronous I/O.
         val connection = connections[endpointId] ?: return
         executor.execute {
             try {
                 synchronized(connection.writeLock) {
-                    connection.output.writeInt(frame.size)
-                    connection.output.write(frame)
-                    connection.output.flush()
+                    NearbyLanFrameCodec.write(connection.output, frame)
                 }
             } catch (error: Exception) {
                 removeConnection(endpointId)
@@ -219,12 +216,7 @@ internal class NearbyLanTransport(
         executor.execute {
             try {
                 while (!closed.get()) {
-                    val length = connection.input.readInt()
-                    if (length !in 1..MAX_BUFFERED_FRAME_BYTES) {
-                        throw IOException("Invalid frame length: $length")
-                    }
-                    val frame = ByteArray(length)
-                    connection.input.readFully(frame)
+                    val frame = NearbyLanFrameCodec.read(connection.input)
                     listener.onFrameReceived(endpointId, frame)
                 }
             } catch (_: EOFException) {
