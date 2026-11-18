@@ -45,7 +45,7 @@ final class AndroidCryptoGoldenVectorTests: XCTestCase {
 
     func testAndroidECDSASignatureFixtureVerifiesInCryptoKit() {
         let message = Data("NeaRer Android iPhone signature fixture".utf8)
-        let signature = hex("30440220647d62e9379d7ff20d13af0c52416a3f0e04dd4962e491f27f295d53bc6201b702205db2285c63e274b10ed7c5f9d56dabf0bc5063fdf51d6c41f1abc3afd50a2bbf")
+        let signature = hex("304402204fb29e9815467b7903789c9acc1ce1fae06bf378c8620cf04225f70ef909137f022063b7ea072638f204eb2534d2abde8263739b3b84babac728a4807c7a78fa0982")
         XCTAssertTrue(NeaRerCryptoV3.verifyDetached(
             publicKeyDER: alicePublicDER, transcript: message, signatureDER: signature
         ))
