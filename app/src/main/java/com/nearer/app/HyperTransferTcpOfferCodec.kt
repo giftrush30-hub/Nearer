@@ -7,7 +7,7 @@ import java.io.DataOutputStream
 import java.io.IOException
 
 /** Transfer offer and approval messages carried inside the authenticated Nearby control channel. */
-internal object HyperTransferTcpOfferCodec {
+object HyperTransferTcpOfferCodec {
     private const val OFFER_MAGIC = 0x4E524F31 // NRO1
     private const val DECISION_MAGIC = 0x4E524431 // NRD1
     private const val VERSION = 1
