@@ -72,3 +72,11 @@ These pieces are foundations, not an active production route. The legacy plainte
 7. Tune buffer size, concurrency, hashing, and file preparation based on measured profiles; do not optimize based on peak PHY numbers.
 
 **Do not merge or advertise HyperTransfer as faster than Xender until all applicable evidence gates pass.**
+
+## Follow-up hardening on 18 November 2026
+
+- Corrected benchmark speedup calculation to compare median measured application throughput (MiB/s), rather than dividing median elapsed durations. The distinction matters when sample files or byte counts differ; the new regression test deliberately uses different file sizes to prevent the old calculation from returning a misleading 20x result instead of the measured 2x.
+- Added a secure sender regression test for a peer that receives the complete encrypted empty-file manifest and digest but never sends the encrypted acknowledgement. The sender must terminate on its configured socket read timeout rather than wait indefinitely.
+- These source/test changes are committed after the previously successful Android CI run. **They have not yet been validated by a new CI run.** The prior passing JVM/manifest/APK results do not validate these new commits.
+- Production service integration remains deliberately disabled: MainActivity currently owns an independent Wi-Fi Direct manager, discovery receiver, group state, and legacy approval socket. The new coordinator must not be started alongside it. A safe migration must move the complete lifecycle and UI contract together, not simply create a second P2P manager in NearbyTransportService.
+- User will perform physical phone testing. Engineering-side work still needs to complete integration, add benchmark capture/export, run CI on the current head, and provide the physical-test protocol/results template.
