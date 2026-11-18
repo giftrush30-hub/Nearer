@@ -59,6 +59,16 @@ public struct NeaRerPeerHandshakeV3 {
         )
     }
 
+    /// Six-digit short authentication string for a user-confirmed first contact.
+    /// Both peers derive the same code from the signed v3 transcript.
+    public func verificationCode(with remoteHello: PeerHelloV3) throws -> String {
+        let digest = SHA256.hash(data: try transcript(with: remoteHello))
+        let bytes = Array(digest.prefix(4))
+        let value = (UInt32(bytes[0]) << 24) | (UInt32(bytes[1]) << 16) |
+                    (UInt32(bytes[2]) << 8) | UInt32(bytes[3])
+        return String(format: "%06u", value % 1_000_000)
+    }
+
     /// Derives session keys only after the caller has verified both proofs,
     /// pinned/approved the remote identity and validated its signed recipient binding.
     public func deriveSessionKeys(with remoteHello: PeerHelloV3) throws -> NeaRerCryptoV3.SessionKeys {
