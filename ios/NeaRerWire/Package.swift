@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "NeaRerPlatform",
-    platforms: [.iOS(.v13), .macOS(.v12)],
+    platforms: [.iOS(.v14), .macOS(.v12)],
     products: [
         .library(name: "NeaRerWire", targets: ["NeaRerWire"]),
         .library(name: "NeaRerTransport", targets: ["NeaRerTransport"])
