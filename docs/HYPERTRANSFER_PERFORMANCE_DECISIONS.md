@@ -198,3 +198,14 @@ The original TCP methods remain a plaintext loopback prototype and must not be u
 The new `HyperTransferSessionAuthenticator` now bridges the transfer-bound transcript to NeaRer's existing device-bound signing identity and `TrustedPeerKeyStore`. It creates a local detached signature, verifies the remote signature over the exact same transcript, checks pinned signing + recipient-encryption keys, requires explicit first-contact approval before TOFU pinning, and refuses to return an AEAD channel unless the caller asserts that the user approved this transfer.
 
 **Still mandatory before production integration:** the authenticator and secure engine are not yet connected to the app's actual transfer approval UI/state or service-owned transfer lifecycle. The caller's approval flags are a contract, not a UI implementation. The old plaintext `send/receive` methods must remain unavailable to production routing. Durable recovery, capability negotiation, cancellation across service death, and physical-device tests also remain outstanding.
+
+
+## Strict controlled comparison gate (new)
+
+The acceptance API now has a strict `evaluateControlled` entry point. It refuses to compare results unless both NeaRer and Xender evidence use the same:
+- stable device-pair key,
+- transfer direction,
+- exact file SHA-256 and byte length,
+- benchmark-condition key (room/placement, radio settings and other controlled setup).
+
+Each side must contain at least five successful runs, and each successful run must have transferred the exact comparison-file byte count. Failed attempts remain in the run list and are excluded from the median goodput rather than silently converted into fast successes. The 280 MB/s absolute target and 7× measured Xender target must both pass. This prevents mixing a NeaRer result from one phone pair/file/direction with an unrelated Xender baseline.
