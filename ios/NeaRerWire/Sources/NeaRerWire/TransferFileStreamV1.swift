@@ -47,7 +47,7 @@ public final class NeaRerTransferFileStreamWriterV1 {
     }
 
     public func currentAck() -> NeaRerTransferFileAckV1 {
-        var checkpointHasher = hasher
+        let checkpointHasher = hasher
         let digest = checkpointHasher.finalize().map { String(format: "%02x", $0) }.joined()
         return NeaRerTransferFileAckV1(
             payloadID: metadata.payloadID, transferID: metadata.transferID,
@@ -145,7 +145,9 @@ public final class NeaRerTransferFileStreamReceiverV1 {
         guard !fileManager.fileExists(atPath: destinationURL.path) else {
             throw NeaRerTransferFileStreamErrorV1.destinationExists
         }
-        try fileManager.createFile(atPath: stagingURL.path, contents: Data())
+        guard fileManager.createFile(atPath: stagingURL.path, contents: Data()) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
         self.handle = try FileHandle(forWritingTo: stagingURL)
     }
 
@@ -189,7 +191,7 @@ public final class NeaRerTransferFileStreamReceiverV1 {
               bytesWritten == metadata.item.sizeBytes else {
             throw NeaRerTransferFileStreamErrorV1.wrongTransfer
         }
-        var finalHasher = hasher
+        let finalHasher = hasher
         let digest = finalHasher.finalize().map { String(format: "%02x", $0) }.joined()
         guard digest == metadata.wholeFileSHA256, digest == end.wholeFileSHA256 else {
             throw NeaRerTransferFileStreamErrorV1.digestMismatch
