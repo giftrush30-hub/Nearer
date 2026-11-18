@@ -289,6 +289,7 @@ public final class NetworkFrameworkPeerTransport: NearbyPeerTransport {
     public func start() throws { onStateChanged?(.failed("Apple Network framework unavailable on this platform")) }
     public func connect(to endpointID: String) {}
     public func send(_ frame: Data, to endpointID: String) {}
+    public func setPeerAuthenticated(_ authenticated: Bool, endpointID: String) {}
     public func sendFileStream(to endpointID: String, fileURL: URL,
                                metadata: NeaRerTransferStreamMetadataV1,
                                completion: @escaping (Result<NeaRerTransferFileEndV1, Error>) -> Void) {
