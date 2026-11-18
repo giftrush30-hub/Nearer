@@ -5,8 +5,11 @@ This is the isolated native iOS work area. Android's production Nearby messaging
 ## Implemented on this branch
 
 - [x] Research-backed Android/iPhone/iPhone transport matrix and platform limitations.
-- [x] Swift codecs for the current NeaRer v3 hello/proof and secure packet envelopes.\n- [x] Native v3 handshake coordinator and Android-compatible domain-separated proof verification.\n- [x] Signed recipient identity-binding codec and Android signature verification vector.
-- [x] CryptoKit P-256 signatures, ECDH, HKDF-SHA256 and AES-256-GCM adapter.\n- [x] Deterministic Android-generated P-256 / HKDF / AES-GCM and ECDSA fixtures verified by Swift and Kotlin test suites.
+- [x] Swift codecs for the current NeaRer v3 hello/proof and secure packet envelopes.
+- [x] Native v3 handshake coordinator and Android-compatible domain-separated proof verification.
+- [x] Signed recipient identity-binding codec and Android signature verification vector.
+- [x] CryptoKit P-256 signatures, ECDH, HKDF-SHA256 and AES-256-GCM adapter.
+- [x] Deterministic Android-generated P-256 / HKDF / AES-GCM and ECDSA fixtures verified by Swift and Kotlin test suites.
 - [x] Swift/Kotlin golden vector for the v3 handshake transcript.
 - [x] Swift port of the Android NRB1 transfer bundle manifest, including safe-path checks and a shared Kotlin/Swift golden vector.
 - [x] Swift port of Android NRRS resume proposal, decision and no-resume envelopes, with Kotlin/Swift golden vectors.
