@@ -7,11 +7,11 @@ final class TransferResumeCodecV1Tests: XCTestCase {
     func testAndroidProposalGoldenVectorAndRoundTrip() throws {
         let proposal = NeaRerResumeProposalV1(
             transferID: "x", itemID: "i", relativePath: "a",
-            expectedSizeBytes: 10, sourceModifiedAtMilliseconds: nil,
+            expectedSizeBytes: 8_388_608, sourceModifiedAtMilliseconds: nil,
             committedOffsetBytes: 4 * 1024 * 1024, prefixSHA256: digest
         )
         let encoded = try NeaRerTransferResumeCodecV1.encodeProposal(payloadID: 7, proposal: proposal)
-        let expected = "4e525253010000000000000007000178000169000161000000000000000a00000000004000000040" + String(repeating: "00", count: 32)
+        let expected = "4e52525301000000000000000700017800016900016100000000008000000000000000004000000040" + String(repeating: "30", count: 64)
         XCTAssertEqual(encoded.map { String(format: "%02x", $0) }.joined(), expected)
         let decoded = try NeaRerTransferResumeCodecV1.decodeProposal(encoded)
         XCTAssertEqual(decoded.payloadID, 7)
