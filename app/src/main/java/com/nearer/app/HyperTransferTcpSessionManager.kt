@@ -59,6 +59,7 @@ internal class HyperTransferTcpSessionManager(
     @Volatile private var activeServer: ServerSocket? = null
     @Volatile private var activeSocket: Socket? = null
     private val activeTransfer = AtomicBoolean(false)
+    @Volatile private var activePayloadId: Long? = null
     @Volatile private var closed = false
 
     /** Returns null when P2P is unavailable so the caller can keep using Nearby. */
@@ -163,8 +164,10 @@ internal class HyperTransferTcpSessionManager(
             it
         } ?: return
         state.cancellation?.cancel()
-        runCatching { activeServer?.close() }
-        runCatching { activeSocket?.close() }
+        if (activePayloadId == payloadId) {
+            runCatching { activeServer?.close() }
+            runCatching { activeSocket?.close() }
+        }
         state.source?.delete()
         listener.onStatus("HyperTransfer cancelled.")
     }
@@ -177,9 +180,11 @@ internal class HyperTransferTcpSessionManager(
             activeTransfer.set(false)
             return
         }
+        activePayloadId = state.payloadId
         workers.execute {
             try { runTransfer(state) }
             finally {
+                activePayloadId = null
                 activeTransfer.set(false)
                 onLinkReady()
             }
