@@ -102,7 +102,7 @@ The isolated branch now contains more than the initial wire layer:
 
 - Swift bounded codecs for `peer_hello_v3`, `peer_proof_v3`, and `secure_packet_v1`.
 - A Swift v3 handshake coordinator that creates hello/proof envelopes, verifies the Android-compatible domain-separated peer proof and derives directional session keys after caller-controlled trust gates.
-- A Swift port of Android's signed `mesh_identity_binding_v1` recipient-key binding, including the exact signed-byte layout, P-256 verification, expiry and monotonic sequence fields.
+- A Swift port of Android's signed `mesh_identity_binding_v1` recipient-key binding, including the exact signed-byte layout, P-256 verification, expiry and monotonic sequence fields.\n- A shared six-digit short authentication string (SAS) derived from the v3 transcript, asserted by Swift and Kotlin tests.\n- A pure first-contact trust policy and device-only Keychain peer-pin vault. The vault exposes explicit approval, key-change rejection and monotonic remote binding-sequence persistence; its UI/handshake integration remains outstanding.
 - CryptoKit P-256 signature verification/signing, P-256 ECDH, HKDF-SHA256 directional key derivation and AES-GCM packet sealing/opening. Deterministic P-256, HKDF, AES-GCM and ECDSA fixtures are asserted by both Swift and Kotlin test suites; live device interoperability remains separate.
 - Swift v3 transcript encoder with a deterministic vector asserted by Kotlin and Swift.
 - Swift port of Android's `NRB1` version-1 transfer bundle manifest, with safe-path validation and a shared golden byte vector.
@@ -110,7 +110,7 @@ The isolated branch now contains more than the initial wire layer:
 - A Network.framework adapter that advertises/browses the `_nearer-v1._tcp` Bonjour service and opts into Apple's peer-to-peer Wi-Fi path. The endpoint handle is explicitly untrusted until the NeaRer cryptographic handshake succeeds.
 - iOS local-network privacy and Bonjour declarations plus an example Wi-Fi Aware entitlement plist.
 
-The Network.framework adapter is a native iOS implementation foundation, not yet a complete app feature. The Android adapter now advertises the same TCP/Bonjour service in an isolated class, but it is not integrated into the production messaging service. No iPhone has yet been physically tested against it. The Wi-Fi Aware path still needs the iOS 26 paired-device API adapter, Android Wi-Fi Aware implementation, entitlement approval and real-device interoperability validation.
+The Network.framework adapter is a native iOS implementation foundation, not yet a complete app feature. The new SwiftUI shell still does not run the handshake coordinator or present the SAS approval prompt. The Android adapter now advertises the same TCP/Bonjour service in an isolated class, but it is not integrated into the production messaging service. No iPhone has yet been physically tested against it. The Wi-Fi Aware path still needs the iOS 26 paired-device API adapter, Android Wi-Fi Aware implementation, entitlement approval and real-device interoperability validation.
 
 ### LAN transport contract
 
