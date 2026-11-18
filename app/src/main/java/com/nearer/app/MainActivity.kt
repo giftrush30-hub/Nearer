@@ -4312,6 +4312,14 @@ private fun NeaRerHome(
     onConnect: (WifiP2pDevice) -> Unit
 ) {
     val context = LocalContext.current
+    fun formatLiveRate(bytesPerSecond: Long): String {
+        val rate = bytesPerSecond.coerceAtLeast(0L)
+        return when {
+            rate >= 1_000_000L -> String.format(java.util.Locale.US, "%.1f MB/s", rate / 1_000_000.0)
+            rate >= 1_000L -> String.format(java.util.Locale.US, "%.0f KB/s", rate / 1_000.0)
+            else -> "0 KB/s"
+        }
+    }
     val folderPreferences = remember(context) {
         context.getSharedPreferences("nearer_folder_browser", Context.MODE_PRIVATE)
     }
@@ -4676,6 +4684,46 @@ private fun NeaRerHome(
                     contentDescription = "NeaRer logo",
                     modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp))
                 )
+            }
+
+            // Keep the live transfer meter visible when the user navigates away
+            // from Chats to the file centre, People, Games or another section.
+            if (selectedTab != "Chats" && (outgoingTransferId != null || incomingTransferName != null)) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().animateContentSize(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Panel
+                ) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("HYPERTRANSFER • LIVE SPEED", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        if (outgoingTransferId != null) {
+                            Text("Sending • NOW  ${formatLiveRate(outgoingRateBytesPerSecond)}", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("AVG  ${formatLiveRate(outgoingAverageRateBytesPerSecond)}   •   PEAK  ${formatLiveRate(outgoingPeakRateBytesPerSecond)}", color = Muted, fontSize = 11.sp)
+                            LinearProgressIndicator(
+                                progress = { outgoingProgress },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Gold,
+                                trackColor = Midnight
+                            )
+                            Button(
+                                onClick = onCancelTransfer,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(11.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF633D4B), contentColor = White)
+                            ) { Text("Cancel transfer") }
+                        }
+                        incomingTransferName?.let { name ->
+                            Text("Receiving $name • NOW  ${formatLiveRate(incomingRateBytesPerSecond)}", color = Mint, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("AVG  ${formatLiveRate(incomingAverageRateBytesPerSecond)}   •   PEAK  ${formatLiveRate(incomingPeakRateBytesPerSecond)}", color = Muted, fontSize = 11.sp)
+                            LinearProgressIndicator(
+                                progress = { incomingProgress },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Mint,
+                                trackColor = Midnight
+                            )
+                        }
+                    }
+                }
             }
 
             if (selectedTab == "Home") {
