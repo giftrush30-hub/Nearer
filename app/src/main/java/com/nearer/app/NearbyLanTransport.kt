@@ -50,8 +50,6 @@ internal class NearbyLanTransport(
 
     companion object {
         const val SERVICE_TYPE = "_nearer-v1._tcp."
-        private const val MAX_FRAME_BYTES = 1_048_576
-        private const val MAX_BUFFERED_FRAME_BYTES = MAX_FRAME_BYTES
     }
 
     private val appContext = context.applicationContext
@@ -59,6 +57,7 @@ internal class NearbyLanTransport(
     private val wifi = appContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     private val executor: ExecutorService = Executors.newCachedThreadPool()
     private val closed = AtomicBoolean(false)
+    private val started = AtomicBoolean(false)
     private val connections = ConcurrentHashMap<String, PeerConnection>()
     private val discovered = ConcurrentHashMap<String, NsdServiceInfo>()
     private var serverSocket: ServerSocket? = null
@@ -68,6 +67,7 @@ internal class NearbyLanTransport(
 
     fun start() {
         check(!closed.get()) { "LAN transport has been closed" }
+        if (!started.compareAndSet(false, true)) return
         executor.execute {
             try {
                 val server = ServerSocket()
@@ -117,7 +117,6 @@ internal class NearbyLanTransport(
     }
 
     private fun registerBonjourService() {
-        val server = serverSocket
         // Registration waits for the listener's ephemeral port to be ready.
         executor.execute {
             repeat(100) {
@@ -155,6 +154,7 @@ internal class NearbyLanTransport(
             override fun onDiscoveryStarted(serviceType: String) = Unit
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 if (serviceInfo.serviceName == peerId || closed.get()) return
+                if (NeaRerIdentity.normalize(serviceInfo.serviceName) != serviceInfo.serviceName) return
                 runCatching {
                     nsd.resolveService(serviceInfo, object : NsdManager.ResolveListener {
                         override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) {
