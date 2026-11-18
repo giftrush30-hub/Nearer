@@ -60,4 +60,39 @@ class HyperTransferApprovalLedgerTest {
         now += 101
         assertFalse(ledger.consumeApproval("ep2", "23456789ABCE", second, HyperTransferApprovalLedger.Direction.INCOMING))
     }
+    @Test fun failedOfferSendRemovesOnlyThatOffer() {
+        val ledger = HyperTransferApprovalLedger()
+        val first = offer("a".repeat(64))
+        val second = offer("c".repeat(64))
+        ledger.recordOutgoingOffer("ep|one", "23456789ABCD", first)
+        ledger.recordOutgoingOffer("ep|one", "23456789ABCD", second)
+        assertTrue(ledger.removeOffer("ep|one", "23456789ABCD", first.transferId, HyperTransferApprovalLedger.Direction.OUTGOING))
+        assertFalse(ledger.recordRemoteDecision("ep|one", "23456789ABCD", HyperTransferTcpOfferCodec.Decision(first.transferId, true)))
+        assertTrue(ledger.recordRemoteDecision("ep|one", "23456789ABCD", HyperTransferTcpOfferCodec.Decision(second.transferId, true)))
+    }
+
+    @Test fun failedDecisionDeliveryRollsBackOnlyThePendingDecision() {
+        val ledger = HyperTransferApprovalLedger()
+        val item = offer()
+        ledger.recordIncomingOffer("ep1", "23456789ABCD", item)
+        assertTrue(ledger.decideIncoming("ep1", "23456789ABCD", item.transferId, true))
+        assertTrue(ledger.rollbackIncomingDecision("ep1", "23456789ABCD", item.transferId, true))
+        assertFalse(ledger.consumeApproval("ep1", "23456789ABCD", item, HyperTransferApprovalLedger.Direction.INCOMING))
+        assertTrue(ledger.decideIncoming("ep1", "23456789ABCD", item.transferId, true))
+        assertFalse(ledger.rollbackIncomingDecision("ep1", "23456789ABCD", item.transferId, false))
+        assertTrue(ledger.consumeApproval("ep1", "23456789ABCD", item, HyperTransferApprovalLedger.Direction.INCOMING))
+    }
+
+    @Test fun endpointIdentifiersAreCaseSensitiveAndDelimiterSafe() {
+        val ledger = HyperTransferApprovalLedger()
+        val first = offer()
+        val second = offer("c".repeat(64))
+        ledger.recordIncomingOffer("Peer-A", "23456789ABCD", first)
+        ledger.recordIncomingOffer("peer-a", "23456789ABCD", second)
+        ledger.decideIncoming("Peer-A", "23456789ABCD", first.transferId, true)
+        ledger.decideIncoming("peer-a", "23456789ABCD", second.transferId, true)
+        assertTrue(ledger.consumeApproval("Peer-A", "23456789ABCD", first, HyperTransferApprovalLedger.Direction.INCOMING))
+        assertTrue(ledger.consumeApproval("peer-a", "23456789ABCD", second, HyperTransferApprovalLedger.Direction.INCOMING))
+    }
+
 }
