@@ -13,6 +13,15 @@ class HyperTransferTuningTest {
     }
 
     @Test
+    fun capablePhoneUsesOneMiBProductionReceiveBuffer() {
+        assertEquals(1024 * 1024, HyperTransferTuning.BUFFER_FAST)
+        assertEquals(HyperTransferTuning.BUFFER_FAST, HyperTransferTuning.chooseReceiveBufferBytes(
+            availableMemoryBytes = 2L * 1024L * 1024L * 1024L,
+            lowMemory = false, lowRamDevice = false, thermalStatus = 0
+        ))
+    }
+
+    @Test
     fun lowRamPhoneUsesBalancedBuffer() {
         assertEquals(HyperTransferTuning.BUFFER_BALANCED, HyperTransferTuning.chooseReceiveBufferBytes(
             availableMemoryBytes = 512L * 1024L * 1024L,
