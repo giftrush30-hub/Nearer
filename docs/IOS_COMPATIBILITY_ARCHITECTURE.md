@@ -114,14 +114,14 @@ The native apps must share application semantics, not platform SDK internals.
 - Proof: `peer_proof_v3`, fields `peerId`, `signature`.
 - Chat cipher envelope: `secure_packet_v1`, fields `version=1`, `id`, `nonce`, `ciphertext`.
 - Base64 is standard RFC 4648 without line breaks.
-- The iOS wire module added on this branch validates bounded envelope shape and field sizes only. It is not a cryptographic verifier. The iOS crypto adapter must parse keys, verify signatures, reproduce the exact transcript bytes and derive the exact directional keys before a session is trusted.
+- The iOS wire module added on this branch validates bounded envelope shape and field sizes only. It is not a cryptographic verifier. It now also reproduces the Android v3 handshake transcript byte-for-byte and includes a deterministic golden vector; this verifies serialization only. The iOS crypto adapter must still parse keys, verify signatures, and derive the exact directional keys before a session is trusted.
 
 ### Cryptographic interoperability gate
 
 The Android implementation uses P-256 ECDH, SHA-256, HKDF-SHA256, AES-256-GCM and ECDSA/SHA-256. The exact transcript is domain-separated and length-prefixed; peer ordering is by stable ID. The HKDF info string is `NeaRer-chat-E2E-v1`, and the transcript SHA-256 digest is the salt. Directional keys are assigned consistently by the lexicographic order of peer IDs.
 
 Before enabling iOS messaging:
-1. Produce deterministic cross-language transcript test vectors from the Android implementation.
+1. Extend the current deterministic transcript vector with Android-generated key/signature fixtures and independently verify the vector against the Kotlin implementation.
 2. Verify iOS DER public-key import and DER ECDSA signature verification against Android-generated vectors.
 3. Verify HKDF output bytes on both platforms.
 4. Verify AES-GCM packets in both directions, including modified AAD, nonce, ciphertext and sender/recipient rejection.
