@@ -35,6 +35,25 @@ public final class NeaRerTransferFileStreamWriterV1 {
         self.handle = try FileHandle(forReadingFrom: fileURL)
     }
 
+    public var bytesRead: UInt64 { offset }
+
+    public static func initialAck(for metadata: NeaRerTransferStreamMetadataV1) -> NeaRerTransferFileAckV1 {
+        let emptyDigest = SHA256.hash(data: Data()).map { String(format: "%02x", $0) }.joined()
+        return NeaRerTransferFileAckV1(
+            payloadID: metadata.payloadID, transferID: metadata.transferID,
+            itemID: metadata.item.id, committedOffsetBytes: 0, prefixSHA256: emptyDigest
+        )
+    }
+
+    public func currentAck() -> NeaRerTransferFileAckV1 {
+        var checkpointHasher = hasher
+        let digest = checkpointHasher.finalize().map { String(format: "%02x", $0) }.joined()
+        return NeaRerTransferFileAckV1(
+            payloadID: metadata.payloadID, transferID: metadata.transferID,
+            itemID: metadata.item.id, committedOffsetBytes: offset, prefixSHA256: digest
+        )
+    }
+
     /// Reads one bounded chunk. Returns nil at the declared end of the file.
     public func nextChunk() throws -> NeaRerTransferFileChunkV1? {
         guard !finished else { throw NeaRerTransferFileStreamErrorV1.alreadyFinished }
