@@ -142,6 +142,8 @@ public final class NeaRerTransferFileStreamReceiverV1 {
             throw NeaRerTransferFileStreamErrorV1.outOfOrderChunk
         }
         guard !chunk.data.isEmpty,
+              chunk.data.count <= NeaRerTransferFileChunkCodecV1.maximumChunkBytes,
+              bytesWritten <= metadata.item.sizeBytes,
               UInt64(chunk.data.count) <= metadata.item.sizeBytes - bytesWritten else {
             throw NeaRerTransferFileStreamErrorV1.fileTooLarge
         }
