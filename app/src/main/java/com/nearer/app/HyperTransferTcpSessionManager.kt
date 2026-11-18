@@ -75,11 +75,13 @@ internal class HyperTransferTcpSessionManager(
         if (outgoing.putIfAbsent(payloadId, initial) != null) return null
 
         workers.execute {
+            var stagedSource: File? = null
             try {
                 val staging = File(appContext.cacheDir, "nearer-hypertransfer").apply {
                     if (!exists() && !mkdirs()) throw IOException("Could not create transfer staging directory")
                 }
                 val source = File(staging, "source-$transferId.bin")
+                stagedSource = source
                 val (size, hash) = copyAndHash(uri, source)
                 val offer = placeholder.copy(sizeBytes = size, sha256 = hash)
                 val prepared = initial.copy(offer = offer, source = source)
@@ -96,7 +98,7 @@ internal class HyperTransferTcpSessionManager(
                 }
             } catch (error: Exception) {
                 outgoing.remove(payloadId)
-                initial.source?.delete()
+                stagedSource?.delete()
                 listener.onStatus(
                     "Could not prepare the secure HyperTransfer file: " +
                         (error.localizedMessage ?: "please retry")
