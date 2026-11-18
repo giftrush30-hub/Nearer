@@ -10,7 +10,7 @@ final class TransferFileStreamV1Tests: XCTestCase {
         let destinationDir = root.appendingPathComponent("destination")
         try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
         let source = sourceDir.appendingPathComponent("sample.bin")
-        let bytes = Data((0..<(1_300_123)).map { UInt8($0 % 251) })
+        let bytes = Data((0..<(4 * 1024 * 1024 + 123)).map { UInt8($0 % 251) })
         try bytes.write(to: source)
         let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
         let item = NeaRerTransferItemV1(
@@ -28,13 +28,17 @@ final class TransferFileStreamV1Tests: XCTestCase {
         let receiver = try NeaRerTransferFileStreamReceiverV1(
             metadata: metadata, destinationDirectory: destinationDir
         )
+        let initialAck = receiver.initialAck()
+        XCTAssertEqual(initialAck.committedOffsetBytes, 0)
         var chunks = 0
+        var checkpointAcks: [NeaRerTransferFileAckV1] = []
         while let chunk = try writer.nextChunk() {
             XCTAssertLessThanOrEqual(chunk.data.count, 128 * 1024)
-            _ = try receiver.append(chunk)
+            if let ack = try receiver.append(chunk) { checkpointAcks.append(ack) }
             chunks += 1
         }
         XCTAssertGreaterThan(chunks, 1)
+        XCTAssertEqual(checkpointAcks.map(\.committedOffsetBytes), [4 * 1024 * 1024])
         let end = try writer.finish()
         let finalized = try receiver.finish(end)
         XCTAssertEqual(try Data(contentsOf: finalized.url), bytes)
