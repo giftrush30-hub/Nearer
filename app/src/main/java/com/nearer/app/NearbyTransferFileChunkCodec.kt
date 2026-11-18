@@ -140,7 +140,7 @@ internal object NearbyTransferFileChunkCodec {
     private fun DataInputStream.readString16(maxBytes: Int): String {
         val length = readUnsignedShort()
         require(length in 1..maxBytes && length <= available())
-        val bytes = ByteArray(length).also(::readFully)
+        val bytes = ByteArray(length).also { readFully(it) }
         return Charsets.UTF_8.newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
