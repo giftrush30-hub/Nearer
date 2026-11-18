@@ -26,6 +26,20 @@ class TransferBenchmarkReportTest {
         assertEquals(3, csv.trimEnd().lines().size)
     }
 
+    @Test fun neutralizesSpreadsheetFormulaCells() {
+        val evidence = TransferBenchmarkReport.Evidence(
+            app = "NeaRer",
+            devicePairKey = "A__B",
+            direction = HyperTransferTransportPolicy.Direction.LOCAL_TO_REMOTE,
+            fileSha256 = "d".repeat(64),
+            fileBytes = 1L,
+            conditionsKey = "=HYPERLINK(\"https://example.invalid\",\"click\")",
+            runs = listOf(TransferBenchmarkRun(1L, 1L, 0L, true))
+        )
+        assertTrue(TransferBenchmarkReport.toCsv(listOf(evidence))
+            .contains(",'=HYPERLINK("))
+    }
+
     @Test fun escapesQuotesAndRejectsMismatchedSuccessfulFileSize() {
         val evidence = TransferBenchmarkReport.Evidence(
             app = "Xender \"test\"",
