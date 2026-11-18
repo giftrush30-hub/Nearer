@@ -18,6 +18,7 @@ struct NearbyHomeView: View {
                     discoveryCard
                     peerList
                     verificationQueue
+                    messagingPanel
                     privacyNote
                 }
                 .padding(20)
@@ -196,6 +197,69 @@ struct NearbyHomeView: View {
                     .padding(13)
                     .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
                 }
+            }
+        }
+    }
+
+    private var messagingPanel: some View {
+        Group {
+            if let remotePeerID = model.securePeerIDs.sorted().first {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Image(systemName: "lock.fill").foregroundStyle(gold)
+                        Text("Private chat").font(.title3.bold())
+                        Spacer()
+                        Text("E2E encrypted").font(.caption2.bold()).foregroundStyle(.green)
+                    }
+                    Text("Connected peer: \(remotePeerID)")
+                        .font(.caption).foregroundStyle(.white.opacity(0.6))
+                    let conversation = model.messages.filter { $0.peerID == remotePeerID }.suffix(40)
+                    if conversation.isEmpty {
+                        Text("Your secure conversation starts here.")
+                            .font(.footnote).foregroundStyle(.white.opacity(0.55))
+                            .frame(maxWidth: .infinity).padding(.vertical, 18)
+                    } else {
+                        VStack(spacing: 9) {
+                            ForEach(Array(conversation)) { message in
+                                HStack {
+                                    if message.senderID == model.peerID { Spacer(minLength: 36) }
+                                    Text(message.text)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.white)
+                                        .padding(12)
+                                        .background(
+                                            message.senderID == model.peerID ? blue.opacity(0.85) : .white.opacity(0.10),
+                                            in: RoundedRectangle(cornerRadius: 15)
+                                        )
+                                    if message.senderID != model.peerID { Spacer(minLength: 36) }
+                                }
+                            }
+                        }
+                    }
+                    HStack(spacing: 9) {
+                        TextField("Write a message…", text: $model.messageDraft, axis: .vertical)
+                            .lineLimit(1...4)
+                            .padding(12)
+                            .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 13))
+                            .foregroundStyle(.white)
+                        Button {
+                            model.sendMessage(to: remotePeerID)
+                        } label: {
+                            Image(systemName: "arrow.up")
+                                .font(.headline.bold())
+                                .foregroundStyle(navy)
+                                .frame(width: 44, height: 44)
+                                .background(gold, in: Circle())
+                        }
+                        .disabled(model.messageDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .opacity(model.messageDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
+                    }
+                    Text("Messages are encrypted in transit and stored encrypted on this device. Delivery receipts, offline outbox retry and group messaging are not yet implemented.")
+                        .font(.caption2).foregroundStyle(.white.opacity(0.5))
+                }
+                .padding(18)
+                .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22))
+                .overlay(RoundedRectangle(cornerRadius: 22).stroke(.green.opacity(0.25)))
             }
         }
     }
