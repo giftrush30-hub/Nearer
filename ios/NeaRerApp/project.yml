@@ -5,7 +5,7 @@ options:
     iOS: "16.0"
 packages:
   NeaRerPlatform:
-    path: NeaRerWire
+    path: ../NeaRerWire
 targets:
   NeaRer:
     type: application
