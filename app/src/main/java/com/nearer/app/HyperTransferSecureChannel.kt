@@ -38,19 +38,27 @@ internal class HyperTransferSecureChannel private constructor(
     private var sendSequence = 0L
     private var receiveSequence = 0L
     @Volatile private var closed = false
+    // Cipher instances are reused between records; init() installs a fresh GCM
+    // nonce for every sequence, avoiding provider lookup/allocation per chunk.
+    private val sendCipher = Cipher.getInstance(TRANSFORMATION)
+    private val receiveCipher = Cipher.getInstance(TRANSFORMATION)
 
     @Synchronized
-    fun seal(plaintext: ByteArray): ByteArray {
+    fun seal(plaintext: ByteArray): ByteArray = seal(plaintext, 0, plaintext.size)
+
+    /** Encrypts a byte-array slice without forcing the caller to copy its final partial chunk. */
+    @Synchronized
+    fun seal(plaintext: ByteArray, offset: Int, length: Int): ByteArray {
         check(!closed) { "HyperTransfer secure channel is closed" }
         check(sendSequence >= 0L && sendSequence < Long.MAX_VALUE) { "HyperTransfer send sequence exhausted" }
-        require(plaintext.size in 1..MAX_PLAINTEXT_BYTES) { "Invalid HyperTransfer record size" }
+        require(offset >= 0 && length in 1..MAX_PLAINTEXT_BYTES && offset <= plaintext.size - length) {
+            "Invalid HyperTransfer record slice"
+        }
         val sequence = sendSequence
-        val nonce = nonce(sendNoncePrefix, sequence)
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(sendKey, "AES"), GCMParameterSpec(TAG_BITS, nonce))
-        cipher.updateAAD(aad(transferId, if (localIsSender) senderId else receiverId,
-            if (localIsSender) receiverId else senderId, sequence, plaintext.size))
-        val encrypted = cipher.doFinal(plaintext)
+        sendCipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(sendKey, "AES"), GCMParameterSpec(TAG_BITS, nonce(sendNoncePrefix, sequence)))
+        sendCipher.updateAAD(aad(transferId, if (localIsSender) senderId else receiverId,
+            if (localIsSender) receiverId else senderId, sequence, length))
+        val encrypted = sendCipher.doFinal(plaintext, offset, length)
         sendSequence++
         return ByteBuffer.allocate(8 + encrypted.size).putLong(sequence).put(encrypted).array()
     }
@@ -67,11 +75,10 @@ internal class HyperTransferSecureChannel private constructor(
         val encrypted = ByteArray(buffer.remaining()).also(buffer::get)
         val plainSize = encrypted.size - TAG_BYTES
         val nonce = nonce(receiveNoncePrefix, sequence)
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(receiveKey, "AES"), GCMParameterSpec(TAG_BITS, nonce))
-        cipher.updateAAD(aad(transferId, if (localIsSender) receiverId else senderId,
+        receiveCipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(receiveKey, "AES"), GCMParameterSpec(TAG_BITS, nonce))
+        receiveCipher.updateAAD(aad(transferId, if (localIsSender) receiverId else senderId,
             if (localIsSender) senderId else receiverId, sequence, plainSize))
-        val plaintext = cipher.doFinal(encrypted)
+        val plaintext = receiveCipher.doFinal(encrypted)
         if (plaintext.size != plainSize) throw SecurityException("Invalid decrypted record length")
         receiveSequence++
         return plaintext
@@ -79,8 +86,13 @@ internal class HyperTransferSecureChannel private constructor(
 
     /** Length-prefixed authenticated record. The length is bounded before allocation. */
     @Throws(IOException::class)
-    fun writeRecord(output: DataOutputStream, plaintext: ByteArray) {
-        val sealed = seal(plaintext)
+    fun writeRecord(output: DataOutputStream, plaintext: ByteArray) =
+        writeRecord(output, plaintext, 0, plaintext.size)
+
+    /** Writes an encrypted slice; the length prefix is emitted only after validation/encryption succeeds. */
+    @Synchronized
+    fun writeRecord(output: DataOutputStream, plaintext: ByteArray, offset: Int, length: Int) {
+        val sealed = seal(plaintext, offset, length)
         output.writeInt(sealed.size)
         output.write(sealed)
     }
