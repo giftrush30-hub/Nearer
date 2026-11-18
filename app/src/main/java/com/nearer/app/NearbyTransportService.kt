@@ -39,6 +39,12 @@ class NearbyTransportService : Service() {
     inner class LocalBinder : Binder() {
         fun transport(): NearbyConnectionsTransport = nearbyTransport
 
+        fun sendHyperTransferTcpOffer(endpointId: String, offer: HyperTransferTcpOfferCodec.Offer): Boolean =
+            nearbyTransport.sendHyperTransferTcpOffer(endpointId, offer)
+
+        fun respondToHyperTransferTcpOffer(endpointId: String, transferId: String, accepted: Boolean): Boolean =
+            nearbyTransport.respondToHyperTransferTcpOffer(endpointId, transferId, accepted)
+
         fun attachWifiDirectUiListener(listener: WifiDirectUiListener) {
             wifiDirectUiListener = listener
             listener.onStateChanged(wifiDirectState, wifiDirectDetail)
@@ -341,6 +347,18 @@ class NearbyTransportService : Service() {
 
         override fun onFileStatus(message: String) {
             uiListener?.onFileStatus(message)
+        }
+
+        override fun onIncomingHyperTransferOffer(
+            id: String, peerId: String, offer: HyperTransferTcpOfferCodec.Offer
+        ) {
+            uiListener?.onIncomingHyperTransferOffer(id, peerId, offer)
+        }
+
+        override fun onHyperTransferOfferDecision(
+            id: String, peerId: String, decision: HyperTransferTcpOfferCodec.Decision
+        ) {
+            uiListener?.onHyperTransferOfferDecision(id, peerId, decision)
         }
     }
 
