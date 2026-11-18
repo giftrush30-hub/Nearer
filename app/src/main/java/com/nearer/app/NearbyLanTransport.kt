@@ -74,6 +74,7 @@ internal class NearbyLanTransport(
                 server.reuseAddress = true
                 server.bind(InetSocketAddress(0))
                 serverSocket = server
+                if (closed.get()) { server.close(); return@execute }
                 acquireMulticastLock()
                 acceptLoop(server)
             } catch (error: Exception) {
@@ -109,7 +110,7 @@ internal class NearbyLanTransport(
 
     /** Completion is invoked only after the bounded frame has been flushed to the socket. */
     fun sendFrame(endpointId: String, frame: ByteArray, completion: (Throwable?) -> Unit) {
-        runCatching { NearbyLanFrameCodec.encode(frame) }.onFailure {
+        runCatching { NearbyLanFrameCodec.validate(frame) }.onFailure {
             completion(it)
             return
         }
