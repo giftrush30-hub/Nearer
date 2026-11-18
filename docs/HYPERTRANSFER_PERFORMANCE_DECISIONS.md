@@ -129,6 +129,18 @@ The sender and receiver must use this exact protocol version and transfer ID. A 
 - [ ] Tune buffers, concurrency and hashing only from measured evidence.
 - [ ] Achieve and independently repeat the 280 MB/s + 7× target on supported device pairs before making the claim.
 
+## Android Wi-Fi Direct group coordinator (implemented, integration still pending)
+
+`WifiDirectConnectionCoordinator` now provides an explicit Android-side control layer:
+- Registers for Wi-Fi Direct state, peer-list and connection-state broadcasts only after `start()`.
+- Checks the relevant runtime permission (Nearby Wi-Fi Devices on Android 13+, fine location on earlier versions) before initializing the P2P channel.
+- Exposes explicit peer discovery, group creation, and connection-to-selected-peer operations; it does not silently toggle Wi-Fi or start a hotspot.
+- Reports group-owner/client role and group-owner address when Android reports a formed group.
+- Provides server/client socket creation helpers that bind to an IPv4 address on a `p2p*` interface. It fails closed if that interface cannot be found, rather than listening on every network interface.
+- Provides discovery stop, group removal and receiver/channel cleanup.
+
+This is an isolated coordinator, not yet called by the app's current file-transfer UI or service. The socket protocol and coordinator are separate modules, and they still need authenticated session negotiation, real-device compatibility testing, timeout policy, reconnect handling and integration review. Some OEMs use different interface naming/routing behavior; the fail-closed interface lookup must be validated across target phones before rollout.
+
 ## Resume work remains separate
 
 The receiver journal, prefix hashing, negotiation codecs and partial writer are foundations for reliable recovery. Sender recovery PR #268 is still open and is behind main; it must be synchronized and validated before merging. Resume reliability is important, but it is not itself a radio-throughput optimization.
