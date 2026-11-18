@@ -6,7 +6,7 @@ This is the isolated native iOS work area. Android's production Nearby messaging
 
 - [x] Research-backed Android/iPhone/iPhone transport matrix and platform limitations.
 - [x] Swift codecs for the current NeaRer v3 hello/proof and secure packet envelopes.
-- [x] CryptoKit P-256 signatures, ECDH, HKDF-SHA256 and AES-256-GCM adapter.
+- [x] CryptoKit P-256 signatures, ECDH, HKDF-SHA256 and AES-256-GCM adapter.\n- [x] Deterministic Android-generated P-256 / HKDF / AES-GCM and ECDSA fixtures verified by Swift and Kotlin test suites.
 - [x] Swift/Kotlin golden vector for the v3 handshake transcript.
 - [x] Swift port of the Android NRB1 transfer bundle manifest, including safe-path checks and a shared Kotlin/Swift golden vector.
 - [x] Swift port of Android NRRS resume proposal, decision and no-resume envelopes, with Kotlin/Swift golden vectors.
@@ -20,7 +20,7 @@ This is the isolated native iOS work area. Android's production Nearby messaging
 
 ## Not complete yet
 
-- [ ] Verify Android ↔ iPhone P-256 DER signatures, ECDH/HKDF session keys and AES-GCM in both directions using deterministic Android-generated crypto fixtures.
+- [ ] Verify live Android ↔ iPhone handshake and encrypted message exchange on physical devices; deterministic fixture parity is covered by automated tests.
 - [ ] Connect the verified handshake to the native iOS transport and implement authenticated/durable messaging.
 - [ ] Implement a bounded, back-pressured file stream with receiver staging, prefix verification, whole-file digest verification and atomic finalization on iOS.
 - [ ] Implement the iOS 26 Wi-Fi Aware paired-device adapter and obtain Apple's entitlement approval.
