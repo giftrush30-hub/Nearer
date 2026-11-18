@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import CryptoKit
+import Security
 import NeaRerWire
 import NeaRerTransport
 
