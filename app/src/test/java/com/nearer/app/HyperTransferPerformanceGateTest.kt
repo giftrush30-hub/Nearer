@@ -17,6 +17,72 @@ class HyperTransferPerformanceGateTest {
             slowestElapsedMillis = 1_100L
         )
 
+
+    private fun evidence(bytesPerSecond: Long, devicePair: String = "pair-A",
+                         direction: HyperTransferTransportPolicy.Direction = HyperTransferTransportPolicy.Direction.LOCAL_TO_REMOTE,
+                         hash: String = "a".repeat(64), conditions: String = "same-room-same-settings") =
+        HyperTransferPerformanceGate.ControlledEvidence(
+            devicePairKey = devicePair,
+            direction = direction,
+            fileSha256 = hash,
+            fileBytes = 280_000_000L,
+            conditionsKey = conditions,
+            runs = List(5) {
+                TransferBenchmarkRun(280_000_000L, 280_000_000_000L / bytesPerSecond,
+                    25L, true)
+            }
+        )
+
+    @Test
+    fun controlledEvidencePassesOnlyWhenBothAppsMeetBothTargets() {
+        val result = HyperTransferPerformanceGate.evaluateControlled(
+            evidence(280_000_000L),
+            evidence(40_000_000L)
+        )
+        assertTrue(result.goalAchieved)
+        assertEquals(7.0, result.speedup, 0.0001)
+    }
+
+    @Test
+    fun controlledEvidenceRejectsDifferentPhonePairs() {
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            HyperTransferPerformanceGate.evaluateControlled(
+                evidence(280_000_000L),
+                evidence(40_000_000L, devicePair = "pair-B")
+            )
+        }
+    }
+
+    @Test
+    fun controlledEvidenceRejectsDifferentFilesDirectionsAndConditions() {
+        val base = evidence(280_000_000L)
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            HyperTransferPerformanceGate.evaluateControlled(base, evidence(40_000_000L, hash = "b".repeat(64)))
+        }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            HyperTransferPerformanceGate.evaluateControlled(
+                base,
+                evidence(40_000_000L, direction = HyperTransferTransportPolicy.Direction.REMOTE_TO_LOCAL)
+            )
+        }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            HyperTransferPerformanceGate.evaluateControlled(
+                base,
+                evidence(40_000_000L, conditions = "different-room")
+            )
+        }
+    }
+
+    @Test
+    fun controlledEvidenceRequiresFiveSuccessfulRunsForEachApp() {
+        val insufficient = evidence(280_000_000L).copy(
+            runs = List(4) { TransferBenchmarkRun(280_000_000L, 1_000L, 10L, true) }
+        )
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            HyperTransferPerformanceGate.evaluateControlled(insufficient, evidence(40_000_000L))
+        }
+    }
+
     @Test
     fun convertsDecimal280MegabytesPerSecondToMebibytesPerSecond() {
         assertEquals(
