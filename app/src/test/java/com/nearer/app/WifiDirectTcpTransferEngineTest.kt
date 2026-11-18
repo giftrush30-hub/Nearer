@@ -169,6 +169,60 @@ class WifiDirectTcpTransferEngineTest {
         }
     }
 
+
+    @Test fun secureSenderTimesOutWhenReceiverStallsBeforeAck() {
+        val root = java.nio.file.Files.createTempDirectory("nearer-tcp-secure-timeout").toFile()
+        val server = ServerSocket(0)
+        val executor = Executors.newSingleThreadExecutor()
+        val peerReady = java.util.concurrent.CountDownLatch(1)
+        val releasePeer = java.util.concurrent.CountDownLatch(1)
+        val id = "b".repeat(64)
+        val senderKeys = NearbyMessageCrypto.newEphemeralKeyPair()
+        val receiverKeys = NearbyMessageCrypto.newEphemeralKeyPair()
+        val senderChannel = HyperTransferSecureChannel.establish(
+            senderKeys.private, receiverKeys.public,
+            MessageDigest.getInstance("SHA-256").digest("timeout-session".toByteArray()),
+            id, "23456789ABCD", "EFGHJKMNPQRS", true
+        )
+        val shortTimeoutEngine = WifiDirectTcpTransferEngine(16 * 1024, 150)
+        try {
+            val source = File(root, "empty.bin").apply { writeBytes(byteArrayOf()) }
+            val peer = executor.submit {
+                server.accept().use { socket ->
+                    val input = java.io.DataInputStream(socket.getInputStream())
+                    assertEquals(0x4E525345, input.readInt())
+                    assertEquals(1, input.readUnsignedByte())
+                    // Empty files contain an authenticated manifest and digest record.
+                    repeat(2) {
+                        val length = input.readInt()
+                        assertTrue(length in HyperTransferSecureChannel.MIN_ENCRYPTED_RECORD_BYTES..
+                            HyperTransferSecureChannel.MAX_ENCRYPTED_RECORD_BYTES)
+                        val record = ByteArray(length)
+                        input.readFully(record)
+                    }
+                    peerReady.countDown()
+                    releasePeer.await(2, TimeUnit.SECONDS)
+                }
+            }
+            val error = try {
+                Socket("127.0.0.1", server.localPort).use { socket ->
+                    shortTimeoutEngine.sendSecure(socket, source, id, senderChannel)
+                }
+                null
+            } catch (caught: Throwable) { caught }
+            assertTrue("Expected an idle ACK read to time out, got $error",
+                error is java.net.SocketTimeoutException)
+            assertTrue(peerReady.await(2, TimeUnit.SECONDS))
+            assertTrue(peer.get(3, TimeUnit.SECONDS) == Unit)
+        } finally {
+            releasePeer.countDown()
+            server.close()
+            executor.shutdownNow()
+            senderChannel.close()
+            root.deleteRecursively()
+        }
+    }
+
     private fun runTransfer(source: File, destination: File, id: String): WifiDirectTcpTransferEngine.ReceiveResult {
         val server = ServerSocket(0)
         val executor = Executors.newSingleThreadExecutor()
