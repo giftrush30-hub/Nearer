@@ -275,7 +275,7 @@ internal class WifiDirectTcpTransferEngine(private val bufferBytes: Int = DEFAUL
         const val DEFAULT_BUFFER_BYTES = 256 * 1024
         const val MIN_BUFFER_BYTES = 8 * 1024
         const val MAX_BUFFER_BYTES = 1024 * 1024
-        private const val SECURE_MAGIC = 0x4E525345\n        private const val SECURE_VERSION = 1\n        private val ACK_BYTES = byteArrayOf(0x06)\n        private const val MAGIC = 0x4E525450
+        private const val MAGIC = 0x4E525450
         private const val VERSION = 1
         private const val MAX_TRANSFER_ID_BYTES = 128
         private const val SHA256_BYTES = 32
