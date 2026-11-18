@@ -27,7 +27,7 @@ final class RecipientIdentityBindingV1Tests: XCTestCase {
         let expected = "4e65615265722d726563697069656e742d6964656e746974792d62696e64696e672d76310006414141414142000000205cd252fb0ce8932436faf8ccd1040981b89ee4ad6b9fe9e2a2b7e71aacb27cd30000005b" +
             "3059301306072a8648ce3d020106082a8648ce3d030107034200047cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc4766997807775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1" +
             "000000000000000100000000000f42400000000005359e40"
-        XCTAssertEqual(binding.signedBytes().hex, expected)
+        XCTAssertEqual(try binding.signedBytes().hex, expected)
         XCTAssertTrue(binding.verify(pinnedSigningPublicKeyDER: signingPublic, nowMilliseconds: 1_000_001))
         XCTAssertFalse(binding.verify(pinnedSigningPublicKeyDER: signingPublic, nowMilliseconds: 87_400_000))
     }
