@@ -203,8 +203,11 @@ internal class HyperTransferTcpSessionManager(
             }
             val link = currentLink() ?: throw IOException("Wi-Fi Direct link is no longer ready")
             val p2p = coordinator() ?: throw IOException("Wi-Fi Direct coordinator is unavailable")
+            // A deterministic per-transfer port avoids rebinding the same listening
+            // port immediately after TCP TIME_WAIT on consecutive large-file sends.
+            val port = portFor(state.offer.transferId)
             socket = if (link.isGroupOwner) {
-                val server = p2p.openServerSocket(PORT)
+                val server = p2p.openServerSocket(port)
                 activeServer = server
                 server.soTimeout = 60_000
                 try { server.accept() } finally {
@@ -212,7 +215,7 @@ internal class HyperTransferTcpSessionManager(
                     runCatching { server.close() }
                 }
             } else {
-                p2p.openClientSocket(link, PORT, 15_000)
+                p2p.openClientSocket(link, port, 15_000)
             }
             activeSocket = socket
             val session = HyperTransferSocketHandshake.authenticate(
@@ -315,5 +318,6 @@ internal class HyperTransferTcpSessionManager(
         workers.shutdownNow()
     }
 
-    companion object { private const val PORT = 8989 }
+    private fun portFor(transferId: String): Int =
+        10_000 + (transferId.take(4).toInt(16) % 10_000)
 }
