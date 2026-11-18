@@ -21,8 +21,8 @@ enum NeaRerIdentityVault {
     static func loadOrCreate() throws -> NeaRerLocalIdentity {
         let peerID = try String(data: item(account: "peer-id") {
             let bytes = try randomBytes(count: 12)
-            return Data(bytes.map { UInt8(alphabet[Int($0 & 31)].asciiValue!) })
-        }(), encoding: .utf8).unwrapOrThrow()
+            return Data(bytes.map { alphabet[Int($0 & 31)].asciiValue! })
+        }, encoding: .utf8).unwrapOrThrow()
         let signingData = try item(account: "signing-p256") {
             try P256.Signing.PrivateKey().rawRepresentation
         }
