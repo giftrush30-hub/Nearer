@@ -35,7 +35,7 @@ public struct PeerHelloV3: Equatable {
 
     public init(peerID: String, signingPublicKeyDER: Data, nonce: Data,
                 ephemeralPublicKeyDER: Data, recipientEncryptionPublicKeyDER: Data) throws {
-        guard NeaRerIdentity.normalize(peerID) != nil else { throw NeaRerWireError.invalidPeerID }
+        guard NeaRerIdentity.normalize(peerID) == peerID else { throw NeaRerWireError.invalidPeerID }
         guard nonce.count == 32 else { throw NeaRerWireError.invalidField("nonce") }
         guard (64...512).contains(signingPublicKeyDER.count),
               (64...512).contains(ephemeralPublicKeyDER.count),
