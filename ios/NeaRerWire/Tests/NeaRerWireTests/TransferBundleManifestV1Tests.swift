@@ -15,6 +15,14 @@ final class TransferBundleManifestV1Tests: XCTestCase {
         XCTAssertEqual(try NeaRerTransferManifestV1.decode(bytes), manifest)
     }
 
+    func testAndroidKotlinGoldenVector() throws {
+        let manifest = try NeaRerTransferManifestV1(transferID: "x", items: [
+            NeaRerTransferItemV1(id: "i", relativePath: "a", displayName: "a", sizeBytes: 1)
+        ])
+        let actual = try manifest.encode().map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(actual, "4e5242310000000100000001780000000100000001690000000161000000016100000000000000010000")
+    }
+
     func testManifestRejectsTraversalAndDuplicatePaths() throws {
         XCTAssertThrowsError(try NeaRerTransferManifestV1(transferID: "x", items: [
             NeaRerTransferItemV1(id: "1", relativePath: "../escape", displayName: "escape", sizeBytes: 1)
