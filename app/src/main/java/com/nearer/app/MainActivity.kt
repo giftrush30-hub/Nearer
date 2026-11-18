@@ -656,14 +656,29 @@ class MainActivity : ComponentActivity() {
                         if (wasHyperTransfer) {
                             outgoingTransferId = null
                             outgoingProgress = 0f
-                            completeDirectQueuedFile(true)
+                            if (nearbyQueueTotal > 0) {
+                                recordNearbyTransfer("Sent", activeOutgoingFileName, activeOutgoingFileBytes, "Complete")
+                                deleteGeneratedFolderArchive(currentNearbyQueuedFile)
+                                activeOutgoingFileName = "shared-file"
+                                activeOutgoingFileBytes = 0L
+                                currentNearbyQueuedFile = null
+                                nearbyQueueCompleted += 1
+                                persistNearbyFileQueue()
+                                startNextNearbyQueuedFile()
+                            } else {
+                                completeDirectQueuedFile(true)
+                            }
                         }
                     }
                     if (message.startsWith("HyperTransfer stopped safely:") ||
-                        message.startsWith("Secure HyperTransfer authentication failed.")) {
+                        message.startsWith("Secure HyperTransfer authentication failed.") ||
+                        message.startsWith("Could not prepare the secure HyperTransfer file:") ||
+                        message.startsWith("The secure HyperTransfer offer could not be sent.") ||
+                        message.startsWith("The recipient declined ")) {
                         if (outgoingTransferId?.startsWith("hyper:") == true) {
                             outgoingTransferId = null
                             outgoingProgress = 0f
+                            if (nearbyQueueTotal > 0) persistNearbyFileQueue()
                         }
                     }
                 }
@@ -3747,6 +3762,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
         } catch (_: Exception) { }
+        val hyperPayloadId = nearbyServiceBinder?.sendHyperTransferTcpFile(endpoint, uri, fileName)
+        if (hyperPayloadId != null) {
+            outgoingTransferId = "hyper:" + hyperPayloadId
+            outgoingProgress = 0f
+            chatNotice = "Preparing secure file " + (nearbyQueueCompleted + 1) + " of " + nearbyQueueTotal + ": " + fileName + "…"
+            return
+        }
         val payloadId = nearbyTransport?.sendFile(endpoint, uri, fileName)
         if (payloadId != null) {
             outgoingTransferId = "nearby:" + payloadId
