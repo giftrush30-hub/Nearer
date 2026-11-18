@@ -18,11 +18,26 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** Framed TCP file engine for a socket created by a separate Wi-Fi Direct coordinator. */
 internal class WifiDirectTcpTransferEngine(
     private val bufferBytes: Int = DEFAULT_BUFFER_BYTES,
-    private val socketReadTimeoutMillis: Int = DEFAULT_SOCKET_READ_TIMEOUT_MILLIS
+    private val socketReadTimeoutMillis: Int = DEFAULT_SOCKET_READ_TIMEOUT_MILLIS,
+    private val socketBufferBytes: Int = DEFAULT_SOCKET_BUFFER_BYTES
 ) {
     init {
         require(bufferBytes in MIN_BUFFER_BYTES..MAX_BUFFER_BYTES)
         require(socketReadTimeoutMillis > 0) { "Socket read timeout must be positive" }
+        require(socketBufferBytes in MIN_SOCKET_BUFFER_BYTES..MAX_SOCKET_BUFFER_BYTES)
+    }
+
+    /**
+     * Request a larger TCP window for high-bandwidth local links.
+     * Android/OEM kernels may clamp these hints; inspect effective values on-device.
+     * Keep Nagle enabled for bulk streaming; interactive chat stays on Nearby.
+     */
+    private fun configureBulkSocket(socket: Socket) {
+        socket.setSoTimeout(socketReadTimeoutMillis)
+        socket.setSendBufferSize(socketBufferBytes)
+        socket.setReceiveBufferSize(socketBufferBytes)
+        socket.tcpNoDelay = false
+        socket.keepAlive = true
     }
 
     data class Progress(val transferredBytes: Long, val totalBytes: Long) {
@@ -50,7 +65,7 @@ internal class WifiDirectTcpTransferEngine(
         require(id.size in 1..MAX_TRANSFER_ID_BYTES) { "Transfer ID is too long" }
         cancellation.attach(socket)
         try {
-            socket.soTimeout = socketReadTimeoutMillis
+            configureBulkSocket(socket)
             cancellation.check()
             val size = source.length()
             val input = DataInputStream(BufferedInputStream(socket.getInputStream(), bufferBytes))
@@ -89,7 +104,7 @@ internal class WifiDirectTcpTransferEngine(
         if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create destination directory")
         if (destination.exists()) throw IOException("Destination already exists")
         cancellation.attach(socket)
-        socket.soTimeout = socketReadTimeoutMillis
+        configureBulkSocket(socket)
         val part = File(parent, ".${destination.name}.${UUID.randomUUID()}.part")
         var published = false
         try {
@@ -160,7 +175,7 @@ internal class WifiDirectTcpTransferEngine(
         require(source.isFile && source.canRead()) { "Source file is not readable" }
         cancellation.attach(socket)
         try {
-            socket.soTimeout = socketReadTimeoutMillis
+            configureBulkSocket(socket)
             cancellation.check()
             val size = source.length()
             val input = DataInputStream(BufferedInputStream(socket.getInputStream(), bufferBytes))
@@ -221,7 +236,7 @@ internal class WifiDirectTcpTransferEngine(
         if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create destination directory")
         if (destination.exists()) throw IOException("Destination already exists")
         cancellation.attach(socket)
-        socket.soTimeout = socketReadTimeoutMillis
+        configureBulkSocket(socket)
         val part = File(parent, ".${destination.name}.${UUID.randomUUID()}.part")
         var published = false
         try {
@@ -285,6 +300,9 @@ internal class WifiDirectTcpTransferEngine(
         const val DEFAULT_BUFFER_BYTES = 256 * 1024
         const val MIN_BUFFER_BYTES = 8 * 1024
         const val MAX_BUFFER_BYTES = 1024 * 1024
+        const val DEFAULT_SOCKET_BUFFER_BYTES = 4 * 1024 * 1024
+        const val MIN_SOCKET_BUFFER_BYTES = 64 * 1024
+        const val MAX_SOCKET_BUFFER_BYTES = 16 * 1024 * 1024
         const val DEFAULT_SOCKET_READ_TIMEOUT_MILLIS = 30_000
         private const val SECURE_MAGIC = 0x4E525345
         private const val SECURE_VERSION = 1
