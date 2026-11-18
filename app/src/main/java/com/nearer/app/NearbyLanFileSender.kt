@@ -2,7 +2,6 @@ package com.nearer.app
 
 import java.io.File
 import java.io.FileInputStream
-import java.io.IOException
 import java.security.MessageDigest
 
 internal fun interface NearbyLanFrameSink {
@@ -10,16 +9,24 @@ internal fun interface NearbyLanFrameSink {
     fun send(frame: ByteArray, completion: (Throwable?) -> Unit)
 }
 
+internal fun interface NearbyLanAckWaiter {
+    /** Waits for a peer ACK matching the expected durable offset and prefix digest. */
+    fun await(expected: NearbyTransferFileChunkCodec.Ack, completion: (Result<NearbyTransferFileChunkCodec.Ack>) -> Unit)
+}
+
 /**
  * Two-pass sender: hashes the source before advertising metadata, then streams
- * one 512 KiB chunk at a time. The next chunk is read only after transport
- * completion, keeping memory bounded and providing socket backpressure.
+ * one 512 KiB chunk at a time. It waits for an explicit receiver-acceptance ACK,
+ * durable 4 MiB checkpoint ACKs and a final whole-file verification ACK.
  */
 internal object NearbyLanFileSender {
+    private const val CHECKPOINT_INTERVAL_BYTES = 4L * 1024L * 1024L
+
     fun send(
         source: File,
         metadata: TransferResumeStreamMetadataCodec.Metadata,
         sink: NearbyLanFrameSink,
+        ackWaiter: NearbyLanAckWaiter,
         completion: (Result<Unit>) -> Unit
     ) {
         try {
@@ -44,6 +51,18 @@ internal object NearbyLanFileSender {
                 completion(Result.failure(error))
             }
 
+            fun awaitExpected(expected: NearbyTransferFileChunkCodec.Ack, next: () -> Unit) {
+                ackWaiter.await(expected) { result ->
+                    when (result) {
+                        is Result.Success -> {
+                            if (result.value == expected) next()
+                            else fail(IllegalStateException("Receiver ACK did not match the expected committed prefix"))
+                        }
+                        is Result.Failure -> fail(result.exception)
+                    }
+                }
+            }
+
             fun sendNext() {
                 if (completed) return
                 try {
@@ -61,10 +80,16 @@ internal object NearbyLanFileSender {
                         sink.send(NearbyTransferFileChunkCodec.encodeEnd(end)) { error ->
                             if (error != null) fail(error)
                             else {
-                                if (!completed) {
-                                    completed = true
-                                    runCatching { input.close() }
-                                    completion(Result.success(Unit))
+                                val finalAck = NearbyTransferFileChunkCodec.Ack(
+                                    metadata.payloadId, metadata.transferId, metadata.item.id,
+                                    offset, actualDigest
+                                )
+                                awaitExpected(finalAck) {
+                                    if (!completed) {
+                                        completed = true
+                                        runCatching { input.close() }
+                                        completion(Result.success(Unit))
+                                    }
                                 }
                             }
                         }
@@ -84,8 +109,19 @@ internal object NearbyLanFileSender {
                         offset, chunkBytes
                     )
                     offset += count.toLong()
+                    val checkpointAck = if (
+                        offset < metadata.item.sizeBytes &&
+                        offset % CHECKPOINT_INTERVAL_BYTES == 0L
+                    ) {
+                        val snapshot = (streamingDigest.clone() as MessageDigest).digest().toHex()
+                        NearbyTransferFileChunkCodec.Ack(
+                            metadata.payloadId, metadata.transferId, metadata.item.id, offset, snapshot
+                        )
+                    } else null
                     sink.send(NearbyTransferFileChunkCodec.encodeChunk(chunk)) { error ->
-                        if (error != null) fail(error) else sendNext()
+                        if (error != null) fail(error)
+                        else if (checkpointAck != null) awaitExpected(checkpointAck, ::sendNext)
+                        else sendNext()
                     }
                 } catch (error: Throwable) {
                     fail(error)
@@ -94,7 +130,14 @@ internal object NearbyLanFileSender {
 
             val metadataBytes = TransferResumeStreamMetadataCodec.encode(metadata)
             sink.send(metadataBytes) { error ->
-                if (error != null) fail(error) else sendNext()
+                if (error != null) fail(error)
+                else {
+                    val emptyDigest = MessageDigest.getInstance("SHA-256").digest().toHex()
+                    val initialAck = NearbyTransferFileChunkCodec.Ack(
+                        metadata.payloadId, metadata.transferId, metadata.item.id, 0L, emptyDigest
+                    )
+                    awaitExpected(initialAck, ::sendNext)
+                }
             }
         } catch (error: Throwable) {
             completion(Result.failure(error))
