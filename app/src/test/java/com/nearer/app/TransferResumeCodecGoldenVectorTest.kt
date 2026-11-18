@@ -21,7 +21,7 @@ class TransferResumeCodecGoldenVectorTest {
         )
         val actual = TransferResumeMessageCodec.encode(7L, proposal)
             .joinToString("") { "%02x".format(it) }
-        val expected = "4e525253010000000000000007000178000169000161000000000000000a000000000000004000000040" + "00".repeat(32)
+        val expected = "4e525253010000000000000007000178000169000161000000000000000a00000000004000000040" + "00".repeat(32)
         assertEquals(expected, actual)
         val decoded = TransferResumeMessageCodec.decode(expected.hexToBytes())
         assertEquals(7L, decoded.payloadId)
