@@ -58,6 +58,8 @@ public struct NeaRerTransferFileEndV1: Equatable {
     }
 }
 
+public typealias NeaRerTransferAckWaiterV1 = (NeaRerTransferFileAckV1, @escaping (Result<NeaRerTransferFileAckV1, Error>) -> Void) -> Void
+
 public enum NeaRerTransferFileChunkCodecV1 {
     public static let maximumChunkBytes = 512 * 1024
     public static let maximumRecordBytes = 1_048_576
