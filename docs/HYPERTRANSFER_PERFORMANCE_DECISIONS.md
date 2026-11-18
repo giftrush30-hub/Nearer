@@ -100,6 +100,35 @@ This policy is deliberately **not yet wired to a Wi-Fi Direct or Wi-Fi Aware soc
 - [ ] Tune buffers, concurrency and hashing only from benchmark evidence.
 - [ ] Achieve and independently repeat the 280 MB/s + 7× target on supported device pairs before making the claim.
 
+
+## Wi-Fi Direct TCP data-plane prototype (implemented, not yet connected to Android group management)
+
+A first isolated TCP data-plane engine now exists in `WifiDirectTcpTransferEngine`. It accepts a connected socket supplied by a future Wi-Fi Direct group coordinator; it does not create groups, negotiate owner/client roles, request permissions, or alter the current Nearby transport.
+
+The protocol includes:
+- A versioned frame header with a bounded transfer identifier and declared payload length.
+- Streaming with a configurable bounded buffer (8 KiB–1 MiB; default 256 KiB), without loading the complete file into memory.
+- SHA-256 calculated while sending and receiving, with a receiver acknowledgement only after successful verification.
+- Receiver-side temporary-file staging and publication only after integrity verification.
+- Rejection of negative sizes, mismatched transfer IDs, truncated streams, insufficient free storage, and destination collisions.
+- Cancellation by closing the active socket, plus socket and temporary-file cleanup on exit.
+
+Loopback JVM tests cover a 512 KiB transfer, empty files, wrong transfer IDs, and preservation of an existing destination. These tests exercise the TCP framing/data plane on a local socket; they do not prove Wi-Fi Direct radio performance, Android lifecycle correctness, or interoperability with the current Nearby protocol.
+
+The sender and receiver must use this exact protocol version and transfer ID. A later integration must add authenticated peer/session negotiation before opening the data socket; the transfer ID alone is not authentication. The coordinator must also apply socket read/connect timeouts and ensure the socket is bound/routed through the intended Wi-Fi Direct network.
+
+## Updated implementation sequence
+
+- [x] Add isolated versioned TCP data-plane engine with bounded streaming, cancellation, SHA-256 acknowledgement and safe receive staging.
+- [x] Add loopback tests for normal, empty, wrong-session and destination-collision cases.
+- [ ] Implement Android Wi-Fi Direct group lifecycle and socket routing/binding.
+- [ ] Add authenticated capability/version negotiation and connect the policy to actual transports.
+- [ ] Add benchmark screen/export and persistent test records.
+- [ ] Compare Wi-Fi Direct TCP against Nearby Point-to-Point on physical phones in both directions.
+- [ ] Evaluate Wi-Fi Aware only on devices reporting the required feature.
+- [ ] Tune buffers, concurrency and hashing only from measured evidence.
+- [ ] Achieve and independently repeat the 280 MB/s + 7× target on supported device pairs before making the claim.
+
 ## Resume work remains separate
 
 The receiver journal, prefix hashing, negotiation codecs and partial writer are foundations for reliable recovery. Sender recovery PR #268 is still open and is behind main; it must be synchronized and validated before merging. Resume reliability is important, but it is not itself a radio-throughput optimization.
