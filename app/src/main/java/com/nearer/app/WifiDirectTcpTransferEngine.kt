@@ -1,0 +1,148 @@
+package com.nearer.app
+
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.EOFException
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.IOException
+import java.net.Socket
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
+
+/** Framed TCP file engine for a socket created by a separate Wi-Fi Direct coordinator. */
+internal class WifiDirectTcpTransferEngine(private val bufferBytes: Int = DEFAULT_BUFFER_BYTES) {
+    init { require(bufferBytes in MIN_BUFFER_BYTES..MAX_BUFFER_BYTES) }
+
+    data class Progress(val transferredBytes: Long, val totalBytes: Long) {
+        val fraction: Double get() = if (totalBytes == 0L) 1.0 else transferredBytes.toDouble() / totalBytes
+    }
+    fun interface ProgressListener { fun onProgress(progress: Progress) }
+
+    class Cancellation {
+        private val cancelled = AtomicBoolean(false)
+        @Volatile private var socket: Socket? = null
+        val isCancelled: Boolean get() = cancelled.get()
+        internal fun attach(value: Socket) { socket = value; if (cancelled.get()) close() }
+        fun cancel() { cancelled.set(true); close() }
+        internal fun check() { if (cancelled.get()) throw IOException("Transfer cancelled") }
+        internal fun detach() { socket = null }
+        private fun close() { try { socket?.close() } catch (_: IOException) { } }
+    }
+    data class ReceiveResult(val file: File, val bytesReceived: Long, val sha256: String)
+
+    /** Frame: magic, version, transfer ID, byte count, bytes, SHA-256 trailer, receiver ACK. */
+    fun send(socket: Socket, source: File, transferId: String, cancellation: Cancellation = Cancellation(), listener: ProgressListener = ProgressListener { }): String {
+        require(transferId.isNotBlank()) { "Transfer ID cannot be blank" }
+        require(source.isFile && source.canRead()) { "Source file is not readable" }
+        val id = transferId.toByteArray(Charsets.UTF_8)
+        require(id.size in 1..MAX_TRANSFER_ID_BYTES) { "Transfer ID is too long" }
+        cancellation.attach(socket)
+        try {
+            cancellation.check()
+            val size = source.length()
+            val input = DataInputStream(BufferedInputStream(socket.getInputStream(), bufferBytes))
+            val output = DataOutputStream(BufferedOutputStream(socket.getOutputStream(), bufferBytes))
+            output.writeInt(MAGIC); output.writeByte(VERSION); output.writeShort(id.size); output.write(id); output.writeLong(size); output.flush()
+            val digest = MessageDigest.getInstance("SHA-256")
+            var sent = 0L
+            FileInputStream(source).use { fileInput ->
+                val buffer = ByteArray(bufferBytes)
+                while (true) {
+                    cancellation.check()
+                    val count = fileInput.read(buffer)
+                    if (count < 0) break
+                    if (count == 0) continue
+                    output.write(buffer, 0, count); digest.update(buffer, 0, count); sent += count
+                    listener.onProgress(Progress(sent, size))
+                }
+            }
+            if (sent != size) throw IOException("Source file changed during transfer")
+            val hash = digest.digest()
+            output.write(hash); output.flush(); cancellation.check()
+            return when (val ack = input.readUnsignedByte()) {
+                ACK -> hex(hash)
+                NACK -> throw IOException("Receiver rejected integrity verification or file finalization")
+                else -> throw IOException("Invalid receiver acknowledgement: $ack")
+            }
+        } catch (error: Exception) {
+            if (error is IOException) throw error
+            throw IOException("TCP send failed", error)
+        } finally { cancellation.detach(); try { socket.close() } catch (_: IOException) { } }
+    }
+
+    fun receive(socket: Socket, destination: File, expectedTransferId: String, cancellation: Cancellation = Cancellation(), listener: ProgressListener = ProgressListener { }): ReceiveResult {
+        require(expectedTransferId.isNotBlank()) { "Expected transfer ID cannot be blank" }
+        val parent = destination.absoluteFile.parentFile ?: throw IOException("Destination must have a parent directory")
+        if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create destination directory")
+        if (destination.exists()) throw IOException("Destination already exists")
+        cancellation.attach(socket)
+        val part = File(parent, ".${destination.name}.${UUID.randomUUID()}.part")
+        var published = false
+        try {
+            cancellation.check()
+            val input = DataInputStream(BufferedInputStream(socket.getInputStream(), bufferBytes))
+            val output = DataOutputStream(BufferedOutputStream(socket.getOutputStream(), bufferBytes))
+            if (input.readInt() != MAGIC) throw IOException("Unrecognized transfer frame")
+            if (input.readUnsignedByte() != VERSION) throw IOException("Unsupported protocol version")
+            val idLength = input.readUnsignedShort()
+            if (idLength !in 1..MAX_TRANSFER_ID_BYTES) throw IOException("Invalid transfer ID length")
+            val id = ByteArray(idLength); input.readFully(id)
+            if (String(id, Charsets.UTF_8) != expectedTransferId) throw IOException("Transfer ID mismatch")
+            val size = input.readLong()
+            if (size < 0L) throw IOException("Invalid negative payload size")
+            if (size > parent.usableSpace) throw IOException("Not enough free storage")
+            if (!part.createNewFile()) throw IOException("Could not create temporary transfer file")
+            val digest = MessageDigest.getInstance("SHA-256")
+            var received = 0L
+            FileOutputStream(part).use { fileOutput ->
+                BufferedOutputStream(fileOutput, bufferBytes).use { buffered ->
+                    val buffer = ByteArray(bufferBytes)
+                    while (received < size) {
+                        cancellation.check()
+                        val wanted = minOf(buffer.size.toLong(), size - received).toInt()
+                        val count = input.read(buffer, 0, wanted)
+                        if (count < 0) throw EOFException("Connection ended before file completed")
+                        if (count == 0) continue
+                        buffered.write(buffer, 0, count); digest.update(buffer, 0, count); received += count
+                        listener.onProgress(Progress(received, size))
+                    }
+                }
+            }
+            val expectedHash = ByteArray(SHA256_BYTES); input.readFully(expectedHash)
+            val actualHash = digest.digest()
+            if (!MessageDigest.isEqual(expectedHash, actualHash)) { output.writeByte(NACK); output.flush(); throw IOException("SHA-256 verification failed") }
+            if (destination.exists()) { output.writeByte(NACK); output.flush(); throw IOException("Destination appeared during transfer") }
+            try { Files.move(part.toPath(), destination.toPath(), StandardCopyOption.ATOMIC_MOVE) }
+            catch (_: java.nio.file.AtomicMoveNotSupportedException) { Files.move(part.toPath(), destination.toPath()) }
+            published = true
+            output.writeByte(ACK); output.flush()
+            return ReceiveResult(destination, received, hex(actualHash))
+        } catch (error: Exception) {
+            if (error is IOException) throw error
+            throw IOException("TCP receive failed", error)
+        } finally {
+            cancellation.detach(); if (!published) part.delete()
+            try { socket.close() } catch (_: IOException) { }
+        }
+    }
+
+    private fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
+    companion object {
+        const val DEFAULT_BUFFER_BYTES = 256 * 1024
+        const val MIN_BUFFER_BYTES = 8 * 1024
+        const val MAX_BUFFER_BYTES = 1024 * 1024
+        private const val MAGIC = 0x4E525450
+        private const val VERSION = 1
+        private const val MAX_TRANSFER_ID_BYTES = 128
+        private const val SHA256_BYTES = 32
+        private const val ACK = 0x06
+        private const val NACK = 0x15
+    }
+}
