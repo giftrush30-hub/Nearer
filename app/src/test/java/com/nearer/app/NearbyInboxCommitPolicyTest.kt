@@ -1,5 +1,6 @@
 package com.nearer.app
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -40,7 +41,6 @@ class NearbyInboxCommitPolicyTest {
             )
         )
     }
-}
 
     @Test fun acknowledgementGateMatchesEveryDurabilityCombination() {
         for (inboxCommitted in listOf(false, true)) {
@@ -67,3 +67,4 @@ class NearbyInboxCommitPolicyTest {
             }
         }
     }
+}
