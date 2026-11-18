@@ -12,6 +12,24 @@ import java.util.concurrent.TimeUnit
 class WifiDirectTcpTransferEngineTest {
     private val engine = WifiDirectTcpTransferEngine(16 * 1024)
 
+    @Test fun configuresAHighBandwidthSocketWindowWithinSafeBounds() {
+        val tuned = WifiDirectTcpTransferEngine(
+            bufferBytes = 1024 * 1024,
+            socketBufferBytes = 4 * 1024 * 1024
+        )
+        assertNotNull(tuned)
+
+        try {
+            WifiDirectTcpTransferEngine(socketBufferBytes = 32 * 1024)
+            fail("Socket buffer below the supported minimum must be rejected")
+        } catch (_: IllegalArgumentException) { }
+
+        try {
+            WifiDirectTcpTransferEngine(socketBufferBytes = 32 * 1024 * 1024)
+            fail("Socket buffer above the supported maximum must be rejected")
+        } catch (_: IllegalArgumentException) { }
+    }
+
     @Test fun transfersAndVerifiesLargeFileBeforePublishing() {
         val root = java.nio.file.Files.createTempDirectory("nearer-tcp-test").toFile()
         try {
