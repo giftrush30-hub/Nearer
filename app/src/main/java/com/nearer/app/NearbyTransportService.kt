@@ -426,7 +426,11 @@ class NearbyTransportService : Service() {
                 val peerId = nearbyTransport.stableIdentityForEndpoint(endpointId)
                 val registered = hyperTransferApprovals.recordOutgoingOffer(endpointId, peerId, offer) ==
                     HyperTransferApprovalLedger.OfferResult.ADDED
-                registered && nearbyTransport.sendHyperTransferTcpOffer(endpointId, offer)
+                if (!registered) false else {
+                    val sent = nearbyTransport.sendHyperTransferTcpOffer(endpointId, offer)
+                    if (!sent) hyperTransferApprovals.clearEndpoint(endpointId)
+                    sent
+                }
             },
             respondToOffer = { endpointId, transferId, accepted ->
                 val peerId = nearbyTransport.stableIdentityForEndpoint(endpointId)
