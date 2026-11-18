@@ -14,7 +14,7 @@ public struct NeaRerTransferStreamMetadataV1: Equatable {
         self.item = item
         self.sourceModifiedAtMilliseconds = sourceModifiedAtMilliseconds
         self.wholeFileSHA256 = wholeFileSHA256.lowercased()
-        try validate()
+        try NeaRerTransferStreamMetadataCodecV1.validate(self)
     }
 }
 
@@ -83,7 +83,7 @@ public enum NeaRerTransferStreamMetadataCodecV1 {
         )
     }
 
-    private static func validate(_ value: NeaRerTransferStreamMetadataV1) throws {
+    static func validate(_ value: NeaRerTransferStreamMetadataV1) throws {
         guard value.payloadID <= UInt64(Int64.max),
               value.sourceModifiedAtMilliseconds.map({ $0 >= 0 }) ?? true,
               value.wholeFileSHA256.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil,
