@@ -59,6 +59,7 @@ internal class NearbyLanTransport(
     private val closed = AtomicBoolean(false)
     private val started = AtomicBoolean(false)
     private val connections = ConcurrentHashMap<String, PeerConnection>()
+    private val authenticatedEndpoints = ConcurrentHashMap.newKeySet<String>()
     private val discovered = ConcurrentHashMap<String, NsdServiceInfo>()
     private var serverSocket: ServerSocket? = null
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -74,6 +75,7 @@ internal class NearbyLanTransport(
                 server.reuseAddress = true
                 server.bind(InetSocketAddress(0))
                 serverSocket = server
+                if (closed.get()) { server.close(); return@execute }
                 acquireMulticastLock()
                 acceptLoop(server)
             } catch (error: Exception) {
@@ -102,18 +104,63 @@ internal class NearbyLanTransport(
     }
 
     fun sendFrame(endpointId: String, frame: ByteArray) {
-        NearbyLanFrameCodec.encode(frame) // Validate bounds before queueing asynchronous I/O.
-        val connection = connections[endpointId] ?: return
+        sendFrame(endpointId, frame) { error ->
+            if (error != null && !closed.get()) listener.onTransportError("LAN send failed: ${error.message}")
+        }
+    }
+
+    /** Completion is invoked only after the bounded frame has been flushed to the socket. */
+    fun sendFrame(endpointId: String, frame: ByteArray, completion: (Throwable?) -> Unit) {
+        runCatching { NearbyLanFrameCodec.validate(frame) }.onFailure {
+            completion(it)
+            return
+        }
+        val connection = connections[endpointId]
+        if (connection == null) {
+            completion(IOException("Peer connection is unavailable"))
+            return
+        }
         executor.execute {
             try {
                 synchronized(connection.writeLock) {
                     NearbyLanFrameCodec.write(connection.output, frame)
                 }
+                completion(null)
             } catch (error: Exception) {
                 removeConnection(endpointId)
-                if (!closed.get()) listener.onTransportError("LAN send failed: ${error.message}")
+                completion(error)
             }
         }
+    }
+
+    /** Set only after the authenticated NeaRer v3 peer handshake and trust approval. */
+    fun setPeerAuthenticated(endpointId: String, authenticated: Boolean) {
+        if (authenticated) authenticatedEndpoints.add(endpointId)
+        else authenticatedEndpoints.remove(endpointId)
+    }
+
+    fun sendFile(
+        endpointId: String,
+        source: java.io.File,
+        metadata: TransferResumeStreamMetadataCodec.Metadata,
+        ackWaiter: NearbyLanAckWaiter,
+        completion: (Result<Unit>) -> Unit
+    ) {
+        if (!connections.containsKey(endpointId)) {
+            completion(Result.failure(IOException("Peer connection is unavailable")))
+            return
+        }
+        if (!authenticatedEndpoints.contains(endpointId)) {
+            completion(Result.failure(SecurityException("Peer has not been authenticated")))
+            return
+        }
+        NearbyLanFileSender.send(
+            source,
+            metadata,
+            NearbyLanFrameSink { frame, callback -> sendFrame(endpointId, frame, callback) },
+            ackWaiter,
+            completion
+        )
     }
 
     private fun registerBonjourService() {
@@ -238,6 +285,7 @@ internal class NearbyLanTransport(
     }
 
     private fun removeConnection(endpointId: String) {
+        authenticatedEndpoints.remove(endpointId)
         connections.remove(endpointId)?.let { runCatching { it.socket.close() } }
     }
 
@@ -247,6 +295,7 @@ internal class NearbyLanTransport(
         registrationListener?.let { runCatching { nsd.unregisterService(it) } }
         runCatching { serverSocket?.close() }
         connections.keys.toList().forEach(::removeConnection)
+        authenticatedEndpoints.clear()
         discovered.clear()
         multicastLock?.let { lock -> if (lock.isHeld) runCatching { lock.release() } }
         multicastLock = null
