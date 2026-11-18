@@ -49,11 +49,15 @@ class WifiDirectTcpTransferEngineTest {
             Socket("127.0.0.1", server.localPort).use { socket ->
                 val out = java.io.DataOutputStream(socket.getOutputStream())
                 val wrong = "wrong-id".toByteArray()
+                // The receiver must reject as soon as it reads the mismatched ID.
+                // Do not race that early close by writing a payload the receiver
+                // is required never to consume.
                 out.writeInt(0x4E525450); out.writeByte(1); out.writeShort(wrong.size)
-                out.write(wrong); out.writeLong(3L); out.write(byteArrayOf(1, 2, 3))
-                out.write(ByteArray(32)); out.flush()
+                out.write(wrong); out.flush()
+                val rejection = future.get(5, TimeUnit.SECONDS)
+                assertTrue(rejection is java.io.IOException)
+                assertEquals("Transfer ID mismatch", rejection?.message)
             }
-            assertNotNull(future.get(5, TimeUnit.SECONDS))
             assertFalse(destination.exists())
             assertTrue(root.listFiles().orEmpty().none { it.name.endsWith(".part") })
         } finally { server.close(); executor.shutdownNow(); root.deleteRecursively() }
