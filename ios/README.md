@@ -7,8 +7,8 @@ This directory is the isolated native iOS work area. It does not alter the Andro
 - [x] Research-backed platform and transport decision recorded in `docs/IOS_COMPATIBILITY_ARCHITECTURE.md`.
 - [x] Swift Package wire-envelope foundation added under `NeaRerWire/`.
 - [x] Existing NeaRer v3 hello/proof and secure-packet envelope names and bounded fields represented in Swift.
-- [x] Six Swift unit tests pass on Swift 6.2.1 / Linux (Foundation-only wire layer).
-- [ ] CryptoKit/Security P-256 interoperability and deterministic Android↔iOS golden vectors.
+- [x] Nine Swift unit tests pass on Swift 6.2.1 / Linux (Foundation-only wire and transcript layer).\n- [x] CryptoKit P-256 / HKDF-SHA256 / AES-GCM adapter and Apple-only tests added; macOS CI verification is pending.\n- [x] Kotlin-side transcript golden-vector regression test added; Android CI verification is pending.
+- [ ] Verify CryptoKit/Security P-256 interoperability and deterministic Android↔iOS cryptographic golden vectors.
 - [ ] Native SwiftUI iOS app target and signing configuration.
 - [ ] Wi-Fi Aware / Network.framework / LAN transport adapters.
 - [ ] Physical iPhone testing.
