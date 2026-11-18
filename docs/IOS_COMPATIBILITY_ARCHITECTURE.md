@@ -100,7 +100,9 @@ This matrix is a design target, not a statement that any iOS transport has alrea
 
 The isolated branch now contains more than the initial wire layer:
 
-- Swift bounded codecs for `peer_hello_v3`, `peer_proof_v3`, and `secure_packet_v1`.\n- A Swift v3 handshake coordinator that creates hello/proof envelopes, verifies the Android-compatible domain-separated peer proof and derives directional session keys after caller-controlled trust gates.\n- A Swift port of Android's signed `mesh_identity_binding_v1` recipient-key binding, including the exact signed-byte layout, P-256 verification, expiry and monotonic sequence fields.
+- Swift bounded codecs for `peer_hello_v3`, `peer_proof_v3`, and `secure_packet_v1`.
+- A Swift v3 handshake coordinator that creates hello/proof envelopes, verifies the Android-compatible domain-separated peer proof and derives directional session keys after caller-controlled trust gates.
+- A Swift port of Android's signed `mesh_identity_binding_v1` recipient-key binding, including the exact signed-byte layout, P-256 verification, expiry and monotonic sequence fields.
 - CryptoKit P-256 signature verification/signing, P-256 ECDH, HKDF-SHA256 directional key derivation and AES-GCM packet sealing/opening. Deterministic P-256, HKDF, AES-GCM and ECDSA fixtures are asserted by both Swift and Kotlin test suites; live device interoperability remains separate.
 - Swift v3 transcript encoder with a deterministic vector asserted by Kotlin and Swift.
 - Swift port of Android's `NRB1` version-1 transfer bundle manifest, with safe-path validation and a shared golden byte vector.
