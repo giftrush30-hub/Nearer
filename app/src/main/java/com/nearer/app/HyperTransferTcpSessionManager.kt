@@ -206,7 +206,7 @@ internal class HyperTransferTcpSessionManager(
             // A deterministic per-transfer port avoids rebinding the same listening
             // port immediately after TCP TIME_WAIT on consecutive large-file sends.
             val port = portFor(state.offer.transferId)
-            socket = if (link.isGroupOwner) {
+            val connectedSocket = if (link.isGroupOwner) {
                 val server = p2p.openServerSocket(port)
                 activeServer = server
                 server.soTimeout = 60_000
@@ -217,9 +217,10 @@ internal class HyperTransferTcpSessionManager(
             } else {
                 p2p.openClientSocket(link, port, 15_000)
             }
-            activeSocket = socket
+            socket = connectedSocket
+            activeSocket = connectedSocket
             val session = HyperTransferSocketHandshake.authenticate(
-                appContext, socket, state.offer.transferId, state.peerId,
+                appContext, connectedSocket, state.offer.transferId, state.peerId,
                 localIsSender = !state.incoming,
                 transferApproved = state.approved,
                 firstContactApproved = false
@@ -244,7 +245,7 @@ internal class HyperTransferTcpSessionManager(
                         TransferFileNamePolicy.safeName(state.offer.name)
                 )
                 val result = engine.receiveSecure(
-                    socket, destination, state.offer.transferId, session.channel,
+                    connectedSocket, destination, state.offer.transferId, session.channel,
                     cancellation, progress, expectedSha256 = state.offer.sha256
                 )
                 listener.onProgress(
@@ -256,7 +257,7 @@ internal class HyperTransferTcpSessionManager(
             } else {
                 val source = state.source ?: throw IOException("Prepared source file is unavailable")
                 val sentHash = engine.sendSecure(
-                    socket, source, state.offer.transferId, session.channel, cancellation, progress
+                    connectedSocket, source, state.offer.transferId, session.channel, cancellation, progress
                 )
                 if (!sentHash.equals(state.offer.sha256, ignoreCase = true)) {
                     throw SecurityException("The source file changed after the approved offer was created")
