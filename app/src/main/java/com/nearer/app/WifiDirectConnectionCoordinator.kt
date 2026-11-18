@@ -128,7 +128,14 @@ internal class WifiDirectConnectionCoordinator(
         require(backlog > 0)
         val localP2pAddress = findLocalP2pAddress()
         val socket = ServerSocket()
-        try { socket.reuseAddress = false; socket.bind(InetSocketAddress(localP2pAddress, port), backlog); return socket }
+        try {
+            socket.reuseAddress = false
+            // Set the receive window before bind/accept so accepted bulk sockets
+            // inherit a useful starting point on high-bandwidth local radios.
+            socket.receiveBufferSize = WifiDirectTcpTransferEngine.DEFAULT_SOCKET_BUFFER_BYTES
+            socket.bind(InetSocketAddress(localP2pAddress, port), backlog)
+            return socket
+        }
         catch (error: IOException) { try { socket.close() } catch (_: IOException) { }; throw error }
     }
 
@@ -140,7 +147,12 @@ internal class WifiDirectConnectionCoordinator(
         require(port in 1..65535 && connectTimeoutMillis > 0)
         val socket = Socket()
         try {
-            socket.tcpNoDelay = true
+            // Configure windows before connect; kernels commonly snapshot receive
+            // buffer settings when the TCP connection is established.
+            socket.sendBufferSize = WifiDirectTcpTransferEngine.DEFAULT_SOCKET_BUFFER_BYTES
+            socket.receiveBufferSize = WifiDirectTcpTransferEngine.DEFAULT_SOCKET_BUFFER_BYTES
+            socket.tcpNoDelay = false
+            socket.keepAlive = true
             socket.bind(InetSocketAddress(findLocalP2pAddress(), 0))
             socket.connect(InetSocketAddress(link.groupOwnerAddress, port), connectTimeoutMillis)
             return socket
