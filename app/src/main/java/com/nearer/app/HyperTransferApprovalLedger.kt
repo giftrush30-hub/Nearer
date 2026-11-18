@@ -21,7 +21,8 @@ internal class HyperTransferApprovalLedger(
         val createdAt: Long,
         var state: State
     )
-    private val entries = LinkedHashMap<String, Entry>()
+    private data class EntryKey(val endpointId: String, val transferId: String)
+    private val entries = LinkedHashMap<EntryKey, Entry>()
 
     @Synchronized
     fun recordIncomingOffer(endpointId: String, peerId: String, offer: HyperTransferTcpOfferCodec.Offer): OfferResult =
@@ -33,9 +34,9 @@ internal class HyperTransferApprovalLedger(
 
     private fun record(endpoint: String, peer: String, offer: HyperTransferTcpOfferCodec.Offer, direction: Direction): OfferResult {
         prune()
-        if (endpoint.isBlank() || NeaRerIdentity.normalize(peer) != peer ||
+        if (endpoint.isBlank() || !runCatching { NeaRerIdentity.normalize(peer) == peer }.getOrDefault(false) ||
             runCatching { HyperTransferTcpOfferCodec.encodeOffer(offer) }.isFailure) return OfferResult.REJECTED
-        val key = key(endpoint, offer.transferId)
+        val key = EntryKey(endpoint, offer.transferId.lowercase())
         val old = entries[key]
         if (old != null) {
             return if (old.peerId == peer && old.offer == offer && old.direction == direction) OfferResult.DUPLICATE
@@ -55,6 +56,24 @@ internal class HyperTransferApprovalLedger(
         if (entry.state != State.WAITING_FOR_USER) return false
         entry.state = if (accepted) State.APPROVED else State.DECLINED
         return true
+    }
+
+    /** Undo a local decision only when its response could not be sent to the peer. */
+    @Synchronized
+    fun rollbackIncomingDecision(endpointId: String, peerId: String, transferId: String, accepted: Boolean): Boolean {
+        val entry = matching(endpointId, peerId, transferId, Direction.INCOMING) ?: return false
+        val expected = if (accepted) State.APPROVED else State.DECLINED
+        if (entry.state != expected) return false
+        entry.state = State.WAITING_FOR_USER
+        return true
+    }
+
+    /** Remove one exact offer without disturbing other transfers to this peer. */
+    @Synchronized
+    fun removeOffer(endpointId: String, peerId: String, transferId: String, direction: Direction): Boolean {
+        val entry = matching(endpointId, peerId, transferId, direction) ?: return false
+        if (entry.state == State.CONSUMED) return false
+        return entries.remove(EntryKey(endpointId, transferId.lowercase())) != null
     }
 
     /** Record the remote receiver's decision for an exact outgoing offer. */
@@ -94,9 +113,9 @@ internal class HyperTransferApprovalLedger(
 
     private fun matching(endpoint: String, peer: String, transferId: String, direction: Direction): Entry? {
         prune()
-        if (endpoint.isBlank() || NeaRerIdentity.normalize(peer) != peer ||
+        if (endpoint.isBlank() || !runCatching { NeaRerIdentity.normalize(peer) == peer }.getOrDefault(false) ||
             !transferId.matches(Regex("^[a-fA-F0-9]{64}$"))) return null
-        return entries[key(endpoint, transferId)]?.takeIf {
+        return entries[EntryKey(endpoint, transferId.lowercase())]?.takeIf {
             it.endpointId == endpoint && it.peerId == peer && it.direction == direction
         }
     }
@@ -106,5 +125,4 @@ internal class HyperTransferApprovalLedger(
         entries.entries.removeAll { it.value.createdAt < cutoff }
     }
 
-    private fun key(endpoint: String, transferId: String) = "$endpoint|${transferId.lowercase()}"
 }
