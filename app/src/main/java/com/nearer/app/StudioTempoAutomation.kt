@@ -61,6 +61,19 @@ internal object StudioTempoAutomationPolicy {
         return normalize(listOf(StudioTempoPoint(0L, start), StudioTempoPoint(endTimeMs, end)), endTimeMs)
     }
 
+    /**
+     * Keeps the visible start/end speed controls attached to the current trimmed clip length.
+     * The editor currently exposes a two-point ramp; imported multi-keyframe curves retain
+     * their internal timing and are only bounded when the clip range changes.
+     */
+    fun retimeForClipDuration(points: List<StudioTempoPoint>, durationMs: Long): List<StudioTempoPoint> {
+        if (points.isEmpty()) return emptyList()
+        if (points.size <= 2) {
+            return twoPointRamp(points.first().speed, points.last().speed, durationMs)
+        }
+        return normalize(points, durationMs)
+    }
+
     fun speedAt(points: List<StudioTempoPoint>, timeMs: Long): Float {
         val safePoints = points.ifEmpty { listOf(StudioTempoPoint(0L, 1f)) }
         val time = timeMs.coerceAtLeast(0L)
