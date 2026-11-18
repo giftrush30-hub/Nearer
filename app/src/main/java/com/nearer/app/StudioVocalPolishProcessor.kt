@@ -185,7 +185,17 @@ internal class StudioVocalPolishProcessor(
         output.flip()
     }
 
+    // Media3 can flush and reuse an AudioProcessor for another edited item.
+    // Reset every filter/envelope/delay state so one take cannot colour the next.
+    override fun onFlush() {
+        resetProcessingState()
+    }
+
     override fun onReset() {
+        resetProcessingState()
+    }
+
+    private fun resetProcessingState() {
         previousInput.fill(0f)
         previousHighPass.fill(0f)
         lowPassPresence.fill(0f)

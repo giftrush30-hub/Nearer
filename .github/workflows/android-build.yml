@@ -2,7 +2,7 @@ name: Android validation and APK
 
 on:
   push:
-    branches: [main, integration/nearer-complete-app, phase-1-smartconnect, fix/studio-native-capture-privacy]
+    branches: [main, integration/nearer-complete-app, phase-1-smartconnect, fix/studio-native-capture-privacy, studio/five-parts-main-sync]
   pull_request:
     branches: [main, integration/nearer-complete-app, feature/messaging-people-chat-inbox]
   workflow_dispatch:
@@ -59,11 +59,11 @@ jobs:
           retention-days: 7
 
       - name: Build installable debug APK
-        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.build_apk == true)
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/studio/five-parts-main-sync' || (github.event_name == 'workflow_dispatch' && inputs.build_apk == true)
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Upload debug APK
-        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.build_apk == true)
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/studio/five-parts-main-sync' || (github.event_name == 'workflow_dispatch' && inputs.build_apk == true)
         uses: actions/upload-artifact@v4
         with:
           name: NeaRer-debug-apk

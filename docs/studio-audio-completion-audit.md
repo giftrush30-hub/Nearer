@@ -1,59 +1,44 @@
-# Studio Audio completion audit — 17 November 2026
+# Studio Audio five-part completion — stacked implementation
 
-This audit is based on the latest shared `main` at `366f5bdcbbbc4bc52a0abb8fecfcdb9e205aa8c2`. Work in this branch is intentionally isolated from the other Studio Audio workstream.
+This integration branch is rebuilt on the parallel workstream's current PR #284 head (`feat/studio-audio-route-media3-main-sync`). It preserves the latest Media3 1.11.1, API 36 build compatibility, verified headphone-only live-monitor routing, ambiguous-output confirmation and per-write route checks. It does not modify the parallel workstream's branch.
 
-## Five-part completion target
+## Work status
 
-| Work item | Repository status | Evidence / remaining gate |
-|---|---|---|
-| 1. Vocal quality audit | DSP refinement added in this branch | Smoothed sibilance-band envelope detection, sample-rate-safe filter cutoffs, and new signal-level tests. Still requires exact-head CI and listening on real voices/microphones. |
-| 2. Timeline zoom and navigation | Already merged | PR #275 adds 1×/2×/4× zoom and horizontal scrolling. Do not duplicate it. |
-| 3. Tempo automation | Not implemented yet | Existing BPM is a beat-grid/snap setting, not a playback-speed automation lane. The parallel workstream is reconciling Media3 1.11.1 on branch `feat/studio-media3-111-final`; earlier PR drafts #277 and #278 were closed without merging. Its current base must be reconciled before using the new API. |
-| 4. Crossfades | Equal-power envelope implementation added in this branch | Existing track offsets allow two sequences to overlap. Matching the outgoing fade-out and incoming fade-in durations now uses complementary cosine/sine curves, maintaining constant combined power in the ideal aligned overlap. The Media3 Composition API itself still does not provide native crossfades. |
-| 5. Export quality audit | Mix-export validation added in this branch | Output is named as an AAC-in-MP4 `.m4a`; after render, metadata inspection verifies a readable audio track and positive duration off the UI thread before exposing the file. Invalid output is deleted. Exact-head CI and device playback checks remain required. |
+1. **Vocal Pro quality:** retain key-aware monophonic pitch correction with optional LPC formant compensation, then apply offline vocal polish (low-cut, presence, de-essing, gate, compression, air, stereo width, saturation, room ambience and output limiting). This pass improves the sibilance envelope, Nyquist-safe filter cutoffs and DSP regression coverage. The noise-reduction control is a downward gate/expander, not a spectral denoiser; pitch correction is for a single lead vocal, not chords. Listening acceptance remains.
+2. **Timeline navigation:** 1×/2×/4× zoom and horizontal scrolling are copied from merged main PR #275.
+3. **Tempo automation:** per-track start/end speed ramp, 0.50×–2.00×, 20 ms sampling, pitch-preserving Media3 speed parameters, bounded project codec v5 persistence, and output-duration calculation for fades.
+4. **Crossfades:** equal-power sine fade-in and cosine fade-out curves; matching overlapping track fades maintain constant combined power in the ideal aligned case. Fade lengths are clamped to clip duration.
+5. **Mix export verification:** .m4a AAC-in-MP4 output; completed file is inspected off the UI thread and only exposed when it is readable, explicitly reports `METADATA_KEY_HAS_AUDIO=yes`, and has positive duration. JVM coverage rejects `no`, null and empty audio-track metadata.
 
-## Vocal Pro changes in this branch
+## Automation details
 
-- De-essing now follows a smoothed sibilance-band envelope (2 ms attack / 55 ms release) instead of applying gain reduction directly to every waveform peak. This is intended to reduce harsh, buzzy modulation.
-- Filter cutoff calculations are clamped below Nyquist (45% of the actual input sample rate), avoiding invalid high-frequency filter settings on low-rate sources.
-- Regression coverage now checks stronger attenuation of a 7 kHz sibilance test tone than a 220 Hz vocal fundamental, stronger compression on a sustained loud tone, centre collapse at zero stereo width, and 8 kHz input configuration.
-- The processor documentation explicitly avoids claiming spectral denoising, a physical condenser microphone model, or true-peak mastering. The current noise-control stage remains a gate/expander, and the limiter remains sample-peak based.
+- Automation keyframes are source-clip time in milliseconds.
+- Maximum 32 keyframes, bounded to the first 30 seconds.
+- Keyframe speeds are clamped to 0.50×–2.00×.
+- When a clip is trimmed after setting the visible two-point start/end ramp, the editor retimes the ramp endpoint to the new clip duration while preserving both selected speed targets. Imported multi-keyframe curves retain their internal timing and are safely bounded. Regression tests cover both shorter and longer trims.
+- A two-point start/end ramp is exposed in Sound Desk controls.
+- The speed provider samples a linearly interpolated curve every 20 ms, which creates a deterministic stepped approximation.
+- SpeedParameters.shouldMaintainPitch is explicitly true.
+- Rendered clip duration is calculated using the same 20 ms samples and supplied to the gain/fade processor so fades use output time, not source time.
+- Existing BPM/beat division remains placement snapping only; it does not silently alter audio speed.
 
-## Equal-power crossfade behaviour
+## Compatibility and verification
 
-The mixer already exports parallel audio sequences and applies each track's fade envelope in `StudioTrackGainProcessor`. This branch changes the envelope shape:
+- Project codec version 5 stores tempo keyframes; versions 1–4 load with no tempo automation and remain normal speed.
+- Imported source recordings are not modified.
+- The project-library delete policy defensively creates a fresh empty starter arrangement if called with the final project; regression tests cover that fallback and deleting one project while preserving the others. The current UI already disables the delete action when only one project remains, so this is defensive protection rather than a user-reachable crash fix.
+- Project trim decoding computes its minimum legal end position without `clipStartMs + 1` overflow; malformed `Long.MAX_VALUE` trim values are covered by a regression test.
+- Offline track export converts source duration and fade lengths to PCM frames using overflow-safe millisecond conversion; extreme metadata saturates at `Long.MAX_VALUE` rather than wrapping to a negative or tiny frame count.
+- The vocal-polish processor now resets its filter history, dynamics envelopes, limiter state and room-delay buffer on Media3 `flush()` as well as full reset. This prevents a reused processor from carrying the previous take's audio state into the next take; a same-processor reuse regression test compares consecutive flushed renders. Exact-head CI remains required.
+- Added direct `StudioTrackGainProcessor` regression tests for chunk-boundary invariance (the gain/fade envelope must not reset between Media3 input buffers), mono-to-stereo duplication, hard-left/right balance, and rejection of unsupported channel layouts. A lifecycle review also found that the processor reset its frame clock on full reset but not on Media3 `flush()`; it now resets on both, with a reuse regression test proving a second input stream starts its fade at frame zero. These tests are committed but still need exact-head CI execution.
+- Live-monitor route refresh preserves the selected headphone when another eligible device is added; if the selected output disappears, monitoring stops and a remaining output is selected for a fresh explicit restart. Unit tests cover preservation, fallback and no-device cases.
+- PR #284 was merged into `main` at merge commit `690183a830eec5172c83b7a57286e44a06616590`. This branch is now retargeted directly to `main`; the shared PR #284 feature head remains an ancestor, so its Media3 and safe-monitor changes are retained.
+- Exact-head validation is being rerun after the PR #284 merge and retarget to `main`. Required gates are JVM tests, manifest validation, Android lint diagnostics and installable debug APK build/upload. The Android validation workflow also runs on pushes to `studio/five-parts-main-sync`, with that branch included in APK build and artifact-upload conditions. The existing repository lint baseline is not yet a clean-lint certification.
+- Physical device listening at 0.5×, 1×, 1.5× and 2× is still required. No physical test or studio-grade guarantee is claimed.
 
-- Fade-in: `sin(progress × π/2)`.
-- Fade-out: `cos(progress × π/2)`.
+## References
 
-When an outgoing track ends exactly one overlap duration after the incoming track starts, and both fade durations equal that overlap, the squared gains sum to one throughout the overlap. The new JVM test checks this at 101 points. Users still need to position the incoming track at the intended overlap point and set matching fade durations; this is not yet an automatic clip-pairing wizard.
-
-Android's Media3 Composition documentation explicitly lists crossfading audio/video tracks as unsupported. This implementation therefore uses the already-supported per-track PCM gain processors rather than advertising a native Composition crossfade feature.
-
-## Export verification
-
-The Sound Desk previously treated a completed export as usable when the path existed and its byte length was non-zero. This branch adds a second validation layer using Android `MediaMetadataRetriever` after Transformer reports completion:
-
-- the container must be readable;
-- `METADATA_KEY_HAS_AUDIO` must report an audio track;
-- duration must be greater than zero;
-- metadata inspection runs on `Dispatchers.IO`, not the Compose UI thread;
-- invalid output is deleted and never shown as playable/shareable.
-
-The export still uses Media3's AAC encoder defaults. This branch does not claim a fixed bitrate, lossless output, loudness normalization, or true-peak compliance. Those need an explicit product-quality target and device/listening validation rather than invented specifications.
-
-## Coordination with the parallel Studio Audio work
-
-- The parallel Studio Audio workstream owns `feat/studio-media3-111-final`. It upgrades Media3 1.5.1 to 1.11.1, updates the Android build toolchain and fixes Media3 1.11.1 source imports; this branch does not modify those dependency or workflow files.
-- That branch is one commit behind current `main` and must be reconciled and validated before using its new API. The earlier PR drafts #277 and #278 were closed without merging.
-- The zoom/navigation work from PR #275 is already merged and is treated as complete here.
-- No changes in this branch should be force-pushed into the other chat's feature branches.
-
-## Required validation before declaring completion
-
-1. Run the repository's canonical JVM tests, manifest validation, Android lint and debug APK build on this branch's exact head.
-2. Resolve any CI failures before merging.
-3. Listen to Vocal Pro A/B exports with spoken voice, sustained vowels and sibilant-heavy phrases; compare clean, warm, bright and podcast profiles.
-4. Test equal-power overlaps with two real audio files, matched overlap offsets and fade lengths; listen for dips, peaks, clicks and phase interactions.
-5. Export and play AAC mixes on Android speakers, wired headphones and Bluetooth; inspect the actual sample rate/bitrate where available and verify share/playback.
-6. The project owner performs physical-device acceptance. No device test or studio-grade sound guarantee is claimed by this branch.
+- Media3 release notes: https://developer.android.com/jetpack/androidx/releases/media3
+- EditedMediaItem speed API: https://developer.android.com/reference/androidx/media3/transformer/EditedMediaItem.Builder
+- SpeedProvider contract: https://developer.android.com/reference/androidx/media3/common/audio/SpeedProvider
+- SpeedParameters source: https://github.com/androidx/media/blob/8c6678b657ede1e7883fc164ef73ed483c7796c3/libraries/common/src/main/java/androidx/media3/common/SpeedParameters.java

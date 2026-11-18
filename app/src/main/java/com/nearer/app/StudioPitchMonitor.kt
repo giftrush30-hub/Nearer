@@ -202,14 +202,21 @@ internal fun StudioPitchMonitorScreen(onBack: () -> Unit, preferredInputId: Int?
     var hasHeadphoneOutput by remember(context) { mutableStateOf(preferredOutputId != null) }
     DisposableEffect(audioManager) {
         fun refreshHeadphoneRoute() {
-            val selected = headphoneOutputDevices().firstOrNull()
-            if (selected?.id != preferredOutputId) {
+            val availableOutputs = headphoneOutputDevices()
+            val nextOutputId = StudioAudioEnginePolicy.selectAvailableOutputId(
+                preferredOutputId,
+                availableOutputs.map { it.id }
+            )
+            if (nextOutputId != preferredOutputId) {
+                // Stop live monitoring only when the selected route disappeared and
+                // Android must choose a replacement. Adding another headset must not
+                // silently steal the user's active route.
                 confirmedOutputId = null
                 showOutputConfirmation = false
                 monitorEnabled = false
             }
-            preferredOutputId = selected?.id
-            hasHeadphoneOutput = selected != null
+            preferredOutputId = nextOutputId
+            hasHeadphoneOutput = nextOutputId != null
         }
         val callback = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {

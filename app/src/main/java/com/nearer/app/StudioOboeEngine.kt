@@ -55,6 +55,10 @@ internal object StudioAudioEnginePolicy {
         android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO
     )
 
+    /** Keep the user's chosen output when other devices appear or disappear. */
+    fun selectAvailableOutputId(preferredOutputId: Int?, availableOutputIds: List<Int>): Int? =
+        preferredOutputId?.takeIf { it in availableOutputIds } ?: availableOutputIds.firstOrNull()
+
     /** The active output must match the exact external headphone route selected by Android. */
     fun matchesPreferredOutput(preferredOutputId: Int?, routedOutputId: Int?): Boolean =
         preferredOutputId != null && preferredOutputId == routedOutputId

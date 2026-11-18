@@ -68,12 +68,60 @@ class StudioAudioProjectCodecTest {
         assertEquals(0L, restored.startOffsetMs)
     }
 
+    @Test fun extremeImportedTrimTimestampsDoNotOverflow() {
+        val raw = org.json.JSONObject()
+            .put("version", 5)
+            .put("tracks", org.json.JSONArray().put(org.json.JSONObject()
+                .put("uri", "content://audio/extreme")
+                .put("durationMs", Long.MAX_VALUE)
+                .put("clipStartMs", Long.MAX_VALUE)
+                .put("clipEndMs", Long.MIN_VALUE)
+            )).toString()
+        val restored = StudioAudioProjectCodec.decode(raw).single()
+        assertEquals(Long.MAX_VALUE, restored.durationMs)
+        assertEquals(Long.MAX_VALUE, restored.clipStartMs)
+        assertEquals(Long.MAX_VALUE, restored.clipEndMs)
+    }
+
     @Test fun clampsTimelineValuesToSourceAndThirtySecondOffsetLimit() {
         val raw = """{"version":4,"tracks":[{"uri":"content://audio/x","durationMs":10000,"clipStartMs":9000,"clipEndMs":20000,"startOffsetMs":90000}]}"""
         val restored = StudioAudioProjectCodec.decode(raw).single()
         assertEquals(9_000L, restored.clipStartMs)
         assertEquals(10_000L, restored.clipEndMs)
         assertEquals(30_000L, restored.startOffsetMs)
+    }
+
+    @Test fun persistsTempoAutomationKeyframes() {
+        val original = listOf(StudioAudioProjectTrackState(
+            uri = "content://audio/tempo",
+            name = "Tempo vocal",
+            durationMs = 20_000L,
+            muted = false,
+            gain = 1f,
+            pan = 0f,
+            fadeInMs = 0L,
+            fadeOutMs = 0L,
+            tempoPoints = listOf(StudioTempoPoint(0L, 0.75f), StudioTempoPoint(5_000L, 1.5f))
+        ))
+        val restored = StudioAudioProjectCodec.decode(StudioAudioProjectCodec.encode(original))
+        assertEquals(original, restored)
+    }
+
+    @Test fun oversizedTempoArraysKeepTheFinalAutomationIntent() {
+        val points = (0..39).joinToString(",") { index ->
+            """{"timeMs":${index * 1_000L},"speed":${0.5 + index * 0.02}}"""
+        }
+        val raw = """{"version":5,"tracks":[{"uri":"content://audio/tempo-long","durationMs":30000,"tempoPoints":[$points]}]}"""
+        val restored = StudioAudioProjectCodec.decode(raw).single()
+        assertTrue(restored.tempoPoints.size <= StudioTempoAutomationPolicy.MAX_KEYFRAMES)
+        assertEquals(30_000L, restored.tempoPoints.last().timeMs)
+        assertEquals(1.28f, restored.tempoPoints.last().speed, 0.0001f)
+    }
+
+    @Test fun versionFourProjectsMigrateWithoutTempoAutomation() {
+        val raw = """{"version":4,"tracks":[{"uri":"content://audio/legacy","durationMs":10000}]}"""
+        val restored = StudioAudioProjectCodec.decode(raw).single()
+        assertTrue(restored.tempoPoints.isEmpty())
     }
 
     @Test fun ignoresUnknownProjectVersions() {

@@ -18,12 +18,13 @@ internal data class StudioAudioProjectTrackState(
     val reverbMix: Float = 0f,
     val clipStartMs: Long = 0L,
     val clipEndMs: Long = durationMs,
-    val startOffsetMs: Long = 0L
+    val startOffsetMs: Long = 0L,
+    val tempoPoints: List<StudioTempoPoint> = emptyList()
 )
 
 /** Versioned local project codec. Older projects migrate with flat EQ and dry audio. */
 internal object StudioAudioProjectCodec {
-    private const val VERSION = 4
+    private const val VERSION = 5
 
     fun encode(tracks: List<StudioAudioProjectTrackState>): String {
         val root = JSONObject().put("version", VERSION)
@@ -45,7 +46,14 @@ internal object StudioAudioProjectCodec {
                 .put("reverbMix", track.reverbMix.coerceIn(0f, 0.35f).toDouble())
                 .put("clipStartMs", track.clipStartMs.coerceAtLeast(0L))
                 .put("clipEndMs", track.clipEndMs.coerceAtLeast(track.clipStartMs))
-                .put("startOffsetMs", track.startOffsetMs.coerceIn(0L, 30_000L)))
+                .put("startOffsetMs", track.startOffsetMs.coerceIn(0L, 30_000L))
+                .put("tempoPoints", JSONArray().apply {
+                    if (track.tempoPoints.isNotEmpty()) {
+                        StudioTempoAutomationPolicy.normalize(track.tempoPoints, track.durationMs).forEach { point ->
+                            put(JSONObject().put("timeMs", point.timeMs).put("speed", point.speed.toDouble()))
+                        }
+                    }
+                }))
         }
         return root.put("tracks", items).toString()
     }
@@ -64,7 +72,12 @@ internal object StudioAudioProjectCodec {
                     val name = item.optString("name", "Audio track").ifBlank { "Audio track" }
                     val durationMs = item.optLong("durationMs", 0L).coerceAtLeast(0L)
                     val clipStartMs = item.optLong("clipStartMs", 0L).coerceIn(0L, durationMs)
-                    val clipEndMs = if (durationMs > 0L) item.optLong("clipEndMs", durationMs).coerceIn((clipStartMs + 1L).coerceAtMost(durationMs), durationMs) else 0L
+                    // Avoid Long overflow when a malformed imported project uses Long.MAX_VALUE
+                    // for both the source duration and trim-in position.
+                    val minimumClipEndMs = if (clipStartMs < durationMs) clipStartMs + 1L else durationMs
+                    val clipEndMs = if (durationMs > 0L) {
+                        item.optLong("clipEndMs", durationMs).coerceIn(minimumClipEndMs, durationMs)
+                    } else 0L
                     add(StudioAudioProjectTrackState(
                         uri = uri,
                         name = name,
@@ -80,10 +93,37 @@ internal object StudioAudioProjectCodec {
                         reverbMix = item.optDouble("reverbMix", 0.0).toFloat().coerceIn(0f, 0.35f),
                         clipStartMs = clipStartMs,
                         clipEndMs = clipEndMs,
-                        startOffsetMs = item.optLong("startOffsetMs", 0L).coerceIn(0L, 30_000L)
+                        startOffsetMs = item.optLong("startOffsetMs", 0L).coerceIn(0L, 30_000L),
+                        tempoPoints = if (version >= 5) decodeTempoPoints(item, durationMs) else emptyList()
                     ))
                 }
             }.take(8)
         }.getOrDefault(emptyList())
+    }
+
+    private fun decodeTempoPoints(item: JSONObject, durationMs: Long): List<StudioTempoPoint> {
+        val array = item.optJSONArray("tempoPoints") ?: return emptyList()
+        if (array.length() == 0) return emptyList()
+        // Keep the first 31 editable points and the final intent if an imported project
+        // contains more than the supported 32. Taking the first 32 would silently discard
+        // the user's final tempo target.
+        val points = ArrayList<StudioTempoPoint>(
+            minOf(array.length(), StudioTempoAutomationPolicy.MAX_KEYFRAMES)
+        )
+        var finalPoint: StudioTempoPoint? = null
+        for (index in 0 until array.length()) {
+            val point = array.optJSONObject(index) ?: continue
+            val decoded = StudioTempoPoint(
+                timeMs = point.optLong("timeMs", 0L),
+                speed = point.optDouble("speed", 1.0).toFloat()
+            )
+            if (points.size < StudioTempoAutomationPolicy.MAX_KEYFRAMES) {
+                points += decoded
+            } else {
+                finalPoint = decoded
+            }
+        }
+        if (finalPoint != null) points[points.lastIndex] = finalPoint
+        return StudioTempoAutomationPolicy.normalize(points, durationMs)
     }
 }

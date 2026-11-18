@@ -2,7 +2,6 @@ package com.nearer.app
 
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
-import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import org.junit.Assert.assertEquals
@@ -12,7 +11,6 @@ import kotlin.math.abs
 import kotlin.math.PI
 import kotlin.math.sin
 
-@OptIn(UnstableApi::class)
 class StudioVocalPolishProcessorTest {
     private fun process(
         channels: Int,
@@ -40,6 +38,36 @@ class StudioVocalPolishProcessorTest {
         val usable = samples.drop(startSample.coerceIn(0, samples.size))
         if (usable.isEmpty()) return 0.0
         return kotlin.math.sqrt(usable.map { it.toDouble() * it }.average()) / 32767.0
+    }
+
+    @Test fun flushResetsVocalFilterAndDynamicsStateForTheNextTake() {
+        val processor = StudioVocalPolishProcessor(
+            StudioVocalProfile.WARM_CONDENSER,
+            StudioVocalControls(warmth = 0.7f, deEss = 0.4f, compression = 2f, ambience = 0.2f)
+        )
+        processor.configure(AudioProcessor.AudioFormat(48_000, 1, C.ENCODING_PCM_16BIT))
+        val samples = ShortArray(12_000) { index ->
+            (18_000.0 * sin(2.0 * PI * 7_000.0 * index / 48_000.0)).toInt().toShort()
+        }
+
+        fun renderTake(): ShortArray {
+            val input = ByteBuffer.allocateDirect(samples.size * 2).order(ByteOrder.nativeOrder())
+            samples.forEach { input.putShort(it) }
+            input.flip()
+            processor.queueInput(input)
+            val output = processor.output
+            return ShortArray(output.remaining() / 2) { output.short }
+        }
+
+        processor.flush()
+        val firstTake = renderTake()
+        processor.flush()
+        val secondTake = renderTake()
+
+        assertEquals(firstTake.size, secondTake.size)
+        assertTrue("A flushed processor must not carry filter/delay state into the next take",
+            firstTake.indices.all { firstTake[it] == secondTake[it] })
+        processor.reset()
     }
 
     @Test fun monoInputBecomesStereoWithMatchingChannels() {

@@ -39,9 +39,9 @@ internal class StudioTrackGainProcessor(
         val outputBuffer = replaceOutputBuffer(frames * 2 * 2)
         val (leftPan, rightPan) = studioAudioPanFactors(pan)
         val sampleRate = inputAudioFormat.sampleRate
-        val totalFrames = durationMs * sampleRate / 1_000L
-        val fadeInFrames = fadeInMs * sampleRate / 1_000L
-        val fadeOutFrames = fadeOutMs * sampleRate / 1_000L
+        val totalFrames = studioAudioMillisecondsToFrames(durationMs, sampleRate)
+        val fadeInFrames = studioAudioMillisecondsToFrames(fadeInMs, sampleRate)
+        val fadeOutFrames = studioAudioMillisecondsToFrames(fadeOutMs, sampleRate)
 
         repeat(frames) { frameInBuffer ->
             val frame = frameCursor + frameInBuffer
@@ -59,6 +59,12 @@ internal class StudioTrackGainProcessor(
         }
         frameCursor += frames
         outputBuffer.flip()
+    }
+
+    // Media3 may flush and reuse an AudioProcessor for a new input stream.
+    // Reset the frame clock on flush as well as full reset so fades restart at frame zero.
+    override fun onFlush() {
+        frameCursor = 0L
     }
 
     override fun onReset() {

@@ -23,6 +23,28 @@ internal object StudioAudioProjectLibraryCodec {
     fun normalizeName(raw: String): String =
         raw.trim().replace(Regex("\\s+"), " ").take(MAX_NAME_LENGTH).ifBlank { "Untitled Mix" }
 
+    /**
+     * Deletes the selected arrangement but guarantees the editor always has a project
+     * to display. Removing the last project creates a fresh empty starter project.
+     */
+    fun delete(
+        projects: List<StudioAudioProjectLibraryEntry>,
+        projectId: String,
+        replacementId: String,
+        updatedAtMs: Long
+    ): List<StudioAudioProjectLibraryEntry> {
+        val remaining = projects.filterNot { it.id == projectId }
+        if (remaining.isNotEmpty()) return remaining
+        return listOf(
+            StudioAudioProjectLibraryEntry(
+                id = replacementId.trim().ifBlank { "studio-default" }.take(80),
+                name = "My First Mix",
+                updatedAtMs = updatedAtMs.coerceAtLeast(0L),
+                tracks = emptyList()
+            )
+        )
+    }
+
     fun rename(
         projects: List<StudioAudioProjectLibraryEntry>,
         projectId: String,

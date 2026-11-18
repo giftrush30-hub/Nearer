@@ -9,6 +9,19 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 class StudioAudioGainEnvelopeTest {
+    @Test fun millisecondsToFramesUsesExactWholeAndFractionalConversion() {
+        assertEquals(48_000L, studioAudioMillisecondsToFrames(1_000L, 48_000))
+        assertEquals(24_000L, studioAudioMillisecondsToFrames(500L, 48_000))
+        assertEquals(44_100L, studioAudioMillisecondsToFrames(1_000L, 44_100))
+    }
+
+    @Test fun millisecondsToFramesSaturatesInsteadOfOverflowing() {
+        assertEquals(Long.MAX_VALUE, studioAudioMillisecondsToFrames(Long.MAX_VALUE, 48_000))
+        assertEquals(0L, studioAudioMillisecondsToFrames(-1L, 48_000))
+        assertEquals(0L, studioAudioMillisecondsToFrames(Long.MAX_VALUE, 0))
+        assertEquals(0L, studioAudioMillisecondsToFrames(Long.MAX_VALUE, -48_000))
+    }
+
     @Test fun unityGainWithoutFadesStaysConstant() {
         assertEquals(1f, studioAudioGainAtFrame(500, 1_000, 1f, 0, 0), 0.0001f)
     }
