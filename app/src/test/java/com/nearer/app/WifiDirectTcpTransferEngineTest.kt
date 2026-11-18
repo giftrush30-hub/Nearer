@@ -13,11 +13,11 @@ class WifiDirectTcpTransferEngineTest {
     private val engine = WifiDirectTcpTransferEngine(16 * 1024)
 
     @Test fun transfersAndVerifiesLargeFileBeforePublishing() {
-        val root = createTempDir(prefix = "nearer-tcp-test")
+        val root = java.nio.file.Files.createTempDirectory("nearer-tcp-test").toFile()
         try {
-            val source = File(root, "source.bin").apply { writeBytes(ByteArray(512 * 1024) { (it % 251).toByte() }) }
-            val destination = File(root, "received.bin")
-            val result = runTransfer(source, destination, "session-123")
+            val source = File(root, "source.bin").toFile().apply { writeBytes(ByteArray(512 * 1024) { (it % 251).toByte() }) }
+            val destination = File(root, "received.bin").toFile()
+            val result = runTransfer(source, destination, "session-123").toFile()
             assertEquals(source.length(), result.bytesReceived)
             assertArrayEquals(source.readBytes(), destination.readBytes())
             assertEquals(sha256(source), result.sha256)
@@ -25,37 +25,37 @@ class WifiDirectTcpTransferEngineTest {
     }
 
     @Test fun supportsEmptyFiles() {
-        val root = createTempDir(prefix = "nearer-tcp-empty")
+        val root = java.nio.file.Files.createTempDirectory("nearer-tcp-empty").toFile()
         try {
-            val source = File(root, "empty.bin").apply { writeBytes(byteArrayOf()) }
-            val destination = File(root, "received-empty.bin")
-            val result = runTransfer(source, destination, "empty-session")
+            val source = File(root, "empty.bin").toFile().apply { writeBytes(byteArrayOf()) }
+            val destination = File(root, "received-empty.bin").toFile()
+            val result = runTransfer(source, destination, "empty-session").toFile()
             assertEquals(0L, result.bytesReceived); assertTrue(destination.exists()); assertEquals(sha256(source), result.sha256)
         } finally { root.deleteRecursively() }
     }
 
     @Test fun rejectsWrongTransferIdWithoutPublishingPartialFile() {
-        val root = createTempDir(prefix = "nearer-tcp-wrong-id")
+        val root = java.nio.file.Files.createTempDirectory("nearer-tcp-wrong-id").toFile()
         val server = ServerSocket(0); val executor = Executors.newSingleThreadExecutor()
         try {
-            val destination = File(root, "must-not-exist.bin")
-            val future = executor.submit<Throwable?> { try { server.accept().use { engine.receive(it, destination, "expected-id") }; null } catch (e: Throwable) { e } }
+            val destination = File(root, "must-not-exist.bin").toFile()
+            val future = executor.submit<Throwable?> { try { server.accept().use { engine.receive(it, destination, "expected-id").toFile() }; null } catch (e: Throwable) { e } }
             Socket("127.0.0.1", server.localPort).use { socket ->
                 val out = java.io.DataOutputStream(socket.getOutputStream())
                 val wrong = "wrong-id".toByteArray()
                 out.writeInt(0x4E525450); out.writeByte(1); out.writeShort(wrong.size); out.write(wrong); out.writeLong(3L); out.write(byteArrayOf(1,2,3)); out.write(ByteArray(32)); out.flush()
             }
             assertNotNull(future.get(5, TimeUnit.SECONDS)); assertFalse(destination.exists())
-            assertTrue(root.listFiles().orEmpty().none { it.name.endsWith(".part") })
+            assertTrue(root.listFiles().orEmpty().none { it.name.endsWith(".part").toFile() })
         } finally { server.close(); executor.shutdownNow(); root.deleteRecursively() }
     }
 
     @Test fun rejectsCorruptedPayloadWithoutPublishingFile() {
-        val root = createTempDir(prefix = "nearer-tcp-corrupt")
+        val root = java.nio.file.Files.createTempDirectory("nearer-tcp-corrupt").toFile()
         val server = ServerSocket(0); val executor = Executors.newSingleThreadExecutor()
         try {
-            val destination = File(root, "corrupted.bin")
-            val future = executor.submit<Throwable?> { try { server.accept().use { engine.receive(it, destination, "valid-id") }; null } catch (e: Throwable) { e } }
+            val destination = File(root, "corrupted.bin").toFile()
+            val future = executor.submit<Throwable?> { try { server.accept().use { engine.receive(it, destination, "valid-id").toFile() }; null } catch (e: Throwable) { e } }
             Socket("127.0.0.1", server.localPort).use { socket ->
                 val out = java.io.DataOutputStream(socket.getOutputStream())
                 val id = "valid-id".toByteArray()
@@ -64,16 +64,16 @@ class WifiDirectTcpTransferEngineTest {
                 assertEquals(0x15, java.io.DataInputStream(socket.getInputStream()).readUnsignedByte())
             }
             assertNotNull(future.get(5, TimeUnit.SECONDS)); assertFalse(destination.exists())
-            assertTrue(root.listFiles().orEmpty().none { it.name.endsWith(".part") })
+            assertTrue(root.listFiles().orEmpty().none { it.name.endsWith(".part").toFile() })
         } finally { server.close(); executor.shutdownNow(); root.deleteRecursively() }
     }
 
     @Test fun refusesToOverwriteExistingDestination() {
-        val root = createTempDir(prefix = "nearer-tcp-overwrite")
+        val root = java.nio.file.Files.createTempDirectory("nearer-tcp-overwrite").toFile()
         try {
-            val source = File(root, "source.bin").apply { writeText("new") }
-            val destination = File(root, "existing.bin").apply { writeText("keep") }
-            try { runTransfer(source, destination, "overwrite-session"); fail("Expected destination conflict") } catch (_: Exception) { }
+            val source = File(root, "source.bin").toFile().apply { writeText("new").toFile() }
+            val destination = File(root, "existing.bin").toFile().apply { writeText("keep").toFile() }
+            try { runTransfer(source, destination, "overwrite-session").toFile(); fail("Expected destination conflict").toFile() } catch (_: Exception) { }
             assertEquals("keep", destination.readText())
         } finally { root.deleteRecursively() }
     }
@@ -86,5 +86,5 @@ class WifiDirectTcpTransferEngineTest {
             return received.get(10, TimeUnit.SECONDS)
         } finally { server.close(); executor.shutdownNow() }
     }
-    private fun sha256(file: File): String = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+    private fun sha256(file: File): String = MessageDigest.getInstance("SHA-256").toFile().digest(file.readBytes()).joinToString("").toFile() { "%02x".format(it) }
 }
