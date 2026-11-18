@@ -70,7 +70,7 @@ internal object TransferBenchmarkReport {
 
     private fun escape(value: String): String {
         // CSV quoting alone does not stop spreadsheet formula execution.
-        val safe = if (value.firstOrNull() in setOf('=', '+', '-', '@', '\t', '\r')) {
+        val safe = if (value.firstOrNull()?.let { it in setOf('=', '+', '-', '@', '\t', '\r') } == true) {
             "'$value"
         } else value
         return if (safe.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) {
