@@ -148,7 +148,7 @@ public struct NeaRerTransferManifestV1: Equatable {
     private static func safeLeafName(_ raw: String) -> String {
         let leaf = raw.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? raw
         let invalid = CharacterSet(charactersIn: "/\\:*?\"<>|")
-        let cleaned = String(leaf.unicodeScalars.map { invalid.contains($0) ? "_" : Character($0) })
+        let cleaned = leaf.unicodeScalars.map { invalid.contains($0) ? "_" : String($0) }.joined()
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "."))
         let limited = String(cleaned.prefix(120))
