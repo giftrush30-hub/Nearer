@@ -17,6 +17,7 @@ class TransferBenchmarkMetricsTest {
         assertEquals(20_000L, summary.medianElapsedMillis)
         assertEquals(200L, summary.medianFirstByteMillis)
         assertEquals(5.0, summary.medianMibPerSecond, 0.0001)
+        assertEquals(5.24288, summary.medianMegabytesPerSecond, 0.00001)
         assertEquals(10_000L, summary.fastestElapsedMillis)
         assertEquals(30_000L, summary.slowestElapsedMillis)
     }
