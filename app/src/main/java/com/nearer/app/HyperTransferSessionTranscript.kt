@@ -34,19 +34,22 @@ internal object HyperTransferSessionTranscript {
     ): ByteArray {
         require(protocolVersion == PROTOCOL_VERSION) { "Unsupported HyperTransfer protocol version" }
         require(transferId.matches(Regex("^[a-fA-F0-9]{64}$"))) { "Invalid transfer ID" }
-        require(sender.peerId.isNotBlank() && receiver.peerId.isNotBlank())
-        require(sender.peerId != receiver.peerId) { "A peer cannot transfer to itself" }
+        val senderId = requireNotNull(NeaRerIdentity.normalize(sender.peerId)) { "Invalid sender peer identity" }
+        val receiverId = requireNotNull(NeaRerIdentity.normalize(receiver.peerId)) { "Invalid receiver peer identity" }
+        require(senderId != receiverId) { "A peer cannot transfer to itself" }
         validate(sender)
         validate(receiver)
 
-        val orderedPeers = listOf(sender, receiver).sortedBy { it.peerId }
+        val normalizedSender = sender.copy(peerId = senderId)
+        val normalizedReceiver = receiver.copy(peerId = receiverId)
+        val orderedPeers = listOf(normalizedSender, normalizedReceiver).sortedBy { it.peerId }
         val output = ByteArrayOutputStream()
         DataOutputStream(output).use { data ->
             writeBytes(data, DOMAIN.toByteArray(Charsets.US_ASCII))
             data.writeInt(protocolVersion)
             writeBytes(data, transferId.lowercase().toByteArray(Charsets.US_ASCII))
-            writeBytes(data, sender.peerId.toByteArray(Charsets.UTF_8))
-            writeBytes(data, receiver.peerId.toByteArray(Charsets.UTF_8))
+            writeBytes(data, senderId.toByteArray(Charsets.UTF_8))
+            writeBytes(data, receiverId.toByteArray(Charsets.UTF_8))
             orderedPeers.forEach { peer ->
                 writeBytes(data, peer.peerId.toByteArray(Charsets.UTF_8))
                 writeBytes(data, peer.signingPublicKey)
