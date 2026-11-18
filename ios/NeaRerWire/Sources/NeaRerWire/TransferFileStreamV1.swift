@@ -149,6 +149,9 @@ public final class NeaRerTransferFileStreamReceiverV1 {
         self.handle = try FileHandle(forWritingTo: stagingURL)
     }
 
+    /// Initial zero-offset ACK is sent only after the receiver has approved the transfer.
+    public func initialAck() -> NeaRerTransferFileAckV1 { makeAck() }
+
     /// Writes sequentially to a private partial file. ACKs are emitted only after
     /// checkpoint synchronization, bounding receiver memory and recovery loss.
     public func append(_ chunk: NeaRerTransferFileChunkV1) throws -> NeaRerTransferFileAckV1? {
@@ -170,7 +173,7 @@ public final class NeaRerTransferFileStreamReceiverV1 {
         try handle.write(contentsOf: chunk.data)
         hasher.update(data: chunk.data)
         bytesWritten += UInt64(chunk.data.count)
-        if bytesWritten % Self.checkpointIntervalBytes == 0 {
+        if bytesWritten < metadata.item.sizeBytes && bytesWritten % Self.checkpointIntervalBytes == 0 {
             try handle.synchronize()
             return makeAck()
         }
