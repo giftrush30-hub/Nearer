@@ -127,7 +127,7 @@ final class NeaRerFileTransferCoordinatorV1 {
             pending.timeout.cancel()
             pending.completion(.failure(NearbyTransportSecurityError.connectionUnavailable))
         }
-        queuedAcks = queuedAcks.filter { $0.key.endpointID != endpointID }
+        for key in queuedAcks.keys.filter({ $0.endpointID == endpointID }) { queuedAcks.removeValue(forKey: key) }
     }
 
     func close() {
