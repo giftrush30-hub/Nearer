@@ -101,12 +101,14 @@ internal object HyperTransferSessionAuthenticator {
                 require(firstContactApproved) {
                     "First-contact identity approval is required before pinning this peer"
                 }
-                require(TrustedPeerKeyStore.checkAndPin(
+                val pinResult = TrustedPeerKeyStore.checkAndPin(
                     context,
                     prepared.remoteId,
                     prepared.remoteSigningPublicKey,
                     prepared.remoteRecipientEncryptionPublicKey
-                ) == TrustedPeerKeyStore.Result.FIRST_SEEN) {
+                )
+                require(pinResult == TrustedPeerKeyStore.Result.FIRST_SEEN ||
+                    pinResult == TrustedPeerKeyStore.Result.MATCH) {
                     "Could not safely pin the first-contact peer identity"
                 }
             }
