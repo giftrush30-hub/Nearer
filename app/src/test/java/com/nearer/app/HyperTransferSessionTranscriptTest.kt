@@ -28,7 +28,7 @@ class HyperTransferSessionTranscriptTest {
     fun transferIdIsBoundIntoTranscript() {
         val sender = peer("23456789ABCD", 1)
         val receiver = peer("EFGHJKMNPQRS", 2)
-        val first = HyperTransferSessionTranscript.create("a".repeat(64), sender, receiver)
+        val first = HyperTransferSessionTranscript.create("a".repeat(64), sender, receiver, localIsSender = true)
         val second = HyperTransferSessionTranscript.create("b".repeat(64), sender, receiver, localIsSender = true)
         assertFalse(first.contentEquals(second))
     }
