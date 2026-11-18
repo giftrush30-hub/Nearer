@@ -37,7 +37,7 @@ class TransferBenchmarkReportTest {
             runs = listOf(TransferBenchmarkRun(1L, 1L, 0L, true))
         )
         assertTrue(TransferBenchmarkReport.toCsv(listOf(evidence))
-            .contains(",'=HYPERLINK("))
+            .contains(",\"'=HYPERLINK("))
     }
 
     @Test fun escapesQuotesAndRejectsMismatchedSuccessfulFileSize() {
