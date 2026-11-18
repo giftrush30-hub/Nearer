@@ -1,0 +1,78 @@
+package com.nearer.app
+
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class HyperTransferSessionTranscriptTest {
+    private fun peer(id: String, seed: Int) = HyperTransferSessionTranscript.PeerMaterial(
+        peerId = id,
+        signingPublicKey = ByteArray(64) { (seed + it).toByte() },
+        nonce = ByteArray(32) { (seed * 2 + it).toByte() },
+        ephemeralPublicKey = ByteArray(91) { (seed * 3 + it).toByte() },
+        encryptionPublicKey = ByteArray(91) { (seed * 4 + it).toByte() }
+    )
+
+    @Test
+    fun bothPeersBuildIdenticalTranscriptWithOppositeLocalOrdering() {
+        val sender = peer("ALPHA1234567", 1)
+        val receiver = peer("BRAVO1234567", 2)
+        val fromSender = HyperTransferSessionTranscript.create("a".repeat(64), sender, receiver)
+        val fromReceiver = HyperTransferSessionTranscript.create("a".repeat(64), sender, receiver)
+        assertArrayEquals(fromSender, fromReceiver)
+    }
+
+    @Test
+    fun transferIdIsBoundIntoTranscript() {
+        val sender = peer("ALPHA1234567", 1)
+        val receiver = peer("BRAVO1234567", 2)
+        val first = HyperTransferSessionTranscript.create("a".repeat(64), sender, receiver)
+        val second = HyperTransferSessionTranscript.create("b".repeat(64), sender, receiver)
+        assertFalse(first.contentEquals(second))
+    }
+
+    @Test
+    fun senderAndReceiverRolesAreBoundIntoTranscript() {
+        val first = peer("ALPHA1234567", 1)
+        val second = peer("BRAVO1234567", 2)
+        val forward = HyperTransferSessionTranscript.create("c".repeat(64), first, second)
+        val reverse = HyperTransferSessionTranscript.create("c".repeat(64), second, first)
+        assertFalse(forward.contentEquals(reverse))
+    }
+
+    @Test
+    fun peerKeysAndNoncesAreBoundIntoTranscript() {
+        val sender = peer("ALPHA1234567", 1)
+        val receiver = peer("BRAVO1234567", 2)
+        val baseline = HyperTransferSessionTranscript.create("d".repeat(64), sender, receiver)
+        val changed = receiver.copy(nonce = ByteArray(32) { 99 })
+        val altered = HyperTransferSessionTranscript.create("d".repeat(64), sender, changed)
+        assertNotEquals(baseline.toList(), altered.toList())
+    }
+
+    @Test
+    fun rejectsInvalidTransferIdsAndSamePeer() {
+        val sender = peer("ALPHA1234567", 1)
+        assertThrows(IllegalArgumentException::class.java) {
+            HyperTransferSessionTranscript.create("not-a-transfer-id", sender, peer("BRAVO1234567", 2))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            HyperTransferSessionTranscript.create("e".repeat(64), sender, sender)
+        }
+    }
+
+    @Test
+    fun rejectsInvalidNonceLengthAndUnsupportedVersion() {
+        val sender = peer("ALPHA1234567", 1)
+        val receiver = peer("BRAVO1234567", 2).copy(nonce = byteArrayOf(1, 2))
+        assertThrows(IllegalArgumentException::class.java) {
+            HyperTransferSessionTranscript.create("f".repeat(64), sender, receiver)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            HyperTransferSessionTranscript.create("f".repeat(64), sender, peer("BRAVO1234567", 2), protocolVersion = 2)
+        }
+    }
+}
