@@ -174,7 +174,7 @@ internal class WifiDirectTcpTransferEngine(private val bufferBytes: Int = DEFAUL
                     val count = fileInput.read(buffer)
                     if (count < 0) break
                     if (count == 0) continue
-                    channel.writeRecord(output, buffer.copyOf(count))
+                    channel.writeRecord(output, buffer, 0, count)
                     digest.update(buffer, 0, count)
                     sent += count
                     listener.onProgress(Progress(sent, size))
