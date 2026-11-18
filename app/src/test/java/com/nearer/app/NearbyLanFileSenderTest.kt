@@ -14,7 +14,7 @@ class NearbyLanFileSenderTest {
         val root = File(System.getProperty("java.io.tmpdir"), "nearer-send-${UUID.randomUUID()}")
         assertTrue(root.mkdirs())
         val source = File(root, "source.bin")
-        val content = ByteArray(1_300_123) { (it % 251).toByte() }
+        val content = ByteArray(4 * 1024 * 1024 + 123) { (it % 251).toByte() }
         source.writeBytes(content)
         val digest = MessageDigest.getInstance("SHA-256").digest(content).toHex()
         val metadata = TransferResumeStreamMetadataCodec.Metadata(
@@ -24,11 +24,19 @@ class NearbyLanFileSenderTest {
             source.lastModified(), digest
         )
         val frames = mutableListOf<ByteArray>()
+        val acknowledgements = mutableListOf<NearbyTransferFileChunkCodec.Ack>()
         var completed = false
-        NearbyLanFileSender.send(source, metadata, NearbyLanFrameSink { frame, callback ->
-            frames += frame
-            callback(null)
-        }) { result ->
+        NearbyLanFileSender.send(
+            source, metadata,
+            NearbyLanFrameSink { frame, callback ->
+                frames += frame
+                callback(null)
+            },
+            NearbyLanAckWaiter { expected, callback ->
+                acknowledgements += expected
+                callback(Result.success(expected))
+            }
+        ) { result ->
             assertTrue(result.isSuccess)
             completed = true
         }
@@ -43,6 +51,8 @@ class NearbyLanFileSenderTest {
         val end = NearbyTransferFileChunkCodec.decodeEnd(frames.last())
         assertEquals(content.size.toLong(), end.totalSizeBytes)
         assertEquals(digest, end.wholeFileSha256)
+        assertEquals(listOf(0L, 4L * 1024L * 1024L, content.size.toLong()),
+            acknowledgements.map { it.committedOffsetBytes })
         root.deleteRecursively()
     }
 
@@ -58,10 +68,16 @@ class NearbyLanFileSenderTest {
         )
         val frames = mutableListOf<ByteArray>()
         var failed = false
-        NearbyLanFileSender.send(source, metadata, NearbyLanFrameSink { frame, callback ->
-            frames += frame
-            callback(null)
-        }) { result -> failed = result.isFailure }
+        NearbyLanFileSender.send(
+            source, metadata,
+            NearbyLanFrameSink { frame, callback ->
+                frames += frame
+                callback(null)
+            },
+            NearbyLanAckWaiter { expected, callback ->
+                callback(Result.success(expected.copy(committedOffsetBytes = expected.committedOffsetBytes + 1)))
+            }
+        ) { result -> failed = result.isFailure }
         assertTrue(failed)
         assertTrue(frames.isEmpty())
         root.deleteRecursively()
