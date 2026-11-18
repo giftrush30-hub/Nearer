@@ -50,6 +50,24 @@ class WifiDirectTcpTransferEngineTest {
         } finally { server.close(); executor.shutdownNow(); root.deleteRecursively() }
     }
 
+    @Test fun rejectsCorruptedPayloadWithoutPublishingFile() {
+        val root = createTempDir(prefix = "nearer-tcp-corrupt")
+        val server = ServerSocket(0); val executor = Executors.newSingleThreadExecutor()
+        try {
+            val destination = File(root, "corrupted.bin")
+            val future = executor.submit<Throwable?> { try { server.accept().use { engine.receive(it, destination, "valid-id") }; null } catch (e: Throwable) { e } }
+            Socket("127.0.0.1", server.localPort).use { socket ->
+                val out = java.io.DataOutputStream(socket.getOutputStream())
+                val id = "valid-id".toByteArray()
+                out.writeInt(0x4E525450); out.writeByte(1); out.writeShort(id.size); out.write(id)
+                out.writeLong(3L); out.write(byteArrayOf(1, 2, 3)); out.write(ByteArray(32)); out.flush()
+                assertEquals(0x15, java.io.DataInputStream(socket.getInputStream()).readUnsignedByte())
+            }
+            assertNotNull(future.get(5, TimeUnit.SECONDS)); assertFalse(destination.exists())
+            assertTrue(root.listFiles().orEmpty().none { it.name.endsWith(".part") })
+        } finally { server.close(); executor.shutdownNow(); root.deleteRecursively() }
+    }
+
     @Test fun refusesToOverwriteExistingDestination() {
         val root = createTempDir(prefix = "nearer-tcp-overwrite")
         try {
