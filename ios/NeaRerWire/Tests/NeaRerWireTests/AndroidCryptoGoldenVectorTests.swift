@@ -3,11 +3,19 @@ import XCTest
 import CryptoKit
 @testable import NeaRerWire
 
+private func fixtureData(_ value: String) -> Data {
+    Data(stride(from: 0, to: value.count, by: 2).map { index in
+        let start = value.index(value.startIndex, offsetBy: index)
+        let end = value.index(start, offsetBy: 2)
+        return UInt8(value[start..<end], radix: 16)!
+    })
+}
+
 final class AndroidCryptoGoldenVectorTests: XCTestCase {
-    private let alicePrivate = hex("0000000000000000000000000000000000000000000000000000000000000001")
-    private let bobPrivate = hex("0000000000000000000000000000000000000000000000000000000000000002")
-    private let alicePublicDER = hex("3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5")
-    private let bobPublicDER = hex("3059301306072a8648ce3d020106082a8648ce3d030107034200047cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc4766997807775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1")
+    private let alicePrivate = fixtureData("0000000000000000000000000000000000000000000000000000000000000001")
+    private let bobPrivate = fixtureData("0000000000000000000000000000000000000000000000000000000000000002")
+    private let alicePublicDER = fixtureData("3059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5")
+    private let bobPublicDER = fixtureData("3059301306072a8648ce3d020106082a8648ce3d030107034200047cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc4766997807775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1")
     private let transcript = Data("NeaRer cross-platform crypto fixture v1".utf8)
 
     func testAndroidP256ECDHHKDFAndAESGCMFixture() throws {
