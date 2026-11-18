@@ -58,6 +58,7 @@ internal class HyperTransferTcpSessionManager(
     private val incoming = ConcurrentHashMap<String, TransferState>()
     @Volatile private var activeServer: ServerSocket? = null
     @Volatile private var activeSocket: Socket? = null
+    private val activeTransfer = AtomicBoolean(false)
     @Volatile private var closed = false
 
     /** Returns null when P2P is unavailable so the caller can keep using Nearby. */
@@ -170,8 +171,19 @@ internal class HyperTransferTcpSessionManager(
 
     private fun startWhenReady(state: TransferState) {
         if (closed || !state.approved || currentLink() == null || coordinator() == null) return
-        if (!state.started.compareAndSet(false, true)) return
-        workers.execute { runTransfer(state) }
+        // The Wi-Fi Direct group exposes one authenticated bulk socket at a time.
+        if (!activeTransfer.compareAndSet(false, true)) return
+        if (!state.started.compareAndSet(false, true)) {
+            activeTransfer.set(false)
+            return
+        }
+        workers.execute {
+            try { runTransfer(state) }
+            finally {
+                activeTransfer.set(false)
+                onLinkReady()
+            }
+        }
     }
 
     private fun runTransfer(state: TransferState) {
