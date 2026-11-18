@@ -7,12 +7,12 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.wifi.p2p.WifiP2pConfig
-import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import java.io.Closeable
 import java.io.IOException
@@ -64,6 +64,7 @@ internal class WifiDirectConnectionCoordinator(
     }
 
     override fun onChannelDisconnected() {
+        channel = null
         publish(State.FAILED, "The Wi-Fi Direct control channel was disconnected. Restart the transfer session.")
     }
 
@@ -72,6 +73,7 @@ internal class WifiDirectConnectionCoordinator(
         if (closed) return fail("Coordinator is closed.")
         val missing = missingRuntimePermissions()
         if (missing.isNotEmpty()) return fail("Missing Android permission: ${missing.joinToString()}")
+        if (!appContext.packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_DIRECT)) return fail("This Android device does not support Wi-Fi Direct.")
         val p2pManager = manager ?: return fail("This Android device does not expose Wi-Fi Direct.")
         if (!registered) {
             val filter = IntentFilter().apply {
@@ -91,6 +93,10 @@ internal class WifiDirectConnectionCoordinator(
 
     fun discoverPeers() {
         val active = requireReady() ?: return
+        if (!isLocationModeEnabled()) {
+            fail("Android requires Location to be enabled for Wi-Fi Direct peer discovery. NeaRer does not read your location.")
+            return
+        }
         publish(State.DISCOVERING, "Searching for nearby Wi-Fi Direct devices…")
         manager?.discoverPeers(active, actionListener("Discovery started.") { "Could not start discovery." })
     }
@@ -135,7 +141,7 @@ internal class WifiDirectConnectionCoordinator(
         val socket = Socket()
         try {
             socket.tcpNoDelay = true
-            socket.bind(InetSocketAddress(findLocalP2pAddress()))
+            socket.bind(InetSocketAddress(findLocalP2pAddress(), 0))
             socket.connect(InetSocketAddress(link.groupOwnerAddress, port), connectTimeoutMillis)
             return socket
         }
@@ -210,6 +216,16 @@ internal class WifiDirectConnectionCoordinator(
             }
         }
         throw IOException("The Wi-Fi Direct network interface is not ready")
+    }
+
+    private fun isLocationModeEnabled(): Boolean {
+        val locationManager = appContext.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            locationManager.isLocationEnabled
+        } else {
+            @Suppress("DEPRECATION")
+            Settings.Secure.getInt(appContext.contentResolver, Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_OFF) != Settings.Secure.LOCATION_MODE_OFF
+        }
     }
 
     private fun missingRuntimePermissions(): List<String> {
