@@ -41,6 +41,26 @@ final class NeaRerCryptoV3Tests: XCTestCase {
         ))
     }
 
+    func testAndroidCompatiblePeerProofDomainRoundTrips() throws {
+        let key = P256.Signing.PrivateKey()
+        let transcript = Data("NeaRer handshake transcript".utf8)
+        let signature = try NeaRerCryptoV3.signPeerProof(
+            peerID: "AAAAAA", transcript: transcript, using: key
+        )
+        XCTAssertTrue(NeaRerCryptoV3.verifyPeerProof(
+            peerID: "AAAAAA", publicKeyDER: key.publicKey.derRepresentation,
+            transcript: transcript, signatureDER: signature
+        ))
+        XCTAssertFalse(NeaRerCryptoV3.verifyPeerProof(
+            peerID: "BBBBBB", publicKeyDER: key.publicKey.derRepresentation,
+            transcript: transcript, signatureDER: signature
+        ))
+        XCTAssertFalse(NeaRerCryptoV3.verifyPeerProof(
+            peerID: "AAAAAA", publicKeyDER: key.publicKey.derRepresentation,
+            transcript: Data("changed".utf8), signatureDER: signature
+        ))
+    }
+
     func testP256DetachedSignatureRoundTrips() throws {
         let key = P256.Signing.PrivateKey()
         let transcript = Data("NeaRer cross-platform proof".utf8)
