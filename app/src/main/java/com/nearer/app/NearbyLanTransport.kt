@@ -74,6 +74,7 @@ internal class NearbyLanTransport(
                 server.reuseAddress = true
                 server.bind(InetSocketAddress(0))
                 serverSocket = server
+                if (closed.get()) { server.close(); return@execute }
                 acquireMulticastLock()
                 acceptLoop(server)
             } catch (error: Exception) {
@@ -102,18 +103,53 @@ internal class NearbyLanTransport(
     }
 
     fun sendFrame(endpointId: String, frame: ByteArray) {
-        NearbyLanFrameCodec.encode(frame) // Validate bounds before queueing asynchronous I/O.
-        val connection = connections[endpointId] ?: return
+        sendFrame(endpointId, frame) { error ->
+            if (error != null && !closed.get()) listener.onTransportError("LAN send failed: ${error.message}")
+        }
+    }
+
+    /** Completion is invoked only after the bounded frame has been flushed to the socket. */
+    fun sendFrame(endpointId: String, frame: ByteArray, completion: (Throwable?) -> Unit) {
+        runCatching { NearbyLanFrameCodec.validate(frame) }.onFailure {
+            completion(it)
+            return
+        }
+        val connection = connections[endpointId]
+        if (connection == null) {
+            completion(IOException("Peer connection is unavailable"))
+            return
+        }
         executor.execute {
             try {
                 synchronized(connection.writeLock) {
                     NearbyLanFrameCodec.write(connection.output, frame)
                 }
+                completion(null)
             } catch (error: Exception) {
                 removeConnection(endpointId)
-                if (!closed.get()) listener.onTransportError("LAN send failed: ${error.message}")
+                completion(error)
             }
         }
+    }
+
+    fun sendFile(
+        endpointId: String,
+        source: java.io.File,
+        metadata: TransferResumeStreamMetadataCodec.Metadata,
+        ackWaiter: NearbyLanAckWaiter,
+        completion: (Result<Unit>) -> Unit
+    ) {
+        if (!connections.containsKey(endpointId)) {
+            completion(Result.failure(IOException("Peer connection is unavailable")))
+            return
+        }
+        NearbyLanFileSender.send(
+            source,
+            metadata,
+            NearbyLanFrameSink { frame, callback -> sendFrame(endpointId, frame, callback) },
+            ackWaiter,
+            completion
+        )
     }
 
     private fun registerBonjourService() {
