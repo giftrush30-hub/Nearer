@@ -29,13 +29,21 @@ The code-level acceptance gate is `HyperTransferPerformanceGate`. It converts th
 4. **Wi-Fi Direct custom sockets.** Android documents Wi-Fi Direct as device-to-device Wi-Fi without an access point and shows transferring bytes over TCP sockets after group formation. This is a credible alternative transport to prototype and benchmark against Nearby, not an automatic speed upgrade: OEM firmware, channel width, spatial streams, congestion, routing and power/thermal limits still govern real goodput.
    - https://developer.android.com/develop/connectivity/wifi/wifip2p
 
-5. **Wi-Fi Aware.** AOSP describes Wi-Fi Aware as direct off-network discovery/connectivity intended for high-throughput data among trusted devices, but it requires both framework and vendor HAL/firmware support. It is an optional capability path, not a universal Android baseline.
-   - https://source.android.com/docs/core/connect/wifi-aware
+5. **Wi-Fi Aware.** Android's current developer documentation says Wi-Fi Aware can discover peers and establish a bidirectional Wi-Fi data path without an access point; it is intended for large data exchange and supports higher throughput than Bluetooth. Android 13 devices with hardware support can enable instant communication mode to reduce discovery/data-path setup latency for a short 30-second window, at extra power cost. AOSP's platform documentation makes clear that support depends on the device's Wi-Fi hardware/firmware and framework, so this is a capability-gated route, not a universal Android baseline.
+   - https://developer.android.com/develop/connectivity/wifi/wifi-aware
+   - https://developer.android.com/develop/connectivity/wifi/wifi-aware
+- https://source.android.com/docs/core/connect/wifi-aware
+- https://www.mdpi.com/2078-2489/11/4/180
+- https://arxiv.org/abs/2604.07889
 
 6. **Wi-Fi 6 ceiling context.** A 2024 experimental study using Galaxy S21 Ultra phones and an external Wi-Fi 6/6E router measured roughly 1.6 Gbit/s at 160 MHz in its setup. That is below 2.24 Gbit/s even before application overhead, and it was not a phone-to-phone Nearby test. It demonstrates why a 280 MB/s application target requires exceptional radio hardware and carefully chosen transport conditions.
    - https://dl.ifip.org/db/conf/networking/networking2024/1571003562.pdf
 
-7. **Xender baseline evidence is weak and dated.** Public tests vary by device, file mix and age; an older comparison reported only a few MB/s. That is not a valid present-day competitor baseline. NeaRer must benchmark the currently installed Xender version on the same pair of phones rather than relying on internet claims.
+7. **Other Wi-Fi Direct measurements reinforce the hardware caveat.** An open-access opportunistic-network study measured up to 54 Mbit/s on Motorola G4 Wi-Fi Direct links, while a 2026 stock-Android multi-group Wi-Fi Direct study on Galaxy A10s reported peak receiver throughput around 19.7 Mbit/s in its evaluated topology. These are not maximum single-link limits, but they show that results vary dramatically by hardware, architecture and workload; choosing Wi-Fi Direct does not magically guarantee multi-gigabit throughput.
+   - https://www.mdpi.com/2078-2489/11/4/180
+   - https://arxiv.org/abs/2604.07889
+
+8. **Xender baseline evidence is weak and dated.** Public tests vary by device, file mix and age; an older comparison reported only a few MB/s. That is not a valid present-day competitor baseline. NeaRer must benchmark the currently installed Xender version on the same pair of phones rather than relying on internet claims.
    - https://www.ijcaonline.org/archives/volume156/number12/irfan-2016-ijca-912582.pdf
    - https://blogs.windows.com/devices/2015/09/22/xender-transfer-files-via-wi-fi/
 
@@ -68,6 +76,7 @@ For each phone pair and each direction:
 
 - [x] Explicit High-Speed one-to-one mode and Point-to-Point selection.
 - [x] Existing throughput meter and repeated-run median summary.
+- [x] Report both MiB/s and decimal MB/s in benchmark summaries.
 - [x] Add a testable 280 MB/s + 7× + five-run acceptance gate.
 - [ ] Add capability/version negotiation and safe compatibility fallback.
 - [ ] Add a benchmark screen/export that captures the complete test record.
