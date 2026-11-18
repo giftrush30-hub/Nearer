@@ -59,6 +59,7 @@ internal class NearbyLanTransport(
     private val closed = AtomicBoolean(false)
     private val started = AtomicBoolean(false)
     private val connections = ConcurrentHashMap<String, PeerConnection>()
+    private val authenticatedEndpoints = ConcurrentHashMap.newKeySet<String>()
     private val discovered = ConcurrentHashMap<String, NsdServiceInfo>()
     private var serverSocket: ServerSocket? = null
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -132,6 +133,12 @@ internal class NearbyLanTransport(
         }
     }
 
+    /** Set only after the authenticated NeaRer v3 peer handshake and trust approval. */
+    fun setPeerAuthenticated(endpointId: String, authenticated: Boolean) {
+        if (authenticated) authenticatedEndpoints.add(endpointId)
+        else authenticatedEndpoints.remove(endpointId)
+    }
+
     fun sendFile(
         endpointId: String,
         source: java.io.File,
@@ -141,6 +148,10 @@ internal class NearbyLanTransport(
     ) {
         if (!connections.containsKey(endpointId)) {
             completion(Result.failure(IOException("Peer connection is unavailable")))
+            return
+        }
+        if (!authenticatedEndpoints.contains(endpointId)) {
+            completion(Result.failure(SecurityException("Peer has not been authenticated")))
             return
         }
         NearbyLanFileSender.send(
@@ -274,6 +285,7 @@ internal class NearbyLanTransport(
     }
 
     private fun removeConnection(endpointId: String) {
+        authenticatedEndpoints.remove(endpointId)
         connections.remove(endpointId)?.let { runCatching { it.socket.close() } }
     }
 
@@ -283,6 +295,7 @@ internal class NearbyLanTransport(
         registrationListener?.let { runCatching { nsd.unregisterService(it) } }
         runCatching { serverSocket?.close() }
         connections.keys.toList().forEach(::removeConnection)
+        authenticatedEndpoints.clear()
         discovered.clear()
         multicastLock?.let { lock -> if (lock.isHeld) runCatching { lock.release() } }
         multicastLock = null
