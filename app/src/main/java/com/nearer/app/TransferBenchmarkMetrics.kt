@@ -22,10 +22,18 @@ internal data class TransferBenchmarkSummary(
     val failedRuns: Int,
     val medianElapsedMillis: Long,
     val medianFirstByteMillis: Long,
+    /** Median application goodput in MiB/s (1 MiB = 1,048,576 bytes). */
     val medianMibPerSecond: Double,
     val fastestElapsedMillis: Long,
     val slowestElapsedMillis: Long
 ) {
+    /**
+     * Decimal MB/s (1 MB = 1,000,000 bytes), the unit used by the 280 MB/s goal.
+     * Conversion is explicit to prevent MB/MiB confusion in benchmark reports.
+     */
+    val medianMegabytesPerSecond: Double
+        get() = medianMibPerSecond * 1_048_576.0 / 1_000_000.0
+
     /** Values above 1.0 mean this summary was faster than the comparison summary. */
     fun speedupOver(other: TransferBenchmarkSummary): Double {
         require(medianElapsedMillis > 0L && other.medianElapsedMillis > 0L) {
