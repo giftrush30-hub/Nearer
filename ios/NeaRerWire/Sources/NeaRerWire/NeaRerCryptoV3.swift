@@ -47,7 +47,7 @@ public enum NeaRerCryptoV3 {
     private static func peerProofMessage(peerID: String, publicKeyDER: Data, transcript: Data) -> Data {
         let fingerprint = SHA256.hash(data: publicKeyDER).map { String(format: "%02x", $0) }.joined()
         let challenge = transcript.base64EncodedString()
-        return Data("NeaRer-peer-proof-v1\\n\\(peerID)\\n\\(fingerprint)\\n\\(challenge)".utf8)
+        return Data("NeaRer-peer-proof-v1\n\(peerID)\n\(fingerprint)\n\(challenge)".utf8)
     }
 
     /// Derives the same 64-byte HKDF output as Android NearbyMessageCrypto.deriveSession().
