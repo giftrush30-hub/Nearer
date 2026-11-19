@@ -246,7 +246,9 @@ internal class HyperTransferTcpSessionManager(
                 )
                 val result = engine.receiveSecure(
                     connectedSocket, destination, state.offer.transferId, session.channel,
-                    cancellation, progress, expectedSha256 = state.offer.sha256
+                    cancellation, progress,
+                    expectedSha256 = state.offer.sha256,
+                    expectedSizeBytes = state.offer.sizeBytes
                 )
                 listener.onProgress(
                     state.endpointId, state.payloadId, state.offer.name, result.bytesReceived,
