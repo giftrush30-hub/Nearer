@@ -141,6 +141,7 @@ internal class WifiDirectTcpTransferEngine(
                 }
             }
             progressReporter.report(received, size, listener, force = true)
+            progressReporter.report(received, size, listener, force = true)
             val expectedHash = ByteArray(SHA256_BYTES); input.readFully(expectedHash)
             val actualHash = digest.digest()
             if (!MessageDigest.isEqual(expectedHash, actualHash)) { output.writeByte(NACK); output.flush(); throw IOException("SHA-256 verification failed") }
