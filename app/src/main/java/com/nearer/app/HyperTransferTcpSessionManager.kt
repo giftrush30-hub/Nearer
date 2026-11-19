@@ -215,7 +215,11 @@ internal class HyperTransferTcpSessionManager(
                     runCatching { server.close() }
                 }
             } else {
-                p2p.openClientSocket(link, port, 15_000)
+                // Both phones receive the Nearby approval at nearly the same time.
+                // The client can reach this line before the group owner has bound
+                // its listener, so retry connection-refused instead of failing the
+                // entire approved transfer on that harmless startup race.
+                connectClientWhenReady(p2p, link, port, cancellation)
             }
             socket = connectedSocket
             activeSocket = connectedSocket
@@ -285,6 +289,37 @@ internal class HyperTransferTcpSessionManager(
         }
     }
 
+    private fun connectClientWhenReady(
+        p2p: WifiDirectConnectionCoordinator,
+        link: WifiDirectConnectionCoordinator.Link,
+        port: Int,
+        cancellation: WifiDirectTcpTransferEngine.Cancellation
+    ): Socket {
+        val deadline = System.nanoTime() + CLIENT_CONNECT_WINDOW_NANOS
+        var lastError: IOException? = null
+        while (System.nanoTime() < deadline) {
+            cancellation.check()
+            try {
+                return p2p.openClientSocket(link, port, CLIENT_CONNECT_ATTEMPT_MILLIS)
+            } catch (error: IOException) {
+                lastError = error
+                cancellation.check()
+                val remaining = deadline - System.nanoTime()
+                if (remaining <= 0L) break
+                try {
+                    Thread.sleep(minOf(CLIENT_CONNECT_RETRY_DELAY_MILLIS, remaining / 1_000_000L).coerceAtLeast(1L))
+                } catch (interrupted: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw IOException("HyperTransfer connection was interrupted", interrupted)
+                }
+            }
+        }
+        throw IOException(
+            "The Wi-Fi Direct receiver did not become ready in time",
+            lastError
+        )
+    }
+
     private fun copyAndHash(uri: Uri, destination: File): Pair<Long, String> {
         val input = appContext.contentResolver.openInputStream(uri)
             ?: throw IOException("The selected file could not be opened")
@@ -321,4 +356,10 @@ internal class HyperTransferTcpSessionManager(
 
     private fun portFor(transferId: String): Int =
         10_000 + (transferId.take(4).toInt(16) % 10_000)
+
+    private companion object {
+        const val CLIENT_CONNECT_WINDOW_NANOS = 20_000_000_000L
+        const val CLIENT_CONNECT_ATTEMPT_MILLIS = 1_500
+        const val CLIENT_CONNECT_RETRY_DELAY_MILLIS = 200L
+    }
 }
