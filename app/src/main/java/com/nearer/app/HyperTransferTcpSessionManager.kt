@@ -52,7 +52,7 @@ internal class HyperTransferTcpSessionManager(
     )
 
     private val appContext = context.applicationContext
-    private val engine = WifiDirectTcpTransferEngine()
+    private val engine = WifiDirectTcpTransferEngine(bufferBytes = HyperTransferTuning.transferBufferBytes(context), socketBufferBytes = HyperTransferTuning.socketBufferBytes(context))
     private val workers = Executors.newFixedThreadPool(2)
     private val outgoing = ConcurrentHashMap<Long, TransferState>()
     private val incoming = ConcurrentHashMap<String, TransferState>()
