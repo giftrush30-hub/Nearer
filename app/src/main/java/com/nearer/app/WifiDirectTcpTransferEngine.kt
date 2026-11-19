@@ -85,7 +85,6 @@ internal class WifiDirectTcpTransferEngine(
                     progressReporter.report(sent, size, listener)
                 }
             }
-            progressReporter.report(sent, size, listener, force = true)
             if (sent != size) throw IOException("Source file changed during transfer")
             progressReporter.report(sent, size, listener, force = true)
             val hash = digest.digest()
@@ -107,6 +106,7 @@ internal class WifiDirectTcpTransferEngine(
         if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create destination directory")
         if (destination.exists()) throw IOException("Destination already exists")
         cancellation.attach(socket)
+        val progressReporter = HyperTransferProgressReporter()
         configureBulkSocket(socket)
         val part = File(parent, ".${destination.name}.${UUID.randomUUID()}.part")
         var published = false
@@ -140,6 +140,7 @@ internal class WifiDirectTcpTransferEngine(
                     }
                 }
             }
+            progressReporter.report(received, size, listener, force = true)
             val expectedHash = ByteArray(SHA256_BYTES); input.readFully(expectedHash)
             val actualHash = digest.digest()
             if (!MessageDigest.isEqual(expectedHash, actualHash)) { output.writeByte(NACK); output.flush(); throw IOException("SHA-256 verification failed") }
@@ -208,7 +209,6 @@ internal class WifiDirectTcpTransferEngine(
                     progressReporter.report(sent, size, listener)
                 }
             }
-            progressReporter.report(sent, size, listener, force = true)
             if (sent != size) throw IOException("Source file changed during transfer")
             progressReporter.report(sent, size, listener, force = true)
             val hash = digest.digest()
@@ -246,6 +246,7 @@ internal class WifiDirectTcpTransferEngine(
         if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create destination directory")
         if (destination.exists()) throw IOException("Destination already exists")
         cancellation.attach(socket)
+        val progressReporter = HyperTransferProgressReporter()
         configureBulkSocket(socket)
         val part = File(parent, ".${destination.name}.${UUID.randomUUID()}.part")
         var published = false
