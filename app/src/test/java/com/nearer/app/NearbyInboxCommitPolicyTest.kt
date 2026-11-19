@@ -1,5 +1,6 @@
 package com.nearer.app
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -39,5 +40,31 @@ class NearbyInboxCommitPolicyTest {
                 inboxCommitted = true, dedupeCommitted = true, chatStoreCommitted = true
             )
         )
+    }
+
+    @Test fun acknowledgementGateMatchesEveryDurabilityCombination() {
+        for (inboxCommitted in listOf(false, true)) {
+            for (dedupeCommitted in listOf(false, true)) {
+                assertEquals(
+                    inboxCommitted && dedupeCommitted,
+                    NearbyInboxCommitPolicy.canAcknowledge(inboxCommitted, dedupeCommitted)
+                )
+            }
+        }
+    }
+
+    @Test fun inboxRetirementGateMatchesEveryDurabilityCombination() {
+        for (inboxCommitted in listOf(false, true)) {
+            for (dedupeCommitted in listOf(false, true)) {
+                for (chatStoreCommitted in listOf(false, true)) {
+                    assertEquals(
+                        inboxCommitted && dedupeCommitted && chatStoreCommitted,
+                        NearbyInboxCommitPolicy.canRetireInbox(
+                            inboxCommitted, dedupeCommitted, chatStoreCommitted
+                        )
+                    )
+                }
+            }
+        }
     }
 }
