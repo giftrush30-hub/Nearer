@@ -1,0 +1,34 @@
+name: iOS app build validation
+
+on:
+  push:
+    branches: [main, "platform/**"]
+    paths:
+      - "ios/NeaRerApp/**"
+      - "ios/NeaRerWire/**"
+      - "ios/Configuration/**"
+      - ".github/workflows/ios-app-build.yml"
+  pull_request:
+    paths:
+      - "ios/NeaRerApp/**"
+      - "ios/NeaRerWire/**"
+      - "ios/Configuration/**"
+      - ".github/workflows/ios-app-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios-simulator:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        working-directory: ios/NeaRerApp
+        run: xcodegen generate
+      - name: Build iOS simulator app (unsigned)
+        working-directory: ios/NeaRerApp
+        run: xcodebuild -project NeaRer.xcodeproj -scheme NeaRer -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
