@@ -26,7 +26,6 @@ internal class HyperTransferProgressReporter(
         nowNanos: Long = System.nanoTime()
     ) {
         require(transferredBytes >= 0L && totalBytes >= 0L)
-        require(transferredBytes <= totalBytes)
         val first = lastReportedNanos == Long.MIN_VALUE
         val intervalElapsed = !first && nowNanos - lastReportedNanos >= minimumIntervalNanos
         if (!first && !force && !intervalElapsed) return
