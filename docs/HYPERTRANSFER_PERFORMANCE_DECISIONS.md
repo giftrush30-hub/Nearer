@@ -234,3 +234,18 @@ Each side must contain at least five successful runs, and each successful run mu
 - Wi-Fi Direct client sockets request send and receive windows before connect. The group-owner listener requests a receive window before bind/accept. The engine re-applies the configured socket hints once the connected socket is handed to it.
 - Bulk TCP keeps Nagle enabled because the writer batches large records through buffered streams; interactive messages remain on Nearby. These socket options are kernel hints, not guaranteed allocations or throughput promises. Record effective getSendBufferSize()/getReceiveBufferSize() values on each device during physical profiling.
 - This is a measured-bottleneck candidate, not evidence of a 280 MB/s result. The production app still does not route file bytes through the authenticated Wi-Fi Direct engine; service-owned P2P lifecycle integration and exact-device benchmark runs remain hard blockers.
+
+
+## 2026-11-19 throughput-pipeline optimization (JVM-validated; radio unmeasured)
+
+The current performance branch applies a conservative, capability-aware data-plane profile:
+
+- Raise the default userspace stream buffer from 256 KiB to 1 MiB. The AEAD record maximum remains 256 KiB, so the buffered streams can batch roughly four encrypted records before flushing to the underlying socket/disk. The wire format and security record size are unchanged.
+- Select 64 KiB / 256 KiB / 1 MiB stream buffers according to severe thermal pressure, low memory/low-RAM hardware, and a cool device with memory headroom.
+- Request 1 MiB / 4 MiB / 8 MiB TCP send and receive buffers under the same conditions. These are socket hints: Android/OEM kernels can clamp or reinterpret them, so only device-side effective values and measured goodput can validate the result.
+- Keep Nagle enabled for the bulk stream; chat/control remains on the existing Nearby channel.
+- Coalesce record-level progress callbacks to at most one callback per 100 ms, while forcing the final byte count. This reduces service/UI synchronization in the data loop without reducing transfer bytes or weakening verification.
+- Add deterministic unit tests for throttle timing and adaptive buffer decisions.
+- Add a 32 MiB encrypted loopback smoke benchmark in both directions with SHA-256 verification. It prints MB/s for CI diagnostics, but loopback is CPU/JVM-only and is not a Wi-Fi Direct performance claim.
+
+No checksum, authenticated record, approval, cancellation, destination safety, or bounded-memory guarantees were relaxed. Do not promote these defaults solely because the loopback test is faster: compare multiple buffer profiles on physical Wi-Fi Direct links, inspect the effective socket window values, and retain the previous profile if the new one regresses sustained throughput, memory, thermal behavior, or failure rate.

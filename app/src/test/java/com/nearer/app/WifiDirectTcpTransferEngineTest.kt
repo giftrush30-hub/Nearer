@@ -12,6 +12,11 @@ import java.util.concurrent.TimeUnit
 class WifiDirectTcpTransferEngineTest {
     private val engine = WifiDirectTcpTransferEngine(16 * 1024)
 
+    @Test fun productionDefaultsUseOneMiBUserspaceAndFourMiBSocketWindows() {
+        assertEquals(1024 * 1024, WifiDirectTcpTransferEngine.DEFAULT_BUFFER_BYTES)
+        assertEquals(4 * 1024 * 1024, WifiDirectTcpTransferEngine.DEFAULT_SOCKET_BUFFER_BYTES)
+    }
+
     @Test fun configuresAHighBandwidthSocketWindowWithinSafeBounds() {
         val tuned = WifiDirectTcpTransferEngine(
             bufferBytes = 1024 * 1024,

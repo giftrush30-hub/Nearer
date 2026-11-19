@@ -64,6 +64,7 @@ internal class WifiDirectTcpTransferEngine(
         val id = transferId.toByteArray(Charsets.UTF_8)
         require(id.size in 1..MAX_TRANSFER_ID_BYTES) { "Transfer ID is too long" }
         cancellation.attach(socket)
+        val progressReporter = HyperTransferProgressReporter()
         try {
             configureBulkSocket(socket)
             cancellation.check()
@@ -81,10 +82,11 @@ internal class WifiDirectTcpTransferEngine(
                     if (count < 0) break
                     if (count == 0) continue
                     output.write(buffer, 0, count); digest.update(buffer, 0, count); sent += count
-                    listener.onProgress(Progress(sent, size))
+                    progressReporter.report(sent, size, listener)
                 }
             }
             if (sent != size) throw IOException("Source file changed during transfer")
+            progressReporter.report(sent, size, listener, force = true)
             val hash = digest.digest()
             output.write(hash); output.flush(); cancellation.check()
             return when (val ack = input.readUnsignedByte()) {
@@ -104,6 +106,7 @@ internal class WifiDirectTcpTransferEngine(
         if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create destination directory")
         if (destination.exists()) throw IOException("Destination already exists")
         cancellation.attach(socket)
+        val progressReporter = HyperTransferProgressReporter()
         configureBulkSocket(socket)
         val part = File(parent, ".${destination.name}.${UUID.randomUUID()}.part")
         var published = false
@@ -133,10 +136,12 @@ internal class WifiDirectTcpTransferEngine(
                         if (count < 0) throw EOFException("Connection ended before file completed")
                         if (count == 0) continue
                         buffered.write(buffer, 0, count); digest.update(buffer, 0, count); received += count
-                        listener.onProgress(Progress(received, size))
+                        progressReporter.report(received, size, listener)
                     }
                 }
             }
+            progressReporter.report(received, size, listener, force = true)
+            progressReporter.report(received, size, listener, force = true)
             val expectedHash = ByteArray(SHA256_BYTES); input.readFully(expectedHash)
             val actualHash = digest.digest()
             if (!MessageDigest.isEqual(expectedHash, actualHash)) { output.writeByte(NACK); output.flush(); throw IOException("SHA-256 verification failed") }
@@ -174,6 +179,7 @@ internal class WifiDirectTcpTransferEngine(
         require(transferId.matches(Regex("^[a-fA-F0-9]{64}$"))) { "Invalid transfer ID" }
         require(source.isFile && source.canRead()) { "Source file is not readable" }
         cancellation.attach(socket)
+        val progressReporter = HyperTransferProgressReporter()
         try {
             configureBulkSocket(socket)
             cancellation.check()
@@ -201,10 +207,11 @@ internal class WifiDirectTcpTransferEngine(
                     channel.writeRecord(output, buffer, 0, count)
                     digest.update(buffer, 0, count)
                     sent += count
-                    listener.onProgress(Progress(sent, size))
+                    progressReporter.report(sent, size, listener)
                 }
             }
             if (sent != size) throw IOException("Source file changed during transfer")
+            progressReporter.report(sent, size, listener, force = true)
             val hash = digest.digest()
             channel.writeRecord(output, hash)
             output.flush()
@@ -240,6 +247,7 @@ internal class WifiDirectTcpTransferEngine(
         if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create destination directory")
         if (destination.exists()) throw IOException("Destination already exists")
         cancellation.attach(socket)
+        val progressReporter = HyperTransferProgressReporter()
         configureBulkSocket(socket)
         val part = File(parent, ".${destination.name}.${UUID.randomUUID()}.part")
         var published = false
@@ -274,10 +282,11 @@ internal class WifiDirectTcpTransferEngine(
                         buffered.write(record)
                         digest.update(record)
                         received += record.size
-                        listener.onProgress(Progress(received, size))
+                        progressReporter.report(received, size, listener)
                     }
                 }
             }
+            progressReporter.report(received, size, listener, force = true)
             val receivedHash = channel.readRecord(input)
             if (receivedHash.size != SHA256_BYTES) throw IOException("Invalid encrypted integrity record")
             val actualHash = digest.digest()
@@ -307,7 +316,7 @@ internal class WifiDirectTcpTransferEngine(
 
     private fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
     companion object {
-        const val DEFAULT_BUFFER_BYTES = 256 * 1024
+        const val DEFAULT_BUFFER_BYTES = 1024 * 1024
         const val MIN_BUFFER_BYTES = 8 * 1024
         const val MAX_BUFFER_BYTES = 1024 * 1024
         const val DEFAULT_SOCKET_BUFFER_BYTES = 4 * 1024 * 1024
