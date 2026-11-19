@@ -33,8 +33,8 @@ class HyperTransferLoopbackBenchmarkTest {
         }
         val digest = sha256(source)
         try {
-            val forward = runSecureLoopback(root, source, "a".repeat(64), "phone-A", "phone-B")
-            val reverse = runSecureLoopback(root, source, "b".repeat(64), "phone-B", "phone-A")
+            val forward = runSecureLoopback(root, source, "a".repeat(64), "23456789ABCD", "EFGHJKMNPQRS")
+            val reverse = runSecureLoopback(root, source, "b".repeat(64), "EFGHJKMNPQRS", "23456789ABCD")
 
             assertEquals(bytes, forward.first)
             assertEquals(bytes, reverse.first)
