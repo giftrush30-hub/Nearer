@@ -87,7 +87,7 @@ internal object StudioFilmSchoolLessons {
                 "Open your movie project.",
                 "Choose the option to add background sound.",
                 "Pick a music or sound file already on your phone.",
-                "Play the movie and listen. Lower the music if it covers the speaking.",
+                "Play the movie and listen. Make sure the music does not cover the speaking.",
                 "Play it again with your phone volume at a comfortable level."
             ),
             practice = "Add a quiet music track under a short video. Keep speech easy to hear."
