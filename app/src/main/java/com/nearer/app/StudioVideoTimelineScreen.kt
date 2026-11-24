@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -199,10 +200,11 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
             delay(500L)
         }
     }
+    val latestExportTransformer by rememberUpdatedState(exportTransformer)
     DisposableEffect(projectId) {
         onDispose {
-            exportTransformer?.let { runCatching { it.cancel() } }
-            exportPendingFile?.let { StudioExportFiles.discard(it) }
+            // Let Media3's listener remove the pending file after the encoder stops.
+            latestExportTransformer?.let { runCatching { it.cancel() } }
         }
     }
 
@@ -547,7 +549,11 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                             exportTransformer = null
                             exportPendingFile = null
                             exportProgress = 100
-                            if (StudioExportFiles.publish(pending, finalOutput)) {
+                            if (exportCancellationRequested) {
+                                StudioExportFiles.discard(pending)
+                                exported = null
+                                message = "Export cancelled. The unfinished video was removed; your project and original clips are safe."
+                            } else if (StudioExportFiles.publish(pending, finalOutput)) {
                                 exported = finalOutput
                                 message = "Film export complete · ${finalOutput.length() / (1024L * 1024L)} MB. Your original clips remain unchanged."
                             } else {
@@ -614,13 +620,8 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                         runCatching { activeTransformer.cancel() }.onFailure {
                             message = "Could not cancel yet: ${it.message ?: "please wait for the export to finish"}"
                         }
-                        exportPendingFile?.let { StudioExportFiles.discard(it) }
-                        exporting = false
-                        exportTransformer = null
-                        exportPendingFile = null
-                        exportProgress = null
-                        exported = null
-                        message = "Export cancelled. Your project and original clips are safe."
+                        // Keep the encoder busy until Media3 confirms it has stopped.
+                        message = "Cancelling export safely…"
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
