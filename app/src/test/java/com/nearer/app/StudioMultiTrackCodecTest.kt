@@ -33,8 +33,8 @@ class StudioMultiTrackCodecTest {
     @Test fun clampsMixValuesAndRejectsUnknownVersions() {
         val raw = """{"version":1,"tracks":[{"id":"a","name":"Audio","kind":"AUDIO","items":[{"id":"x","sourceUri":"content://audio/a","timelineStartMs":0,"sourceInMs":0,"sourceOutMs":1000,"volume":4.0,"opacity":-1.0}]}]}"""
         val item = StudioMultiTrackCodec.decode(raw).tracks.single().items.single()
-        assertEquals(2f, item.volume)
-        assertEquals(0f, item.opacity)
+        assertEquals(2f, item.volume, 0f)
+        assertEquals(0f, item.opacity, 0f)
         assertTrue(StudioMultiTrackCodec.decode("""{"version":9,"tracks":[]}""").tracks.isEmpty())
     }
 
