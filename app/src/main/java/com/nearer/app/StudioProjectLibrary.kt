@@ -92,17 +92,20 @@ internal object StudioProjectLibraryCodec {
 internal class StudioProjectLibraryStore(context: Context) {
     private val file = AtomicFile(File(File(context.filesDir, "studio-projects").apply { mkdirs() }, "library.json"))
 
-    @Synchronized
-    fun read(): StudioProjectLibrary {
-        return runCatching {
+    companion object {
+        // All store instances point at the same catalogue; serialize across instances as well.
+        private val processLock = Any()
+    }
+
+    fun read(): StudioProjectLibrary = synchronized(processLock) {
+        runCatching {
             file.openRead().bufferedReader(Charsets.UTF_8).use { reader ->
                 StudioProjectLibraryCodec.decode(reader.readText())
             }
         }.getOrDefault(StudioProjectLibrary(emptyList()))
     }
 
-    @Synchronized
-    fun write(library: StudioProjectLibrary) {
+    fun write(library: StudioProjectLibrary) = synchronized(processLock) {
         var output: FileOutputStream? = null
         try {
             val stream = file.startWrite()
@@ -116,15 +119,19 @@ internal class StudioProjectLibraryStore(context: Context) {
         }
     }
 
-    @Synchronized
-    fun upsert(project: StudioProjectRecord) {
+    fun upsert(project: StudioProjectRecord) = synchronized(processLock) {
         require(project.id.isNotBlank()) { "Project ID cannot be blank" }
         val current = read().projects.filterNot { it.id == project.id }
         write(StudioProjectLibrary((current + project).sortedByDescending { it.updatedAtMs }))
     }
 
-    @Synchronized
-    fun remove(projectId: String) {
+    fun touch(projectId: String, updatedAtMs: Long = System.currentTimeMillis()) = synchronized(processLock) {
+        read().projects.firstOrNull { it.id == projectId }?.let { project ->
+            upsert(project.copy(updatedAtMs = updatedAtMs.coerceAtLeast(0L)))
+        }
+    }
+
+    fun remove(projectId: String) = synchronized(processLock) {
         write(StudioProjectLibrary(read().projects.filterNot { it.id == projectId }))
     }
 }
