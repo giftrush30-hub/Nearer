@@ -45,6 +45,8 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
     var recordingAudio by remember { mutableStateOf(false) }
     var mixingAudio by remember { mutableStateOf(false) }
     var videoTimeline by remember { mutableStateOf(false) }
+    var videoProjects by remember { mutableStateOf(false) }
+    var selectedVideoProjectId by remember { mutableStateOf<String?>(null) }
     var filmSchool by remember { mutableStateOf(false) }
     val preferences = remember(context) {
         context.getSharedPreferences("nearer_studio_workspace", android.content.Context.MODE_PRIVATE)
@@ -96,8 +98,13 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
 
     if (filmSchool) {
         StudioFilmSchoolScreen(onBack = { filmSchool = false })
-    } else if (videoTimeline) {
-        StudioVideoTimelineScreen(onBack = { videoTimeline = false })
+    } else if (videoTimeline && selectedVideoProjectId != null) {
+        StudioVideoTimelineScreen(projectId = selectedVideoProjectId!!, onBack = { videoTimeline = false; videoProjects = true })
+    } else if (videoProjects) {
+        StudioVideoProjectsScreen(
+            onOpenProject = { id -> selectedVideoProjectId = id; videoProjects = false; videoTimeline = true },
+            onBack = { videoProjects = false }
+        )
     } else if (mixingAudio) {
         StudioAudioMixerScreen(onBack = { mixingAudio = false })
     } else if (recordingAudio) {
@@ -137,8 +144,8 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                 Button(onClick = { mixingAudio = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
                     Text("＋  Mix music and sound", fontWeight = FontWeight.Bold)
                 }
-                Button(onClick = { videoTimeline = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
-                    Text("▤  Make a movie with clips", fontWeight = FontWeight.Bold)
+                Button(onClick = { videoProjects = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
+                    Text("▤  My movies · create or continue", fontWeight = FontWeight.Bold)
                 }
                 Button(onClick = { filmSchool = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
                     Text("▶  Teach me how to make movies", fontWeight = FontWeight.Bold)
