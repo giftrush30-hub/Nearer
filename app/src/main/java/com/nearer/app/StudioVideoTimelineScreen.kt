@@ -37,6 +37,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -86,13 +88,20 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     }
     var backgroundAudio by remember(context) { mutableStateOf(restoredProject.backgroundAudioUri?.let { Uri.parse(it) }) }
     var backgroundName by remember(context) { mutableStateOf(restoredProject.backgroundAudioName) }
-    LaunchedEffect(clips.map { StudioVideoClipState(it.uri.toString(), it.name, it.durationMs, it.inMs, it.outMs) }, backgroundAudio?.toString(), backgroundName) {
+    LaunchedEffect(projectId, clips.map { StudioVideoClipState(it.uri.toString(), it.name, it.durationMs, it.inMs, it.outMs) }, backgroundAudio?.toString(), backgroundName) {
         val project = StudioVideoProjectState(
             clips = clips.map { StudioVideoClipState(it.uri.toString(), it.name, it.durationMs, it.inMs, it.outMs) },
             backgroundAudioUri = backgroundAudio?.toString(),
             backgroundAudioName = backgroundName
         )
-        projectPreferences.edit().putString("project_v1", StudioVideoProjectCodec.encode(project)).apply()
+        val encoded = StudioVideoProjectCodec.encode(project)
+        projectPreferences.edit().putString("project_v1", encoded).apply()
+        withContext(Dispatchers.IO) {
+            val store = StudioProjectLibraryStore(context)
+            store.read().projects.firstOrNull { it.id == projectId }?.let { record ->
+                store.upsert(record.copy(payloadJson = encoded, updatedAtMs = System.currentTimeMillis()))
+            }
+        }
     }
     var exporting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Add video clips, arrange their order, trim each clip and optionally lay music underneath.") }
