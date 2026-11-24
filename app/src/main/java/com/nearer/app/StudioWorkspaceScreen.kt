@@ -146,8 +146,8 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("MY MEDIA", color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text("${assets.size} SAVED", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text("YOUR FILES", color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text("${assets.size} ON THIS PHONE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
         if (assets.isEmpty()) {
             Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
@@ -164,8 +164,8 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                             Text(asset.name, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
                             Text(asset.kind, color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
-                        if (asset.kind == "VIDEO" || asset.kind == "PHOTO" || asset.kind == "AUDIO") Text("EDIT", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editingAsset = asset }.padding(7.dp))
-                        Text("OPEN", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
+                        if (asset.kind == "VIDEO" || asset.kind == "PHOTO" || asset.kind == "AUDIO") Text("CHANGE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editingAsset = asset }.padding(7.dp))
+                        Text("VIEW", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                             runCatching {
                                 val localFile = if (asset.uri.scheme == "file") File(asset.uri.path.orEmpty()) else null
                                 val openUri = if (localFile != null) androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", localFile) else asset.uri
@@ -182,7 +182,7 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                 }
             }
         }
-        Text("NEXT IN STUDIO", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-        Text("Studio now includes offline multitrack mixing with per-track volume, pan, fades, three-band EQ and room reverb, saved project settings, rendered-mix playback and sharing. Recording, live pitch/key monitoring, vocal processing, video editing and photo adjustments are also in place. Remaining work is deeper timeline editing, richer waveforms, tempo automation, named projects and additional video/photo layers.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+        Text("MORE TO COME", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Text("You can make a movie from clips, cut a video, change a photo, record your voice and mix sounds. More movie-making tools are being built.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
     }
 }
