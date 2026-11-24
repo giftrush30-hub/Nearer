@@ -84,3 +84,12 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
+
+
+// Keep benchmark diagnostics visible in CI so throughput measurements are recorded.
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    testLogging {
+        events("passed", "failed")
+        showStandardStreams = true
+    }
+}
