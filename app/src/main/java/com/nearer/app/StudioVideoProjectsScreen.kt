@@ -83,11 +83,19 @@ internal fun StudioVideoProjectsScreen(
         projects.addAll(store.read().projects.filter { it.kind == "VIDEO" && !it.archived })
     }
     fun migrateLegacyProjectIfNeeded() {
+        val migration = context.getSharedPreferences("nearer_studio_projects_migration", Context.MODE_PRIVATE)
+        if (migration.getBoolean("legacy_video_migrated", false)) return
         val current = store.read().projects
-        if (current.isNotEmpty()) return
+        if (current.isNotEmpty()) {
+            migration.edit().putBoolean("legacy_video_migrated", true).apply()
+            return
+        }
         val legacyTimeline = context.getSharedPreferences("nearer_studio_video_timeline", Context.MODE_PRIVATE)
         val hasLegacyWork = legacyTimeline.contains("project_v1")
-        if (!hasLegacyWork) return
+        if (!hasLegacyWork) {
+            migration.edit().putBoolean("legacy_video_migrated", true).apply()
+            return
+        }
         val id = "legacy-video-project"
         copyStudioEditorPreferences(context, null, id)
         store.upsert(
@@ -99,6 +107,7 @@ internal fun StudioVideoProjectsScreen(
                 payloadJson = legacyTimeline.getString("project_v1", "{}") ?: "{}"
             )
         )
+        migration.edit().putBoolean("legacy_video_migrated", true).apply()
     }
     LaunchedEffect(context) {
         migrateLegacyProjectIfNeeded()
