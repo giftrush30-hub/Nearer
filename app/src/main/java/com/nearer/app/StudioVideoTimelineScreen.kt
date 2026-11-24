@@ -79,15 +79,15 @@ private data class StudioVideoClip(
 @Composable
 internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     val context = LocalContext.current
-    val projectPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_timeline_$projectId", android.content.Context.MODE_PRIVATE) }
-    val restoredProject = remember(context) { StudioVideoProjectCodec.decode(projectPreferences.getString("project_v1", null)) }
-    val clips = remember(context) {
+    val projectPreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_timeline_$projectId", android.content.Context.MODE_PRIVATE) }
+    val restoredProject = remember(context, projectId) { StudioVideoProjectCodec.decode(projectPreferences.getString("project_v1", null)) }
+    val clips = remember(context, projectId) {
         mutableStateListOf<StudioVideoClip>().apply {
             addAll(restoredProject.clips.map { saved -> StudioVideoClip(Uri.parse(saved.uri), saved.name, saved.durationMs, saved.inMs, saved.outMs) })
         }
     }
-    var backgroundAudio by remember(context) { mutableStateOf(restoredProject.backgroundAudioUri?.let { Uri.parse(it) }) }
-    var backgroundName by remember(context) { mutableStateOf(restoredProject.backgroundAudioName) }
+    var backgroundAudio by remember(context, projectId) { mutableStateOf(restoredProject.backgroundAudioUri?.let { Uri.parse(it) }) }
+    var backgroundName by remember(context, projectId) { mutableStateOf(restoredProject.backgroundAudioName) }
     LaunchedEffect(projectId, clips.map { StudioVideoClipState(it.uri.toString(), it.name, it.durationMs, it.inMs, it.outMs) }, backgroundAudio?.toString(), backgroundName) {
         val project = StudioVideoProjectState(
             clips = clips.map { StudioVideoClipState(it.uri.toString(), it.name, it.durationMs, it.inMs, it.outMs) },
@@ -106,30 +106,30 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     var exporting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Add video clips, arrange their order, trim each clip and optionally lay music underneath.") }
     var exported by remember { mutableStateOf<File?>(null) }
-    val gradePreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_grade_$projectId", android.content.Context.MODE_PRIVATE) }
-    val restoredGrade = remember(context) { StudioVideoGradeCodec.decode(gradePreferences.getString("grade_v1", null)) }
-    var brightness by remember(context) { mutableStateOf(restoredGrade.brightness) }
-    var contrast by remember(context) { mutableStateOf(restoredGrade.contrast) }
-    var saturation by remember(context) { mutableStateOf(restoredGrade.saturation) }
-    val textPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_text_$projectId", android.content.Context.MODE_PRIVATE) }
-    var textOverlay by remember(context) { mutableStateOf(StudioVideoTextOverlayCodec.decode(textPreferences.getString("overlay_v1", null))) }
-    val captionPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_captions_$projectId", android.content.Context.MODE_PRIVATE) }
-    val captionLayers = remember(context) {
+    val gradePreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_grade_$projectId", android.content.Context.MODE_PRIVATE) }
+    val restoredGrade = remember(context, projectId) { StudioVideoGradeCodec.decode(gradePreferences.getString("grade_v1", null)) }
+    var brightness by remember(context, projectId) { mutableStateOf(restoredGrade.brightness) }
+    var contrast by remember(context, projectId) { mutableStateOf(restoredGrade.contrast) }
+    var saturation by remember(context, projectId) { mutableStateOf(restoredGrade.saturation) }
+    val textPreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_text_$projectId", android.content.Context.MODE_PRIVATE) }
+    var textOverlay by remember(context, projectId) { mutableStateOf(StudioVideoTextOverlayCodec.decode(textPreferences.getString("overlay_v1", null))) }
+    val captionPreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_captions_$projectId", android.content.Context.MODE_PRIVATE) }
+    val captionLayers = remember(context, projectId) {
         mutableStateListOf<StudioVideoCaptionLayer>().apply {
             addAll(StudioVideoCaptionCodec.decode(captionPreferences.getString("captions_v1", null)))
         }
     }
-    LaunchedEffect(captionLayers.toList()) {
+    LaunchedEffect(projectId, captionLayers.toList()) {
         captionPreferences.edit().putString("captions_v1", StudioVideoCaptionCodec.encode(captionLayers.toList())).apply()
     }
-    val transitionPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_transitions_$projectId", android.content.Context.MODE_PRIVATE) }
-    var transitionStyle by remember(context) {
+    val transitionPreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_transitions_$projectId", android.content.Context.MODE_PRIVATE) }
+    var transitionStyle by remember(context, projectId) {
         mutableStateOf(runCatching {
             StudioVideoTransitionStyle.valueOf(transitionPreferences.getString("style", StudioVideoTransitionStyle.CUT.name)!!)
         }.getOrDefault(StudioVideoTransitionStyle.CUT))
     }
-    var transitionDurationMs by remember(context) { mutableStateOf(transitionPreferences.getInt("duration_ms", 350).coerceIn(200, 1_000)) }
-    LaunchedEffect(transitionStyle, transitionDurationMs) {
+    var transitionDurationMs by remember(context, projectId) { mutableStateOf(transitionPreferences.getInt("duration_ms", 350).coerceIn(200, 1_000)) }
+    LaunchedEffect(projectId, transitionStyle, transitionDurationMs) {
         transitionPreferences.edit().putString("style", transitionStyle.name).putInt("duration_ms", transitionDurationMs).apply()
     }
     fun videoEffects(clipIndex: Int = 0) = buildList<androidx.media3.common.Effect> {
@@ -165,16 +165,16 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
             }
         }
     }
-    LaunchedEffect(brightness, contrast, saturation) {
+    LaunchedEffect(projectId, brightness, contrast, saturation) {
         gradePreferences.edit().putString("grade_v1", StudioVideoGradeCodec.encode(StudioVideoGrade(brightness, contrast, saturation))).apply()
     }
-    LaunchedEffect(textOverlay) {
+    LaunchedEffect(projectId, textOverlay) {
         textPreferences.edit().putString("overlay_v1", StudioVideoTextOverlayCodec.encode(textOverlay)).apply()
     }
-    val player = remember(context) { ExoPlayer.Builder(context).build() }
+    val player = remember(context, projectId) { ExoPlayer.Builder(context).build() }
 
-    DisposableEffect(player) { onDispose { player.release() } }
-    LaunchedEffect(clips.toList(), brightness, contrast, saturation, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
+    DisposableEffect(projectId, player) { onDispose { player.release() } }
+    LaunchedEffect(projectId, clips.toList(), brightness, contrast, saturation, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
         player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
         if (clips.isNotEmpty()) {
             val previewItems = clips.map { clip ->
@@ -188,7 +188,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         } else player.clearMediaItems()
     }
 
-    DisposableEffect(player, clips.size, brightness, contrast, saturation, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
+    DisposableEffect(projectId, player, clips.size, brightness, contrast, saturation, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
         val captionListener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
