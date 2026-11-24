@@ -75,9 +75,9 @@ private data class StudioVideoClip(
 
 @OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
-internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
+internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     val context = LocalContext.current
-    val projectPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_timeline", android.content.Context.MODE_PRIVATE) }
+    val projectPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_timeline_$projectId", android.content.Context.MODE_PRIVATE) }
     val restoredProject = remember(context) { StudioVideoProjectCodec.decode(projectPreferences.getString("project_v1", null)) }
     val clips = remember(context) {
         mutableStateListOf<StudioVideoClip>().apply {
@@ -97,14 +97,14 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
     var exporting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Add video clips, arrange their order, trim each clip and optionally lay music underneath.") }
     var exported by remember { mutableStateOf<File?>(null) }
-    val gradePreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_grade", android.content.Context.MODE_PRIVATE) }
+    val gradePreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_grade_$projectId", android.content.Context.MODE_PRIVATE) }
     val restoredGrade = remember(context) { StudioVideoGradeCodec.decode(gradePreferences.getString("grade_v1", null)) }
     var brightness by remember(context) { mutableStateOf(restoredGrade.brightness) }
     var contrast by remember(context) { mutableStateOf(restoredGrade.contrast) }
     var saturation by remember(context) { mutableStateOf(restoredGrade.saturation) }
-    val textPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_text", android.content.Context.MODE_PRIVATE) }
+    val textPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_text_$projectId", android.content.Context.MODE_PRIVATE) }
     var textOverlay by remember(context) { mutableStateOf(StudioVideoTextOverlayCodec.decode(textPreferences.getString("overlay_v1", null))) }
-    val captionPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_captions", android.content.Context.MODE_PRIVATE) }
+    val captionPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_captions_$projectId", android.content.Context.MODE_PRIVATE) }
     val captionLayers = remember(context) {
         mutableStateListOf<StudioVideoCaptionLayer>().apply {
             addAll(StudioVideoCaptionCodec.decode(captionPreferences.getString("captions_v1", null)))
@@ -113,7 +113,7 @@ internal fun StudioVideoTimelineScreen(onBack: () -> Unit) {
     LaunchedEffect(captionLayers.toList()) {
         captionPreferences.edit().putString("captions_v1", StudioVideoCaptionCodec.encode(captionLayers.toList())).apply()
     }
-    val transitionPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_transitions", android.content.Context.MODE_PRIVATE) }
+    val transitionPreferences = remember(context) { context.getSharedPreferences("nearer_studio_video_transitions_$projectId", android.content.Context.MODE_PRIVATE) }
     var transitionStyle by remember(context) {
         mutableStateOf(runCatching {
             StudioVideoTransitionStyle.valueOf(transitionPreferences.getString("style", StudioVideoTransitionStyle.CUT.name)!!)
