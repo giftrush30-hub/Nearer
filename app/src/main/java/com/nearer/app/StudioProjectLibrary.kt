@@ -105,10 +105,11 @@ internal class StudioProjectLibraryStore(context: Context) {
     fun write(library: StudioProjectLibrary) {
         var output: FileOutputStream? = null
         try {
-            output = file.startWrite()
-            output.write(StudioProjectLibraryCodec.encode(library).toByteArray(Charsets.UTF_8))
-            output.fd.sync()
-            file.finishWrite(output)
+            val stream = file.startWrite()
+            output = stream
+            stream.write(StudioProjectLibraryCodec.encode(library).toByteArray(Charsets.UTF_8))
+            stream.fd.sync()
+            file.finishWrite(stream)
         } catch (failure: Throwable) {
             output?.let(file::failWrite)
             throw failure
