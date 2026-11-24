@@ -188,6 +188,50 @@ These are proposals to prototype and test, not implemented features.
 - Compatibility matrix, accessibility, tutorials, licensing review, crash recovery, thermal tests and long-project tests.
 - Cross-device project portability only where media and asset licenses allow it; no cloud dependency for local use.
 
+## November 2026 research update — rendering, compositing and offline assets
+
+### What the current Android media stack can and cannot do
+
+The official Android Media3 documentation confirms that Transformer can build multi-item compositions from video, image and audio inputs; apply effects at clip or composition level; and export the result asynchronously. The current Composition documentation explicitly lists sequential editing, background audio, overlays and effects as supported use cases. It also explicitly lists crossfading video or audio tracks as not yet supported in Composition. Do not present a crossfade button as a real crossfade until NeaRer has a separately validated implementation. The current editor's cut and fade-through-black choices are honest interim options.
+
+- Composition guide: https://developer.android.com/media/media3/transformer/composition
+- Transformer API: https://developer.android.com/reference/androidx/media3/transformer/Transformer
+- Editing app guide: https://developer.android.com/media/implement/editing-app
+
+Engineering implications:
+- Keep Media3 as the native Android editing/export foundation for the 2D timeline; do not introduce a second full video engine just to add basic editing.
+- Build the editor's project/timeline model independently of the renderer. That allows a later rendering backend to support richer overlays, transitions, masks and compositing without rewriting project files.
+- Treat preview/export parity as a release gate. The same effect parameters must drive both preview and export wherever the platform APIs allow.
+- Export must expose progress and cancellation, release scarce codec resources, validate the temporary output, and only then publish it as a finished movie. A failed or cancelled export must not be shown as complete.
+- Test codec and format combinations on real devices. Successful API construction is not proof that every phone's hardware encoder can render every source.
+
+### 3D asset delivery and realism
+
+Khronos glTF is a royalty-free, standardised runtime format designed for efficient loading. A GLB can package scene structure, meshes, materials, textures, skins and animation. Its PBR material model supports physically based surface properties, and KTX 2.0/Basis Universal texture delivery can reduce texture storage and GPU memory costs when supported by the runtime.
+
+- Khronos glTF overview: https://www.khronos.org/gltf/
+- glTF registry/specification: https://registry.khronos.org/glTF/
+- PBR material guide: https://www.khronos.org/gltf/pbr
+
+This strengthens the case for a **GLB-first asset pipeline** for ready-made characters, props and sets, with compressed textures, level-of-detail variants, reusable animation clips and explicit asset manifests. It does not prove that a full 3D engine should be bundled in the base APK. Engine selection still requires an Android benchmark with the same scene and assets.
+
+### Asset sourcing and legal safety
+
+Do not scrape characters, movie footage, sound effects, music, fonts or 3D models from competitors. Every bundled or downloadable pack needs a source record, exact license, attribution requirements, modification permissions and commercial-use status. Kenney's own support page says its asset-page packs are CC0/public domain, but each selected pack still needs its included license checked before bundling. Keep a credits/attribution manifest even where attribution is not mandatory.
+
+- Kenney licensing FAQ: https://kenney.nl/support
+
+### Low-memory and device-aware operation
+
+Android's current memory guidance identifies bitmap allocation, redundant copies and poor resource release as important causes of memory pressure. Studio should decode preview thumbnails at display size, reuse bounded caches, stream source media rather than loading full-resolution frames into memory, and unload preview/3D resources when leaving their workspace.
+
+- Android memory guidance: https://developer.android.com/topic/performance/memory.html
+- Bitmap optimisation guidance: https://developer.android.com/topic/performance/memory/guide/bitmaps
+
+### Updated engineering decision
+
+For the next implementation stage, prioritise a renderer-independent edit decision model, durable multi-project persistence, recoverable/cancellable export and real-device benchmarks. Keep the advanced 3D room isolated and lazy-loaded. The editor should grow in capability through replaceable modules rather than shipping a huge always-resident engine to every user.
+
 ## Sources consulted
 
 - CapCut/VN/InShot/LumaFusion mobile comparison: https://pixflow.net/blog/best-mobile-video-editing-apps/
