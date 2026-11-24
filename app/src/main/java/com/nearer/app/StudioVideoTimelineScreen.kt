@@ -128,6 +128,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     }
     LaunchedEffect(projectId, captionLayers.toList()) {
         captionPreferences.edit().putString("captions_v1", StudioVideoCaptionCodec.encode(captionLayers.toList())).apply()
+        withContext(Dispatchers.IO) { StudioProjectLibraryStore(context).touch(projectId) }
     }
     val transitionPreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_transitions_$projectId", android.content.Context.MODE_PRIVATE) }
     var transitionStyle by remember(context, projectId) {
@@ -138,6 +139,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     var transitionDurationMs by remember(context, projectId) { mutableStateOf(transitionPreferences.getInt("duration_ms", 350).coerceIn(200, 1_000)) }
     LaunchedEffect(projectId, transitionStyle, transitionDurationMs) {
         transitionPreferences.edit().putString("style", transitionStyle.name).putInt("duration_ms", transitionDurationMs).apply()
+        withContext(Dispatchers.IO) { StudioProjectLibraryStore(context).touch(projectId) }
     }
     fun videoEffects(clipIndex: Int = 0) = buildList<androidx.media3.common.Effect> {
         if (brightness != 0f) add(Brightness(brightness))
@@ -174,9 +176,11 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     }
     LaunchedEffect(projectId, brightness, contrast, saturation) {
         gradePreferences.edit().putString("grade_v1", StudioVideoGradeCodec.encode(StudioVideoGrade(brightness, contrast, saturation))).apply()
+        withContext(Dispatchers.IO) { StudioProjectLibraryStore(context).touch(projectId) }
     }
     LaunchedEffect(projectId, textOverlay) {
         textPreferences.edit().putString("overlay_v1", StudioVideoTextOverlayCodec.encode(textOverlay)).apply()
+        withContext(Dispatchers.IO) { StudioProjectLibraryStore(context).touch(projectId) }
     }
     LaunchedEffect(context) {
         withContext(Dispatchers.IO) {
