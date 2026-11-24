@@ -45,6 +45,7 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
     var recordingAudio by remember { mutableStateOf(false) }
     var mixingAudio by remember { mutableStateOf(false) }
     var videoTimeline by remember { mutableStateOf(false) }
+    var filmSchool by remember { mutableStateOf(false) }
     val preferences = remember(context) {
         context.getSharedPreferences("nearer_studio_workspace", android.content.Context.MODE_PRIVATE)
     }
@@ -93,7 +94,9 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
         persistAssets()
     }
 
-    if (videoTimeline) {
+    if (filmSchool) {
+        StudioFilmSchoolScreen(onBack = { filmSchool = false })
+    } else if (videoTimeline) {
         StudioVideoTimelineScreen(onBack = { videoTimeline = false })
     } else if (mixingAudio) {
         StudioAudioMixerScreen(onBack = { mixingAudio = false })
@@ -118,24 +121,27 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text("‹  MORE", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 8.dp))
-            Text("OFFLINE WORKSPACE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text("OFFLINE FILM STUDIO", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         }
         Surface(color = Panel, shape = RoundedCornerShape(24.dp)) {
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("NEARER STUDIO", color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
-                Text("Your creative desk, even without data.", color = Mint, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("Bring photos, videos and audio from your phone into one local workspace. Your files stay on this device; NeaRer stores access to the items you choose.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+                Text("Make a movie. Learn as you go. No data needed.", color = Mint, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Start with a video, join a few clips, add sound and make your own movie. Your chosen files stay on this phone.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
                 Button(onClick = { picker.launch(arrayOf("image/*", "video/*", "audio/*")) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
-                    Text("＋  Add media to Studio", fontWeight = FontWeight.Bold)
+                    Text("＋  Add videos, photos or sound", fontWeight = FontWeight.Bold)
                 }
                 Button(onClick = { recordingAudio = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
-                    Text("●  Record audio offline", fontWeight = FontWeight.Bold)
+                    Text("●  Record a voice or sound", fontWeight = FontWeight.Bold)
                 }
                 Button(onClick = { mixingAudio = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
-                    Text("＋  Open multitrack mixer", fontWeight = FontWeight.Bold)
+                    Text("＋  Mix music and sound", fontWeight = FontWeight.Bold)
                 }
                 Button(onClick = { videoTimeline = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
-                    Text("▤  Open multi-clip video timeline", fontWeight = FontWeight.Bold)
+                    Text("▤  Make a movie with clips", fontWeight = FontWeight.Bold)
+                }
+                Button(onClick = { filmSchool = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
+                    Text("▶  Teach me how to make movies", fontWeight = FontWeight.Bold)
                 }
             }
         }
