@@ -147,7 +147,11 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     var musicMuted by remember(context, projectId) {
         mutableStateOf(multiTrackProject.tracks.firstOrNull { it.id == "audio-music" }?.muted ?: false)
     }
-    LaunchedEffect(projectId, clips.toList(), backgroundAudio?.toString(), musicMuted, captionLayers.toList(), brightness, contrast, saturation, textOverlay) {
+    var videoTrackLocked by remember(context, projectId) {
+        mutableStateOf(multiTrackProject.tracks.firstOrNull { it.id == "video-main" }?.locked ?: false)
+    }
+    LaunchedEffect(projectId, clips.toList(), backgroundAudio?.toString(), musicMuted, videoTrackLocked, captionLayers.toList(), brightness, contrast, saturation, textOverlay) {
+        delay(250L)
         var videoCursor = 0L
         val videoItems = clips.mapIndexed { index, clip ->
             val item = StudioTimelineItem(
@@ -184,8 +188,9 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
             textItems = textItems,
             effectItems = effectItems
         )
-        multiTrackProject = synchronized
-        withContext(Dispatchers.IO) { multiTrackStore.write(synchronized) }
+        val withVideoLock = StudioMultiTrackEditor.setLocked(synchronized, "video-main", videoTrackLocked) ?: synchronized
+        multiTrackProject = withVideoLock
+        withContext(Dispatchers.IO) { multiTrackStore.write(withVideoLock) }
     }
     fun videoEffects(clipIndex: Int = 0) = buildList<androidx.media3.common.Effect> {
         if (brightness != 0f) add(Brightness(brightness))
@@ -508,19 +513,19 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                                     Text("${index + 1}. ${clip.name}", color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
                                     Text("${formatStudioTimelineTime(clip.outMs - clip.inMs)} selected / ${formatStudioTimelineTime(clip.durationMs)} source", color = Mint, fontSize = 9.sp)
                                 }
-                                Text("↑", color = Mint, modifier = Modifier.clickable(enabled = index > 0) {
+                                Text("↑", color = Mint, modifier = Modifier.clickable(enabled = index > 0 && !videoTrackLocked) {
                                     val item = clips.removeAt(index); clips.add(index - 1, item)
                                     val remapped = remapStudioCaptionLayersForClipMove(captionLayers.toList(), index, index - 1)
                                     captionLayers.clear(); captionLayers.addAll(remapped)
                                     exported = null
                                 }.padding(5.dp))
-                                Text("↓", color = Mint, modifier = Modifier.clickable(enabled = index < clips.lastIndex) {
+                                Text("↓", color = Mint, modifier = Modifier.clickable(enabled = index < clips.lastIndex && !videoTrackLocked) {
                                     val item = clips.removeAt(index); clips.add(index + 1, item)
                                     val remapped = remapStudioCaptionLayersForClipMove(captionLayers.toList(), index, index + 1)
                                     captionLayers.clear(); captionLayers.addAll(remapped)
                                     exported = null
                                 }.padding(5.dp))
-                                Text("×", color = Gold, modifier = Modifier.clickable {
+                                Text("×", color = if (videoTrackLocked) Muted else Gold, modifier = Modifier.clickable(enabled = !videoTrackLocked) {
                                     clips.removeAt(index)
                                     val remapped = removeStudioCaptionLayersForClip(captionLayers.toList(), index)
                                     captionLayers.clear(); captionLayers.addAll(remapped)
@@ -530,15 +535,15 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                             Text("IN  ·  ${formatStudioTimelineTime(clip.inMs)}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = clip.inMs.toFloat(), onValueChange = { value ->
                                 clips[index] = clip.copy(inMs = value.toLong().coerceAtMost(clip.outMs - 500L)); exported = null
-                            }, valueRange = 0f..(clip.durationMs - 500L).coerceAtLeast(0L).toFloat())
+                            }, valueRange = 0f..(clip.durationMs - 500L).coerceAtLeast(0L).toFloat(), enabled = !videoTrackLocked)
                             Text("OUT  ·  ${formatStudioTimelineTime(clip.outMs)}", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Slider(value = clip.outMs.toFloat(), onValueChange = { value ->
                                 clips[index] = clip.copy(outMs = value.toLong().coerceAtLeast(clip.inMs + 500L).coerceAtMost(clip.durationMs)); exported = null
-                            }, valueRange = (clip.inMs + 500L).coerceAtMost(clip.durationMs).toFloat()..clip.durationMs.toFloat())
+                            }, valueRange = (clip.inMs + 500L).coerceAtMost(clip.durationMs).toFloat()..clip.durationMs.toFloat(), enabled = !videoTrackLocked)
                         }
                     }
                 }
-                Button(onClick = { videoPicker.launch(arrayOf("video/*")) }, enabled = clips.size < 12, modifier = Modifier.fillMaxWidth(),
+                Button(onClick = { videoPicker.launch(arrayOf("video/*")) }, enabled = clips.size < 12 && !videoTrackLocked, modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                     Text("＋  ADD VIDEO CLIPS", fontWeight = FontWeight.Bold)
                 }
@@ -562,6 +567,12 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                     Text(if (musicMuted) "UNMUTE MUSIC" else "MUTE MUSIC", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold,
                                         modifier = Modifier.clickable { musicMuted = !musicMuted }.padding(5.dp))
+                                }
+                            }
+                            if (track.kind == StudioTrackKind.VIDEO) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    Text(if (videoTrackLocked) "UNLOCK VIDEO LANE" else "LOCK VIDEO LANE", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clickable { videoTrackLocked = !videoTrackLocked }.padding(5.dp))
                                 }
                             }
                             if (track.items.isNotEmpty()) {
