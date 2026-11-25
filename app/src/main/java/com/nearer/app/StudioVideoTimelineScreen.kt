@@ -190,7 +190,8 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         )
         val withVideoLock = StudioMultiTrackEditor.setLocked(synchronized, "video-main", videoTrackLocked) ?: synchronized
         multiTrackProject = withVideoLock
-        withContext(Dispatchers.IO) { multiTrackStore.write(withVideoLock) }
+        val saved = withContext(Dispatchers.IO) { multiTrackStore.write(withVideoLock) }
+        if (!saved) message = "Your movie is still editable, but the multi-track backup could not be saved. Check phone storage and try again."
     }
     fun videoEffects(clipIndex: Int = 0) = buildList<androidx.media3.common.Effect> {
         if (brightness != 0f) add(Brightness(brightness))
