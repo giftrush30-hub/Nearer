@@ -251,3 +251,24 @@ For the next implementation stage, prioritise a renderer-independent edit decisi
 ## Research limitations
 
 This is a desk-research and architecture synthesis, not hands-on testing of every competitor. Third-party app comparison pages can be inaccurate or outdated. Verify current capabilities, regional availability, license terms and device support directly before using them as engineering requirements. Benchmark competing apps on the same physical devices and source clips before making superiority claims.
+
+
+## 25 November 2026 implementation update — multi-track editor integration
+
+The next implementation batch now connects the renderer-independent timeline model to each named movie project.
+
+Implemented on the integration branch:
+- A per-project local multi-track store, separate from source media and independent of cloud services.
+- Four visible lanes: main video, background music, titles/captions, and visual effects.
+- Existing ordered video clips are represented as sequential items with source in/out points and timeline positions.
+- Captions and the main title are represented as timed items on the text lane; colour-grade adjustments are represented on the effects lane.
+- Music has a persisted mute state that is honoured by the final export composition.
+- The main video lane can be locked; while locked, clip add, remove, reorder and trim controls are disabled.
+- Shared editing operations support moving, trimming, muting, locking, adding tracks and removing items, with bounds checks and unit tests.
+- Multi-track writes are debounced during continuous control changes to avoid excessive small writes.
+
+Important boundary:
+- The four-lane project representation is real and saved locally, but this is not yet a general-purpose compositor for arbitrary overlapping video tracks, masks or 3D scenes.
+- Media3's documented MP4 output is limited to one video and one audio track. Visual layers must ultimately be composited into the video stream, and audio lanes mixed into the audio stream by a validated renderer.
+- Existing clip sequence, captions, colour adjustments, and background music remain on the current Media3 rendering path. New arbitrary lane combinations must not be shown as export-ready until the renderer implements and tests them.
+- No physical Android phone playback/export or thermal/memory benchmark is claimed by this implementation update.
