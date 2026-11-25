@@ -42,9 +42,10 @@ internal object StudioAudioMixPlanner {
         cues.forEach { cue ->
             val scheme = runCatching { java.net.URI(cue.sourceUri).scheme?.lowercase() }.getOrNull()
             if (scheme !in setOf("content", "file", "android.resource")) errors += cue.id + ": audio source must be local and offline."
-            if (cue.timelineStartMs < 0L || cue.sourceInMs < 0L || cue.sourceOutMs <= cue.sourceInMs ||
-                cue.timelineEndMs > StudioRenderPlanBuilder.MAX_DURATION_MS) errors += cue.id + ": audio time range is invalid."
-            if (!cue.gain.isFinite() || cue.gain !in 0f..2f) errors += cue.id + ": gain must be between 0 and 2."
+            if (cue.timelineStartMs < 0L || cue.sourceInMs < 0L || cue.sourceOutMs <= cue.sourceInMs || cue.sourceOutMs > StudioRenderPlanBuilder.MAX_DURATION_MS ||
+                cue.timelineStartMs > StudioRenderPlanBuilder.MAX_DURATION_MS ||
+                cue.durationMs > StudioRenderPlanBuilder.MAX_DURATION_MS - cue.timelineStartMs) errors += cue.id + ": audio time range is invalid."
+            if (!cue.gain.isFinite() || cue.gain !in 0f..1f) errors += cue.id + ": gain must be between 0 and 1."
             if (cue.fadeInMs < 0L || cue.fadeOutMs < 0L || cue.fadeInMs > cue.durationMs || cue.fadeOutMs > cue.durationMs) {
                 errors += cue.id + ": fade durations must fit inside the clip."
             }
@@ -63,7 +64,7 @@ internal object StudioAudioMixPlanner {
                 val localFrame = studioAudioMillisecondsToFrames(localMs, sampleRate)
                 val fadeInFrames = studioAudioMillisecondsToFrames(cue.fadeInMs, sampleRate)
                 val fadeOutFrames = studioAudioMillisecondsToFrames(cue.fadeOutMs, sampleRate)
-                val gain = studioAudioGainAtFrame(localFrame, totalFrames, cue.gain.coerceAtMost(1f), fadeInFrames, fadeOutFrames)
+                val gain = studioAudioGainAtFrame(localFrame, totalFrames, cue.gain, fadeInFrames, fadeOutFrames)
                 val (left, right) = studioAudioPanFactors(cue.pan)
                 StudioAudioMixSample(
                     cue.id,
