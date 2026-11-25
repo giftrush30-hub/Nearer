@@ -15,6 +15,12 @@ class StudioAnimationModelTest {
         assertEquals(0.5f, animation.valueAt(500L, -1f), 0.0001f)
     }
 
+    @Test fun validKeyframesStillEvaluateWhenFallbackIsNonFinite() {
+        val frames = listOf(StudioKeyframe(0L, 0.1f), StudioKeyframe(1_000L, 0.9f))
+        assertEquals(0.5f, StudioKeyframeEvaluator.valueAt(frames, 500L, Float.NaN), 0.0001f)
+        assertTrue(StudioKeyframeEvaluator.valueAt(emptyList(), 500L, Float.NaN).isNaN())
+    }
+
     @Test fun supportsHoldAndSmoothstepInterpolation() {
         val hold = listOf(
             StudioKeyframe(0L, 0f, StudioKeyframeInterpolation.HOLD),
