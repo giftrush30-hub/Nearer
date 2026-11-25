@@ -71,7 +71,8 @@ internal object StudioTemplateMotionTracker {
             val maxY = (y + searchRadius).coerceAtMost(frame.height - patchRadius - 1)
             for (candidateY in minY..maxY) {
                 for (candidateX in minX..maxX) {
-                    copyPatch(frame, candidateX, candidateY, patchRadius, candidate)\n                    val score = normalizedCorrelation(template, candidate)
+                    copyPatch(frame, candidateX, candidateY, patchRadius, candidate)
+                    val score = normalizedCorrelation(template, candidate)
                     if (score > bestScore) {
                         bestScore = score
                         bestX = candidateX
