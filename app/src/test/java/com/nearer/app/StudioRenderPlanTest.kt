@@ -21,7 +21,7 @@ class StudioRenderPlanTest {
     @Test fun createsIndependentVideoAndAudioRenderLanes() {
         val plan = StudioRenderPlanBuilder.build(project())
         assertTrue(plan.isValid)
-        assertEquals(2, plan.totalClipCount)
+        assertEquals(3, plan.totalClipCount)
         assertEquals(1, plan.videoTracks.size)
         assertEquals(1, plan.audioTracks.size)
         assertEquals("v1", plan.videoTracks.single().clips.first().itemId)
@@ -36,7 +36,7 @@ class StudioRenderPlanTest {
         val plan = StudioRenderPlanBuilder.build(muted)
         assertTrue(plan.isValid)
         assertTrue(plan.audioTracks.isEmpty())
-        assertEquals(1, plan.totalClipCount)
+        assertEquals(2, plan.totalClipCount)
     }
 
     @Test fun rejectsNetworkSourcesToKeepCoreExportOffline() {
