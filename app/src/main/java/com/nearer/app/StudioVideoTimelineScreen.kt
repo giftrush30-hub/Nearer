@@ -61,6 +61,7 @@ import androidx.media3.effect.TextOverlay
 import androidx.media3.effect.TimestampWrapper
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.Composition
+import androidx.media3.transformer.CompositionPlayer
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.ExportException
@@ -284,20 +285,107 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     }
 
     val player = remember(context, projectId) { ExoPlayer.Builder(context).build() }
+    val compositionPlayer = remember(context, projectId) { CompositionPlayer.Builder(context).build() }
+    var useCompositionPreview by remember(context, projectId) { mutableStateOf(false) }
+    var compositionPreviewFailed by remember(context, projectId) { mutableStateOf(false) }
 
-    DisposableEffect(projectId, player) { onDispose { player.release() } }
-    LaunchedEffect(projectId, clips.toList(), brightness, contrast, saturation, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
-        player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
-        if (clips.isNotEmpty()) {
-            val previewItems = clips.map { clip ->
-                MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
-                    MediaItem.ClippingConfiguration.Builder().setStartPositionMs(clip.inMs).setEndPositionMs(clip.outMs).build()
-                ).build()
+    DisposableEffect(projectId, player, compositionPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                compositionPreviewFailed = true
+                useCompositionPreview = false
+                message = "Layered preview is not supported for this media combination on this phone. The regular clip preview remains available."
             }
-            player.setMediaItems(previewItems)
-            player.prepare()
-            player.playWhenReady = false
-        } else player.clearMediaItems()
+        }
+        compositionPlayer.addListener(listener)
+        onDispose {
+            compositionPlayer.removeListener(listener)
+            player.release()
+            compositionPlayer.release()
+        }
+    }
+
+    LaunchedEffect(projectId, clips.toList(), brightness, contrast, saturation, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, replacementBackground?.toString(), backgroundAudio?.toString(), musicMuted, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs, compositionPreviewFailed) {
+        player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
+        if (clips.isEmpty()) {
+            player.clearMediaItems()
+            useCompositionPreview = false
+        } else {
+            val canLayerPreview = chromaKeyEnabled && replacementBackground != null && !compositionPreviewFailed
+            val layered = if (canLayerPreview) runCatching {
+                val movieDurationMs = clips.sumOf { (it.outMs - it.inMs).coerceAtLeast(0L) }.coerceAtLeast(1L)
+                val videoItems = clips.mapIndexed { clipIndex, clip ->
+                    val mediaItem = MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
+                        MediaItem.ClippingConfiguration.Builder()
+                            .setStartPositionMs(clip.inMs)
+                            .setEndPositionMs(clip.outMs)
+                            .build()
+                    ).build()
+                    EditedMediaItem.Builder(mediaItem)
+                        .setDurationUs(clip.durationMs.coerceAtLeast(1L) * 1_000L)
+                        .setEffects(Effects(emptyList(), videoEffects(clipIndex)))
+                        .build()
+                }
+                val sequences = mutableListOf(EditedMediaItemSequence.Builder(videoItems).build())
+                val backgroundUri = replacementBackground!!
+                val backgroundMime = context.contentResolver.getType(backgroundUri).orEmpty()
+                val backgroundIsImage = backgroundMime.startsWith("image/")
+                val backgroundMedia = if (backgroundIsImage) {
+                    MediaItem.Builder().setUri(backgroundUri).setImageDurationMs(movieDurationMs).build()
+                } else MediaItem.fromUri(backgroundUri)
+                val backgroundEditedBuilder = EditedMediaItem.Builder(backgroundMedia).setRemoveAudio(true)
+                if (!backgroundIsImage) {
+                    val backgroundDurationMs = withContext(Dispatchers.IO) {
+                        val retriever = MediaMetadataRetriever()
+                        try {
+                            retriever.setDataSource(context, backgroundUri)
+                            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+                                ?: error("Could not read the replacement video's duration.")
+                        } finally { runCatching { retriever.release() } }
+                    }
+                    require(backgroundDurationMs > 0L) { "Replacement background video has no readable duration." }
+                    backgroundEditedBuilder.setDurationUs(backgroundDurationMs * 1_000L)
+                }
+                sequences.add(EditedMediaItemSequence.Builder(listOf(backgroundEditedBuilder.build()))
+                    .setIsLooping(!backgroundIsImage).build())
+
+                if (backgroundAudio != null && !musicMuted) {
+                    val musicUri = backgroundAudio!!
+                    val musicDurationMs = withContext(Dispatchers.IO) {
+                        val retriever = MediaMetadataRetriever()
+                        try {
+                            retriever.setDataSource(context, musicUri)
+                            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+                                ?: error("Could not read the music track duration.")
+                        } finally { runCatching { retriever.release() } }
+                    }
+                    require(musicDurationMs > 0L) { "Music track has no readable duration." }
+                    val musicItem = EditedMediaItem.Builder(MediaItem.fromUri(musicUri))
+                        .setDurationUs(musicDurationMs * 1_000L)
+                        .build()
+                    sequences.add(EditedMediaItemSequence.Builder(listOf(musicItem)).setIsLooping(true).build())
+                }
+                Composition.Builder(sequences).build()
+            }.onSuccess { composition ->
+                compositionPlayer.setComposition(composition)
+                compositionPlayer.prepare()
+                compositionPlayer.playWhenReady = false
+            }.isSuccess else false
+
+            if (layered) {
+                useCompositionPreview = true
+            } else {
+                useCompositionPreview = false
+                val previewItems = clips.map { clip ->
+                    MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
+                        MediaItem.ClippingConfiguration.Builder().setStartPositionMs(clip.inMs).setEndPositionMs(clip.outMs).build()
+                    ).build()
+                }
+                player.setMediaItems(previewItems)
+                player.prepare()
+                player.playWhenReady = false
+            }
+        }
     }
 
     DisposableEffect(projectId, player, clips.size, brightness, contrast, saturation, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
@@ -309,6 +397,8 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         player.addListener(captionListener)
         onDispose { player.removeListener(captionListener) }
     }
+
+    val activePreviewPlayer: Player = if (useCompositionPreview) compositionPlayer else player
 
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { selected ->
         selected.forEach { uri ->
@@ -536,8 +626,8 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         }
 
         if (clips.isNotEmpty()) {
-            AndroidView(factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true } },
-                update = { it.player = player }, modifier = Modifier.fillMaxWidth().height(190.dp))
+            AndroidView(factory = { viewContext -> PlayerView(viewContext).apply { this.player = activePreviewPlayer; useController = true } },
+                update = { it.player = activePreviewPlayer }, modifier = Modifier.fillMaxWidth().height(190.dp))
         } else Surface(color = Panel, shape = RoundedCornerShape(16.dp)) {
             Text("Your preview will appear here after you add video clips.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(18.dp))
         }
