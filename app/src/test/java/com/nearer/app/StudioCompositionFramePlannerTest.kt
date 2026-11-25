@@ -48,7 +48,7 @@ class StudioCompositionFramePlannerTest {
                 StudioKeyframe(1_000L, 1f)
             ))
         ))
-        val frame = StudioCompositionFramePlanner.build(timeline()).frameAt(2_500_000L, listOf(binding))
+        val frame = StudioCompositionFramePlanner.build(timeline()).frameAt(2_250_000L, listOf(binding))
         assertEquals(0.4f, frame.videoLayers.first { it.itemId == "b" }.animatedValues[StudioAnimatedProperty.OPACITY]!!, 0.001f)
     }
 
@@ -59,8 +59,8 @@ class StudioCompositionFramePlannerTest {
         val transition = plan.transitions.single()
         assertEquals("a", transition.outgoingItemId)
         assertEquals("b", transition.incomingItemId)
-        assertEquals(1_800_000L, transition.outgoingStartUs)
-        assertEquals(2_200_000L, transition.incomingEndUs)
+        assertEquals(1_600_000L, transition.outgoingStartUs)
+        assertEquals(2_400_000L, transition.incomingEndUs)
     }
 
     @Test fun propagatesInvalidTimelineAndRejectsNegativeFrameTime() {
