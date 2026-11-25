@@ -24,8 +24,10 @@ internal object StudioMaskRasterizer {
         val result = ByteArray(width * height)
         for (y in 0 until height) {
             for (x in 0 until width) {
-                val px = x + 0.5
-                val py = y + 0.5
+                // Sample at integer pixel coordinates so rectangle boundaries are consistently
+                // outside for hard masks and centered on the feather ramp for soft masks.
+                val px = x.toDouble()
+                val py = y.toDouble()
                 val inside = contains(polygon, px, py)
                 val distance = polygon.indices.minOf { index ->
                     val point = polygon[index]
