@@ -57,6 +57,23 @@ class StudioMultiTrackEditorTest {
         assertEquals(8_000L, removed.durationMs)
     }
 
+    @Test fun canAddNamedTrackAndRejectsUnsafeTrackGrowth() {
+        val expanded = StudioMultiTrackEditor.addTrack(project(), StudioTrackKind.TEXT, "Opening title")!!
+        assertEquals(3, expanded.tracks.size)
+        assertNull(StudioMultiTrackEditor.addTrack(expanded, StudioTrackKind.TEXT, ""))
+        val full = expanded.copy(tracks = (1..32).map { StudioTimelineTrack("t$it", "Track $it", StudioTrackKind.TEXT) })
+        assertNull(StudioMultiTrackEditor.addTrack(full, StudioTrackKind.EFFECT, "Too many"))
+    }
+
+    @Test fun rejectsEditsThatWouldOverflowTheMaximumTimeline() {
+        val nearEnd = StudioMultiTrackProject(
+            listOf(StudioTimelineTrack("v", "Video", StudioTrackKind.VIDEO, items = listOf(
+                StudioTimelineItem("last", "content://video/last", 86_399_000L, 0L, 2_000L)
+            ))), 86_401_000L
+        )
+        assertNull(StudioMultiTrackEditor.moveItem(nearEnd, "v", "last", 86_400_000L))
+    }
+
     @Test fun invalidMovesAndLockedRemovalsAreRejected() {
         assertNull(StudioMultiTrackEditor.moveItem(project(), "video-main", "clip-a", -1L))
         val locked = StudioMultiTrackEditor.setLocked(project(), "video-main", true)!!
