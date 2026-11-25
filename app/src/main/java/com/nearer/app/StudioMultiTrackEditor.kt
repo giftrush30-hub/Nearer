@@ -102,6 +102,75 @@ internal object StudioMultiTrackEditor {
         return withDuration(updated)
     }
 
+
+    /** Split one source item at a source timestamp while preserving its timeline position. */
+    fun splitItem(project: StudioMultiTrackProject, trackId: String, itemId: String, splitSourceMs: Long): StudioMultiTrackProject? {
+        val track = project.tracks.firstOrNull { it.id == trackId } ?: return null
+        if (track.locked) return null
+        val item = track.items.firstOrNull { it.id == itemId } ?: return null
+        if (splitSourceMs <= item.sourceInMs || splitSourceMs >= item.sourceOutMs) return null
+        val firstDuration = splitSourceMs - item.sourceInMs
+        val second = item.copy(id = UUID.randomUUID().toString(),
+            timelineStartMs = item.timelineStartMs + firstDuration, sourceInMs = splitSourceMs)
+        if (second.timelineEndMs > 86_400_000L) return null
+        val first = item.copy(sourceOutMs = splitSourceMs)
+        val updated = project.tracks.map { lane ->
+            if (lane.id != trackId) lane else lane.copy(items = lane.items.flatMap {
+                if (it.id == itemId) listOf(first, second) else listOf(it)
+            })
+        }
+        return withDuration(updated)
+    }
+
+    /** Duplicate an edit-decision item; original media bytes are not copied. */
+    fun duplicateItem(project: StudioMultiTrackProject, trackId: String, itemId: String, newStartMs: Long): StudioMultiTrackProject? {
+        val track = project.tracks.firstOrNull { it.id == trackId } ?: return null
+        if (track.locked || newStartMs !in 0L..86_400_000L || track.items.size >= 500) return null
+        val item = track.items.firstOrNull { it.id == itemId } ?: return null
+        if (newStartMs + item.durationMs > 86_400_000L) return null
+        val copy = item.copy(id = UUID.randomUUID().toString(), timelineStartMs = newStartMs)
+        return withDuration(project.tracks.map { lane ->
+            if (lane.id == trackId) lane.copy(items = lane.items + copy) else lane
+        })
+    }
+
+    fun setItemOpacity(project: StudioMultiTrackProject, trackId: String, itemId: String, opacity: Float): StudioMultiTrackProject? {
+        if (!opacity.isFinite() || opacity !in 0f..1f) return null
+        val track = project.tracks.firstOrNull { it.id == trackId } ?: return null
+        if (track.locked || track.items.none { it.id == itemId }) return null
+        return project.copy(tracks = project.tracks.map { lane ->
+            if (lane.id != trackId) lane else lane.copy(items = lane.items.map {
+                if (it.id == itemId) it.copy(opacity = opacity) else it
+            })
+        })
+    }
+
+    fun setItemVolume(project: StudioMultiTrackProject, trackId: String, itemId: String, volume: Float): StudioMultiTrackProject? {
+        if (!volume.isFinite() || volume !in 0f..2f) return null
+        val track = project.tracks.firstOrNull { it.id == trackId } ?: return null
+        if (track.locked || track.kind != StudioTrackKind.AUDIO || track.items.none { it.id == itemId }) return null
+        return project.copy(tracks = project.tracks.map { lane ->
+            if (lane.id != trackId) lane else lane.copy(items = lane.items.map {
+                if (it.id == itemId) it.copy(volume = volume) else it
+            })
+        })
+    }
+
+    fun renameTrack(project: StudioMultiTrackProject, trackId: String, name: String): StudioMultiTrackProject? {
+        val safeName = name.trim()
+        if (safeName.isBlank() || safeName.length > 80 || project.tracks.none { it.id == trackId }) return null
+        return project.copy(tracks = project.tracks.map { if (it.id == trackId) it.copy(name = safeName) else it })
+    }
+
+    fun reorderTrack(project: StudioMultiTrackProject, trackId: String, newIndex: Int): StudioMultiTrackProject? {
+        val oldIndex = project.tracks.indexOfFirst { it.id == trackId }
+        if (oldIndex < 0 || newIndex !in project.tracks.indices) return null
+        val reordered = project.tracks.toMutableList()
+        val moving = reordered.removeAt(oldIndex)
+        reordered.add(newIndex, moving)
+        return project.copy(tracks = reordered)
+    }
+
     private fun withDuration(tracks: List<StudioTimelineTrack>): StudioMultiTrackProject {
         val duration = tracks.flatMap { it.items }.maxOfOrNull { it.timelineEndMs } ?: 0L
         return StudioMultiTrackProject(tracks, duration.coerceAtMost(86_400_000L))
