@@ -114,11 +114,9 @@ internal class StudioMultiTrackProjectStore(context: Context, projectId: String)
 
     fun read(): StudioMultiTrackProject = StudioMultiTrackCodec.decode(preferences.getString(KEY, null))
 
-    fun write(project: StudioMultiTrackProject) {
-        check(preferences.edit().putString(KEY, StudioMultiTrackCodec.encode(project)).commit()) {
-            "Could not save the movie's multi-track timeline"
-        }
-    }
+    fun write(project: StudioMultiTrackProject): Boolean = runCatching {
+        preferences.edit().putString(KEY, StudioMultiTrackCodec.encode(project)).commit()
+    }.getOrDefault(false)
 
     fun exists(): Boolean = preferences.contains(KEY)
 
