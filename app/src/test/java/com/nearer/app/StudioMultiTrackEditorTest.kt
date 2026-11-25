@@ -80,4 +80,50 @@ class StudioMultiTrackEditorTest {
         assertNull(StudioMultiTrackEditor.removeItem(locked, "video-main", "clip-a"))
         assertFalse(StudioMultiTrackEditor.setMuted(project(), "missing", true) != null)
     }
+
+    @Test fun splittingPreservesTotalDurationAndSourceRanges() {
+        val split = StudioMultiTrackEditor.splitItem(project(), "video-main", "clip-a", 2_000L)!!
+        val items = split.tracks.first { it.id == "video-main" }.items
+        assertEquals(3, items.size)
+        assertEquals(2_000L, items[0].durationMs)
+        assertEquals(3_000L, items[1].durationMs)
+        assertEquals(2_000L, items[1].sourceInMs)
+        assertEquals(10_000L, split.durationMs)
+    }
+
+    @Test fun splitAndDuplicateRejectInvalidOrLockedEdits() {
+        assertNull(StudioMultiTrackEditor.splitItem(project(), "video-main", "clip-a", 0L))
+        val locked = StudioMultiTrackEditor.setLocked(project(), "video-main", true)!!
+        assertNull(StudioMultiTrackEditor.splitItem(locked, "video-main", "clip-a", 2_000L))
+        assertNull(StudioMultiTrackEditor.duplicateItem(locked, "video-main", "clip-a", 0L))
+    }
+
+    @Test fun duplicateCreatesIndependentTimelineInstanceWithoutChangingSource() {
+        val duplicated = StudioMultiTrackEditor.duplicateItem(project(), "video-main", "clip-a", 8_000L)!!
+        val items = duplicated.tracks.first { it.id == "video-main" }.items
+        assertEquals(3, items.size)
+        assertEquals("content://video/a", items.last().sourceUri)
+        assertEquals(8_000L, items.last().timelineStartMs)
+        assertTrue(items.last().id != "clip-a")
+        assertEquals(13_000L, duplicated.durationMs)
+    }
+
+    @Test fun itemControlsEnforceOpacityVolumeAndTrackKinds() {
+        val opacity = StudioMultiTrackEditor.setItemOpacity(project(), "video-main", "clip-a", 0.4f)!!
+        assertEquals(0.4f, opacity.tracks[0].items[0].opacity, 0.001f)
+        assertNull(StudioMultiTrackEditor.setItemOpacity(opacity, "video-main", "clip-a", 1.5f))
+        val volume = StudioMultiTrackEditor.setItemVolume(project(), "audio-music", "music", 0.6f)!!
+        assertEquals(0.6f, volume.tracks[1].items[0].volume, 0.001f)
+        assertNull(StudioMultiTrackEditor.setItemVolume(project(), "video-main", "clip-a", 0.5f))
+    }
+
+    @Test fun tracksCanBeRenamedAndReorderedSafely() {
+        val renamed = StudioMultiTrackEditor.renameTrack(project(), "audio-music", "Dialogue")!!
+        assertEquals("Dialogue", renamed.tracks[1].name)
+        assertNull(StudioMultiTrackEditor.renameTrack(renamed, "audio-music", " "))
+        val reordered = StudioMultiTrackEditor.reorderTrack(renamed, "audio-music", 0)!!
+        assertEquals("audio-music", reordered.tracks[0].id)
+        assertNull(StudioMultiTrackEditor.reorderTrack(reordered, "missing", 0))
+    }
+
 }
