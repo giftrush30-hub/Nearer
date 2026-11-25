@@ -119,6 +119,13 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     var brightness by remember(context, projectId) { mutableStateOf(restoredGrade.brightness) }
     var contrast by remember(context, projectId) { mutableStateOf(restoredGrade.contrast) }
     var saturation by remember(context, projectId) { mutableStateOf(restoredGrade.saturation) }
+    val chromaPreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_chroma_$projectId", android.content.Context.MODE_PRIVATE) }
+    var chromaKeyEnabled by remember(context, projectId) { mutableStateOf(chromaPreferences.getBoolean("enabled", false)) }
+    var chromaKeyColor by remember(context, projectId) { mutableStateOf(chromaPreferences.getInt("key_color", android.graphics.Color.GREEN)) }
+    var chromaTolerance by remember(context, projectId) { mutableStateOf(chromaPreferences.getFloat("tolerance", 0.22f).coerceIn(0f, 1f)) }
+    var chromaSoftness by remember(context, projectId) { mutableStateOf(chromaPreferences.getFloat("softness", 0.12f).coerceIn(0.001f, 1f)) }
+    var chromaDespill by remember(context, projectId) { mutableStateOf(chromaPreferences.getFloat("despill", 0.65f).coerceIn(0f, 1f)) }
+    var replacementBackground by remember(context, projectId) { mutableStateOf(chromaPreferences.getString("background_uri", null)?.let(Uri::parse)) }
     val textPreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_text_$projectId", android.content.Context.MODE_PRIVATE) }
     var textOverlay by remember(context, projectId) { mutableStateOf(StudioVideoTextOverlayCodec.decode(textPreferences.getString("overlay_v1", null))) }
     val captionPreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_captions_$projectId", android.content.Context.MODE_PRIVATE) }
@@ -194,6 +201,12 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         if (!saved) message = "Your movie is still editable, but the multi-track backup could not be saved. Check phone storage and try again."
     }
     fun videoEffects(clipIndex: Int = 0) = buildList<androidx.media3.common.Effect> {
+        if (chromaKeyEnabled) add(StudioChromaKeyEffect(StudioChromaKeySettings(
+            keyColorArgb = chromaKeyColor,
+            tolerance = chromaTolerance,
+            edgeSoftness = chromaSoftness,
+            despill = chromaDespill
+        )))
         if (brightness != 0f) add(Brightness(brightness))
         if (contrast != 0f) add(Contrast(contrast))
         if (saturation != 0f) add(HslAdjustment.Builder().adjustSaturation(saturation).build())
@@ -230,6 +243,17 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         gradePreferences.edit().putString("grade_v1", StudioVideoGradeCodec.encode(StudioVideoGrade(brightness, contrast, saturation))).apply()
         withContext(Dispatchers.IO) { StudioProjectLibraryStore(context).touch(projectId) }
     }
+    LaunchedEffect(projectId, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, replacementBackground?.toString()) {
+        chromaPreferences.edit()
+            .putBoolean("enabled", chromaKeyEnabled)
+            .putInt("key_color", chromaKeyColor)
+            .putFloat("tolerance", chromaTolerance)
+            .putFloat("softness", chromaSoftness)
+            .putFloat("despill", chromaDespill)
+            .putString("background_uri", replacementBackground?.toString())
+            .apply()
+        withContext(Dispatchers.IO) { StudioProjectLibraryStore(context).touch(projectId) }
+    }
     LaunchedEffect(projectId, textOverlay) {
         textPreferences.edit().putString("overlay_v1", StudioVideoTextOverlayCodec.encode(textOverlay)).apply()
         withContext(Dispatchers.IO) { StudioProjectLibraryStore(context).touch(projectId) }
@@ -262,7 +286,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     val player = remember(context, projectId) { ExoPlayer.Builder(context).build() }
 
     DisposableEffect(projectId, player) { onDispose { player.release() } }
-    LaunchedEffect(projectId, clips.toList(), brightness, contrast, saturation, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
+    LaunchedEffect(projectId, clips.toList(), brightness, contrast, saturation, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
         player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
         if (clips.isNotEmpty()) {
             val previewItems = clips.map { clip ->
@@ -276,7 +300,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         } else player.clearMediaItems()
     }
 
-    DisposableEffect(projectId, player, clips.size, brightness, contrast, saturation, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
+    DisposableEffect(projectId, player, clips.size, brightness, contrast, saturation, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
         val captionListener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
@@ -317,6 +341,13 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
             exported = null
         }.onFailure { message = "Could not access background audio: ${it.message}" }
     }
+    val replacementBackgroundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            replacementBackground = uri
+            exported = null
+        }.onFailure { message = "Could not access replacement background: ${it.message}" }
+    }
 
     Column(Modifier.fillMaxSize().background(Midnight).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -337,6 +368,40 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                 Text("SATURATION  ·  ${saturation.toInt()}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                 Slider(value = saturation, onValueChange = { saturation = it; exported = null }, valueRange = -50f..50f)
                 Button(onClick = { brightness = 0f; contrast = 0f; saturation = 0f; exported = null }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("RESET COLOUR") }
+            }
+        }
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("GREEN SCREEN / BACKGROUND REPLACEMENT", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Remove a green or blue studio backdrop with an offline GPU keyer, soften the edge and reduce colour spill. Choose a replacement image or video underneath your subject.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Button(onClick = { chromaKeyEnabled = !chromaKeyEnabled; exported = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (chromaKeyEnabled) Mint else Midnight, contentColor = if (chromaKeyEnabled) Midnight else White)) {
+                    Text(if (chromaKeyEnabled) "CHROMA KEY · ON" else "TURN ON CHROMA KEY")
+                }
+                if (chromaKeyEnabled) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        listOf("GREEN" to android.graphics.Color.GREEN, "BLUE" to 0xFF0000FF.toInt()).forEach { (label, color) ->
+                            Button(onClick = { chromaKeyColor = color; exported = null }, modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = if (chromaKeyColor == color) Mint else Midnight,
+                                    contentColor = if (chromaKeyColor == color) Midnight else White)) { Text(label) }
+                        }
+                    }
+                    Text("KEY TOLERANCE · ${(chromaTolerance * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Slider(value = chromaTolerance, onValueChange = { chromaTolerance = it; exported = null }, valueRange = 0.05f..0.65f)
+                    Text("EDGE SOFTNESS · ${(chromaSoftness * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Slider(value = chromaSoftness, onValueChange = { chromaSoftness = it.coerceAtLeast(0.001f); exported = null }, valueRange = 0.01f..0.4f)
+                    Text("SPILL CLEANUP · ${(chromaDespill * 100).toInt()}%", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Slider(value = chromaDespill, onValueChange = { chromaDespill = it; exported = null }, valueRange = 0f..1f)
+                    Text(replacementBackground?.lastPathSegment ?: "No replacement background selected", color = if (replacementBackground == null) Gold else Mint, fontSize = 10.sp)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Button(onClick = { replacementBackgroundPicker.launch(arrayOf("image/*", "video/*")) }, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) { Text("CHOOSE BACKGROUND") }
+                        if (replacementBackground != null) Button(onClick = { replacementBackground = null; exported = null },
+                            colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("REMOVE") }
+                    }
+                    Text("The exported film composites your keyed foreground over this background. The current single-clip preview shows the keyed foreground; full layered preview is a separate integration step.", color = Muted, fontSize = 9.sp, lineHeight = 14.sp)
+                }
             }
         }
         Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
@@ -602,6 +667,8 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         Button(onClick = {
             if (clips.isEmpty()) {
                 message = "Add at least one video clip before exporting."
+            } else if (chromaKeyEnabled && replacementBackground == null) {
+                message = "Choose a replacement image or video before exporting the chroma-keyed film."
             } else {
                 exporting = true
                 exported = null
@@ -615,7 +682,22 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                     EditedMediaItem.Builder(item).setEffects(Effects(emptyList(), videoEffects(clipIndex))).build()
                 }
                 val videoSequence = EditedMediaItemSequence.Builder(videoItems).build()
+                // The first sequence is Media3's primary/top compositor input. Its keyed transparent
+                // pixels reveal the replacement sequence immediately underneath it.
                 val sequences = mutableListOf(videoSequence)
+                if (chromaKeyEnabled && replacementBackground != null) {
+                    val movieDurationMs = clips.sumOf { (it.outMs - it.inMs).coerceAtLeast(0L) }
+                    val backgroundUri = replacementBackground!!
+                    val backgroundMime = context.contentResolver.getType(backgroundUri).orEmpty()
+                    val backgroundMedia = if (backgroundMime.startsWith("image/")) {
+                        MediaItem.Builder().setUri(backgroundUri).setImageDurationMs(movieDurationMs.coerceAtLeast(1L)).build()
+                    } else {
+                        MediaItem.fromUri(backgroundUri)
+                    }
+                    val backgroundItem = EditedMediaItem.Builder(backgroundMedia).setRemoveAudio(true).build()
+                    sequences.add(EditedMediaItemSequence.Builder(listOf(backgroundItem))
+                        .setIsLooping(!backgroundMime.startsWith("image/")).build())
+                }
                 if (backgroundAudio != null && !musicMuted) {
                     val musicItem = EditedMediaItem.Builder(MediaItem.fromUri(backgroundAudio!!)).build()
                     sequences.add(EditedMediaItemSequence.Builder(listOf(musicItem)).setIsLooping(true).build())
