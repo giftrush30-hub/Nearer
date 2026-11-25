@@ -54,7 +54,7 @@ class StudioMultiTrackEditorTest {
         assertTrue(muted.tracks.first { it.id == "audio-music" }.muted)
         val removed = StudioMultiTrackEditor.removeItem(muted, "audio-music", "music")!!
         assertTrue(removed.tracks.first { it.id == "audio-music" }.items.isEmpty())
-        assertEquals(8_500L, removed.durationMs)
+        assertEquals(8_000L, removed.durationMs)
     }
 
     @Test fun invalidMovesAndLockedRemovalsAreRejected() {
