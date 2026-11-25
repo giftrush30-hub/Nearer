@@ -60,7 +60,7 @@ internal object StudioKeyframeEvaluator {
     }
 
     fun valueAt(keyframes: List<StudioKeyframe>, timeMs: Long, fallback: Float): Float {
-        if (keyframes.isEmpty() || !fallback.isFinite()) return fallback
+        if (keyframes.isEmpty()) return fallback
         if (timeMs <= keyframes.first().timeMs) return keyframes.first().value
         if (timeMs >= keyframes.last().timeMs) return keyframes.last().value
         val rightIndex = keyframes.indexOfFirst { it.timeMs >= timeMs }
