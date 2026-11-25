@@ -170,7 +170,8 @@ internal object StudioMultiTrackEditor {
         reordered.add(newIndex, moving)
         return project.copy(tracks = reordered)
     }
-\n    private fun withDuration(tracks: List<StudioTimelineTrack>): StudioMultiTrackProject {
+
+    private fun withDuration(tracks: List<StudioTimelineTrack>): StudioMultiTrackProject {
         val duration = tracks.flatMap { it.items }.maxOfOrNull { it.timelineEndMs } ?: 0L
         return StudioMultiTrackProject(tracks, duration.coerceAtMost(86_400_000L))
     }
