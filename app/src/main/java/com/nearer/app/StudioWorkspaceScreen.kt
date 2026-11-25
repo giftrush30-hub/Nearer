@@ -45,6 +45,9 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
     var recordingAudio by remember { mutableStateOf(false) }
     var mixingAudio by remember { mutableStateOf(false) }
     var videoTimeline by remember { mutableStateOf(false) }
+    var videoProjects by remember { mutableStateOf(false) }
+    var selectedVideoProjectId by remember { mutableStateOf<String?>(null) }
+    var filmSchool by remember { mutableStateOf(false) }
     val preferences = remember(context) {
         context.getSharedPreferences("nearer_studio_workspace", android.content.Context.MODE_PRIVATE)
     }
@@ -93,8 +96,15 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
         persistAssets()
     }
 
-    if (videoTimeline) {
-        StudioVideoTimelineScreen(onBack = { videoTimeline = false })
+    if (filmSchool) {
+        StudioFilmSchoolScreen(onBack = { filmSchool = false })
+    } else if (videoTimeline && selectedVideoProjectId != null) {
+        StudioVideoTimelineScreen(projectId = selectedVideoProjectId!!, onBack = { videoTimeline = false; videoProjects = true })
+    } else if (videoProjects) {
+        StudioVideoProjectsScreen(
+            onOpenProject = { id -> selectedVideoProjectId = id; videoProjects = false; videoTimeline = true },
+            onBack = { videoProjects = false }
+        )
     } else if (mixingAudio) {
         StudioAudioMixerScreen(onBack = { mixingAudio = false })
     } else if (recordingAudio) {
@@ -118,30 +128,33 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text("‹  MORE", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 8.dp))
-            Text("OFFLINE WORKSPACE", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text("OFFLINE FILM STUDIO", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         }
         Surface(color = Panel, shape = RoundedCornerShape(24.dp)) {
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("NEARER STUDIO", color = White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
-                Text("Your creative desk, even without data.", color = Mint, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("Bring photos, videos and audio from your phone into one local workspace. Your files stay on this device; NeaRer stores access to the items you choose.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+                Text("Make a movie. Learn as you go. No data needed.", color = Mint, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Start with a video, join a few clips, add sound and make your own movie. Your chosen files stay on this phone.", color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
                 Button(onClick = { picker.launch(arrayOf("image/*", "video/*", "audio/*")) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
-                    Text("＋  Add media to Studio", fontWeight = FontWeight.Bold)
+                    Text("＋  Add videos, photos or sound", fontWeight = FontWeight.Bold)
                 }
                 Button(onClick = { recordingAudio = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
-                    Text("●  Record audio offline", fontWeight = FontWeight.Bold)
+                    Text("●  Record a voice or sound", fontWeight = FontWeight.Bold)
                 }
                 Button(onClick = { mixingAudio = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
-                    Text("＋  Open multitrack mixer", fontWeight = FontWeight.Bold)
+                    Text("＋  Mix music and sound", fontWeight = FontWeight.Bold)
                 }
-                Button(onClick = { videoTimeline = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
-                    Text("▤  Open multi-clip video timeline", fontWeight = FontWeight.Bold)
+                Button(onClick = { videoProjects = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
+                    Text("▤  My movies · create or continue", fontWeight = FontWeight.Bold)
+                }
+                Button(onClick = { filmSchool = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
+                    Text("▶  Teach me how to make movies", fontWeight = FontWeight.Bold)
                 }
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("MY MEDIA", color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text("${assets.size} SAVED", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text("YOUR FILES", color = White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text("${assets.size} ON THIS PHONE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
         if (assets.isEmpty()) {
             Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
@@ -158,8 +171,8 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                             Text(asset.name, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
                             Text(asset.kind, color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
-                        if (asset.kind == "VIDEO" || asset.kind == "PHOTO" || asset.kind == "AUDIO") Text("EDIT", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editingAsset = asset }.padding(7.dp))
-                        Text("OPEN", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
+                        if (asset.kind == "VIDEO" || asset.kind == "PHOTO" || asset.kind == "AUDIO") Text("CHANGE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editingAsset = asset }.padding(7.dp))
+                        Text("VIEW", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                             runCatching {
                                 val localFile = if (asset.uri.scheme == "file") File(asset.uri.path.orEmpty()) else null
                                 val openUri = if (localFile != null) androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", localFile) else asset.uri
@@ -176,7 +189,7 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                 }
             }
         }
-        Text("NEXT IN STUDIO", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-        Text("Studio now includes offline multitrack mixing with per-track volume, pan, fades, three-band EQ and room reverb, saved project settings, rendered-mix playback and sharing. Recording, live pitch/key monitoring, vocal processing, video editing and photo adjustments are also in place. Remaining work is deeper timeline editing, richer waveforms, tempo automation, named projects and additional video/photo layers.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+        Text("MORE TO COME", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Text("You can make a movie from clips, cut a video, change a photo, record your voice and mix sounds. More movie-making tools are being built.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
     }
 }
