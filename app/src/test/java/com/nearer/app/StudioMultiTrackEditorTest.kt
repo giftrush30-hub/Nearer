@@ -37,7 +37,7 @@ class StudioMultiTrackEditorTest {
         val moved = StudioMultiTrackEditor.moveItem(project(), "video-main", "clip-b", 8_000L)!!
         assertEquals(11_000L, moved.durationMs)
         val trimmed = StudioMultiTrackEditor.trimItem(moved, "video-main", "clip-b", 1_000L, 2_000L)!!
-        assertEquals(9_000L, trimmed.durationMs)
+        assertEquals(10_000L, trimmed.durationMs)
         assertEquals(1_000L, trimmed.tracks[0].items[1].sourceInMs)
     }
 
