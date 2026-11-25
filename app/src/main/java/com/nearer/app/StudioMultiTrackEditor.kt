@@ -48,7 +48,8 @@ internal object StudioMultiTrackEditor {
     fun moveItem(project: StudioMultiTrackProject, trackId: String, itemId: String, newStartMs: Long): StudioMultiTrackProject? {
         val track = project.tracks.firstOrNull { it.id == trackId } ?: return null
         if (track.locked || newStartMs !in 0L..86_400_000L) return null
-        if (track.items.none { it.id == itemId }) return null
+        val moving = track.items.firstOrNull { it.id == itemId } ?: return null
+        if (newStartMs + moving.durationMs > 86_400_000L) return null
         val updated = project.tracks.map { lane ->
             if (lane.id != trackId) lane else lane.copy(items = lane.items.map { item ->
                 if (item.id == itemId) item.copy(timelineStartMs = newStartMs) else item
@@ -66,7 +67,8 @@ internal object StudioMultiTrackEditor {
     ): StudioMultiTrackProject? {
         val track = project.tracks.firstOrNull { it.id == trackId } ?: return null
         if (track.locked || sourceInMs < 0L || sourceOutMs <= sourceInMs || sourceOutMs > 86_400_000L) return null
-        if (track.items.none { it.id == itemId }) return null
+        val trimming = track.items.firstOrNull { it.id == itemId } ?: return null
+        if (trimming.timelineStartMs + (sourceOutMs - sourceInMs) > 86_400_000L) return null
         val updated = project.tracks.map { lane ->
             if (lane.id != trackId) lane else lane.copy(items = lane.items.map { item ->
                 if (item.id == itemId) item.copy(sourceInMs = sourceInMs, sourceOutMs = sourceOutMs) else item
