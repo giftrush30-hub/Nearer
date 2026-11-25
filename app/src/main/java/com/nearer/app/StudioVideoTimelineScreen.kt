@@ -142,6 +142,51 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         transitionPreferences.edit().putString("style", transitionStyle.name).putInt("duration_ms", transitionDurationMs).apply()
         withContext(Dispatchers.IO) { StudioProjectLibraryStore(context).touch(projectId) }
     }
+    val multiTrackStore = remember(context, projectId) { StudioMultiTrackProjectStore(context, projectId) }
+    var multiTrackProject by remember(context, projectId) { mutableStateOf(multiTrackStore.read()) }
+    var musicMuted by remember(context, projectId) {
+        mutableStateOf(multiTrackProject.tracks.firstOrNull { it.id == "audio-music" }?.muted ?: false)
+    }
+    LaunchedEffect(projectId, clips.toList(), backgroundAudio?.toString(), musicMuted, captionLayers.toList(), brightness, contrast, saturation, textOverlay) {
+        var videoCursor = 0L
+        val videoItems = clips.mapIndexed { index, clip ->
+            val item = StudioTimelineItem(
+                id = "clip-${clip.uri.toString().hashCode()}",
+                sourceUri = clip.uri.toString(),
+                timelineStartMs = videoCursor,
+                sourceInMs = clip.inMs,
+                sourceOutMs = clip.outMs
+            )
+            videoCursor = (videoCursor + item.durationMs).coerceAtMost(86_400_000L)
+            item
+        }
+        val textItems = buildList {
+            if (textOverlay.text.isNotBlank() && videoCursor > 0L) {
+                add(StudioTimelineItem("main-title", null, 0L, 0L, videoCursor))
+            }
+            captionLayers.forEachIndexed { index, layer ->
+                val clipOffset = clips.take(layer.clipIndex.coerceIn(0, clips.size)).sumOf { (it.outMs - it.inMs).coerceAtLeast(0L) }
+                val duration = (layer.endMs - layer.startMs).coerceAtLeast(1L)
+                if (layer.clipIndex in clips.indices && layer.text.isNotBlank()) {
+                    add(StudioTimelineItem("caption-${layer.id.ifBlank { index.toString() }}", null,
+                        (clipOffset + layer.startMs).coerceAtMost(86_400_000L), 0L, duration))
+                }
+            }
+        }
+        val effectItems = if (videoCursor > 0L && (brightness != 0f || contrast != 0f || saturation != 0f)) {
+            listOf(StudioTimelineItem("colour-grade", null, 0L, 0L, videoCursor))
+        } else emptyList()
+        val synchronized = StudioMultiTrackEditor.fromVideoSources(
+            videos = videoItems,
+            audioUri = backgroundAudio?.toString(),
+            audioDurationMs = videoCursor,
+            audioMuted = musicMuted,
+            textItems = textItems,
+            effectItems = effectItems
+        )
+        multiTrackProject = synchronized
+        withContext(Dispatchers.IO) { multiTrackStore.write(synchronized) }
+    }
     fun videoEffects(clipIndex: Int = 0) = buildList<androidx.media3.common.Effect> {
         if (brightness != 0f) add(Brightness(brightness))
         if (contrast != 0f) add(Contrast(contrast))
@@ -496,6 +541,37 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                 Button(onClick = { videoPicker.launch(arrayOf("video/*")) }, enabled = clips.size < 12, modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                     Text("＋  ADD VIDEO CLIPS", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("MULTI-TRACK LAYERS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("${multiTrackProject.tracks.size} LANES", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+                Text("Your picture, music, words and visual adjustments are kept on separate editing lanes.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                multiTrackProject.tracks.forEach { track ->
+                    Surface(color = Midnight, shape = RoundedCornerShape(11.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(track.name, color = White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("${track.items.size} item(s)", color = Mint, fontSize = 9.sp)
+                            }
+                            if (track.kind == StudioTrackKind.AUDIO && backgroundAudio != null) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    Text(if (musicMuted) "UNMUTE MUSIC" else "MUTE MUSIC", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clickable { musicMuted = !musicMuted }.padding(5.dp))
+                                }
+                            }
+                            if (track.items.isNotEmpty()) {
+                                Text(track.items.joinToString("   ·   ") { "${formatStudioTimelineTime(it.timelineStartMs)}  +${formatStudioTimelineTime(it.durationMs)}" },
+                                    color = Muted, fontSize = 9.sp)
+                            } else {
+                                Text("No items on this lane yet", color = Muted, fontSize = 9.sp)
+                            }
+                        }
+                    }
                 }
             }
         }
