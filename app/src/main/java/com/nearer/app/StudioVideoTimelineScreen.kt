@@ -55,6 +55,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.effect.Brightness
 import androidx.media3.effect.Contrast
 import androidx.media3.effect.HslAdjustment
+import androidx.media3.effect.MultipleInputVideoGraph
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.TextOverlay
@@ -285,7 +286,13 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     }
 
     val player = remember(context, projectId) { ExoPlayer.Builder(context).build() }
-    val compositionPlayer = remember(context, projectId) { CompositionPlayer.Builder(context).build() }
+    val compositionPlayer = remember(context, projectId) {
+        CompositionPlayer.Builder(context)
+            // Foreground video plus replacement image/video are separate visual sequences.
+            // The default SingleInputVideoGraph cannot composite both input streams.
+            .setVideoGraphFactory(MultipleInputVideoGraph.Factory())
+            .build()
+    }
     var useCompositionPreview by remember(context, projectId) { mutableStateOf(false) }
     var compositionPreviewFailed by remember(context, projectId) { mutableStateOf(false) }
 
