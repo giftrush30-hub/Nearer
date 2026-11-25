@@ -51,13 +51,13 @@ internal object StudioMaskRasterizer {
             is StudioMask.Rectangle -> listOf(
                 mask.left to mask.top, mask.right to mask.top,
                 mask.right to mask.bottom, mask.left to mask.bottom
-            ).map { (x, y) -> x * width to y * height }
+            ).map { (x, y) -> x.toDouble() * width to y.toDouble() * height }
             is StudioMask.Ellipse -> (0 until 96).map { index ->
                 val angle = 2.0 * Math.PI * index / 96.0
                 (mask.centerX + kotlin.math.cos(angle) * mask.radiusX) * width to
                     (mask.centerY + kotlin.math.sin(angle) * mask.radiusY) * height
             }
-            is StudioMask.Polygon -> mask.points.map { it.x * width to it.y * height }
+            is StudioMask.Polygon -> mask.points.map { it.x.toDouble() * width to it.y.toDouble() * height }
         }
 
     private fun contains(points: List<Pair<Double, Double>>, x: Double, y: Double): Boolean {
