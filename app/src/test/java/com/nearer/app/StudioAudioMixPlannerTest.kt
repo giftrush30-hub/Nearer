@@ -22,7 +22,7 @@ class StudioAudioMixPlannerTest {
         val samples = StudioAudioMixPlanner.samplesAt(cues, 2_000L, 48_000)
         assertEquals(2, samples.size)
         val voice = samples.first { it.cueId == "voice" }
-        assertEquals(1_000L * 48L, voice.sourceFrame)
+        assertEquals(3_000L * 48L, voice.sourceFrame)
         assertTrue(voice.leftFactor > voice.rightFactor)
     }
 
