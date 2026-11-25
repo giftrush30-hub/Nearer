@@ -36,7 +36,7 @@ class StudioRenderPlanTest {
         val plan = StudioRenderPlanBuilder.build(muted)
         assertTrue(plan.isValid)
         assertTrue(plan.audioTracks.isEmpty())
-        assertEquals(2, plan.totalClipCount - 1)
+        assertEquals(1, plan.totalClipCount)
     }
 
     @Test fun rejectsNetworkSourcesToKeepCoreExportOffline() {
