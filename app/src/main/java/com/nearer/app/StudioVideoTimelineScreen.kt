@@ -665,10 +665,34 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
             }
         }
         Button(onClick = {
+            var preflightCursor = 0L
+            val preflightVideoItems = clips.mapIndexed { index, clip ->
+                val item = StudioTimelineItem(
+                    id = "preflight-video-$index",
+                    sourceUri = clip.uri.toString(),
+                    timelineStartMs = preflightCursor,
+                    sourceInMs = clip.inMs,
+                    sourceOutMs = clip.outMs
+                )
+                preflightCursor += item.durationMs
+                item
+            }
+            val preflightTracks = mutableListOf(
+                StudioTimelineTrack("video-main", "Main video", StudioTrackKind.VIDEO, items = preflightVideoItems)
+            )
+            if (backgroundAudio != null) {
+                preflightTracks += StudioTimelineTrack(
+                    "audio-music", "Background music", StudioTrackKind.AUDIO, muted = musicMuted,
+                    items = listOf(StudioTimelineItem("music-bed", backgroundAudio.toString(), 0L, 0L, preflightCursor.coerceAtLeast(1L)))
+                )
+            }
+            val preflight = StudioRenderPlanBuilder.build(StudioMultiTrackProject(preflightTracks, preflightCursor))
             if (clips.isEmpty()) {
                 message = "Add at least one video clip before exporting."
             } else if (chromaKeyEnabled && replacementBackground == null) {
                 message = "Choose a replacement image or video before exporting the chroma-keyed film."
+            } else if (!preflight.isValid) {
+                message = "Export preflight stopped: " + preflight.errors.joinToString(" ")
             } else {
                 exporting = true
                 exported = null
