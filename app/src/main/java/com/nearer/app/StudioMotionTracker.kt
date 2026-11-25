@@ -54,7 +54,10 @@ internal object StudioTemplateMotionTracker {
         }
         var x = (startX * (first.width - 1)).toInt().coerceIn(margin, first.width - margin - 1)
         var y = (startY * (first.height - 1)).toInt().coerceIn(margin, first.height - margin - 1)
-        val template = patch(first, x, y, patchRadius)
+        val side = patchRadius * 2 + 1
+        val template = DoubleArray(side * side)
+        val candidate = DoubleArray(side * side)
+        copyPatch(first, x, y, patchRadius, template)
         val points = mutableListOf(StudioTrackedPoint(0, x / (first.width - 1f), y / (first.height - 1f), 1f, true))
 
         for (frameIndex in 1 until frames.size) {
@@ -68,7 +71,7 @@ internal object StudioTemplateMotionTracker {
             val maxY = (y + searchRadius).coerceAtMost(frame.height - patchRadius - 1)
             for (candidateY in minY..maxY) {
                 for (candidateX in minX..maxX) {
-                    val score = normalizedCorrelation(template, patch(frame, candidateX, candidateY, patchRadius))
+                    copyPatch(frame, candidateX, candidateY, patchRadius, candidate)\n                    val score = normalizedCorrelation(template, candidate)
                     if (score > bestScore) {
                         bestScore = score
                         bestX = candidateX
@@ -90,14 +93,19 @@ internal object StudioTemplateMotionTracker {
         return StudioMotionTrack(points, lostAtFrame = null)
     }
 
-    private fun patch(frame: StudioGrayFrame, centerX: Int, centerY: Int, radius: Int): DoubleArray {
+    private fun copyPatch(
+        frame: StudioGrayFrame,
+        centerX: Int,
+        centerY: Int,
+        radius: Int,
+        destination: DoubleArray
+    ) {
         val side = radius * 2 + 1
-        return DoubleArray(side * side).also { values ->
-            var index = 0
-            for (y in centerY - radius..centerY + radius) {
-                for (x in centerX - radius..centerX + radius) {
-                    values[index++] = frame.value(x, y).toDouble()
-                }
+        require(destination.size == side * side)
+        var index = 0
+        for (y in centerY - radius..centerY + radius) {
+            for (x in centerX - radius..centerX + radius) {
+                destination[index++] = frame.value(x, y).toDouble()
             }
         }
     }
