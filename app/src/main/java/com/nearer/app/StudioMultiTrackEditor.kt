@@ -34,7 +34,7 @@ internal object StudioMultiTrackEditor {
         }
         val duration = maxOf(
             positionedVideos.maxOfOrNull { it.timelineEndMs } ?: 0L,
-            if (audioUri.isNullOrBlank()) 0L else cursor
+            if (audioUri.isNullOrBlank()) 0L else audioDurationMs.coerceAtMost(86_400_000L)
         )
         return StudioMultiTrackProject(tracks, duration.coerceAtMost(86_400_000L))
     }
