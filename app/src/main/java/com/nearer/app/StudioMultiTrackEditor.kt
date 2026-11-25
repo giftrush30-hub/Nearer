@@ -11,7 +11,9 @@ internal object StudioMultiTrackEditor {
         videos: List<StudioTimelineItem>,
         audioUri: String? = null,
         audioDurationMs: Long = 0L,
-        audioMuted: Boolean = false
+        audioMuted: Boolean = false,
+        textItems: List<StudioTimelineItem> = emptyList(),
+        effectItems: List<StudioTimelineItem> = emptyList()
     ): StudioMultiTrackProject {
         var cursor = 0L
         val positionedVideos = videos.map { item ->
@@ -31,7 +33,11 @@ internal object StudioMultiTrackEditor {
                     sourceInMs = 0L, sourceOutMs = audioDurationMs.coerceAtMost(86_400_000L)
                 ))
             )
+        } else {
+            tracks += StudioTimelineTrack("audio-music", "Background music", StudioTrackKind.AUDIO, muted = audioMuted)
         }
+        tracks += StudioTimelineTrack("text-overlays", "Titles and captions", StudioTrackKind.TEXT, items = textItems)
+        tracks += StudioTimelineTrack("visual-effects", "Visual effects", StudioTrackKind.EFFECT, items = effectItems)
         val duration = maxOf(
             positionedVideos.maxOfOrNull { it.timelineEndMs } ?: 0L,
             if (audioUri.isNullOrBlank()) 0L else audioDurationMs.coerceAtMost(86_400_000L)
