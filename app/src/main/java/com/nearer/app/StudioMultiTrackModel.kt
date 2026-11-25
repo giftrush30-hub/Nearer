@@ -98,8 +98,8 @@ internal object StudioMultiTrackCodec {
                                 timelineStartMs = item.optLong("timelineStartMs", -1L),
                                 sourceInMs = item.optLong("sourceInMs", -1L),
                                 sourceOutMs = item.optLong("sourceOutMs", -1L),
-                                volume = item.optDouble("volume", 1.0).toFloat(),
-                                opacity = item.optDouble("opacity", 1.0).toFloat()
+                                volume = item.optDouble("volume", 1.0).toFloat().coerceIn(0f, 2f),
+                                opacity = item.optDouble("opacity", 1.0).toFloat().coerceIn(0f, 1f)
                             )
                             if (isValid(decoded)) add(decoded)
                         }
