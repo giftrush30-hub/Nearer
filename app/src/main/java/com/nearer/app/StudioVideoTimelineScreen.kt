@@ -615,7 +615,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                 }
                 val videoSequence = EditedMediaItemSequence.Builder(videoItems).build()
                 val sequences = mutableListOf(videoSequence)
-                if (backgroundAudio != null) {
+                if (backgroundAudio != null && !musicMuted) {
                     val musicItem = EditedMediaItem.Builder(MediaItem.fromUri(backgroundAudio!!)).build()
                     sequences.add(EditedMediaItemSequence.Builder(listOf(musicItem)).setIsLooping(true).build())
                 }
