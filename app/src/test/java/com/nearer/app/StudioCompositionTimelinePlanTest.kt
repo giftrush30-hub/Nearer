@@ -45,15 +45,15 @@ class StudioCompositionTimelinePlanTest {
         assertEquals(2_000_000L, clip.timelineEndUs)
     }
 
-    @Test fun rejectsInconsistentSourceAndTimelineDurations() {
+    @Test fun rejectsNegativeSourceTimingBeforeComposition() {
         val bad = plan().copy(videoTracks = listOf(
             StudioRenderTrack("v", "Video", StudioRenderTrackType.VIDEO, listOf(
-                StudioRenderClip("v", "bad", "content://video/a", 0L, 0L, 3_000L, 1f, 1f)
+                StudioRenderClip("v", "bad", "content://video/a", 0L, -1L, 3_000L, 1f, 1f)
             ))
         ))
         val result = StudioCompositionTimelinePlanBuilder.build(bad)
         assertFalse(result.isValid)
-        assertTrue(result.errors.any { it.contains("inconsistent") })
+        assertTrue(result.errors.any { it.contains("microsecond range") })
     }
 
     @Test fun rejectsProjectDurationOutsideMicrosecondRange() {
