@@ -63,11 +63,16 @@ internal object StudioMaskRasterizer {
         }
 
     private fun contains(points: List<Pair<Double, Double>>, x: Double, y: Double): Boolean {
+        // Treat the exact polygon edge as outside. This gives hard masks stable,
+        // half-open boundaries and avoids adjacent pixels being inconsistently included.
         var inside = false
         var previous = points.lastIndex
         for (current in points.indices) {
             val a = points[current]
             val b = points[previous]
+            if (distanceToSegment(x, y, a.first, a.second, b.first, b.second) <= 1e-9) {
+                return false
+            }
             if ((a.second > y) != (b.second > y) &&
                 x < (b.first - a.first) * (y - a.second) / (b.second - a.second) + a.first) {
                 inside = !inside
