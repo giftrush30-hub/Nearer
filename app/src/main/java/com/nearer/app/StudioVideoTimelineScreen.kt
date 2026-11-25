@@ -80,7 +80,7 @@ private data class StudioVideoClip(
     val outMs: Long = durationMs
 )
 
-@OptIn(androidx.media3.common.util.UnstableApi::class)
+@OptIn(androidx.media3.common.util.UnstableApi::class, androidx.media3.common.util.ExperimentalApi::class)
 @Composable
 internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     val context = LocalContext.current
@@ -365,12 +365,12 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                         .build()
                     sequences.add(EditedMediaItemSequence.Builder(listOf(musicItem)).setIsLooping(true).build())
                 }
-                Composition.Builder(sequences).build()
-            }.onSuccess { composition ->
+                val composition = Composition.Builder(sequences).build()
                 compositionPlayer.setComposition(composition)
                 compositionPlayer.prepare()
                 compositionPlayer.playWhenReady = false
-            }.isSuccess else false
+                true
+            }.getOrDefault(false) else false
 
             if (layered) {
                 useCompositionPreview = true
