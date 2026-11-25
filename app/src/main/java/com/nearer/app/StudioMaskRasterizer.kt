@@ -27,8 +27,9 @@ internal object StudioMaskRasterizer {
                 val px = x + 0.5
                 val py = y + 0.5
                 val inside = contains(polygon, px, py)
-                val distance = polygon.minOf { point ->
-                    val next = polygon[(polygon.indexOf(point) + 1) % polygon.size]
+                val distance = polygon.indices.minOf { index ->
+                    val point = polygon[index]
+                    val next = polygon[(index + 1) % polygon.size]
                     distanceToSegment(px, py, point.first, point.second, next.first, next.second)
                 }
                 val signedDistance = if (inside) distance else -distance
