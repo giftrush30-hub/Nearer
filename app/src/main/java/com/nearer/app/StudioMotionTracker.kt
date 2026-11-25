@@ -49,6 +49,9 @@ internal object StudioTemplateMotionTracker {
 
         val first = frames.first()
         val margin = patchRadius + searchRadius
+        require(first.width > margin * 2 + 1 && first.height > margin * 2 + 1) {
+            "Frames are too small for the selected patch and search radius."
+        }
         var x = (startX * (first.width - 1)).toInt().coerceIn(margin, first.width - margin - 1)
         var y = (startY * (first.height - 1)).toInt().coerceIn(margin, first.height - margin - 1)
         val template = patch(first, x, y, patchRadius)
