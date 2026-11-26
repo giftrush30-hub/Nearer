@@ -103,22 +103,27 @@ internal object StudioAndroidAacAudioExporter {
                                 codec.queueInputBuffer(inputIndex, 0, 0, eosPts, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                                 inputEosQueued = true
                             } else {
-                                val wantedBytes = wantedFrames * 8
+                                // Source master is stereo Float32 (8 bytes/frame); MediaCodec input is stereo PCM16 (4 bytes/frame).
+                                val sourceBytes = wantedFrames * 8
+                                val encodedPcmBytes = wantedFrames * 4
                                 var read = 0
-                                while (read < wantedBytes) {
-                                    val count = input.read(pcmBytes, read, wantedBytes - read)
+                                while (read < sourceBytes) {
+                                    val count = input.read(pcmBytes, read, sourceBytes - read)
                                     if (count < 0) break
                                     read += count
                                 }
-                                require(read == wantedBytes) { "PCM master ended before its declared frame count." }
-                                val pcm = ByteBuffer.wrap(pcmBytes, 0, wantedBytes)
+                                require(read == sourceBytes) { "PCM master ended before its declared frame count." }
+                                val pcm = ByteBuffer.wrap(pcmBytes, 0, sourceBytes)
                                     .order(ByteOrder.LITTLE_ENDIAN)
                                 repeat(wantedFrames * 2) {
                                     val sample = pcm.float.coerceIn(-1f, 1f)
                                     codecInput.putShort(StudioAacEncodingPlanner.floatToPcm16(sample))
                                 }
+                                check(codecInput.position() >= encodedPcmBytes) {
+                                    "AAC encoder input buffer did not receive the complete converted PCM block."
+                                }
                                 val pts = StudioAacEncodingPlanner.presentationTimeUs(inputFramePosition, sampleRate)
-                                codec.queueInputBuffer(inputIndex, 0, wantedBytes, pts, 0)
+                                codec.queueInputBuffer(inputIndex, 0, encodedPcmBytes, pts, 0)
                                 inputFramePosition += wantedFrames
                                 onProgress(inputFramePosition, frameCount)
                             }
