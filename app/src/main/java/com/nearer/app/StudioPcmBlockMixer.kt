@@ -56,12 +56,12 @@ internal object StudioPcmBlockMixer {
 
         cues.forEach { cue ->
             if (cue.muted) return@forEach
-            val source = sources[cue.id] ?: error("Missing local PCM source for cue " + cue.id + ".")
             val cueStartFrame = studioAudioMillisecondsToFrames(cue.timelineStartMs, sampleRate)
             val cueEndFrame = studioAudioMillisecondsToFrames(cue.timelineEndMs, sampleRate)
             val overlapStart = maxOf(timelineStartFrame, cueStartFrame)
             val overlapEnd = minOf(outputEndFrame, cueEndFrame)
             if (overlapStart >= overlapEnd) return@forEach
+            val source = sources[cue.id] ?: error("Missing local PCM source for active cue " + cue.id + ".")
 
             val blockOffsetFrames = (overlapStart - timelineStartFrame).toInt()
             val cueLocalStart = overlapStart - cueStartFrame
