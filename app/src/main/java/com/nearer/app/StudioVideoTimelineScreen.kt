@@ -373,7 +373,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         }
     }
 
-    LaunchedEffect(projectId, clips.toList(), brightness, contrast, saturation, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, replacementBackground?.toString(), backgroundAudio?.toString(), musicMuted, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs, compositionPreviewFailed) {
+    LaunchedEffect(projectId, clips.toList(), brightness, contrast, saturation, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, replacementBackground?.toString(), backgroundAudio?.toString(), musicMuted, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs, particlesEnabled, particlePreset, particleRate, compositionPreviewFailed) {
         player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
         if (clips.isEmpty()) {
             player.clearMediaItems()
@@ -458,7 +458,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         }
     }
 
-    DisposableEffect(projectId, player, clips.size, brightness, contrast, saturation, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
+    DisposableEffect(projectId, player, clips.size, brightness, contrast, saturation, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs, particlesEnabled, particlePreset, particleRate) {
         val captionListener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
