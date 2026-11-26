@@ -15,6 +15,14 @@ class StudioAacEncodingPlannerTest {
         assertFalse(StudioAacEncodingPlanner.validate(StudioAacEncodingConfig(48_000, 2, 900_000)).isValid)
     }
 
+    @Test fun floatPcmConversionClipsAndUsesFullSignedPcm16Range() {
+        assertEquals(Short.MIN_VALUE, StudioAacEncodingPlanner.floatToPcm16(-1f))
+        assertEquals(Short.MAX_VALUE, StudioAacEncodingPlanner.floatToPcm16(1f))
+        assertEquals(0.toShort(), StudioAacEncodingPlanner.floatToPcm16(0f))
+        assertEquals(Short.MIN_VALUE, StudioAacEncodingPlanner.floatToPcm16(-2f))
+        assertEquals(Short.MAX_VALUE, StudioAacEncodingPlanner.floatToPcm16(2f))
+    }
+
     @Test fun inputCapacityIsRoundedDownToWholeInterleavedPcmFrames() {
         assertEquals(1_024, StudioAacEncodingPlanner.inputFramesForBuffer(4_096, 2))
         assertEquals(1_024, StudioAacEncodingPlanner.inputFramesForBuffer(2_048, 1))
