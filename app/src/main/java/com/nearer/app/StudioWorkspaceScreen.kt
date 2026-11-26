@@ -48,6 +48,7 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
     var videoProjects by remember { mutableStateOf(false) }
     var selectedVideoProjectId by remember { mutableStateOf<String?>(null) }
     var filmSchool by remember { mutableStateOf(false) }
+    var threeDScene by remember { mutableStateOf(false) }
     val preferences = remember(context) {
         context.getSharedPreferences("nearer_studio_workspace", android.content.Context.MODE_PRIVATE)
     }
@@ -96,7 +97,9 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
         persistAssets()
     }
 
-    if (filmSchool) {
+    if (threeDScene) {
+        StudioFilament3DPreview(onBack = { threeDScene = false })
+    } else if (filmSchool) {
         StudioFilmSchoolScreen(onBack = { filmSchool = false })
     } else if (videoTimeline && selectedVideoProjectId != null) {
         StudioVideoTimelineScreen(projectId = selectedVideoProjectId!!, onBack = { videoTimeline = false; videoProjects = true })
@@ -146,6 +149,9 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                 }
                 Button(onClick = { videoProjects = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Mint)) {
                     Text("▤  My movies · create or continue", fontWeight = FontWeight.Bold)
+                }
+                Button(onClick = { threeDScene = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
+                    Text("◇  Preview a 3D model or animate a character", fontWeight = FontWeight.Bold)
                 }
                 Button(onClick = { filmSchool = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
                     Text("▶  Teach me how to make movies", fontWeight = FontWeight.Bold)
