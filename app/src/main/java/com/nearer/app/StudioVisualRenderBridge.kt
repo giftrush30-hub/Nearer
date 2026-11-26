@@ -23,7 +23,7 @@ internal object StudioVisualRenderBridge {
         val errors = visual.errors + transform.errors
         if (errors.isNotEmpty()) return StudioVisualRenderCompilation(emptyList(), errors)
         val maskEffects = if (command.masks.isEmpty()) emptyList() else listOf(
-            StudioGpuMaskEffect(command.masks.map { it.copy(feather = command.transform.maskFeather) })
+            StudioGpuMaskEffect(command.masks)
         )
         // Key/grade first, then the cached GPU alpha mask, then geometry/blur and opacity.
         return StudioVisualRenderCompilation(visual.effects + maskEffects + transform.effects, emptyList())
