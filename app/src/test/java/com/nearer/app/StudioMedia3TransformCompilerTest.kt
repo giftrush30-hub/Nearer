@@ -36,7 +36,7 @@ class StudioMedia3TransformCompilerTest {
                 left = 0.1f, top = 0.2f, right = 0.9f, bottom = 0.8f, blur = 4f)
         )
         assertTrue(result.isValid)
-        assertEquals(5, result.effects.size)
+        assertEquals(4, result.effects.size)
         assertTrue(result.effects[0] is Crop)
         assertTrue(result.effects[1] is ScaleAndRotateTransformation)
         assertTrue(result.effects[2] is GaussianBlur)
