@@ -206,7 +206,7 @@ internal object StudioAndroidAudioDecoder {
                 flushStaging(stream)
             }
             require(outputFrames > 0L) { "The selected audio file contains no decoded samples." }
-            return StudioDecodedPcmInfo(output, targetSampleRate, outputFrames, outputRate.coerceAtLeast(sourceRate), sourceChannels)
+            return StudioDecodedPcmInfo(output, targetSampleRate, outputFrames, sourceRate, sourceChannels)
         } catch (failure: Throwable) {
             output.delete()
             throw failure
