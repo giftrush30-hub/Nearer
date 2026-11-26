@@ -42,6 +42,18 @@ class StudioGlbValidatorTest {
         assertFalse(StudioGlbValidator.validate(glb("""{"scene":0}""")).isValid)
     }
 
+    @Test fun rejectsExternalBufferAndImageUrisForOfflineOnlyImport() {
+        val externalBuffer = glb("""{"asset":{"version":"2.0"},"buffers":[{"uri":"https://example.com/model.bin","byteLength":4}]}""")
+        val externalImage = glb("""{"asset":{"version":"2.0"},"images":[{"uri":"file:///sdcard/texture.png"}]}""")
+        assertFalse(StudioGlbValidator.validate(externalBuffer).isValid)
+        assertFalse(StudioGlbValidator.validate(externalImage).isValid)
+    }
+
+    @Test fun allowsEmbeddedDataUrisWithoutExternalNetworkResources() {
+        val embedded = glb("""{"asset":{"version":"2.0"},"images":[{"uri":"data:image/png;base64,AAAA"}]}""")
+        assertTrue(StudioGlbValidator.validate(embedded).isValid)
+    }
+
     @Test fun rejectsTruncatedChunkAndShortHeader() {
         assertFalse(StudioGlbValidator.validate(byteArrayOf(1, 2, 3)).isValid)
         val valid = glb("""{"asset":{"version":"2.0"}}""")

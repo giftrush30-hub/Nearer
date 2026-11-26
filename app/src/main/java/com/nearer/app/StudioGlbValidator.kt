@@ -1,5 +1,6 @@
 package com.nearer.app
 
+import org.json.JSONArray
 import org.json.JSONObject
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -52,11 +53,40 @@ internal object StudioGlbValidator {
             chunkIndex++
         }
         val jsonText = json ?: return invalid("GLB is missing its JSON chunk.")
-        val assetVersion = runCatching {
-            JSONObject(jsonText).optJSONObject("asset")?.optString("version")
-        }.getOrNull()
+        val root = runCatching { JSONObject(jsonText) }.getOrElse {
+            return invalid("GLB JSON chunk is malformed.")
+        }
+        val assetVersion = root.optJSONObject("asset")?.optString("version")
         if (assetVersion != "2.0") return invalid("GLB asset metadata must declare glTF version 2.0.")
+        val externalUris = mutableListOf<String>()
+        collectExternalUris(root, externalUris)
+        if (externalUris.isNotEmpty()) {
+            return invalid("This offline 3D studio blocks external model resources. Embed textures and buffers inside the GLB.")
+        }
         return StudioGlbValidation(true, jsonText, hasBinary, emptyList())
+    }
+
+    /** Reject non-data URI resources recursively to prevent network or external file loading. */
+    private fun collectExternalUris(value: Any?, output: MutableList<String>) {
+        when (value) {
+            is JSONObject -> {
+                val keys = value.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val child = value.opt(key)
+                    if (key.equals("uri", ignoreCase = true) && child is String &&
+                        !child.startsWith("data:", ignoreCase = true)
+                    ) {
+                        output += child
+                    } else {
+                        collectExternalUris(child, output)
+                    }
+                }
+            }
+            is JSONArray -> {
+                for (index in 0 until value.length()) collectExternalUris(value.opt(index), output)
+            }
+        }
     }
 
     private fun invalid(message: String) = StudioGlbValidation(false, null, false, listOf(message))
