@@ -1,16 +1,12 @@
 package com.nearer.app
 
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.effect.AlphaScale
-import androidx.media3.effect.Crop
-import androidx.media3.effect.GaussianBlur
-import androidx.media3.effect.ScaleAndRotateTransformation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-@OptIn(UnstableApi::class)
 class StudioMedia3TransformCompilerTest {
     private fun transform(
         x: Float = 0f,
@@ -30,45 +26,54 @@ class StudioMedia3TransformCompilerTest {
         left, top, right, bottom, blur, feather
     )
 
-    @Test fun compilesCropScaleRotationBlurAndOpacityToGpuEffects() {
-        val result = StudioMedia3TransformCompiler.compile(
+    @Test fun plansCropScaleRotationBlurAndOpacityWithoutAndroidGraphicsRuntime() {
+        val result = StudioTransformEffectPlanner.plan(
             transform(scaleX = 1.5f, scaleY = 0.75f, rotation = -90f, opacity = 0.6f,
                 left = 0.1f, top = 0.2f, right = 0.9f, bottom = 0.8f, blur = 4f)
         )
         assertTrue(result.isValid)
-        assertEquals(4, result.effects.size)
-        assertTrue(result.effects[0] is Crop)
-        assertTrue(result.effects[1] is ScaleAndRotateTransformation)
-        assertTrue(result.effects[2] is GaussianBlur)
-        assertTrue(result.effects[3] is AlphaScale)
+        val plan = result.plan!!
+        assertEquals(StudioCropNdcBounds(-0.8f, 0.8f, -0.6f, 0.6f), plan.crop)
+        assertEquals(1.5f, plan.scaleX, 0f)
+        assertEquals(0.75f, plan.scaleY, 0f)
+        assertEquals(270f, plan.rotationDegrees, 0.0001f)
+        assertEquals(4f, plan.blurRadius, 0f)
+        assertEquals(0.6f, plan.opacity, 0f)
+        assertTrue(plan.needsScaleOrRotation)
+        assertTrue(plan.needsBlur)
+        assertTrue(plan.needsOpacity)
     }
 
-    @Test fun identityTransformProducesNoGpuWork() {
-        val result = StudioMedia3TransformCompiler.compile(transform())
+    @Test fun identityTransformProducesAnEmptyPurePlan() {
+        val result = StudioTransformEffectPlanner.plan(transform())
         assertTrue(result.isValid)
-        assertTrue(result.effects.isEmpty())
+        val plan = result.plan!!
+        assertNull(plan.crop)
+        assertFalse(plan.needsScaleOrRotation)
+        assertFalse(plan.needsBlur)
+        assertFalse(plan.needsOpacity)
     }
 
     @Test fun rejectsTranslationAndFeatheredMaskInsteadOfSilentlyDroppingThem() {
-        val result = StudioMedia3TransformCompiler.compile(transform(x = 0.2f, feather = 0.02f))
+        val result = StudioTransformEffectPlanner.plan(transform(x = 0.2f, feather = 0.02f))
         assertFalse(result.isValid)
-        assertTrue(result.effects.isEmpty())
+        assertNull(result.plan)
         assertTrue(result.errors.any { it.contains("translation") })
         assertTrue(result.errors.any { it.contains("Feathered masks") })
     }
 
     @Test fun rejectsNonFiniteAndOutOfRangeValues() {
-        val result = StudioMedia3TransformCompiler.compile(transform(scaleX = Float.NaN))
+        val result = StudioTransformEffectPlanner.plan(transform(scaleX = Float.NaN))
         assertFalse(result.isValid)
         assertTrue(result.errors.single().contains("non-finite"))
-        val invalidOpacity = StudioMedia3TransformCompiler.compile(transform(opacity = 1.2f))
+        val invalidOpacity = StudioTransformEffectPlanner.plan(transform(opacity = 1.2f))
         assertFalse(invalidOpacity.isValid)
     }
 
     @Test fun normalizesNegativeRotationIntoMedia3Range() {
-        val result = StudioMedia3TransformCompiler.compile(transform(rotation = -90f))
+        val result = StudioTransformEffectPlanner.plan(transform(rotation = -90f))
         assertTrue(result.isValid)
-        val rotation = result.effects.single() as ScaleAndRotateTransformation
-        assertEquals(270f, rotation.rotationDegrees, 0.0001f)
+        assertNotNull(result.plan)
+        assertEquals(270f, result.plan!!.rotationDegrees, 0.0001f)
     }
 }
