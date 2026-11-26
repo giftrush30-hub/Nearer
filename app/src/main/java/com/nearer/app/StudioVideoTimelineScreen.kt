@@ -73,6 +73,17 @@ import androidx.media3.ui.PlayerView
 import java.io.File
 import java.util.UUID
 
+@OptIn(androidx.media3.common.util.UnstableApi::class)
+private fun studioReplacementBackgroundCompositorSettings(): StudioMedia3VideoCompositorSettings =
+    StudioMedia3VideoCompositorSettings(
+        listOf(
+            // Sequence 0 is registered first and is the foreground/primary input.
+            StudioCompositorLayerLayout(0, -1f, -1f, 1f, 1f, zIndex = 1),
+            // Sequence 1 is registered second and sits behind the keyed foreground.
+            StudioCompositorLayerLayout(1, -1f, -1f, 1f, 1f, zIndex = 0)
+        )
+    )
+
 private data class StudioVideoClip(
     val uri: Uri,
     val name: String,
@@ -391,7 +402,9 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                         .build()
                     sequences.add(EditedMediaItemSequence.Builder(listOf(musicItem)).setIsLooping(true).build())
                 }
-                val composition = Composition.Builder(sequences).build()
+                val composition = Composition.Builder(sequences)
+                    .setVideoCompositorSettings(studioReplacementBackgroundCompositorSettings())
+                    .build()
                 compositionPlayer.setComposition(composition)
                 compositionPlayer.prepare()
                 compositionPlayer.playWhenReady = false
@@ -839,7 +852,11 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                     sequences.add(EditedMediaItemSequence.Builder(listOf(backgroundItem))
                         .setIsLooping(!backgroundMime.startsWith("image/")).build())
                 }
-                val composition = Composition.Builder(sequences).build()
+                val compositionBuilder = Composition.Builder(sequences)
+                if (chromaKeyEnabled && replacementBackground != null) {
+                    compositionBuilder.setVideoCompositorSettings(studioReplacementBackgroundCompositorSettings())
+                }
+                val composition = compositionBuilder.build()
                 val outputDirectory = File(context.filesDir, "studio-exports")
                 val exportId = UUID.randomUUID().toString()
                 val pending = StudioExportFiles.pendingFile(outputDirectory, exportId)
