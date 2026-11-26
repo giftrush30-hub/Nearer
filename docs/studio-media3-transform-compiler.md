@@ -14,6 +14,8 @@ The offline visual graph now has a renderer adapter for the transform subset tha
 
 The bridge combines the effect-node compiler and transform compiler into one ordered chain for a single video item. It returns no partial chain if any requested operation is unsupported.
 
+The video timeline's shared `videoEffects(clipIndex)` path now creates a draw command for the selected clip and invokes this bridge. That function is used when configuring both the live ExoPlayer preview and each Transformer export item, so supported per-clip visual nodes pass through the same validation and effect ordering in both paths.
+
 ## Explicitly unsupported
 
 - X/Y translation: requires a custom matrix transform/compositor pass.
