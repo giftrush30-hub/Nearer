@@ -22,8 +22,8 @@ internal data class StudioOfflinePcmMixResult(
  * End-to-end offline staging pipeline: decode each unique local source to disk-backed Float
  * PCM, then mix the timeline in bounded blocks into a new Float PCM file.
  *
- * The resulting file is an intermediate audio master, not an MP4/AAC export. The video
- * exporter still needs a timestamp-aligned encoder/muxer integration before final delivery.
+ * The resulting file is an intermediate audio master, not an MP4/AAC export. A minimum
+ * timeline duration allows silent movies to receive a valid, synchronized silent AAC track.
  */
 internal object StudioOfflinePcmMixPipeline {
     fun render(
@@ -31,16 +31,19 @@ internal object StudioOfflinePcmMixPipeline {
         cues: List<StudioAudioMixCue>,
         sampleRate: Int,
         workingDirectory: File,
+        minimumDurationMs: Long = 0L,
         isCancelled: () -> Boolean = { false },
         onProgress: (String, Long, Long) -> Unit = { _, _, _ -> }
     ): StudioOfflinePcmMixResult {
         val validation = StudioAudioMixPlanner.validate(cues, sampleRate)
         require(validation.isValid) { validation.errors.joinToString() }
-        require(cues.isNotEmpty()) { "Add at least one audio track before mixing." }
         require(workingDirectory.exists() || workingDirectory.mkdirs()) { "Could not create Studio audio work directory." }
 
+        require(minimumDurationMs in 0L..StudioRenderPlanBuilder.MAX_DURATION_MS) {
+            "Minimum audio duration is outside the supported 24-hour range."
+        }
         val activeCues = cues.filterNot { it.muted }
-        val timelineEndMs = activeCues.maxOfOrNull { it.timelineEndMs } ?: 0L
+        val timelineEndMs = maxOf(activeCues.maxOfOrNull { it.timelineEndMs } ?: 0L, minimumDurationMs)
         val totalFrames = studioAudioMillisecondsToFrames(timelineEndMs, sampleRate)
         require(totalFrames > 0L) { "The audio timeline is empty." }
         require(totalFrames <= sampleRate.toLong() * 60L * 60L * 24L) { "Audio render exceeds the 24-hour safety limit." }
@@ -61,7 +64,15 @@ internal object StudioOfflinePcmMixPipeline {
                     onProgress("Decoding audio", index.toLong(), activeCues.size.toLong())
                     StudioAndroidAudioDecoder.decodeToFloatPcm(
                         context, Uri.parse(uri), workingDirectory, sampleRate, isCancelled
-                    ).also { decodedFiles[uri] = it }
+                    ).also { info ->
+                        decodedFiles[uri] = info
+                        // Decoded sources and the final Float master coexist temporarily.
+                        // Recheck free space after every new source instead of trusting only
+                        // the initial master-file estimate.
+                        require(workingDirectory.usableSpace >= estimatedBytes) {
+                            "Phone storage is too low to finish the audio master safely."
+                        }
+                    }
                 }
                 sources[cue.id] = sources[decoded.file.absolutePath]
                     ?: StudioDecodedPcmFileSource(decoded).also { sources[decoded.file.absolutePath] = it }
