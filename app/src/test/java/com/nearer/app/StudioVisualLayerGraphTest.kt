@@ -22,6 +22,7 @@ class StudioVisualLayerGraphTest {
                 effects = listOf(StudioVisualEffectNode("glow", StudioVisualEffectKind.GLOW,
                     mapOf("intensity" to 1.4f, "radius" to 12f)))
         )
+        )
         val plan = StudioVisualLayerGraph.build(frame(), specs)
         assertTrue(plan.isValid)
         assertEquals(listOf("base", "actor"), plan.drawCommands.map { it.itemId })
