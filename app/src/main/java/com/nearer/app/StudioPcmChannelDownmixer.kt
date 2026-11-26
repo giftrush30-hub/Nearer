@@ -1,7 +1,5 @@
 package com.nearer.app
 
-import kotlin.math.abs
-
 /**
  * Deterministic offline downmix from Android's canonical channel-position order to stereo.
  *
