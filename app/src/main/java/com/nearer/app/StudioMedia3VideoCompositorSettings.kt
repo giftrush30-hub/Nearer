@@ -1,6 +1,6 @@
 package com.nearer.app
 
-import android.util.Size
+import androidx.media3.common.util.Size
 import androidx.media3.common.VideoCompositorSettings
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.OverlaySettings
