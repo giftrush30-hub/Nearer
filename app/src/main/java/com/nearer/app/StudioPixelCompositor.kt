@@ -44,7 +44,7 @@ internal object StudioPixelCompositor {
                 for (x in left until right) {
                     val sourceX = x - layer.offsetX
                     val sourceIndex = sourceY * width + sourceX
-                    val maskAlpha = layer.mask?.alphaAt(x, y)?.div(255f) ?: 1f
+                    val maskAlpha = layer.mask?.alphaAt(sourceX, sourceY)?.div(255f) ?: 1f
                     val source = applyOpacity(layer.pixels[sourceIndex], layer.opacity * maskAlpha)
                     if ((source ushr 24) == 0) continue
                     val destinationIndex = y * width + x
