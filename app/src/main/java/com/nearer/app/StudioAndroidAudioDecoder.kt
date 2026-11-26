@@ -51,6 +51,8 @@ internal object StudioAndroidAudioDecoder {
         var sourceChannels = 0
         var outputRate = 0
         var outputChannels = 0
+        var outputChannelMask: Int? = null
+        val channelSamples = FloatArray(8)
         var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
         var inputDone = false
         var outputDone = false
@@ -73,8 +75,8 @@ internal object StudioAndroidAudioDecoder {
 
         fun emit(left: Float, right: Float, stream: BufferedOutputStream) {
             val index = stagingFrames * 2
-            staging[index] = left.coerceIn(-1f, 1f)
-            staging[index + 1] = right.coerceIn(-1f, 1f)
+            staging[index] = if (left.isFinite()) left else 0f
+            staging[index + 1] = if (right.isFinite()) right else 0f
             stagingFrames++
             outputFrames++
             if (stagingFrames == StudioPcmBlockMixer.MAX_BLOCK_FRAMES) flushStaging(stream)
@@ -122,7 +124,7 @@ internal object StudioAndroidAudioDecoder {
                                 codec.queueInputBuffer(inputIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                                 inputDone = true
                             } else {
-                                val pts = extractor.sampleTime.coerceAtLeast(0L)
+                                val pts = extractor.sampleTime
                                 codec.queueInputBuffer(inputIndex, 0, sampleSize, pts, 0)
                                 extractor.advance()
                             }
@@ -138,6 +140,9 @@ internal object StudioAndroidAudioDecoder {
                                 val decodedFormat = codec.getOutputFormat(outputIndex)
                                 outputRate = decodedFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                                 outputChannels = decodedFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                                outputChannelMask = if (decodedFormat.containsKey(MediaFormat.KEY_CHANNEL_MASK)) {
+                                    decodedFormat.getInteger(MediaFormat.KEY_CHANNEL_MASK)
+                                } else null
                                 pcmEncoding = if (decodedFormat.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
                                     decodedFormat.getInteger(MediaFormat.KEY_PCM_ENCODING)
                                 } else AudioFormat.ENCODING_PCM_16BIT
@@ -163,18 +168,17 @@ internal object StudioAndroidAudioDecoder {
                                 }
                                 val bufferStartFrame = info.presentationTimeUs.toDouble() * outputRate / 1_000_000.0
                                 for (frame in 0 until completeFrames) {
-                                    val left: Float
-                                    val right: Float
-                                    if (pcmEncoding == AudioFormat.ENCODING_PCM_FLOAT) {
-                                        left = pcm.float
-                                        right = if (outputChannels > 1) pcm.float else left
-                                        repeat((outputChannels - 2).coerceAtLeast(0)) { pcm.float }
-                                    } else {
-                                        left = pcm.short / 32768f
-                                        right = if (outputChannels > 1) pcm.short / 32768f else left
-                                        repeat((outputChannels - 2).coerceAtLeast(0)) { pcm.short }
+                                    for (channel in 0 until outputChannels) {
+                                        channelSamples[channel] = if (pcmEncoding == AudioFormat.ENCODING_PCM_FLOAT) {
+                                            pcm.float
+                                        } else {
+                                            pcm.short / 32768f
+                                        }
                                     }
-                                    aligner.accept(bufferStartFrame + frame, left, right) { alignedLeft, alignedRight ->
+                                    val stereo = StudioPcmChannelDownmixer.downmix(
+                                        channelSamples, outputChannels, outputChannelMask
+                                    )
+                                    aligner.accept(bufferStartFrame + frame, stereo.left, stereo.right) { alignedLeft, alignedRight ->
                                         emit(alignedLeft, alignedRight, stream)
                                     }
                                     inputFrames++
