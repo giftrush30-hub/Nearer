@@ -35,7 +35,7 @@ internal object StudioFilamentRootTransform {
         Matrix.rotateM(userTransform, 0, settings.rotationYDegrees, 0f, 1f, 0f)
         Matrix.scaleM(userTransform, 0, settings.scale, settings.scale, settings.scale)
         val combined = FloatArray(16)
-        Matrix.multiplyMM(combined, 0, normalizedRootTransform, 0, userTransform, 0)
+        Matrix.multiplyMM(combined, 0, userTransform, 0, normalizedRootTransform, 0)
         val transformManager = viewer.engine.transformManager
         val rootInstance = transformManager.getInstance(asset.root)
         transformManager.setTransform(rootInstance, combined)
