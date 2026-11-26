@@ -69,6 +69,7 @@ internal object StudioOfflineMovieExportCoordinator {
         val directory = request.workingDirectory
         require(directory.exists() || directory.mkdirs()) { "Could not create the movie export work folder." }
         val videoOnly = File.createTempFile("studio-video-only-", ".mp4", directory)
+        check(videoOnly.delete()) { "Could not prepare the temporary video-only output path." }
         var pcmMaster: File? = null
         var aacOnly: File? = null
         var success = false
