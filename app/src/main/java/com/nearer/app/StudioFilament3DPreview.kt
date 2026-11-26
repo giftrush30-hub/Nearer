@@ -5,6 +5,7 @@ import android.view.SurfaceView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -117,7 +119,7 @@ internal fun StudioFilament3DPreview(onBack: () -> Unit) {
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("‹  BACK", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(vertical = 8.dp).then(Modifier))
+                modifier = Modifier.clickable(onClick = onBack).padding(vertical = 8.dp))
             Text("3D SCENE STUDIO", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
         Text("Bring a 3D character or scene to life", color = White, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
