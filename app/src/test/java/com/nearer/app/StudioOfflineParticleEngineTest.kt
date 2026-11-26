@@ -63,6 +63,19 @@ class StudioOfflineParticleEngineTest {
         assertTrue(frame.errors.any { it.contains("10000") })
     }
 
+    @Test fun emitterContinuesSpawningAfterItsActiveParticleCapHasBeenReached() {
+        val capped = emitter(rate = 20f).copy(
+            maxParticles = 5,
+            minLifetimeMs = 100,
+            maxLifetimeMs = 100
+        )
+        val frame = StudioOfflineParticleEngine.frameAt(500_000L, listOf(capped))
+        assertTrue(frame.isValid)
+        assertTrue(frame.particles.isNotEmpty())
+        assertTrue(frame.particles.all { it.particleIndex >= 8 })
+        assertTrue(frame.particles.size <= 5)
+    }
+
     @Test fun particlesExpireAndEmitterStopsAtEndTime() {
         val short = emitter().copy(minLifetimeMs = 100, maxLifetimeMs = 100, endTimeUs = 200_000L)
         val active = StudioOfflineParticleEngine.frameAt(50_000L, listOf(short))
