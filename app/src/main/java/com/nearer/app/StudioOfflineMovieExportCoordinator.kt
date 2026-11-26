@@ -183,9 +183,8 @@ internal object StudioOfflineMovieExportCoordinator {
         outputFile: File
     ) = withContext(Dispatchers.Main.immediate) {
         suspendCancellableCoroutine<Unit> { continuation ->
-            var transformer: Transformer? = null
             try {
-                transformer = Transformer.Builder(context)
+                val activeTransformer = Transformer.Builder(context)
                     .addListener(object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                             continuation.completeSafely(Result.success(Unit))
@@ -200,7 +199,6 @@ internal object StudioOfflineMovieExportCoordinator {
                         }
                     })
                     .build()
-                val activeTransformer = transformer
                 continuation.invokeOnCancellation {
                     mainHandler.post { runCatching { activeTransformer.cancel() } }
                 }
