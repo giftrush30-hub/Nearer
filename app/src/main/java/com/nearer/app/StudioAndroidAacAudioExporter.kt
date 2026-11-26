@@ -115,9 +115,7 @@ internal object StudioAndroidAacAudioExporter {
                                     .order(ByteOrder.LITTLE_ENDIAN)
                                 repeat(wantedFrames * 2) {
                                     val sample = pcm.float.coerceIn(-1f, 1f)
-                                    val scaled = (sample * if (sample < 0f) 32768f else 32767f)
-                                        .toInt().coerceIn(-32768, 32767)
-                                    codecInput.putShort(scaled.toShort())
+                                    codecInput.putShort(StudioAacEncodingPlanner.floatToPcm16(sample))
                                 }
                                 val pts = StudioAacEncodingPlanner.presentationTimeUs(inputFramePosition, sampleRate)
                                 codec.queueInputBuffer(inputIndex, 0, wantedBytes, pts, 0)
