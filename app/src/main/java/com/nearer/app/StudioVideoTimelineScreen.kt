@@ -204,8 +204,8 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         if (!saved) message = "Your movie is still editable, but the multi-track backup could not be saved. Check phone storage and try again."
     }
     fun videoEffects(clipIndex: Int = 0) = buildList<androidx.media3.common.Effect> {
-        // Preview and Transformer export share the same validated GPU-effect compiler.
-        val compiledVisualEffects = StudioMedia3EffectCompiler.compile(buildList {
+        // The same draw-command bridge feeds the live player and Transformer export.
+        val visualNodes = buildList {
             if (chromaKeyEnabled) add(StudioVisualEffectNode(
                 id = "chroma-key",
                 kind = StudioVisualEffectKind.CHROMA_KEY,
@@ -217,7 +217,26 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                 kind = StudioVisualEffectKind.COLOR_GRADE,
                 parameters = mapOf("saturation" to (1f + saturation / 100f))
             ))
-        })
+        }
+        val sourceClip = clips.getOrNull(clipIndex)
+        val drawCommand = StudioVisualDrawCommand(
+            trackId = "video-main",
+            itemId = sourceClip?.let { "clip-${it.uri.toString().hashCode()}" } ?: "preview-clip-$clipIndex",
+            sourceUri = sourceClip?.uri?.toString().orEmpty(),
+            sourceTimeUs = (sourceClip?.inMs ?: 0L) * 1_000L,
+            zIndex = 0,
+            sourceKind = StudioVisualSourceKind.VIDEO,
+            blendMode = StudioVisualBlendMode.NORMAL,
+            transform = StudioVisualTransform(
+                x = 0f, y = 0f, scaleX = 1f, scaleY = 1f,
+                rotationDegrees = 0f, opacity = 1f,
+                cropLeft = 0f, cropTop = 0f, cropRight = 1f, cropBottom = 1f,
+                blurRadius = 0f, maskFeather = 0f
+            ),
+            masks = emptyList(),
+            effects = visualNodes
+        )
+        val compiledVisualEffects = StudioVisualRenderBridge.compile(drawCommand)
         check(compiledVisualEffects.isValid) {
             "The selected visual effects cannot be rendered: ${compiledVisualEffects.errors.joinToString(" ")}"
         }
