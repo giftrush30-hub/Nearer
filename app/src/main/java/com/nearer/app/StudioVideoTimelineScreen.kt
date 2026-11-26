@@ -163,6 +163,18 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         transitionPreferences.edit().putString("style", transitionStyle.name).putInt("duration_ms", transitionDurationMs).apply()
         withContext(Dispatchers.IO) { StudioProjectLibraryStore(context).touch(projectId) }
     }
+    val particlePreferences = remember(context, projectId) {
+        context.getSharedPreferences("nearer_studio_particles_$projectId", android.content.Context.MODE_PRIVATE)
+    }
+    var selectedParticlePreset by remember(context, projectId) {
+        mutableStateOf(particlePreferences.getString("preset", null)?.let { stored ->
+            runCatching { StudioParticlePreset.valueOf(stored) }.getOrNull()
+        })
+    }
+    LaunchedEffect(projectId, selectedParticlePreset) {
+        particlePreferences.edit().putString("preset", selectedParticlePreset?.name).apply()
+        withContext(Dispatchers.IO) { StudioProjectLibraryStore(context).touch(projectId) }
+    }
     val multiTrackStore = remember(context, projectId) { StudioMultiTrackProjectStore(context, projectId) }
     var multiTrackProject by remember(context, projectId) { mutableStateOf(multiTrackStore.read()) }
     var musicMuted by remember(context, projectId) {
@@ -171,7 +183,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     var videoTrackLocked by remember(context, projectId) {
         mutableStateOf(multiTrackProject.tracks.firstOrNull { it.id == "video-main" }?.locked ?: false)
     }
-    LaunchedEffect(projectId, clips.toList(), backgroundAudio?.toString(), musicMuted, videoTrackLocked, captionLayers.toList(), brightness, contrast, saturation, textOverlay) {
+    LaunchedEffect(projectId, clips.toList(), backgroundAudio?.toString(), musicMuted, videoTrackLocked, captionLayers.toList(), brightness, contrast, saturation, textOverlay, selectedParticlePreset) {
         delay(250L)
         var videoCursor = 0L
         val videoItems = clips.mapIndexed { index, clip ->
@@ -198,7 +210,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                 }
             }
         }
-        val effectItems = if (videoCursor > 0L && (brightness != 0f || contrast != 0f || saturation != 0f)) {
+        val effectItems = if (videoCursor > 0L && (brightness != 0f || contrast != 0f || saturation != 0f || selectedParticlePreset != null)) {
             listOf(StudioTimelineItem("colour-grade", null, 0L, 0L, videoCursor))
         } else emptyList()
         val synchronized = StudioMultiTrackEditor.fromVideoSources(
@@ -254,6 +266,19 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         addAll(compiledVisualEffects.effects)
         if (brightness != 0f) add(Brightness(brightness))
         if (contrast != 0f) add(Contrast(contrast))
+        selectedParticlePreset?.let { preset ->
+            if (sourceClip != null) {
+                val clipDurationUs = (sourceClip.outMs - sourceClip.inMs).coerceAtLeast(1L) * 1_000L
+                val emitter = StudioParticlePresets.defaultEmitter(
+                    id = "particle-${preset.name.lowercase()}-$clipIndex",
+                    seed = projectId.hashCode().toLong() xor clipIndex.toLong(),
+                    preset = preset,
+                    startTimeUs = 0L,
+                    endTimeUs = clipDurationUs
+                )
+                add(StudioParticleMedia3OverlayFactory.create(listOf(emitter)))
+            }
+        }
         if (textOverlay.text.isNotBlank()) {
             val caption = SpannableString(textOverlay.text)
             caption.setSpan(ForegroundColorSpan(textOverlay.colorArgb), 0, caption.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -342,7 +367,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         }
     }
 
-    LaunchedEffect(projectId, clips.toList(), brightness, contrast, saturation, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, replacementBackground?.toString(), backgroundAudio?.toString(), musicMuted, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs, compositionPreviewFailed) {
+    LaunchedEffect(projectId, clips.toList(), brightness, contrast, saturation, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, replacementBackground?.toString(), backgroundAudio?.toString(), musicMuted, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs, compositionPreviewFailed, selectedParticlePreset) {
         player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
         if (clips.isEmpty()) {
             player.clearMediaItems()
@@ -427,7 +452,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         }
     }
 
-    DisposableEffect(projectId, player, clips.size, brightness, contrast, saturation, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs) {
+    DisposableEffect(projectId, player, clips.size, brightness, contrast, saturation, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, textOverlay, captionLayers.toList(), transitionStyle, transitionDurationMs, selectedParticlePreset) {
         val captionListener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 player.setVideoEffects(videoEffects(player.currentMediaItemIndex.coerceAtLeast(0)))
@@ -693,6 +718,37 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
             }
         }
 
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("OFFLINE PARTICLE EFFECTS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Add a ready-made fire, smoke, explosion, sparks or lightning effect. It follows the clip timeline and is included in preview and export.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                val particleOptions = listOf(
+                    null to "OFF",
+                    StudioParticlePreset.FIRE to "FIRE",
+                    StudioParticlePreset.SMOKE to "SMOKE",
+                    StudioParticlePreset.EXPLOSION to "EXPLOSION",
+                    StudioParticlePreset.SPARKS to "SPARKS",
+                    StudioParticlePreset.LIGHTNING to "LIGHTNING"
+                )
+                particleOptions.chunked(3).forEach { options ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        options.forEach { (preset, label) ->
+                            Button(onClick = { selectedParticlePreset = preset; exported = null },
+                                modifier = Modifier.weight(1f),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(2.dp, 7.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (selectedParticlePreset == preset) Mint else Midnight,
+                                    contentColor = if (selectedParticlePreset == preset) Midnight else White
+                                )) {
+                                Text(label, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+                Text(selectedParticlePreset?.let { "ACTIVE · ${it.name.lowercase().replace('_', ' ')}" } ?: "NO PARTICLE EFFECT SELECTED",
+                    color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            }
+        }
         Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

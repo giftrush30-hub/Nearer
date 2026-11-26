@@ -1,6 +1,7 @@
 package com.nearer.app
 
 import kotlin.math.PI
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -110,11 +111,11 @@ internal object StudioOfflineParticleEngine {
                 val lifetimeUs = lifetimeMs * 1_000L
                 if (ageUs >= lifetimeUs) continue
                 val age = ageUs.toFloat() / lifetimeUs.toFloat()
-                val angle = (random01(emitter.seed, index, 2) - 0.5f) * emitter.spread - PI.toFloat() / 2f
                 val speed = sqrt(emitter.velocityX * emitter.velocityX + emitter.velocityY * emitter.velocityY)
-                val jitter = (random01(emitter.seed, index, 3) - 0.5f) * 0.2f
-                val vx = cos(angle) * speed + emitter.velocityX * jitter
-                val vy = sin(angle) * speed + emitter.velocityY * jitter
+                val baseAngle = atan2(emitter.velocityY, emitter.velocityX)
+                val angle = baseAngle + (random01(emitter.seed, index, 2) - 0.5f) * emitter.spread
+                val vx = cos(angle) * speed
+                val vy = sin(angle) * speed
                 val seconds = ageUs.toFloat() / 1_000_000f
                 val driftX = (random01(emitter.seed, index, 4) - 0.5f) * emitter.spread * age
                 val x = emitter.originX + vx * seconds + driftX
@@ -136,7 +137,7 @@ internal object StudioOfflineParticleEngine {
                     y = y,
                     size = lerp(emitter.minSize, emitter.maxSize, random01(emitter.seed, index, 5)) * growth,
                     opacity = fade,
-                    rotationDegrees = random01(emitter.seed, index, 6) * 360f + age * 180f,
+                    rotationDegrees = atan2(vy, vx) * (180f / PI.toFloat()) - 90f + (random01(emitter.seed, index, 6) - 0.5f) * 12f,
                     colorArgb = colorFor(emitter.preset, age),
                     preset = emitter.preset
                 )
