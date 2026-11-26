@@ -719,8 +719,6 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         }
 
         Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
-            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("OFFLINE PARTICLE EFFECTS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Text("Add a ready-made fire, smoke, explosion, sparks or lightning effect. It follows the clip timeline and is included in preview and export.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
@@ -751,6 +749,8 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                     color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
         }
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("EDIT SEQUENCE", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Text("${clips.size}/12 CLIPS", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
