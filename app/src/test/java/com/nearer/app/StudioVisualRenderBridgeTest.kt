@@ -47,8 +47,8 @@ class StudioVisualRenderBridgeTest {
         assertTrue(result.effects[2] is AlphaScale)
     }
 
-    @Test fun insertsGpuMaskBetweenPixelEffectsAndGeometryEffects() {
-        val result = StudioVisualRenderBridge.compile(command(
+    @Test fun plansGpuMaskBetweenPixelEffectsAndGeometryEffectsWithoutCreatingGlObjects() {
+        val result = StudioVisualRenderBridge.plan(command(
             effects = listOf(
                 StudioVisualEffectNode("grade", StudioVisualEffectKind.COLOR_GRADE, mapOf("saturation" to 1.2f))
             ),
@@ -60,12 +60,11 @@ class StudioVisualRenderBridgeTest {
             )
         ))
         assertTrue(result.isValid)
-        assertEquals(5, result.effects.size)
-        assertTrue(result.effects[0] is HslAdjustment)
-        assertTrue(result.effects[1] is StudioGpuMaskEffect)
-        assertTrue(result.effects[2] is ScaleAndRotateTransformation)
-        assertTrue(result.effects[3] is GaussianBlur)
-        assertTrue(result.effects[4] is AlphaScale)
+        assertEquals(1, result.pixelEffectCount)
+        assertEquals(1, result.maskCount)
+        assertEquals(3, result.transformEffectCount)
+        assertEquals(1, result.maskInsertionIndex)
+        assertEquals(5, result.totalEffectCount)
     }
 
     @Test fun refusesToReturnPartialChainWhenAnyNodeIsUnsupported() {
