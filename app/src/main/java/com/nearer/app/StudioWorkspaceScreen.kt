@@ -151,7 +151,7 @@ internal fun StudioWorkspaceScreen(onBack: () -> Unit) {
                     Text("▤  My movies · create or continue", fontWeight = FontWeight.Bold)
                 }
                 Button(onClick = { threeDScene = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
-                    Text("◇  Create a 3D scene or animate a character", fontWeight = FontWeight.Bold)
+                    Text("◇  Preview a 3D model or animate a character", fontWeight = FontWeight.Bold)
                 }
                 Button(onClick = { filmSchool = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) {
                     Text("▶  Teach me how to make movies", fontWeight = FontWeight.Bold)
