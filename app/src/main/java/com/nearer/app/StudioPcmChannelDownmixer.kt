@@ -69,7 +69,7 @@ internal object StudioPcmChannelDownmixer {
             }
         }
         val mapped = bits?.mapNotNull(::positionForBit)
-        if (mapped != null && mapped.size == channelCount && bits.size == channelCount) return mapped
+        if (bits != null && mapped != null && mapped.size == channelCount && bits.size == channelCount) return mapped
 
         return when (channelCount) {
             2 -> listOf(Position.LEFT, Position.RIGHT)
