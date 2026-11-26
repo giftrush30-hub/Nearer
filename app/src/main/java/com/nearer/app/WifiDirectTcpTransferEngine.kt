@@ -230,11 +230,15 @@ internal class WifiDirectTcpTransferEngine(
         channel: HyperTransferSecureChannel,
         cancellation: Cancellation = Cancellation(),
         listener: ProgressListener = ProgressListener { },
-        expectedSha256: String? = null
+        expectedSha256: String? = null,
+        expectedSizeBytes: Long? = null
     ): ReceiveResult {
         require(expectedTransferId.matches(Regex("^[a-fA-F0-9]{64}$"))) { "Invalid expected transfer ID" }
         require(expectedSha256 == null || expectedSha256.matches(Regex("^[a-fA-F0-9]{64}$"))) {
             "Invalid expected SHA-256"
+        }
+        require(expectedSizeBytes == null || expectedSizeBytes >= 0L) {
+            "Invalid expected transfer size"
         }
         val parent = destination.absoluteFile.parentFile ?: throw IOException("Destination must have a parent directory")
         if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create destination directory")
@@ -255,6 +259,9 @@ internal class WifiDirectTcpTransferEngine(
             val meta = java.nio.ByteBuffer.wrap(metadata)
             val size = meta.long
             if (size < 0L) throw IOException("Invalid negative payload size")
+            if (expectedSizeBytes != null && size != expectedSizeBytes) {
+                throw IOException("Encrypted transfer size did not match the approved HyperTransfer offer")
+            }
             val transferBytes = ByteArray(32).also(meta::get)
             val expectedBytes = expectedTransferId.lowercase().chunked(2).map { it.toInt(16).toByte() }.toByteArray()
             if (!MessageDigest.isEqual(transferBytes, expectedBytes)) throw IOException("Authenticated transfer ID mismatch")
