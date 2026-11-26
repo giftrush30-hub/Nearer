@@ -7,6 +7,13 @@ import androidx.media3.effect.GaussianBlur
 import androidx.media3.effect.GlEffect
 import androidx.media3.effect.ScaleAndRotateTransformation
 
+internal data class StudioTransformCompilation(
+    val effects: List<GlEffect>,
+    val errors: List<String>
+) {
+    val isValid: Boolean get() = errors.isEmpty()
+}
+
 internal data class StudioCropNdcBounds(
     val left: Float,
     val right: Float,
