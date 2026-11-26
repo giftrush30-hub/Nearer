@@ -11,8 +11,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.floor
 
 internal data class StudioDecodedPcmInfo(
     val file: File,
@@ -59,10 +57,9 @@ internal object StudioAndroidAudioDecoder {
         var idlePolls = 0
         var inputFrames = 0L
         var outputFrames = 0L
-        var previousLeft = 0f
-        var previousRight = 0f
-        var havePrevious = false
-        var nextOutputPosition = 0.0
+        var timestampAligner: StudioPcmTimestampAligner? = null
+        var alignerSourceRate = 0
+        var lastProgressFrames = 0L
         val staging = FloatArray(StudioPcmBlockMixer.MAX_BLOCK_FRAMES * 2)
         var stagingFrames = 0
 
@@ -155,6 +152,16 @@ internal object StudioAndroidAudioDecoder {
                                 }
                                 val frameBytes = outputChannels * bytesPerSample
                                 val completeFrames = pcm.remaining() / frameBytes
+                                val aligner = timestampAligner ?: StudioPcmTimestampAligner(
+                                    outputRate, targetSampleRate
+                                ).also {
+                                    timestampAligner = it
+                                    alignerSourceRate = outputRate
+                                }
+                                require(alignerSourceRate == outputRate) {
+                                    "The decoder changed its PCM sample rate during export."
+                                }
+                                val bufferStartFrame = info.presentationTimeUs.toDouble() * outputRate / 1_000_000.0
                                 for (frame in 0 until completeFrames) {
                                     val left: Float
                                     val right: Float
@@ -167,25 +174,8 @@ internal object StudioAndroidAudioDecoder {
                                         right = if (outputChannels > 1) pcm.short / 32768f else left
                                         repeat((outputChannels - 2).coerceAtLeast(0)) { pcm.short }
                                     }
-                                    if (!havePrevious) {
-                                        emit(left, right, stream)
-                                        previousLeft = left
-                                        previousRight = right
-                                        havePrevious = true
-                                        nextOutputPosition = outputRate.toDouble() / targetSampleRate
-                                    } else {
-                                        val currentPosition = inputFrames.toDouble()
-                                        while (nextOutputPosition <= currentPosition + 1e-9) {
-                                            val fraction = (nextOutputPosition - (inputFrames - 1).toDouble()).coerceIn(0.0, 1.0).toFloat()
-                                            emit(
-                                                previousLeft + (left - previousLeft) * fraction,
-                                                previousRight + (right - previousRight) * fraction,
-                                                stream
-                                            )
-                                            nextOutputPosition += outputRate.toDouble() / targetSampleRate
-                                        }
-                                        previousLeft = left
-                                        previousRight = right
+                                    aligner.accept(bufferStartFrame + frame, left, right) { alignedLeft, alignedRight ->
+                                        emit(alignedLeft, alignedRight, stream)
                                     }
                                     inputFrames++
                                 }
@@ -201,7 +191,10 @@ internal object StudioAndroidAudioDecoder {
                         idlePolls++
                         check(idlePolls < MAX_IDLE_POLLS) { "Audio decoder stopped making progress." }
                     }
-                    if (inputFrames % 48_000L < 2_048L) onProgress(inputFrames)
+                    if (inputFrames - lastProgressFrames >= 48_000L) {
+                        onProgress(inputFrames)
+                        lastProgressFrames = inputFrames
+                    }
                 }
                 flushStaging(stream)
             }
