@@ -7,25 +7,37 @@ import androidx.media3.effect.GaussianBlur
 import androidx.media3.effect.GlEffect
 import androidx.media3.effect.ScaleAndRotateTransformation
 
-internal data class StudioTransformCompilation(
-    val effects: List<GlEffect>,
-    val errors: List<String>
+internal data class StudioCropNdcBounds(
+    val left: Float,
+    val right: Float,
+    val bottom: Float,
+    val top: Float
+)
+
+internal data class StudioTransformEffectPlan(
+    val crop: StudioCropNdcBounds?,
+    val scaleX: Float,
+    val scaleY: Float,
+    val rotationDegrees: Float,
+    val blurRadius: Float,
+    val opacity: Float
 ) {
-    val isValid: Boolean get() = errors.isEmpty()
+    val needsScaleOrRotation: Boolean
+        get() = scaleX != 1f || scaleY != 1f || rotationDegrees != 0f
+    val needsBlur: Boolean get() = blurRadius > 0f
+    val needsOpacity: Boolean get() = opacity < 1f
 }
 
-/**
- * Compiles frame-plan transforms to real Media3 GPU effects.
- *
- * Translation and feathered masks are deliberately rejected until a compositor shader can
- * implement them correctly. Returning a partial effect list with errors is not renderable.
- */
-@UnstableApi
-internal object StudioMedia3TransformCompiler {
-    fun compile(transform: StudioVisualTransform): StudioTransformCompilation {
-        val effects = mutableListOf<GlEffect>()
-        val errors = mutableListOf<String>()
+internal data class StudioTransformPlanCompilation(
+    val plan: StudioTransformEffectPlan?,
+    val errors: List<String>
+) {
+    val isValid: Boolean get() = errors.isEmpty() && plan != null
+}
 
+/** Pure validation and coordinate conversion; safe to exercise in local JVM tests. */
+internal object StudioTransformEffectPlanner {
+    fun plan(transform: StudioVisualTransform): StudioTransformPlanCompilation {
         val values = listOf(
             transform.x, transform.y, transform.scaleX, transform.scaleY,
             transform.rotationDegrees, transform.opacity, transform.cropLeft,
@@ -33,8 +45,10 @@ internal object StudioMedia3TransformCompiler {
             transform.blurRadius, transform.maskFeather
         )
         if (values.any { !it.isFinite() }) {
-            return StudioTransformCompilation(emptyList(), listOf("Transform contains a non-finite value."))
+            return StudioTransformPlanCompilation(null, listOf("Transform contains a non-finite value."))
         }
+
+        val errors = mutableListOf<String>()
         if (transform.x !in -2f..2f || transform.y !in -2f..2f) {
             errors += "Layer translation is outside the supported range."
         } else if (transform.x != 0f || transform.y != 0f) {
@@ -56,27 +70,55 @@ internal object StudioMedia3TransformCompiler {
         if (transform.maskFeather !in 0f..0.25f) errors += "Mask feather must be within 0..0.25."
         else if (transform.maskFeather > 0f) errors += "Feathered masks require the custom mask compositor and are not yet supported."
 
-        if (errors.isNotEmpty()) return StudioTransformCompilation(emptyList(), errors)
+        if (errors.isNotEmpty()) return StudioTransformPlanCompilation(null, errors)
 
-        if (transform.cropLeft != 0f || transform.cropTop != 0f ||
+        val crop = if (transform.cropLeft != 0f || transform.cropTop != 0f ||
             transform.cropRight != 1f || transform.cropBottom != 1f) {
-            val leftNdc = transform.cropLeft * 2f - 1f
-            val rightNdc = transform.cropRight * 2f - 1f
-            val bottomNdc = 1f - transform.cropBottom * 2f
-            val topNdc = 1f - transform.cropTop * 2f
-            effects += Crop(leftNdc, rightNdc, bottomNdc, topNdc)
-        }
+            StudioCropNdcBounds(
+                left = transform.cropLeft * 2f - 1f,
+                right = transform.cropRight * 2f - 1f,
+                bottom = 1f - transform.cropBottom * 2f,
+                top = 1f - transform.cropTop * 2f
+            )
+        } else null
 
         val rotation = ((transform.rotationDegrees % 360f) + 360f) % 360f
-        if (transform.scaleX != 1f || transform.scaleY != 1f || rotation != 0f) {
+        return StudioTransformPlanCompilation(
+            StudioTransformEffectPlan(
+                crop = crop,
+                scaleX = transform.scaleX,
+                scaleY = transform.scaleY,
+                rotationDegrees = rotation,
+                blurRadius = transform.blurRadius,
+                opacity = transform.opacity
+            ),
+            emptyList()
+        )
+    }
+}
+
+/**
+ * Compiles the pure transform plan into Media3 GPU effects.
+ * Translation and feathered masks are rejected until a custom compositor pass exists.
+ */
+@UnstableApi
+internal object StudioMedia3TransformCompiler {
+    fun compile(transform: StudioVisualTransform): StudioTransformCompilation {
+        val planned = StudioTransformEffectPlanner.plan(transform)
+        val plan = planned.plan ?: return StudioTransformCompilation(emptyList(), planned.errors)
+        val effects = mutableListOf<GlEffect>()
+
+        plan.crop?.let { bounds ->
+            effects += Crop(bounds.left, bounds.right, bounds.bottom, bounds.top)
+        }
+        if (plan.needsScaleOrRotation) {
             effects += ScaleAndRotateTransformation.Builder()
-                .setScale(transform.scaleX, transform.scaleY)
-                .setRotationDegrees(rotation)
+                .setScale(plan.scaleX, plan.scaleY)
+                .setRotationDegrees(plan.rotationDegrees)
                 .build()
         }
-        if (transform.blurRadius > 0f) effects += GaussianBlur(transform.blurRadius)
-        if (transform.opacity < 1f) effects += AlphaScale(transform.opacity)
-
+        if (plan.needsBlur) effects += GaussianBlur(plan.blurRadius)
+        if (plan.needsOpacity) effects += AlphaScale(plan.opacity)
         return StudioTransformCompilation(effects, emptyList())
     }
 }
