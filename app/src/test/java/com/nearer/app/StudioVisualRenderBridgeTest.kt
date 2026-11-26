@@ -4,6 +4,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.AlphaScale
 import androidx.media3.effect.GaussianBlur
 import androidx.media3.effect.HslAdjustment
+import androidx.media3.effect.ScaleAndRotateTransformation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -59,11 +60,12 @@ class StudioVisualRenderBridgeTest {
             )
         ))
         assertTrue(result.isValid)
-        assertEquals(4, result.effects.size)
+        assertEquals(5, result.effects.size)
         assertTrue(result.effects[0] is HslAdjustment)
         assertTrue(result.effects[1] is StudioGpuMaskEffect)
-        assertTrue(result.effects[2] !is AlphaScale)
-        assertTrue(result.effects.last() is AlphaScale)
+        assertTrue(result.effects[2] is ScaleAndRotateTransformation)
+        assertTrue(result.effects[3] is GaussianBlur)
+        assertTrue(result.effects[4] is AlphaScale)
     }
 
     @Test fun refusesToReturnPartialChainWhenAnyNodeIsUnsupported() {
