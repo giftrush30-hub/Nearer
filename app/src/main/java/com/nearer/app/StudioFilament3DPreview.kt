@@ -115,6 +115,8 @@ internal fun StudioFilament3DPreview(onBack: () -> Unit) {
             activeViewer.loadModelGlb(ByteBuffer.wrap(bytes))
             check(activeViewer.asset != null) { "Filament could not load this GLB model." }
             activeViewer.transformToUnitCube()
+            val rootInstance = activeViewer.engine.transformManager.getInstance(activeViewer.asset!!.root)
+            normalizedRootTransform = activeViewer.engine.transformManager.getTransform(rootInstance, FloatArray(16))
             activeViewer.autoPlayAnimations = animationPlaying
             animationCount = activeViewer.animator?.animationCount ?: 0
             animationIndex = 0
