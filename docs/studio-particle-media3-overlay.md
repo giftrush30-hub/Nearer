@@ -4,7 +4,7 @@ The deterministic particle simulator and CPU rasterizer can be used as a real Me
 
 ## Behavior
 
-- One reusable bitmap per configured video size; no new Bitmap allocation for every frame.
+- One reusable bitmap and one reusable IntArray per configured video size; no full-frame bitmap or pixel-buffer allocation for every frame.
 - Particle simulation is evaluated directly from presentationTimeUs, so seeking and export do not depend on previously rendered frames.
 - The same GlEffect can be attached to EditedMediaItem effects for live preview and Transformer export.
 - Invalid simulation/raster plans fail the frame with a timestamped VideoFrameProcessingException rather than silently dropping an effect.
