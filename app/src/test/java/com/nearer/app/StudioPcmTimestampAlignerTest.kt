@@ -31,23 +31,23 @@ class StudioPcmTimestampAlignerTest {
         val aligner = StudioPcmTimestampAligner(48_000, 48_000)
         val output = mutableListOf<Float>()
 
-        aligner.accept(0.0, 1f, 1f) { left, _ -> output += left }
-        aligner.accept(1.0, 2f, 2f) { left, _ -> output += left }
-        aligner.accept(5.0, 6f, 6f) { left, _ -> output += left }
+        aligner.accept(0.0, 0.1f, 0.1f) { left, _ -> output += left }
+        aligner.accept(1.0, 0.2f, 0.2f) { left, _ -> output += left }
+        aligner.accept(5.0, 0.6f, 0.6f) { left, _ -> output += left }
 
-        assertEquals(listOf(1f, 2f, 0f, 0f, 0f, 6f), output)
+        assertEquals(listOf(0.1f, 0.2f, 0f, 0f, 0f, 0.6f), output)
     }
 
     @Test fun ignoresOverlappingDuplicateDecoderBoundaryFrames() {
         val aligner = StudioPcmTimestampAligner(48_000, 48_000)
         val output = mutableListOf<Float>()
 
-        aligner.accept(0.0, 1f, 1f) { left, _ -> output += left }
-        aligner.accept(1.0, 2f, 2f) { left, _ -> output += left }
-        aligner.accept(1.0, 9f, 9f) { left, _ -> output += left }
-        aligner.accept(2.0, 3f, 3f) { left, _ -> output += left }
+        aligner.accept(0.0, 0.1f, 0.1f) { left, _ -> output += left }
+        aligner.accept(1.0, 0.2f, 0.2f) { left, _ -> output += left }
+        aligner.accept(1.0, 0.9f, 0.9f) { left, _ -> output += left }
+        aligner.accept(2.0, 0.3f, 0.3f) { left, _ -> output += left }
 
-        assertEquals(listOf(1f, 2f, 3f), output)
+        assertEquals(listOf(0.1f, 0.2f, 0.3f), output)
     }
 
     @Test fun trimsNegativePresentationTimeBeforeTimelineZero() {
