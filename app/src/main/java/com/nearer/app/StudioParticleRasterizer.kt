@@ -35,7 +35,8 @@ internal object StudioParticleRasterizer {
         width: Int,
         height: Int,
         frame: StudioParticleFrame,
-        blendMode: StudioVisualBlendMode = StudioVisualBlendMode.NORMAL
+        blendMode: StudioVisualBlendMode = StudioVisualBlendMode.NORMAL,
+        reusablePixels: IntArray? = null
     ): StudioParticleRasterization {
         if (width <= 0 || height <= 0 || width.toLong() * height > StudioPixelCompositor.MAX_PIXELS) {
             return invalid(width, height, blendMode, "Particle raster dimensions exceed the 16-megapixel safety limit.")
@@ -46,7 +47,11 @@ internal object StudioParticleRasterizer {
         if (frame.particles.size > StudioOfflineParticleEngine.MAX_PARTICLES_PER_FRAME) {
             return invalid(width, height, blendMode, "Particle frame exceeds the 50000-instance safety limit.")
         }
-        val output = IntArray(width * height)
+        if (reusablePixels != null && reusablePixels.size != width * height) {
+            return invalid(width, height, blendMode, "Reusable particle pixel buffer does not match output dimensions.")
+        }
+        val output = reusablePixels ?: IntArray(width * height)
+        output.fill(0)
         val minDimension = min(width, height).toFloat()
         var operations = 0L
         for (particle in frame.particles) {
