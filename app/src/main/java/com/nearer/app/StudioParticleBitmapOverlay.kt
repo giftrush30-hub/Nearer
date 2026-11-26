@@ -44,7 +44,7 @@ internal class StudioParticleBitmapOverlay(
         val bitmap = outputBitmap ?: throw VideoFrameProcessingException(
             "Particle overlay was not configured before frame rendering.", presentationTimeUs
         )
-        val particleFrame = StudioOfflineParticleEngine.frameAt(presentationTimeUs, emitters)
+        val particleFrame = StudioOfflineParticleEngine.frameAt(presentationTimeUs.coerceAtLeast(0L), emitters)
         if (!particleFrame.isValid) {
             throw VideoFrameProcessingException(
                 particleFrame.errors.joinToString(" ").ifBlank { "Particle simulation failed." },
