@@ -77,7 +77,7 @@ class StudioOfflineParticleEngineTest {
     }
 
     @Test fun particlesExpireAndEmitterStopsAtEndTime() {
-        val short = emitter().copy(minLifetimeMs = 100, maxLifetimeMs = 100, endTimeUs = 200_000L)
+        val short = emitter(rate = 0.1f).copy(minLifetimeMs = 100, maxLifetimeMs = 100, endTimeUs = 200_000L)
         val active = StudioOfflineParticleEngine.frameAt(50_000L, listOf(short))
         val expired = StudioOfflineParticleEngine.frameAt(150_000L, listOf(short))
         val ended = StudioOfflineParticleEngine.frameAt(250_000L, listOf(short))
