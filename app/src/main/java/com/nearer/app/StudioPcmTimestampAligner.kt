@@ -1,7 +1,5 @@
 package com.nearer.app
 
-import kotlin.math.abs
-import kotlin.math.floor
 import kotlin.math.roundToLong
 
 /**
