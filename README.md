@@ -21,6 +21,15 @@ NeaRer is a native Android app for nearby communication, file sharing and local 
 - Nearby group messaging to currently connected members.
 - Ludo includes a traditional four-colour board, visible dice, token movement, safe squares, captures, computer opponents and nearby multiplayer foundations. Same-device offline pass-and-play supports two to four human players; solo mode supports three computer opponents. Nearby multiplayer still requires physical two-phone verification. Internet multiplayer and live voice calling are not claimed as complete.
 
+### NeaRer Library
+
+- Unified Library destination for the local document collection and NeaRer Word Bible/study workspace.
+- Existing local collection supports user-selected files, search, filters, favourites, PDF rendering and saved reading position.
+- Recovered Bible work adds offline Scripture packs, translation/book/chapter navigation, verse search, translation comparison, bookmarks, highlights, private notes, original-language word study, reading plans and user-imported offline audio.
+- Bible content and lexical datasets are separate licensed packs; the base APK does not bundle large Scripture or audio corpora.
+- General EPUB reading, a general-purpose dictionary, unified annotations across formats, publisher catalogue, paid book sales and sponsored reading remain planned work. Paid access is deferred until the approved Wallet/payment phase.
+- See [NeaRer Library roadmap](docs/nearer-library-roadmap.md) and [NeaRer Word device checklist](docs/NEARER_WORD_DEVICE_SMOKE_TEST.md).
+
 ### Business Center
 - Local-first business identity with category, service area, hours and optional public contact details.
 - Bounded local product/service catalogue (up to 100 listings), availability labels, search/filter, private product-photo storage and local catalogue sharing through Android's share sheet.
