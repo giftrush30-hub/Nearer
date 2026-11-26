@@ -37,8 +37,12 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
@@ -65,10 +69,6 @@ import androidx.media3.transformer.Composition
 import androidx.media3.transformer.CompositionPlayer
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
-import androidx.media3.transformer.ExportException
-import androidx.media3.transformer.ExportResult
-import androidx.media3.transformer.Transformer
-import androidx.media3.transformer.ProgressHolder
 import androidx.media3.ui.PlayerView
 import java.io.File
 import java.util.UUID
@@ -113,7 +113,8 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     var message by remember { mutableStateOf("Add video clips, arrange their order, trim each clip and optionally lay music underneath.") }
     var exported by remember { mutableStateOf<File?>(null) }
     var exportProgress by remember { mutableStateOf<Int?>(null) }
-    var exportTransformer by remember { mutableStateOf<Transformer?>(null) }
+    var exportJob by remember { mutableStateOf<Job?>(null) }
+    val exportScope = rememberCoroutineScope()
     var exportPendingFile by remember { mutableStateOf<File?>(null) }
     var exportCancellationRequested by remember { mutableStateOf(false) }
     val gradePreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_grade_$projectId", android.content.Context.MODE_PRIVATE) }
@@ -265,23 +266,11 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
             StudioExportFiles.cleanupAbandoned(File(context.filesDir, "studio-exports"))
         }
     }
-    LaunchedEffect(exporting, exportTransformer) {
-        val activeTransformer = exportTransformer ?: return@LaunchedEffect
-        if (!exporting) return@LaunchedEffect
-        val progressHolder = ProgressHolder()
-        while (exporting && exportTransformer === activeTransformer) {
-            val progressState = runCatching { activeTransformer.getProgress(progressHolder) }.getOrNull()
-            if (progressState == Transformer.PROGRESS_STATE_AVAILABLE) {
-                exportProgress = progressHolder.progress.coerceIn(0, 100)
-            }
-            delay(500L)
-        }
-    }
-    val latestExportTransformer by rememberUpdatedState(exportTransformer)
+    val latestExportJob by rememberUpdatedState(exportJob)
     DisposableEffect(projectId) {
         onDispose {
-            // Let Media3's listener remove the pending file after the encoder stops.
-            latestExportTransformer?.let { runCatching { it.cancel() } }
+            // The coordinator cancels the active codec/render stage and removes all intermediate files.
+            latestExportJob?.cancel()
         }
     }
 
@@ -793,18 +782,19 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
             } else {
                 exporting = true
                 exported = null
-                exportProgress = null
+                exportProgress = 0
                 exportCancellationRequested = false
-                message = "Preparing your movie…"
+                message = "Preparing the complete movie export…"
                 val videoItems = clips.mapIndexed { clipIndex, clip ->
                     val item = MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
                         MediaItem.ClippingConfiguration.Builder().setStartPositionMs(clip.inMs).setEndPositionMs(clip.outMs).build()
                     ).build()
-                    EditedMediaItem.Builder(item).setEffects(Effects(emptyList(), videoEffects(clipIndex))).build()
+                    // Audio is rendered separately through the offline PCM/AAC pipeline so clip
+                    // sound and music are mixed once, not duplicated by Transformer.
+                    EditedMediaItem.Builder(item).setRemoveAudio(true)
+                        .setEffects(Effects(emptyList(), videoEffects(clipIndex))).build()
                 }
                 val videoSequence = EditedMediaItemSequence.Builder(videoItems).build()
-                // The first sequence is Media3's primary/top compositor input. Its keyed transparent
-                // pixels reveal the replacement sequence immediately underneath it.
                 val sequences = mutableListOf(videoSequence)
                 if (chromaKeyEnabled && replacementBackground != null) {
                     val movieDurationMs = clips.sumOf { (it.outMs - it.inMs).coerceAtLeast(0L) }
@@ -819,10 +809,6 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                     sequences.add(EditedMediaItemSequence.Builder(listOf(backgroundItem))
                         .setIsLooping(!backgroundMime.startsWith("image/")).build())
                 }
-                if (backgroundAudio != null && !musicMuted) {
-                    val musicItem = EditedMediaItem.Builder(MediaItem.fromUri(backgroundAudio!!)).build()
-                    sequences.add(EditedMediaItemSequence.Builder(listOf(musicItem)).setIsLooping(true).build())
-                }
                 val composition = Composition.Builder(sequences).build()
                 val outputDirectory = File(context.filesDir, "studio-exports")
                 val exportId = UUID.randomUUID().toString()
@@ -834,51 +820,74 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                     if (!outputDirectory.exists() && !outputDirectory.mkdirs()) {
                         error("Could not create the export folder. Check available storage.")
                     }
-                    val transformer = Transformer.Builder(context).addListener(object : Transformer.Listener {
-                        override fun onCompleted(composition: Composition, exportResult: ExportResult) {
-                            exporting = false
-                            exportTransformer = null
-                            exportPendingFile = null
-                            exportProgress = 100
+                    var timelineCursor = 0L
+                    val audioClips = clips.mapIndexed { index, clip ->
+                        val item = StudioMovieExportClip(
+                            id = "clip-$index-${clip.uri.toString().hashCode()}",
+                            sourceUri = clip.uri.toString(),
+                            sourceDurationMs = clip.durationMs,
+                            timelineStartMs = timelineCursor,
+                            sourceInMs = clip.inMs,
+                            sourceOutMs = clip.outMs
+                        )
+                        timelineCursor += (clip.outMs - clip.inMs).coerceAtLeast(0L)
+                        item
+                    }
+                    exportJob = exportScope.launch {
+                        try {
+                            val result = StudioOfflineMovieExportCoordinator.export(
+                                context = context,
+                                request = StudioOfflineMovieExportRequest(
+                                    composition = composition,
+                                    clips = audioClips,
+                                    musicUri = backgroundAudio?.toString(),
+                                    musicMuted = musicMuted,
+                                    outputFile = pending,
+                                    workingDirectory = outputDirectory,
+                                    minimumDurationMs = timelineCursor
+                                ),
+                                onProgress = { stage, percent ->
+                                    message = stage
+                                    exportProgress = percent
+                                }
+                            )
                             if (exportCancellationRequested) {
                                 StudioExportFiles.discard(pending)
                                 exported = null
-                                message = "Export cancelled. The unfinished video was removed; your project and original clips are safe."
+                                message = "Export cancelled. Temporary media was removed; your project and original clips are safe."
                             } else if (StudioExportFiles.publish(pending, finalOutput)) {
                                 exported = finalOutput
-                                message = "Film export complete · ${finalOutput.length() / (1024L * 1024L)} MB. Your original clips remain unchanged."
+                                exportProgress = 100
+                                message = "Film export complete · ${result.bytes / (1024L * 1024L)} MB. Original clips remain unchanged."
+                                if (result.warnings.isNotEmpty()) message += " " + result.warnings.joinToString(" ")
                             } else {
                                 StudioExportFiles.discard(pending)
                                 exported = null
-                                message = "The export finished, but its video file did not pass the safety check. Please try again."
+                                message = "The assembled movie did not pass the final file safety check. Your project is still saved."
                             }
-                        }
-
-                        override fun onError(
-                            composition: Composition,
-                            exportResult: ExportResult,
-                            exportException: ExportException
-                        ) {
+                        } catch (cancelled: CancellationException) {
                             StudioExportFiles.discard(pending)
-                            exporting = false
-                            exportTransformer = null
-                            exportPendingFile = null
-                            exportProgress = null
                             exported = null
+                            message = "Export cancelled. Temporary media was removed; your project and original clips are safe."
+                        } catch (failure: Throwable) {
+                            StudioExportFiles.discard(pending)
+                            exported = null
+                            exportProgress = null
                             message = if (exportCancellationRequested) {
-                                "Export cancelled. The unfinished video was removed; your project and original clips are safe."
+                                "Export cancelled. Temporary media was removed; your project and original clips are safe."
                             } else {
-                                "Film export failed: ${exportException.message ?: "unsupported source combination or device encoder error"}. Your project is still saved."
+                                "Film export failed: ${failure.message ?: "unsupported source combination or device encoder error"}. Your project is still saved."
                             }
+                        } finally {
+                            exporting = false
+                            exportJob = null
+                            exportPendingFile = null
                         }
-                    }).build()
-                    exportTransformer = transformer
-                    message = "Rendering ${clips.size} clip(s)… You can cancel safely."
-                    transformer.start(composition, pending.absolutePath)
+                    }
                 }.onFailure { failure ->
                     StudioExportFiles.discard(pending)
                     exporting = false
-                    exportTransformer = null
+                    exportJob = null
                     exportPendingFile = null
                     exportProgress = null
                     message = "Could not start film export: ${failure.message ?: "unknown error"}. Your project is still saved."
@@ -886,7 +895,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
             }
         }, enabled = !exporting && clips.isNotEmpty(), modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Midnight), shape = RoundedCornerShape(14.dp)) {
-            Text(if (exporting) "RENDERING…" else "EXPORT VIDEO SEQUENCE", fontWeight = FontWeight.ExtraBold)
+            Text(if (exporting) "RENDERING…" else "EXPORT COMPLETE MOVIE", fontWeight = FontWeight.ExtraBold)
         }
         if (exporting) {
             Text(
@@ -905,14 +914,10 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
             }
             Button(
                 onClick = {
-                    val activeTransformer = exportTransformer
-                    if (activeTransformer != null) {
+                    if (exportJob != null) {
                         exportCancellationRequested = true
-                        runCatching { activeTransformer.cancel() }.onFailure {
-                            message = "Could not cancel yet: ${it.message ?: "please wait for the export to finish"}"
-                        }
-                        // Keep the encoder busy until Media3 confirms it has stopped.
                         message = "Cancelling export safely…"
+                        exportJob?.cancel()
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
