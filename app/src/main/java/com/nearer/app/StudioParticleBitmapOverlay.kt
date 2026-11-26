@@ -18,6 +18,13 @@ internal class StudioParticleBitmapOverlay(
     private var outputBitmap: Bitmap? = null
     private var outputWidth = 0
     private var outputHeight = 0
+    private var pixelBuffer: IntArray? = null
+    private val overlaySettings = StaticOverlaySettings.Builder()
+        .setOverlayFrameAnchor(0f, 0f)
+        .setBackgroundFrameAnchor(0f, 0f)
+        .setScale(1f, 1f)
+        .setAlphaScale(1f)
+        .build()
 
     override fun configure(videoSize: Size) {
         require(videoSize.width > 0 && videoSize.height > 0) { "Particle overlay received invalid video dimensions." }
@@ -29,6 +36,7 @@ internal class StudioParticleBitmapOverlay(
             outputWidth = videoSize.width
             outputHeight = videoSize.height
             outputBitmap = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
+            pixelBuffer = IntArray(outputWidth * outputHeight)
         }
     }
 
@@ -43,7 +51,7 @@ internal class StudioParticleBitmapOverlay(
                 presentationTimeUs
             )
         }
-        val raster = StudioParticleRasterizer.rasterize(outputWidth, outputHeight, particleFrame)
+        val raster = StudioParticleRasterizer.rasterize(outputWidth, outputHeight, particleFrame, reusablePixels = pixelBuffer)
         if (!raster.isValid) {
             throw VideoFrameProcessingException(
                 raster.errors.joinToString(" ").ifBlank { "Particle rasterization failed." },
@@ -54,13 +62,7 @@ internal class StudioParticleBitmapOverlay(
         return bitmap
     }
 
-    override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings =
-        StaticOverlaySettings.Builder()
-            .setOverlayFrameAnchor(0f, 0f)
-            .setBackgroundFrameAnchor(0f, 0f)
-            .setScale(1f, 1f)
-            .setAlphaScale(1f)
-            .build()
+    override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings = overlaySettings
 
     override fun release() {
         super.release()
@@ -68,6 +70,7 @@ internal class StudioParticleBitmapOverlay(
         outputBitmap = null
         outputWidth = 0
         outputHeight = 0
+        pixelBuffer = null
     }
 }
 
