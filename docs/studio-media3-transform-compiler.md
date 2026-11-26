@@ -32,4 +32,4 @@ These features are represented in the graphics-independent visual plan but must 
 
 ## Verification boundary
 
-JVM tests verify effect selection, effect ordering, identity no-op, negative rotation normalization and explicit failure paths. Android CI verifies compilation and packaging. GPU output, alpha compositing quality, device-specific performance and final-export appearance still require physical-device validation.
+JVM tests verify the pure transform plan, normalized crop coordinates, scale/rotation values, opacity/blur decisions, identity no-op and explicit unsupported-operation failures without invoking Android graphics stubs. The Media3 adapter then materializes the plan as Crop, ScaleAndRotateTransformation, GaussianBlur and AlphaScale effects; CI verifies that adapter compiles and packages. Actual GPU output, alpha compositing quality, device-specific performance and final-export appearance still require Android instrumentation or physical-device validation.
