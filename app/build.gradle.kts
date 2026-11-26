@@ -74,8 +74,8 @@ dependencies {
     implementation("androidx.media3:media3-transformer:1.11.1")
     implementation("androidx.media3:media3-effect:1.11.1")
     implementation("com.google.oboe:oboe:1.11.0")
-    // Offline glTF 2.0 scene preview and skeletal animation runtime.
-    implementation("com.google.android.filament:filament-utils-android:1.81.0")
+    // API-34-compatible offline glTF 2.0 scene preview and skeletal animation runtime.
+    implementation("com.google.android.filament:filament-utils-android:1.75.1")
 
     testImplementation("junit:junit:4.13.2")
     // JVM tests exercise Android-compatible JSON codecs without android.jar stubs.
