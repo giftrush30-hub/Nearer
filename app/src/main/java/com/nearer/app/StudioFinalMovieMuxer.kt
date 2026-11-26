@@ -4,6 +4,7 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.os.Build
 import java.io.File
 import java.nio.ByteBuffer
 
@@ -23,11 +24,10 @@ internal data class StudioFinalMovieMuxResult(
  * final container stage; it does not render effects or alter media pixels.
  */
 internal object StudioFinalMovieMuxer {
-    private const val MAX_SAMPLE_BYTES = 32 * 1024 * 1024
+    private const val MAX_SAMPLE_BYTES = StudioFinalMovieMuxPolicy.MAX_SAMPLE_BYTES
 
     private data class TrackState(
         val extractor: MediaExtractor,
-        val sourceTrack: Int,
         val targetTrack: Int,
         val mime: String,
         var buffer: ByteBuffer,
@@ -35,8 +35,7 @@ internal object StudioFinalMovieMuxer {
         var samplesWritten: Long = 0L
     ) {
         val sampleTimeUs: Long get() = extractor.sampleTime
-        val sampleSize: Long get() = extractor.sampleSize
-        val hasSample: Boolean get() = sampleTimeUs >= 0L && sampleSize >= 0L
+        val hasSample: Boolean get() = sampleTimeUs >= 0L
     }
 
     fun mux(
@@ -84,11 +83,11 @@ internal object StudioFinalMovieMuxer {
             muxerStarted = true
 
             videoState = TrackState(
-                videoExtractor, videoTrack, targetVideoTrack, videoMime,
+                videoExtractor, targetVideoTrack, videoMime,
                 allocateSampleBuffer(videoFormat, videoExtractor)
             )
             audioState = TrackState(
-                audioExtractor, audioTrack, targetAudioTrack, audioMime,
+                audioExtractor, targetAudioTrack, audioMime,
                 allocateSampleBuffer(audioFormat, audioExtractor)
             )
             val durationUs = maxOf(
@@ -98,27 +97,19 @@ internal object StudioFinalMovieMuxer {
 
             while (videoState.hasSample || audioState.hasSample) {
                 check(!isCancelled()) { "Final movie export was cancelled." }
-                val next = when {
-                    !videoState.hasSample -> audioState
-                    !audioState.hasSample -> videoState
-                    videoState.sampleTimeUs <= audioState.sampleTimeUs -> videoState
-                    else -> audioState
-                }
+                val nextName = StudioFinalMovieMuxPolicy.nextTrack(
+                    videoState.sampleTimeUs, audioState.sampleTimeUs,
+                    videoState.hasSample, audioState.hasSample
+                ) ?: break
+                val next = if (nextName == "video") videoState else audioState
                 val pts = next.sampleTimeUs
-                require(pts >= 0L) { "A media sample has an invalid presentation timestamp." }
-                require(next.lastPresentationTimeUs < 0L || pts > next.lastPresentationTimeUs) {
+                require(StudioFinalMovieMuxPolicy.isTimestampAfter(next.lastPresentationTimeUs, pts)) {
                     "The ${next.mime} source contains duplicate or out-of-order sample timestamps."
                 }
-                val sampleBytes = next.sampleSize
-                require(sampleBytes in 1L..MAX_SAMPLE_BYTES.toLong()) {
-                    "A media sample exceeds the safe remux buffer limit."
-                }
-                if (next.buffer.capacity() < sampleBytes.toInt()) {
-                    next.buffer = ByteBuffer.allocateDirect(sampleBytes.toInt())
-                }
-                next.buffer.clear()
                 val bytesRead = next.extractor.readSampleData(next.buffer, 0)
-                require(bytesRead == sampleBytes.toInt()) { "Could not read a complete encoded media sample." }
+                require(bytesRead > 0 && bytesRead <= MAX_SAMPLE_BYTES) {
+                    "Could not read a complete encoded media sample within the safe buffer limit."
+                }
                 val flags = next.extractor.sampleFlags
                 val info = MediaCodec.BufferInfo().apply { set(0, bytesRead, pts, flags) }
                 next.buffer.position(0)
@@ -168,8 +159,8 @@ internal object StudioFinalMovieMuxer {
         val declared = if (format.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
             format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE).coerceAtLeast(0)
         } else 0
-        val current = extractor.sampleSize.coerceAtLeast(0L).coerceAtMost(MAX_SAMPLE_BYTES.toLong()).toInt()
-        val capacity = maxOf(64 * 1024, declared, current).coerceAtMost(MAX_SAMPLE_BYTES)
+        require(declared <= MAX_SAMPLE_BYTES) { "A track declares an input sample larger than the safe remux limit." }
+        val capacity = maxOf(1024 * 1024, declared).coerceAtMost(MAX_SAMPLE_BYTES)
         return ByteBuffer.allocateDirect(capacity)
     }
 
