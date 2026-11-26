@@ -20,8 +20,8 @@ class Studio3DAnimationExportPlanTest {
         val plan = requireNotNull(Studio3DAnimationExportPlan.compile(1_000L, 30, listOf(track)).plan)
         assertTrue(plan.frameAt(5).activeAnimations.isEmpty())
         assertEquals(1, plan.frameAt(6).activeAnimations.size)
-        assertTrue(plan.frameAt(24).activeAnimations.isNotEmpty())
-        assertTrue(plan.frameAt(25).activeAnimations.isEmpty())
+        assertTrue(plan.frameAt(23).activeAnimations.isNotEmpty())
+        assertTrue(plan.frameAt(24).activeAnimations.isEmpty())
     }
 
     @Test fun loopsAnimationTimeUsingSourceDuration() {
