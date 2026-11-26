@@ -4,7 +4,6 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
-import android.os.Build
 import java.io.File
 import java.nio.ByteBuffer
 
@@ -84,11 +83,11 @@ internal object StudioFinalMovieMuxer {
 
             videoState = TrackState(
                 videoExtractor, targetVideoTrack, videoMime,
-                allocateSampleBuffer(videoFormat, videoExtractor)
+                allocateSampleBuffer(videoFormat)
             )
             audioState = TrackState(
                 audioExtractor, targetAudioTrack, audioMime,
-                allocateSampleBuffer(audioFormat, audioExtractor)
+                allocateSampleBuffer(audioFormat)
             )
             val durationUs = maxOf(
                 videoFormat.getLongOrZero(MediaFormat.KEY_DURATION),
@@ -155,7 +154,7 @@ internal object StudioFinalMovieMuxer {
         return matches.single()
     }
 
-    private fun allocateSampleBuffer(format: MediaFormat, extractor: MediaExtractor): ByteBuffer {
+    private fun allocateSampleBuffer(format: MediaFormat): ByteBuffer {
         val declared = if (format.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
             format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE).coerceAtLeast(0)
         } else 0
