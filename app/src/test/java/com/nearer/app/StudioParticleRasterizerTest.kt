@@ -71,6 +71,17 @@ class StudioParticleRasterizerTest {
         assertEquals(0, (horizontal ushr 24))
     }
 
+    @Test fun reusesAndClearsProvidedPixelBufferBetweenFrames() {
+        val buffer = IntArray(16 * 16) { 0xFFFFFFFF.toInt() }
+        val emptyFrame = StudioParticleFrame(0L, emptyList(), emptyList())
+        val raster = StudioParticleRasterizer.rasterize(16, 16, emptyFrame, reusablePixels = buffer)
+        assertTrue(raster.isValid)
+        assertTrue(raster.pixels === buffer)
+        assertTrue(buffer.all { it == 0 })
+        val mismatch = StudioParticleRasterizer.rasterize(16, 16, emptyFrame, reusablePixels = IntArray(4))
+        assertFalse(mismatch.isValid)
+    }
+
     @Test fun rejectsInvalidFramesDimensionsAndNonFiniteParticles() {
         val invalidFrame = StudioParticleFrame(0L, emptyList(), listOf("bad simulation"))
         assertFalse(StudioParticleRasterizer.rasterize(32, 32, invalidFrame).isValid)
