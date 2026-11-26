@@ -4,6 +4,7 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.os.Build
 import java.io.File
 import java.nio.ByteBuffer
 
@@ -105,6 +106,15 @@ internal object StudioFinalMovieMuxer {
                 require(StudioFinalMovieMuxPolicy.isTimestampAfter(next.lastPresentationTimeUs, pts)) {
                     "The ${next.mime} source contains duplicate or out-of-order sample timestamps."
                 }
+                if (Build.VERSION.SDK_INT >= 28) {
+                    val declaredSampleBytes = next.extractor.sampleSize
+                    require(declaredSampleBytes in 1L..MAX_SAMPLE_BYTES.toLong()) {
+                        "A media sample exceeds the safe remux buffer limit."
+                    }
+                    if (declaredSampleBytes > next.buffer.capacity()) {
+                        next.buffer = ByteBuffer.allocateDirect(declaredSampleBytes.toInt())
+                    }
+                }
                 val bytesRead = next.extractor.readSampleData(next.buffer, 0)
                 require(bytesRead > 0 && bytesRead <= MAX_SAMPLE_BYTES) {
                     "Could not read a complete encoded media sample within the safe buffer limit."
@@ -117,11 +127,12 @@ internal object StudioFinalMovieMuxer {
                 next.lastPresentationTimeUs = pts
                 next.samplesWritten++
                 next.extractor.advance()
-                onProgress(maxOf(videoState.lastPresentationTimeUs, audioState.lastPresentationTimeUs).coerceAtLeast(0L), durationUs)
+                onProgress(pts, durationUs)
             }
 
             require(videoState.samplesWritten > 0L) { "The rendered video contains no samples." }
             require(audioState.samplesWritten > 0L) { "The AAC track contains no samples." }
+            require(durationUs > 0L) { "The source tracks do not report a usable movie duration." }
             muxer.stop()
             muxerStarted = false
             muxer.release()
@@ -131,7 +142,7 @@ internal object StudioFinalMovieMuxer {
             success = true
             return StudioFinalMovieMuxResult(
                 outputMp4, videoState.samplesWritten, audioState.samplesWritten,
-                maxOf(videoState.lastPresentationTimeUs, audioState.lastPresentationTimeUs),
+                durationUs,
                 outputMp4.length()
             )
         } catch (failure: Throwable) {
@@ -180,7 +191,13 @@ internal object StudioFinalMovieMuxer {
             val hasAudio = (0 until extractor.trackCount).any {
                 extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
             }
-            require(hasVideo && hasAudio) { "The finished MP4 is missing its video or audio track." }
+            val durationUs = (0 until extractor.trackCount).mapNotNull { index ->
+                val format = extractor.getTrackFormat(index)
+                if (format.containsKey(MediaFormat.KEY_DURATION)) runCatching { format.getLong(MediaFormat.KEY_DURATION) }.getOrNull() else null
+            }.maxOrNull() ?: 0L
+            require(hasVideo && hasAudio && durationUs > 0L) {
+                "The finished MP4 is missing a media track or a valid duration."
+            }
         } finally {
             extractor.release()
         }
