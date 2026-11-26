@@ -89,4 +89,32 @@ class StudioVisualLayerGraphTest {
         assertFalse(StudioVisualLayerGraph.validate(listOf(tooManyEffects)).isValid)
         assertFalse(StudioVisualLayerGraph.validate(tooManyLayers).isValid)
     }
+    @Test fun explicitLayerKeyframesTakePrecedenceOverPreEvaluatedFrameValues() {
+        val active = frame().copy(videoLayers = frame().videoLayers.map { layer ->
+            if (layer.itemId == "actor") layer.copy(
+                animatedValues = mapOf(StudioAnimatedProperty.X to 0.3f)
+            ) else layer
+        })
+        val animatedSpec = StudioVisualLayerSpec("overlay", "actor", 2, animations = listOf(
+            StudioPropertyAnimation(StudioAnimatedProperty.X, listOf(
+                StudioKeyframe(0L, 0f), StudioKeyframe(500L, 1f)
+            ))
+        ))
+        val command = StudioVisualLayerGraph.build(
+            active, listOf(StudioVisualLayerSpec("main", "base", 0), animatedSpec)
+        ).drawCommands.last()
+        assertEquals(0.5f, command.transform.x, 0.0001f)
+    }
+
+    @Test fun rejectsUnsafeAnimatedOpacityAndScale() {
+        val invalid = StudioVisualLayerSpec("overlay", "actor", 1, animations = listOf(
+            StudioPropertyAnimation(StudioAnimatedProperty.OPACITY, listOf(StudioKeyframe(0L, 1.5f)))
+        ))
+        val plan = StudioVisualLayerGraph.build(
+            frame(), listOf(StudioVisualLayerSpec("main", "base", 0), invalid)
+        )
+        assertFalse(plan.isValid)
+        assertTrue(plan.errors.any { it.contains("animated opacity") })
+    }
+
 }
