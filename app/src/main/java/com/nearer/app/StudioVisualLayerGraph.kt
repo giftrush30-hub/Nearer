@@ -8,7 +8,9 @@ internal data class StudioVisualEffectNode(
     val id: String,
     val kind: StudioVisualEffectKind,
     val parameters: Map<String, Float> = emptyMap(),
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    /** ARGB key colour for chroma removal; green is the default. */
+    val keyColorArgb: Int? = null
 )
 
 internal data class StudioVisualLayerSpec(
