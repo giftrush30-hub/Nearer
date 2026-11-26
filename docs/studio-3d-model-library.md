@@ -6,4 +6,4 @@ If a document provider does not grant persistent access, the model still loads f
 
 The workflow uses Android's Storage Access Framework and local app preferences. No remote asset library, network fetch, cloud storage or AI is involved.
 
-The current viewer supports embedded GLB 2.0 assets and their embedded animations. It does not yet create a movie timeline clip from a rendered 3D scene, export a transparent character pass, or offer rig-level pose editing. Those require a timestamp-controlled offscreen Filament renderer and an explicit export bridge.
+The viewer supports embedded GLB 2.0 assets, embedded animation playback/selection, and simple character transforms: uniform size, Y-axis turn and vertical position. Transform controls are range-validated and saved locally with the selected scene. It does not yet create a movie timeline clip from a rendered 3D scene, export a transparent character pass, or offer rig-level pose editing. Those require a timestamp-controlled offscreen Filament renderer and an explicit export bridge.
