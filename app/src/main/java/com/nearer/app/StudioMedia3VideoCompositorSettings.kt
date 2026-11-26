@@ -3,7 +3,7 @@ package com.nearer.app
 import android.util.Size
 import androidx.media3.common.VideoCompositorSettings
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.effect.OverlaySettings
+import androidx.media3.common.OverlaySettings
 import androidx.media3.effect.StaticOverlaySettings
 
 /** Normalized layout for one Composition sequence, in Media3 normalized device coordinates. */
@@ -94,7 +94,7 @@ internal class StudioMedia3VideoCompositorSettings(
         }
     }
 
-    override fun getOutputSize(inputSizes: MutableList<Size>): Size {
+    override fun getOutputSize(inputSizes: List<Size>): Size {
         if (inputSizes.isEmpty()) return fallbackOutputSize
         return Size(inputSizes.maxOf { it.width }.coerceAtLeast(1), inputSizes.maxOf { it.height }.coerceAtLeast(1))
     }
