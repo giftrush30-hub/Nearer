@@ -61,13 +61,16 @@ internal fun StudioFilament3DPreview(onBack: () -> Unit) {
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            runCatching {
+            val canRemember = runCatching {
                 context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                selectedModelUri = uri
+            }.isSuccess
+            selectedModelUri = uri
+            if (canRemember) {
                 scenePreferences.edit().putString("model_uri", uri.toString()).apply()
                 status = "Model selected. Preparing the offline 3D preview…"
-            }.onFailure {
-                status = "Could not keep access to this model: ${it.message ?: "permission unavailable"}"
+            } else {
+                scenePreferences.edit().remove("model_uri").apply()
+                status = "Model selected for this session. This file provider does not allow the model to be remembered."
             }
         }
     }
