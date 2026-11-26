@@ -119,6 +119,9 @@ internal object StudioVisualLayerGraph {
                 return@mapNotNull null
             }
             val blur = value(StudioAnimatedProperty.BLUR, 0f)
+            val maskFeatherOverride = animated[StudioAnimatedProperty.MASK_FEATHER]
+            val resolvedMasks = if (maskFeatherOverride == null) spec.masks else
+                spec.masks.map { it.copy(feather = maskFeatherOverride) }
             val feather = value(StudioAnimatedProperty.MASK_FEATHER, spec.masks.maxOfOrNull { it.feather } ?: 0f)
             val x = value(StudioAnimatedProperty.X, 0f)
             val y = value(StudioAnimatedProperty.Y, 0f)
@@ -139,7 +142,7 @@ internal object StudioVisualLayerGraph {
                     x, y, scaleX, scaleY, rotation, opacity,
                     left, top, right, bottom, blur, feather
                 ),
-                spec.masks, spec.effects.filter { it.enabled }
+                resolvedMasks, spec.effects.filter { it.enabled }
             )
         }.sortedWith(compareBy<StudioVisualDrawCommand> { it.zIndex }.thenBy { it.trackId }.thenBy { it.itemId })
         return StudioVisualFramePlan(frame.timestampUs, commands, errors.distinct())
