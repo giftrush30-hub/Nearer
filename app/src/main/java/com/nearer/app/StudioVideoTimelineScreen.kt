@@ -73,6 +73,7 @@ import androidx.media3.ui.PlayerView
 import java.io.File
 import java.util.UUID
 
+@OptIn(androidx.media3.common.util.UnstableApi::class)
 private fun studioReplacementBackgroundCompositorSettings(): StudioMedia3VideoCompositorSettings =
     StudioMedia3VideoCompositorSettings(
         listOf(
