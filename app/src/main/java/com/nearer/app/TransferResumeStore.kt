@@ -9,8 +9,9 @@ import java.security.MessageDigest
 /**
  * Coordinates durable partial-file checkpoints. It syncs the partial bytes before
  * recording their offset, and verifies the committed prefix before exposing a
- * candidate after restart. The transport still has to negotiate and apply the
- * returned offset to a Nearby FILE payload.
+ * candidate after restart. The active Nearby STREAM path negotiates the returned
+ * offset with the authenticated sender and passes it to the resume writer; the
+ * separate legacy FILE path has its own SDK-managed offset flow.
  */
 internal class TransferResumeStore(
     private val partialDirectory: File,

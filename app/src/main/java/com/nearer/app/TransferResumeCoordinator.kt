@@ -5,13 +5,13 @@ import java.io.InputStream
 import java.security.MessageDigest
 
 /**
- * Transport-neutral coordinator for the durable HyperTransfer STREAM path.
+ * Durable HyperTransfer resume coordinator used by the Nearby STREAM bridge.
  *
- * The caller must establish the authenticated peer identity and negotiate these
- * values over that authenticated session. The sender must position its stream at
- * the accepted offset. This class deliberately does not pretend a Nearby FILE
- * payload can be resumed by the stream writer: the transport must use a STREAM
- * payload and pass the authenticated stable peer ID here.
+ * The transport establishes the authenticated peer identity and negotiates the
+ * accepted offset before calling this coordinator. Sender-side validation binds
+ * the proposal to that authenticated peer and the source bytes; receiver-side
+ * writing binds checkpoints to the authenticated source peer. The legacy Nearby
+ * FILE resume path remains separate and does not use this stream writer.
  */
 internal class TransferResumeCoordinator(
     private val store: TransferResumeStore,
