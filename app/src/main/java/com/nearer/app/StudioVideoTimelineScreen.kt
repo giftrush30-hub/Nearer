@@ -73,17 +73,6 @@ import androidx.media3.ui.PlayerView
 import java.io.File
 import java.util.UUID
 
-@OptIn(androidx.media3.common.util.UnstableApi::class)
-private fun studioReplacementBackgroundCompositorSettings(): StudioMedia3VideoCompositorSettings =
-    StudioMedia3VideoCompositorSettings(
-        listOf(
-            // Sequence 0 is registered first and is the foreground/primary input.
-            StudioCompositorLayerLayout(0, -1f, -1f, 1f, 1f, zIndex = 1),
-            // Sequence 1 is registered second and sits behind the keyed foreground.
-            StudioCompositorLayerLayout(1, -1f, -1f, 1f, 1f, zIndex = 0)
-        )
-    )
-
 private data class StudioVideoClip(
     val uri: Uri,
     val name: String,
@@ -140,6 +129,11 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     var chromaSoftness by remember(context, projectId) { mutableStateOf(chromaPreferences.getFloat("softness", 0.12f).coerceIn(0.001f, 1f)) }
     var chromaDespill by remember(context, projectId) { mutableStateOf(chromaPreferences.getFloat("despill", 0.65f).coerceIn(0f, 1f)) }
     var replacementBackground by remember(context, projectId) { mutableStateOf(chromaPreferences.getString("background_uri", null)?.let(Uri::parse)) }
+    var backgroundLayout by remember(context, projectId) {
+        mutableStateOf(runCatching {
+            StudioReplacementBackgroundLayout.valueOf(chromaPreferences.getString("background_layout", StudioReplacementBackgroundLayout.FULL_FRAME.name)!!)
+        }.getOrDefault(StudioReplacementBackgroundLayout.FULL_FRAME))
+    }
     val textPreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_text_$projectId", android.content.Context.MODE_PRIVATE) }
     var textOverlay by remember(context, projectId) { mutableStateOf(StudioVideoTextOverlayCodec.decode(textPreferences.getString("overlay_v1", null))) }
     val captionPreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_captions_$projectId", android.content.Context.MODE_PRIVATE) }
@@ -312,7 +306,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         gradePreferences.edit().putString("grade_v1", StudioVideoGradeCodec.encode(StudioVideoGrade(brightness, contrast, saturation))).apply()
         withContext(Dispatchers.IO) { StudioProjectLibraryStore(context).touch(projectId) }
     }
-    LaunchedEffect(projectId, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, replacementBackground?.toString()) {
+    LaunchedEffect(projectId, chromaKeyEnabled, chromaKeyColor, chromaTolerance, chromaSoftness, chromaDespill, replacementBackground?.toString(), backgroundLayout) {
         chromaPreferences.edit()
             .putBoolean("enabled", chromaKeyEnabled)
             .putInt("key_color", chromaKeyColor)
@@ -320,6 +314,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
             .putFloat("softness", chromaSoftness)
             .putFloat("despill", chromaDespill)
             .putString("background_uri", replacementBackground?.toString())
+            .putString("background_layout", backgroundLayout.name)
             .apply()
         withContext(Dispatchers.IO) { StudioProjectLibraryStore(context).touch(projectId) }
     }
@@ -428,7 +423,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                     sequences.add(EditedMediaItemSequence.Builder(listOf(musicItem)).setIsLooping(true).build())
                 }
                 val composition = Composition.Builder(sequences)
-                    .setVideoCompositorSettings(studioReplacementBackgroundCompositorSettings())
+                    .setVideoCompositorSettings(StudioMedia3VideoCompositorSettings(StudioReplacementBackgroundLayoutPlanner.layouts(backgroundLayout)))
                     .build()
                 compositionPlayer.setComposition(composition)
                 compositionPlayer.prepare()
@@ -554,7 +549,28 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                         if (replacementBackground != null) Button(onClick = { replacementBackground = null; exported = null },
                             colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("REMOVE") }
                     }
-                    Text("The exported film composites your keyed foreground over this background. The current single-clip preview shows the keyed foreground; full layered preview is a separate integration step.", color = Muted, fontSize = 9.sp, lineHeight = 14.sp)
+                    Text("BACKGROUND LAYOUT", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Button(onClick = { backgroundLayout = StudioReplacementBackgroundLayout.FULL_FRAME; exported = null },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (backgroundLayout == StudioReplacementBackgroundLayout.FULL_FRAME) Mint else Midnight,
+                                contentColor = if (backgroundLayout == StudioReplacementBackgroundLayout.FULL_FRAME) Midnight else White
+                            )) { Text("FULL BACKGROUND", fontSize = 9.sp) }
+                        Button(onClick = { backgroundLayout = StudioReplacementBackgroundLayout.PICTURE_IN_PICTURE; exported = null },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (backgroundLayout == StudioReplacementBackgroundLayout.PICTURE_IN_PICTURE) Mint else Midnight,
+                                contentColor = if (backgroundLayout == StudioReplacementBackgroundLayout.PICTURE_IN_PICTURE) Midnight else White
+                            )) { Text("PICTURE-IN-PICTURE", fontSize = 9.sp) }
+                    }
+                    Text(
+                        if (backgroundLayout == StudioReplacementBackgroundLayout.PICTURE_IN_PICTURE)
+                            "The replacement appears as a lower-right inset through transparent keyed areas."
+                        else
+                            "The replacement fills the frame behind your transparent keyed subject.",
+                        color = Muted, fontSize = 9.sp, lineHeight = 14.sp
+                    )
                 }
             }
         }
@@ -910,7 +926,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                 }
                 val compositionBuilder = Composition.Builder(sequences)
                 if (chromaKeyEnabled && replacementBackground != null) {
-                    compositionBuilder.setVideoCompositorSettings(studioReplacementBackgroundCompositorSettings())
+                    compositionBuilder.setVideoCompositorSettings(StudioMedia3VideoCompositorSettings(StudioReplacementBackgroundLayoutPlanner.layouts(backgroundLayout)))
                 }
                 val composition = compositionBuilder.build()
                 val outputDirectory = File(context.filesDir, "studio-exports")
