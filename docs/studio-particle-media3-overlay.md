@@ -12,7 +12,7 @@ The deterministic particle simulator and CPU rasterizer can be used as a real Me
 
 ## Safety and performance
 
-- Reuses the 16-megapixel output cap and 100-million raster-operation budget.
+- Uses a 4K UHD (8.3-megapixel) per-overlay bitmap cap and the 100-million raster-operation budget. The CPU reference rasterizer itself remains capped at 16 megapixels.
 - The particle engine enforces bounded emitter and active-particle counts.
 - Rasterization is CPU work on Media3's frame-processing path. High particle counts or 4K output can reduce export/preview speed; device benchmarking is required before enabling high-density presets by default.
 
