@@ -15,7 +15,7 @@ The offline audio pipeline now has an Android AAC-LC encoder stage in addition t
 
 ## Important boundary
 
-This is real Android codec/muxer implementation code, but it has not yet been exercised on physical phones. Device encoder behavior, AAC playback compatibility, long-file cancellation and audio/video synchronization still need validation. The current result is an audio-only MP4 asset, not the final combined movie export. The final coordinator must register both the video and AAC tracks before starting its muxer, then write both tracks in chronological order on a shared movie timebase.
+This is real Android codec/muxer implementation code, but it has not yet been exercised on physical phones. Device encoder behavior, AAC playback compatibility, long-file cancellation and audio/video synchronization still need validation. The current result is an audio-only MP4 asset, not the final combined movie export. The PCM source length is checked against the declared stereo frame count before codec startup, and PCM16 conversion is covered by pure JVM clipping tests. The final coordinator must register both the video and AAC tracks before starting its muxer, then write both tracks in chronological order on a shared movie timebase.
 
 ## Platform constraints and research
 
