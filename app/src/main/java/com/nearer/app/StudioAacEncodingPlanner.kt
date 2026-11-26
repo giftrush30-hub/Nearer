@@ -4,7 +4,7 @@ package com.nearer.app
  * Platform-independent AAC-LC input and mux timestamp rules.
  *
  * Android MediaCodec remains responsible for the actual codec configuration and output format.
- * This class only plans PCM16 input boundaries and exact sample-clock timestamps.
+ * This class plans PCM16 input boundaries and exact sample-clock timestamps.
  */
 internal data class StudioAacEncodingConfig(
     val sampleRate: Int = 48_000,
@@ -43,6 +43,13 @@ internal object StudioAacEncodingPlanner {
         return StudioAacEncodingValidation(errors)
     }
 
+    /** Convert normalized float PCM into signed little-endian PCM16 without asymmetric clipping. */
+    fun floatToPcm16(sample: Float): Short {
+        val clipped = sample.coerceIn(-1f, 1f)
+        val scale = if (clipped < 0f) 32_768f else 32_767f
+        return (clipped * scale).toInt().coerceIn(-32_768, 32_767).toShort()
+    }
+
     /** Largest whole interleaved PCM16 frames that fit in one codec input buffer. */
     fun inputFramesForBuffer(inputCapacityBytes: Int, channelCount: Int): Int {
         require(channelCount in 1..2) { "AAC input must be mono or stereo." }
@@ -50,10 +57,7 @@ internal object StudioAacEncodingPlanner {
         return inputCapacityBytes / (BYTES_PER_PCM16_SAMPLE * channelCount)
     }
 
-    /**
-     * Convert an absolute PCM frame position to microseconds without first multiplying the
-     * entire frame count by one million (which could overflow for long projects).
-     */
+    /** Convert an absolute PCM frame position to microseconds without cumulative packet rounding. */
     fun presentationTimeUs(framePosition: Long, sampleRate: Int): Long {
         require(framePosition >= 0L) { "PCM frame position cannot be negative." }
         require(sampleRate in supportedSampleRates) { "Unsupported AAC sample rate." }
@@ -76,7 +80,8 @@ internal object StudioAacEncodingPlanner {
         inputCapacityBytes: Int,
         config: StudioAacEncodingConfig
     ): StudioAacInputChunk? {
-        require(validate(config).isValid) { validate(config).errors.joinToString() }
+        val validation = validate(config)
+        require(validation.isValid) { validation.errors.joinToString() }
         require(firstFrame >= 0L && remainingFrames >= 0L) { "PCM frame positions cannot be negative." }
         if (remainingFrames == 0L) return null
         val capacityFrames = inputFramesForBuffer(inputCapacityBytes, config.channelCount)
