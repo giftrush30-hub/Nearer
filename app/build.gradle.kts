@@ -41,6 +41,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -54,6 +55,14 @@ kotlin {
 }
 
 dependencies {
+    // EPUB 2/3 engine. Kept modular: no OPDS catalogue or DRM module is included
+    // until Library's local reader and rights workflow are ready.
+    val readiumVersion = "3.1.2"
+    implementation("org.readium.kotlin-toolkit:readium-shared:$readiumVersion")
+    implementation("org.readium.kotlin-toolkit:readium-streamer:$readiumVersion")
+    implementation("org.readium.kotlin-toolkit:readium-navigator:$readiumVersion")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
