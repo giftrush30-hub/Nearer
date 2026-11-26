@@ -4,7 +4,7 @@ NeaRer Studio now has a Filament-based Android scene preview component for local
 
 ## Runtime
 
-- Google Filament 1.81.0 Android utilities, including the glTF loader and ModelViewer.
+- Google Filament 1.75.1 Android utilities, including the glTF loader and ModelViewer.
 - glTF 2.0 binary (.glb) import from the Android document picker.
 - Touch orbit and zoom controls from Filament's ModelViewer.
 - Embedded animation playback and selection.
