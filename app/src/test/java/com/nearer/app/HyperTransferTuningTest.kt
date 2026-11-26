@@ -60,4 +60,28 @@ class HyperTransferTuningTest {
             lowMemory = false, lowRamDevice = false, thermalStatus = 3
         ))
     }
+    @Test
+    fun fastCoolPhoneUsesOneMiBStreamAndEightMiBSocketWindows() {
+        assertEquals(HyperTransferTuning.STREAM_BUFFER_FAST,
+            HyperTransferTuning.chooseTransferBufferBytes(2L * 1024 * 1024 * 1024, false, false, 0))
+        assertEquals(HyperTransferTuning.SOCKET_BUFFER_FAST,
+            HyperTransferTuning.chooseSocketBufferBytes(2L * 1024 * 1024 * 1024, false, false, 0))
+    }
+
+    @Test
+    fun lowMemoryPhoneUsesBoundedBalancedTransferAndSocketWindows() {
+        assertEquals(HyperTransferTuning.STREAM_BUFFER_BALANCED,
+            HyperTransferTuning.chooseTransferBufferBytes(128L * 1024 * 1024, false, false, 0))
+        assertEquals(HyperTransferTuning.SOCKET_BUFFER_BALANCED,
+            HyperTransferTuning.chooseSocketBufferBytes(128L * 1024 * 1024, false, false, 0))
+    }
+
+    @Test
+    fun severeThermalStateBacksOffBothPipelineAndSocketBuffers() {
+        assertEquals(HyperTransferTuning.STREAM_BUFFER_SMALL,
+            HyperTransferTuning.chooseTransferBufferBytes(2L * 1024 * 1024 * 1024, false, false, 3))
+        assertEquals(HyperTransferTuning.SOCKET_BUFFER_SMALL,
+            HyperTransferTuning.chooseSocketBufferBytes(2L * 1024 * 1024 * 1024, false, false, 3))
+    }
+
 }

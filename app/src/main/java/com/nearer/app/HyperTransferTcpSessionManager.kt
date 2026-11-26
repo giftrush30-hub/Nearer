@@ -52,7 +52,12 @@ internal class HyperTransferTcpSessionManager(
     )
 
     private val appContext = context.applicationContext
-    private val engine = WifiDirectTcpTransferEngine()
+    private val transferBufferBytes = HyperTransferTuning.transferBufferBytes(context)
+    private val socketBufferBytes = HyperTransferTuning.socketBufferBytes(context)
+    private val engine = WifiDirectTcpTransferEngine(
+        bufferBytes = transferBufferBytes,
+        socketBufferBytes = socketBufferBytes
+    )
     private val workers = Executors.newFixedThreadPool(2)
     private val outgoing = ConcurrentHashMap<Long, TransferState>()
     private val incoming = ConcurrentHashMap<String, TransferState>()
@@ -292,7 +297,7 @@ internal class HyperTransferTcpSessionManager(
         var total = 0L
         input.use { source ->
             FileOutputStream(destination).use { output ->
-                val buffer = ByteArray(256 * 1024)
+                val buffer = ByteArray(transferBufferBytes)
                 while (true) {
                     val count = source.read(buffer)
                     if (count < 0) break
