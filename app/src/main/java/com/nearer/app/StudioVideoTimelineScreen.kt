@@ -204,15 +204,26 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         if (!saved) message = "Your movie is still editable, but the multi-track backup could not be saved. Check phone storage and try again."
     }
     fun videoEffects(clipIndex: Int = 0) = buildList<androidx.media3.common.Effect> {
-        if (chromaKeyEnabled) add(StudioChromaKeyEffect(StudioChromaKeySettings(
-            keyColorArgb = chromaKeyColor,
-            tolerance = chromaTolerance,
-            edgeSoftness = chromaSoftness,
-            despill = chromaDespill
-        )))
+        // Preview and Transformer export share the same validated GPU-effect compiler.
+        val compiledVisualEffects = StudioMedia3EffectCompiler.compile(buildList {
+            if (chromaKeyEnabled) add(StudioVisualEffectNode(
+                id = "chroma-key",
+                kind = StudioVisualEffectKind.CHROMA_KEY,
+                parameters = mapOf("tolerance" to chromaTolerance, "softness" to chromaSoftness, "despill" to chromaDespill),
+                keyColorArgb = chromaKeyColor
+            ))
+            if (saturation != 0f) add(StudioVisualEffectNode(
+                id = "colour-saturation",
+                kind = StudioVisualEffectKind.COLOR_GRADE,
+                parameters = mapOf("saturation" to (1f + saturation / 100f))
+            ))
+        })
+        check(compiledVisualEffects.isValid) {
+            "The selected visual effects cannot be rendered: ${compiledVisualEffects.errors.joinToString(" ")}"
+        }
+        addAll(compiledVisualEffects.effects)
         if (brightness != 0f) add(Brightness(brightness))
         if (contrast != 0f) add(Contrast(contrast))
-        if (saturation != 0f) add(HslAdjustment.Builder().adjustSaturation(saturation).build())
         if (textOverlay.text.isNotBlank()) {
             val caption = SpannableString(textOverlay.text)
             caption.setSpan(ForegroundColorSpan(textOverlay.colorArgb), 0, caption.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
