@@ -4,6 +4,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.AlphaScale
 import androidx.media3.effect.GaussianBlur
 import androidx.media3.effect.HslAdjustment
+import androidx.media3.effect.ScaleAndRotateTransformation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -13,6 +14,7 @@ import org.junit.Test
 class StudioVisualRenderBridgeTest {
     private fun command(
         effects: List<StudioVisualEffectNode> = emptyList(),
+        masks: List<StudioMaskLayer> = emptyList(),
         transform: StudioVisualTransform = StudioVisualTransform(
             0f, 0f, 1f, 1f, 0f, 1f, 0f, 0f, 1f, 1f, 0f, 0f
         )
@@ -25,7 +27,7 @@ class StudioVisualRenderBridgeTest {
         sourceKind = StudioVisualSourceKind.VIDEO,
         blendMode = StudioVisualBlendMode.NORMAL,
         transform = transform,
-        masks = emptyList(),
+        masks = masks,
         effects = effects
     )
 
@@ -43,6 +45,26 @@ class StudioVisualRenderBridgeTest {
         assertTrue(result.effects[0] is HslAdjustment)
         assertTrue(result.effects[1] is GaussianBlur)
         assertTrue(result.effects[2] is AlphaScale)
+    }
+
+    @Test fun plansGpuMaskBetweenPixelEffectsAndGeometryEffectsWithoutCreatingGlObjects() {
+        val result = StudioVisualRenderBridge.plan(command(
+            effects = listOf(
+                StudioVisualEffectNode("grade", StudioVisualEffectKind.COLOR_GRADE, mapOf("saturation" to 1.2f))
+            ),
+            masks = listOf(
+                StudioMaskLayer("subject", StudioMask.Rectangle(0.1f, 0.1f, 0.9f, 0.9f), feather = 0.02f)
+            ),
+            transform = StudioVisualTransform(
+                0f, 0f, 1.2f, 1.2f, 0f, 0.8f, 0f, 0f, 1f, 1f, 2f, 0.02f
+            )
+        ))
+        assertTrue(result.isValid)
+        assertEquals(1, result.pixelEffectCount)
+        assertEquals(1, result.maskCount)
+        assertEquals(3, result.transformEffectCount)
+        assertEquals(1, result.maskInsertionIndex)
+        assertEquals(5, result.totalEffectCount)
     }
 
     @Test fun refusesToReturnPartialChainWhenAnyNodeIsUnsupported() {

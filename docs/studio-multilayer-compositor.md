@@ -13,10 +13,14 @@ This module adds a graphics-independent layout planner and a Media3 VideoComposi
 
 The Media3 adapter maps each sequence input ID to StaticOverlaySettings, including frame anchor, background anchor, scale, rotation and alpha. Unknown input IDs fall back to the default full-frame placement.
 
+## GPU mask effect
+
+Per-layer rectangle, ellipse and polygon masks now have a separate Media3 GlEffect. It creates one combined alpha texture per input-size configuration and samples that texture in the GPU shader for every frame. Up to eight masks intersect in one pass, with inversion and feathering supported. This mask pass is wired through StudioVisualRenderBridge for the same per-item preview/export effect chain.
+
 ## Important integration boundary
 
-The adapter is not yet wired into the Film Studio preview and export Composition.Builder calls. The next integration change must use the same input ordering and layout settings in both paths. A caller must not assume z-index ordering changes Media3 sequence registration order automatically.
+The adapter is not a general custom multi-input compositor. It still uses source-over alpha composition for independent video sequences. The GPU mask effect operates on one sequence at a time; it does not implement Multiply, Screen, Overlay, Add, Darken or Lighten between separate video layers. Those blend modes remain available in the CPU reference compositor and require a custom multi-input GPU compositor path.
 
-This uses Media3 1.11.1 VideoCompositorSettings, which Android documents as beta and subject to API changes. The adapter currently supports the compositor's normal source-over alpha composition only. Multiply, screen, overlay, add, custom masks, and particle layers require a custom compositor/shader path and are not falsely reported as implemented here.
+This uses Media3 1.11.1 VideoCompositorSettings, which Android documents as beta and subject to API changes. A caller must not assume z-index ordering changes Media3 sequence registration order automatically.
 
-All planning is deterministic and local. No AI, network, cloud, or backend services are used.
+All planning and rendering are local. No AI, network, cloud, or backend services are used.

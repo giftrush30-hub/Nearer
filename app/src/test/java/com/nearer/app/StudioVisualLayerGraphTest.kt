@@ -118,4 +118,26 @@ class StudioVisualLayerGraphTest {
         assertTrue(plan.errors.any { it.contains("animated opacity") })
     }
 
+    @Test fun animatesFeatherForAllMasksWithoutOverwritingTheirDefaultsOtherwise() {
+        val masks = listOf(
+            StudioMaskLayer("left", StudioMask.Rectangle(0f, 0f, 0.5f, 1f), 0.01f),
+            StudioMaskLayer("right", StudioMask.Rectangle(0.5f, 0f, 1f, 1f), 0.03f)
+        )
+        val staticSpec = StudioVisualLayerSpec("overlay", "actor", 1, masks = masks)
+        val staticCommand = StudioVisualLayerGraph.build(
+            frame(), listOf(StudioVisualLayerSpec("main", "base", 0), staticSpec)
+        ).drawCommands.last()
+        assertEquals(masks, staticCommand.masks)
+
+        val animatedSpec = staticSpec.copy(animations = listOf(
+            StudioPropertyAnimation(StudioAnimatedProperty.MASK_FEATHER, listOf(
+                StudioKeyframe(0L, 0.02f), StudioKeyframe(500L, 0.08f)
+            ))
+        ))
+        val animatedCommand = StudioVisualLayerGraph.build(
+            frame(), listOf(StudioVisualLayerSpec("main", "base", 0), animatedSpec)
+        ).drawCommands.last()
+        animatedCommand.masks.forEach { assertEquals(0.05f, it.feather, 0.0001f) }
+    }
+
 }

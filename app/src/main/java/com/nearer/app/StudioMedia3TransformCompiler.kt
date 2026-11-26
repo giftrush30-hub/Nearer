@@ -75,7 +75,6 @@ internal object StudioTransformEffectPlanner {
         }
         if (transform.blurRadius !in 0f..64f) errors += "Layer blur radius must be within 0..64."
         if (transform.maskFeather !in 0f..0.25f) errors += "Mask feather must be within 0..0.25."
-        else if (transform.maskFeather > 0f) errors += "Feathered masks require the custom mask compositor and are not yet supported."
 
         if (errors.isNotEmpty()) return StudioTransformPlanCompilation(null, errors)
 
@@ -104,10 +103,7 @@ internal object StudioTransformEffectPlanner {
     }
 }
 
-/**
- * Compiles the pure transform plan into Media3 GPU effects.
- * Translation and feathered masks are rejected until a custom compositor pass exists.
- */
+/** Compiles the pure transform plan into Media3 GPU effects. Translation remains a custom-compositor task. */
 @UnstableApi
 internal object StudioMedia3TransformCompiler {
     fun compile(transform: StudioVisualTransform): StudioTransformCompilation {
