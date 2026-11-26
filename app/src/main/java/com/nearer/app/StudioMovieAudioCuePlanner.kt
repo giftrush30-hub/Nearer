@@ -16,7 +16,7 @@ internal data class StudioMovieAudioClipInput(
     val muted: Boolean = false
 ) {
     val durationMs: Long get() = sourceOutMs - sourceInMs
-    val timelineEndMs: Long get() = timelineStartMs + durationMs
+    val timelineEndMs: Long get() = runCatching { Math.addExact(timelineStartMs, durationMs) }.getOrDefault(Long.MAX_VALUE)
 }
 
 internal data class StudioMovieMusicInput(
