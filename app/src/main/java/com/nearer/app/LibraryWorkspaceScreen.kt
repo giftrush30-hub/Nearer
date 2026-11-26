@@ -256,7 +256,14 @@ internal fun LibraryWorkspaceScreen(onBack: () -> Unit) {
                         }.padding(5.dp))
                         Text(if (entry.kind == "PDF" || (entry.kind == "TEXT" && (entry.name.endsWith(".txt", true) || entry.mime == "text/plain"))) "READ" else "OPEN", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable {
                             if (entry.kind == "PDF") readingEntry = entry
-                            else if (entry.kind == "TEXT" && (entry.name.endsWith(".txt", true) || entry.mime == "text/plain")) readingEntry = entry
+                            else if (entry.kind == "BOOK" && entry.name.endsWith(".epub", true)) {
+                                context.startActivity(
+                                    Intent(context, LibraryEpubReaderActivity::class.java)
+                                        .putExtra(LibraryEpubReaderActivity.EXTRA_URI, entry.uri.toString())
+                                        .putExtra(LibraryEpubReaderActivity.EXTRA_TITLE, entry.name)
+                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                )
+                            } else if (entry.kind == "TEXT" && (entry.name.endsWith(".txt", true) || entry.mime == "text/plain")) readingEntry = entry
                             else runCatching {
                                 context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(entry.uri, entry.mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                             }
