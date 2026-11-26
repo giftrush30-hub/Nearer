@@ -39,7 +39,7 @@ class StudioVisualLayerGraphTest {
         val plan = StudioVisualLayerGraph.build(frame(), listOf(StudioVisualLayerSpec("main", "base", 0), spec))
         val command = plan.drawCommands.last()
         assertEquals(0f, command.transform.x, 0.0001f)
-        assertEquals(0.6f, command.transform.opacity, 0.0001f)
+        assertEquals(0.4f, command.transform.opacity, 0.0001f)
         assertEquals(1.5f, command.transform.scaleX, 0.0001f)
         assertEquals(250_000L, command.sourceTimeUs)
     }
@@ -72,7 +72,7 @@ class StudioVisualLayerGraphTest {
         assertFalse(missing.isValid)
         assertTrue(missing.errors.any { it.contains("No visual layer definition") })
         val invalidCrop = StudioVisualLayerSpec("main", "base", 0, animations = listOf(
-            StudioPropertyAnimation(StudioAnimatedProperty.CROP_LEFT, listOf(StudioKeyframe(0L, 0.9f)))
+            StudioPropertyAnimation(StudioAnimatedProperty.CROP_LEFT, listOf(StudioKeyframe(0L, 1f)))
         ))
         val plan = StudioVisualLayerGraph.build(frame(), listOf(invalidCrop, StudioVisualLayerSpec("overlay", "actor", 1)))
         assertFalse(plan.isValid)
