@@ -9,8 +9,6 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import java.io.File
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -27,6 +25,7 @@ internal data class StudioMovieExportClip(
     val sourceOutMs: Long
 )
 
+@OptIn(androidx.media3.common.util.UnstableApi::class, androidx.media3.common.util.ExperimentalApi::class)
 internal data class StudioOfflineMovieExportRequest(
     val composition: Composition,
     val clips: List<StudioMovieExportClip>,
@@ -52,6 +51,7 @@ internal data class StudioOfflineMovieExportResult(
  * probe local audio -> decode/mix PCM -> encode AAC -> render video-only -> final MP4 remux.
  * All intermediate assets are private temporary files and are removed on success or failure.
  */
+@OptIn(androidx.media3.common.util.UnstableApi::class, androidx.media3.common.util.ExperimentalApi::class)
 internal object StudioOfflineMovieExportCoordinator {
     private const val AUDIO_SAMPLE_RATE = 48_000
     private val mainHandler = Handler(Looper.getMainLooper())
