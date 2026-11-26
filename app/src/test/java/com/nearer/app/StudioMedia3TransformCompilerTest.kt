@@ -67,7 +67,7 @@ class StudioMedia3TransformCompilerTest {
 
         val feathered = StudioTransformEffectPlanner.plan(transform(feather = 0.02f))
         assertTrue(feathered.isValid)
-        assertEquals(0.02f, feathered.plan!!.let { 0.02f }, 0f)
+        assertNotNull(feathered.plan)
     }
 
     @Test fun rejectsNonFiniteAndOutOfRangeValues() {
