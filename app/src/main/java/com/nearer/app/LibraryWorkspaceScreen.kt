@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -40,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nearer.app.bible.BibleWorkspaceScreen
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -95,6 +97,8 @@ internal fun LibraryWorkspaceScreen(onBack: () -> Unit) {
     var filter by remember { mutableStateOf("ALL") }
     var showFavourites by remember { mutableStateOf(false) }
     var readingEntry by remember { mutableStateOf<LibraryEntry?>(null) }
+    var showBible by remember { mutableStateOf(false) }
+    BackHandler(enabled = showBible) { showBible = false }
 
     fun saveCollection() {
         val json = JSONArray()
@@ -133,6 +137,11 @@ internal fun LibraryWorkspaceScreen(onBack: () -> Unit) {
             (query.isBlank() || entry.name.contains(query.trim(), ignoreCase = true))
     }
 
+    if (showBible) {
+        BibleWorkspaceScreen(onBack = { showBible = false })
+        return
+    }
+
     if (readingEntry != null) {
         val entry = readingEntry!!
         if (entry.kind == "PDF") LibraryPdfReaderScreen(uri = entry.uri, title = entry.name, onBack = { readingEntry = null })
@@ -166,6 +175,15 @@ internal fun LibraryWorkspaceScreen(onBack: () -> Unit) {
                 }
                 Button(onClick = { picker.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
                     Text("＋  Add books & files", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("BIBLE & SCRIPTURE STUDY", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text("Read offline, compare translations and explore original-language word studies.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                Button(onClick = { showBible = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Midnight)) {
+                    Text("Open NeaRer Word", fontWeight = FontWeight.Bold)
                 }
             }
         }
