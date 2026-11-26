@@ -56,6 +56,7 @@ import androidx.core.content.FileProvider
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.effect.CanvasOverlay
 import androidx.media3.effect.Brightness
 import androidx.media3.effect.Contrast
 import androidx.media3.effect.HslAdjustment
@@ -142,6 +143,24 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
     var replacementBackground by remember(context, projectId) { mutableStateOf(chromaPreferences.getString("background_uri", null)?.let(Uri::parse)) }
     val textPreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_text_$projectId", android.content.Context.MODE_PRIVATE) }
     var textOverlay by remember(context, projectId) { mutableStateOf(StudioVideoTextOverlayCodec.decode(textPreferences.getString("overlay_v1", null))) }
+    val particlePreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_particles_$projectId", android.content.Context.MODE_PRIVATE) }
+    var particlesEnabled by remember(context, projectId) { mutableStateOf(particlePreferences.getBoolean("enabled", false)) }
+    var particlePreset by remember(context, projectId) {
+        mutableStateOf(runCatching {
+            StudioParticlePreset.valueOf(particlePreferences.getString("preset", StudioParticlePreset.FIRE.name)!!)
+        }.getOrDefault(StudioParticlePreset.FIRE))
+    }
+    var particleRate by remember(context, projectId) {
+        mutableStateOf(particlePreferences.getFloat("rate", 35f).coerceIn(1f, 120f))
+    }
+    LaunchedEffect(projectId, particlesEnabled, particlePreset, particleRate) {
+        particlePreferences.edit()
+            .putBoolean("enabled", particlesEnabled)
+            .putString("preset", particlePreset.name)
+            .putFloat("rate", particleRate)
+            .apply()
+        withContext(Dispatchers.IO) { StudioProjectLibraryStore(context).touch(projectId) }
+    }
     val captionPreferences = remember(context, projectId) { context.getSharedPreferences("nearer_studio_video_captions_$projectId", android.content.Context.MODE_PRIVATE) }
     val captionLayers = remember(context, projectId) {
         mutableStateListOf<StudioVideoCaptionLayer>().apply {
@@ -254,6 +273,19 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
         addAll(compiledVisualEffects.effects)
         if (brightness != 0f) add(Brightness(brightness))
         if (contrast != 0f) add(Contrast(contrast))
+        if (particlesEnabled) {
+            val clip = clips.getOrNull(clipIndex)
+            if (clip != null) {
+                val durationUs = (clip.outMs - clip.inMs).coerceAtLeast(1L) * 1_000L
+                val emitter = StudioParticleEmitterFactory.forClip(
+                    preset = particlePreset,
+                    durationUs = durationUs,
+                    particlesPerSecond = particleRate,
+                    seed = projectId.hashCode().toLong()
+                )
+                add(OverlayEffect(listOf(StudioParticleCanvasOverlay(emitter))))
+            }
+        }
         if (textOverlay.text.isNotBlank()) {
             val caption = SpannableString(textOverlay.text)
             caption.setSpan(ForegroundColorSpan(textOverlay.colorArgb), 0, caption.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -497,6 +529,38 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                 Text("SATURATION  ·  ${saturation.toInt()}", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                 Slider(value = saturation, onValueChange = { saturation = it; exported = null }, valueRange = -50f..50f)
                 Button(onClick = { brightness = 0f; contrast = 0f; saturation = 0f; exported = null }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Midnight, contentColor = Gold)) { Text("RESET COLOUR") }
+            }
+        }
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("PARTICLE EFFECTS  ·  PREVIEW + EXPORT", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Add offline fire, smoke, explosions, sparks or lightning. The same timestamp-based effect is used in preview and the finished movie.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                Button(onClick = { particlesEnabled = !particlesEnabled; exported = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (particlesEnabled) Mint else Midnight, contentColor = if (particlesEnabled) Midnight else White)) {
+                    Text(if (particlesEnabled) "PARTICLE EFFECTS · ON" else "TURN ON PARTICLE EFFECTS")
+                }
+                if (particlesEnabled) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(
+                            StudioParticlePreset.FIRE to "FIRE",
+                            StudioParticlePreset.SMOKE to "SMOKE",
+                            StudioParticlePreset.EXPLOSION to "BLAST",
+                            StudioParticlePreset.SPARKS to "SPARKS",
+                            StudioParticlePreset.LIGHTNING to "LIGHT"
+                        ).forEach { (preset, label) ->
+                            Button(onClick = { particlePreset = preset; exported = null },
+                                modifier = Modifier.weight(1f),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp, vertical = 7.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (particlePreset == preset) Mint else Midnight,
+                                    contentColor = if (particlePreset == preset) Midnight else White
+                                )) { Text(label, fontSize = 8.sp, fontWeight = FontWeight.Bold) }
+                        }
+                    }
+                    Text("PARTICLE DENSITY · ${particleRate.toInt()} PER SECOND", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Slider(value = particleRate, onValueChange = { particleRate = it; exported = null }, valueRange = 1f..120f)
+                }
             }
         }
         Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
