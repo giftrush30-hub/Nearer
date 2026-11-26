@@ -94,13 +94,19 @@ internal object StudioVisualLayerGraph {
                 return@mapNotNull null
             }
             if (!spec.visible) return@mapNotNull null
-            val animated = (spec.animations + active.animatedValues.map { (property, value) ->
-                StudioPropertyAnimation(property, listOf(StudioKeyframe(0L, value)))
-            }).associate { animation ->
+            val animated = spec.animations.associate { animation ->
                 animation.property to animation.valueAt(active.localTimeUs / 1_000L, Float.NaN)
-            }.filterValues { it.isFinite() }
+            }.filterValues { it.isFinite() }.toMutableMap()
+            active.animatedValues.forEach { (property, value) ->
+                if (property !in animated && value.isFinite()) animated[property] = value
+            }
             fun value(property: StudioAnimatedProperty, fallback: Float) = animated[property] ?: fallback
-            val opacity = (active.opacity * value(StudioAnimatedProperty.OPACITY, 1f)).coerceIn(0f, 1f)
+            val rawOpacity = value(StudioAnimatedProperty.OPACITY, 1f)
+            if (!rawOpacity.isFinite() || rawOpacity !in 0f..1f) {
+                errors += "${active.trackId}/${active.itemId} has animated opacity outside 0..1."
+                return@mapNotNull null
+            }
+            val opacity = (active.opacity * rawOpacity).coerceIn(0f, 1f)
             val left = value(StudioAnimatedProperty.CROP_LEFT, 0f)
             val top = value(StudioAnimatedProperty.CROP_TOP, 0f)
             val right = value(StudioAnimatedProperty.CROP_RIGHT, 1f)
@@ -112,17 +118,23 @@ internal object StudioVisualLayerGraph {
             }
             val blur = value(StudioAnimatedProperty.BLUR, 0f)
             val feather = value(StudioAnimatedProperty.MASK_FEATHER, spec.masks.maxOfOrNull { it.feather } ?: 0f)
-            if (!blur.isFinite() || blur !in 0f..MAX_BLUR_RADIUS || !feather.isFinite() || feather !in 0f..0.25f) {
-                errors += "${active.trackId}/${active.itemId} has an unsafe animated blur or mask-feather value."
+            val x = value(StudioAnimatedProperty.X, 0f)
+            val y = value(StudioAnimatedProperty.Y, 0f)
+            val scaleX = value(StudioAnimatedProperty.SCALE_X, 1f)
+            val scaleY = value(StudioAnimatedProperty.SCALE_Y, 1f)
+            val rotation = value(StudioAnimatedProperty.ROTATION_DEGREES, 0f)
+            if (!blur.isFinite() || blur !in 0f..MAX_BLUR_RADIUS || !feather.isFinite() || feather !in 0f..0.25f ||
+                !x.isFinite() || x !in -2f..2f || !y.isFinite() || y !in -2f..2f ||
+                !scaleX.isFinite() || scaleX !in 0.01f..20f || !scaleY.isFinite() || scaleY !in 0.01f..20f ||
+                !rotation.isFinite() || rotation !in -36_000f..36_000f) {
+                errors += "${active.trackId}/${active.itemId} has an unsafe animated transform, blur or mask-feather value."
                 return@mapNotNull null
             }
             StudioVisualDrawCommand(
                 active.trackId, active.itemId, active.sourceUri, active.sourceTimeUs,
                 spec.zIndex, spec.sourceKind, spec.blendMode,
                 StudioVisualTransform(
-                    value(StudioAnimatedProperty.X, 0f), value(StudioAnimatedProperty.Y, 0f),
-                    value(StudioAnimatedProperty.SCALE_X, 1f), value(StudioAnimatedProperty.SCALE_Y, 1f),
-                    value(StudioAnimatedProperty.ROTATION_DEGREES, 0f), opacity,
+                    x, y, scaleX, scaleY, rotation, opacity,
                     left, top, right, bottom, blur, feather
                 ),
                 spec.masks, spec.effects.filter { it.enabled }
