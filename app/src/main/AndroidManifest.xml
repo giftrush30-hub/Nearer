@@ -49,6 +49,7 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/nearer_file_paths" />
         </provider>
         <activity android:name=".AppInstallResultActivity" android:exported="false" />
+        <activity android:name=".LibraryEpubReaderActivity" android:exported="false" />
         <receiver android:name=".AppShareInstallReceiver" android:exported="false" />
         <service android:name=".NearbyTransportService" android:exported="false" android:foregroundServiceType="connectedDevice" />
         <service android:name=".OpenSendForegroundService" android:exported="false" android:foregroundServiceType="connectedDevice" />
