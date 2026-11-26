@@ -53,7 +53,7 @@ internal object StudioParticleRasterizer {
             if (!particle.x.isFinite() || !particle.y.isFinite() || !particle.size.isFinite() ||
                 !particle.opacity.isFinite() || !particle.rotationDegrees.isFinite()
             ) return invalid(width, height, blendMode, "Particle contains a non-finite render value.")
-            if (particle.size <= 0f || particle.opacity !in 0f..1f) {
+            if (particle.size !in 0.0001f..2f || particle.opacity !in 0f..1f) {
                 return invalid(width, height, blendMode, "Particle size or opacity is outside its valid range.")
             }
             val centerX = ((particle.x + 1f) * 0.5f * (width - 1)).roundToInt()
