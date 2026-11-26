@@ -57,6 +57,7 @@ internal object StudioOfflineParticleEngine {
     const val MAX_EMITTERS = 16
     const val MAX_PARTICLES_PER_EMITTER = 10_000
     const val MAX_PARTICLES_PER_FRAME = 50_000
+    private const val MAX_TIMELINE_US = 86_400_000_000L
     private const val MICROS_PER_SECOND = 1_000_000.0
 
     fun validate(emitters: List<StudioParticleEmitter>): List<String> {
@@ -65,7 +66,7 @@ internal object StudioOfflineParticleEngine {
         val ids = mutableSetOf<String>()
         emitters.forEach { emitter ->
             if (emitter.id.isBlank() || !ids.add(emitter.id)) errors += "Particle emitter IDs must be non-empty and unique."
-            if (emitter.startTimeUs < 0L || emitter.endTimeUs <= emitter.startTimeUs) errors += "${emitter.id}: invalid emitter time range."
+            if (emitter.startTimeUs < 0L || emitter.endTimeUs <= emitter.startTimeUs || emitter.endTimeUs > MAX_TIMELINE_US) errors += "${emitter.id}: invalid emitter time range."
             if (!emitter.particlesPerSecond.isFinite() || emitter.particlesPerSecond !in 0.1f..2_000f) {
                 errors += "${emitter.id}: particle rate must be within 0.1..2000 per second."
             }
@@ -93,12 +94,12 @@ internal object StudioOfflineParticleEngine {
         for (emitter in emitters) {
             if (timestampUs < emitter.startTimeUs || timestampUs >= emitter.endTimeUs) continue
             val elapsedUs = timestampUs - emitter.startTimeUs
-            val emitted = min(
-                emitter.maxParticles.toLong(),
-                (elapsedUs.toDouble() * emitter.particlesPerSecond.toDouble() / MICROS_PER_SECOND).toLong() + 1L
-            ).toInt()
-            val firstPossible = max(0, emitted - emitter.maxParticles)
-            for (index in firstPossible until emitted) {
+            val emitted = (elapsedUs.toDouble() * emitter.particlesPerSecond.toDouble() / MICROS_PER_SECOND).toLong() + 1L
+            // Keep only the most recent bounded candidate window, but continue emitting for
+            // the full emitter duration after older particles expire.
+            val firstPossible = max(0L, emitted - emitter.maxParticles.toLong()).toInt()
+            val endExclusive = emitted.toInt()
+            for (index in firstPossible until endExclusive) {
                 if (output.size >= MAX_PARTICLES_PER_FRAME) {
                     return StudioParticleFrame(timestampUs, output, listOf("Particle frame exceeds the 50000-instance safety limit."))
                 }
