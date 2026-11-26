@@ -22,7 +22,10 @@ internal object StudioVisualRenderBridge {
         val transform = StudioMedia3TransformCompiler.compile(command.transform)
         val errors = visual.errors + transform.errors
         if (errors.isNotEmpty()) return StudioVisualRenderCompilation(emptyList(), errors)
-        // Apply keyed/graded pixels first, then geometry and blur, with opacity last.
-        return StudioVisualRenderCompilation(visual.effects + transform.effects, emptyList())
+        val maskEffects = if (command.masks.isEmpty()) emptyList() else listOf(
+            StudioGpuMaskEffect(command.masks.map { it.copy(feather = command.transform.maskFeather) })
+        )
+        // Key/grade first, then the cached GPU alpha mask, then geometry/blur and opacity.
+        return StudioVisualRenderCompilation(visual.effects + maskEffects + transform.effects, emptyList())
     }
 }
