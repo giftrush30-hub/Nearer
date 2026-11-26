@@ -96,7 +96,7 @@ internal object StudioOfflineMovieExportCoordinator {
                     )
                 }
             }
-            val music = request.musicUri?.let { uri ->
+            val music = request.musicUri?.takeUnless { request.musicMuted }?.let { uri ->
                 val source = withContext(Dispatchers.IO) {
                     StudioMovieAudioSourceProbe.inspect(context, Uri.parse(uri))
                 }
