@@ -85,7 +85,7 @@ internal object StudioOfflinePcmMixPipeline {
                     peakBefore = maxOf(peakBefore, result.peakBeforeLimiter)
                     peakAfter = maxOf(peakAfter, result.peakAfterLimiter)
                     val bytes = ByteBuffer.allocate(block.size * 4).order(ByteOrder.LITTLE_ENDIAN)
-                    block.forEach(bytes::putFloat)
+                    block.forEach { bytes.putFloat(it) }
                     stream.write(bytes.array(), 0, bytes.position())
                     timelineFrame += blockFrames
                     onProgress("Mixing audio", timelineFrame, totalFrames)
