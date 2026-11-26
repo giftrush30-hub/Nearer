@@ -76,6 +76,21 @@ class StudioOfflineParticleEngineTest {
         assertTrue(frame.particles.size <= 5)
     }
 
+    @Test fun oversizedFrameIsRejectedWithoutReturningPartialParticles() {
+        val heavyEmitters = (0 until 6).map { index ->
+            emitter(id = "dense-$index", rate = 2_000f).copy(
+                maxParticles = 10_000,
+                minLifetimeMs = 60_000,
+                maxLifetimeMs = 60_000,
+                endTimeUs = 86_400_000_000L
+            )
+        }
+        val frame = StudioOfflineParticleEngine.frameAt(5_000_000L, heavyEmitters)
+        assertFalse(frame.isValid)
+        assertTrue(frame.particles.isEmpty())
+        assertTrue(frame.errors.any { it.contains("50000-instance") })
+    }
+
     @Test fun particlesExpireAndEmitterStopsAtEndTime() {
         val short = emitter(rate = 0.1f).copy(minLifetimeMs = 100, maxLifetimeMs = 100, endTimeUs = 200_000L)
         val active = StudioOfflineParticleEngine.frameAt(50_000L, listOf(short))
