@@ -94,7 +94,7 @@ internal class StudioMedia3VideoCompositorSettings(
         }
     }
 
-    override fun getOutputSize(inputSizes: List<Size>): Size {
+    override fun getOutputSize(inputSizes: MutableList<Size>): Size {
         if (inputSizes.isEmpty()) return fallbackOutputSize
         return Size(inputSizes.maxOf { it.width }.coerceAtLeast(1), inputSizes.maxOf { it.height }.coerceAtLeast(1))
     }
