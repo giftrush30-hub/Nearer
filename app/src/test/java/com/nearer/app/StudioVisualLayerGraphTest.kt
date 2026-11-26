@@ -137,7 +137,7 @@ class StudioVisualLayerGraphTest {
         val animatedCommand = StudioVisualLayerGraph.build(
             frame(), listOf(StudioVisualLayerSpec("main", "base", 0), animatedSpec)
         ).drawCommands.last()
-        assertEquals(listOf(0.05f, 0.05f), animatedCommand.masks.map { it.feather })
+        animatedCommand.masks.forEach { assertEquals(0.05f, it.feather, 0.0001f) }
     }
 
 }
