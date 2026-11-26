@@ -10,6 +10,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioDeviceCallback
 import android.os.Handler
 import android.os.Looper
+import android.os.Build
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -149,13 +150,13 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
                     Text("Connect a USB microphone or USB-C audio interface. Compatible input devices will appear here.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
                 } else {
                     availableUsbInputs.forEach { device ->
-                        Button(onClick = { selectedUsbInputId = device.id }, enabled = !recording, modifier = Modifier.fillMaxWidth(),
+                        Button(onClick = { selectedUsbInputId = device.id }, enabled = !recording && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P, modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = if (selectedUsbInputId == device.id) Mint else Midnight, contentColor = if (selectedUsbInputId == device.id) Midnight else White)) {
                             Text((if (selectedUsbInputId == device.id) "✓  " else "") + device.productName.toString(), fontSize = 10.sp)
                         }
                     }
                 }
-                Text("USB routing is selected before recording starts. If Android or the adapter does not expose a usable USB input, choose Phone Default.", color = Muted, fontSize = 9.sp, lineHeight = 14.sp)
+                Text(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) "USB routing is selected before recording starts. If Android or the adapter does not expose a usable USB input, choose Phone Default." else "Direct USB microphone routing requires Android 9 or later. On Android 8, use Phone Default.", color = Muted, fontSize = 9.sp, lineHeight = 14.sp)
             }
         }
         Text(
@@ -184,8 +185,15 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
                                 val next = MediaRecorder()
                                 recorder = next
                                 next.setAudioSource(if (supportsUnprocessedInput) MediaRecorder.AudioSource.UNPROCESSED else MediaRecorder.AudioSource.VOICE_RECOGNITION)
+                                var usbRoutingUnavailable = false
                                 selectedUsbInput?.let { device ->
-                                    check(next.setPreferredDevice(device)) { "Android could not route recording to the selected USB microphone. Reconnect it or choose Phone Default." }
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                        check(next.setPreferredDevice(device)) { "Android could not route recording to the selected USB microphone. Reconnect it or choose Phone Default." }
+                                    } else {
+                                        // MediaRecorder.setPreferredDevice() was added in API 28.
+                                        // Keep recording available on Android 8 using the system input.
+                                        usbRoutingUnavailable = true
+                                    }
                                 }
                                 next.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                                 next.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -198,10 +206,10 @@ internal fun StudioAudioRecorderScreen(onBack: () -> Unit, onRecorded: (Uri, Str
                                 output = file
                                 elapsedSeconds = 0
                                 recording = true
-                                message = if (supportsUnprocessedInput) {
-                                    "Recording with the device's unprocessed microphone path. Tap stop when finished."
-                                } else {
-                                    "Recording with Android's voice-recognition input fallback. Tap stop when finished."
+                                message = when {
+                                    usbRoutingUnavailable -> "Android 8 cannot route MediaRecorder directly to USB microphones. This take is using the phone's default input."
+                                    supportsUnprocessedInput -> "Recording with the device's unprocessed microphone path. Tap stop when finished."
+                                    else -> "Recording with Android's voice-recognition input fallback. Tap stop when finished."
                                 }
                             }.onFailure { error ->
                                 runCatching { recorder?.release() }
