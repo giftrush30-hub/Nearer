@@ -75,6 +75,8 @@ class StudioParticleRasterizerTest {
         val invalidFrame = StudioParticleFrame(0L, emptyList(), listOf("bad simulation"))
         assertFalse(StudioParticleRasterizer.rasterize(32, 32, invalidFrame).isValid)
         assertFalse(StudioParticleRasterizer.rasterize(0, 32, StudioParticleFrame(0L, emptyList(), emptyList())).isValid)
+        val oversized = StudioParticleFrame(0L, listOf(particle(size = 2.5f)), emptyList())
+        assertFalse(StudioParticleRasterizer.rasterize(32, 32, oversized).isValid)
         val nonFinite = StudioParticleFrame(0L, listOf(particle(x = Float.NaN)), emptyList())
         val rejected = StudioParticleRasterizer.rasterize(32, 32, nonFinite)
         assertFalse(rejected.isValid)
