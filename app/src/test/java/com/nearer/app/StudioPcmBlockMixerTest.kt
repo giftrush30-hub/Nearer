@@ -24,14 +24,15 @@ class StudioPcmBlockMixerTest {
         val source = ConstantSource(0.25f, -0.25f)
         val output = FloatArray(12) { 9f }
         val result = StudioPcmBlockMixer.mixBlock(
-            listOf(cue), mapOf("voice" to source), 0L, 6, 8_000, output, outputOffset = 2
+            listOf(cue), mapOf("voice" to source), 70L, 20, 8_000, output, outputOffset = 2
         )
         assertEquals(1, result.activeCueCount)
-        assertEquals(8_080L, source.lastStartFrame)
-        assertEquals(6, source.lastFrameCount)
+        assertEquals(8_000L, source.lastStartFrame)
+        assertEquals(10, source.lastFrameCount)
         assertEquals(9f, output[0], 0f)
-        assertEquals(0.25f, output[2], 0.0001f)
-        assertEquals(-0.25f, output[3], 0.0001f)
+        assertEquals(0f, output[2], 0f)
+        assertEquals(0.25f, output[22], 0.0001f)
+        assertEquals(-0.25f, output[23], 0.0001f)
     }
 
     @Test fun mixesOverlappingTracksWithGainAndStereoPan() {
@@ -70,7 +71,7 @@ class StudioPcmBlockMixerTest {
         val source = ConstantSource(1f, 1f)
         val output = FloatArray(4)
         val result = StudioPcmBlockMixer.mixBlock(
-            listOf(muted, later), mapOf("muted" to source, "later" to source), 0L, 2, 8_000, output
+            listOf(muted, later), emptyMap(), 0L, 2, 8_000, output
         )
         assertEquals(0, result.activeCueCount)
         assertEquals(0f, output[0], 0f)
