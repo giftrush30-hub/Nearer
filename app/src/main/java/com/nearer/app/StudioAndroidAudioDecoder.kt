@@ -232,7 +232,7 @@ internal class StudioDecodedPcmFileSource(
         destination: FloatArray,
         destinationOffset: Int
     ): Int {
-        require(sourceStartFrame >= 0L && frameCount >= 0)
+        require(sourceStartFrame >= 0L && frameCount in 0..StudioPcmBlockMixer.MAX_BLOCK_FRAMES)
         require(destinationOffset >= 0 && destinationOffset <= destination.size - frameCount * 2)
         if (sourceStartFrame >= decoded.frameCount || frameCount == 0) return 0
         val available = minOf(frameCount.toLong(), decoded.frameCount - sourceStartFrame).toInt()
