@@ -13,6 +13,7 @@ import org.junit.Test
 class StudioVisualRenderBridgeTest {
     private fun command(
         effects: List<StudioVisualEffectNode> = emptyList(),
+        masks: List<StudioMaskLayer> = emptyList(),
         transform: StudioVisualTransform = StudioVisualTransform(
             0f, 0f, 1f, 1f, 0f, 1f, 0f, 0f, 1f, 1f, 0f, 0f
         )
@@ -25,7 +26,7 @@ class StudioVisualRenderBridgeTest {
         sourceKind = StudioVisualSourceKind.VIDEO,
         blendMode = StudioVisualBlendMode.NORMAL,
         transform = transform,
-        masks = emptyList(),
+        masks = masks,
         effects = effects
     )
 
@@ -43,6 +44,26 @@ class StudioVisualRenderBridgeTest {
         assertTrue(result.effects[0] is HslAdjustment)
         assertTrue(result.effects[1] is GaussianBlur)
         assertTrue(result.effects[2] is AlphaScale)
+    }
+
+    @Test fun insertsGpuMaskBetweenPixelEffectsAndGeometryEffects() {
+        val result = StudioVisualRenderBridge.compile(command(
+            effects = listOf(
+                StudioVisualEffectNode("grade", StudioVisualEffectKind.COLOR_GRADE, mapOf("saturation" to 1.2f))
+            ),
+            masks = listOf(
+                StudioMaskLayer("subject", StudioMask.Rectangle(0.1f, 0.1f, 0.9f, 0.9f), feather = 0.02f)
+            ),
+            transform = StudioVisualTransform(
+                0f, 0f, 1.2f, 1.2f, 0f, 0.8f, 0f, 0f, 1f, 1f, 2f, 0.02f
+            )
+        ))
+        assertTrue(result.isValid)
+        assertEquals(4, result.effects.size)
+        assertTrue(result.effects[0] is HslAdjustment)
+        assertTrue(result.effects[1] is StudioGpuMaskEffect)
+        assertTrue(result.effects[2] !is AlphaScale)
+        assertTrue(result.effects.last() is AlphaScale)
     }
 
     @Test fun refusesToReturnPartialChainWhenAnyNodeIsUnsupported() {
