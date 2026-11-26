@@ -15,6 +15,8 @@ import androidx.media3.effect.StaticOverlaySettings
 internal class StudioParticleBitmapOverlay(
     private val emitters: List<StudioParticleEmitter>
 ) : BitmapOverlay() {
+    private companion object { const val MAX_OVERLAY_PIXELS = 8_294_400L }
+
     private var outputBitmap: Bitmap? = null
     private var outputWidth = 0
     private var outputHeight = 0
@@ -28,8 +30,8 @@ internal class StudioParticleBitmapOverlay(
 
     override fun configure(videoSize: Size) {
         require(videoSize.width > 0 && videoSize.height > 0) { "Particle overlay received invalid video dimensions." }
-        require(videoSize.width.toLong() * videoSize.height <= StudioPixelCompositor.MAX_PIXELS) {
-            "Particle overlay exceeds the 16-megapixel safety limit."
+        require(videoSize.width.toLong() * videoSize.height <= MAX_OVERLAY_PIXELS) {
+            "Particle overlay exceeds the 4K UHD memory safety limit."
         }
         if (videoSize.width != outputWidth || videoSize.height != outputHeight || outputBitmap == null) {
             outputBitmap?.recycle()
