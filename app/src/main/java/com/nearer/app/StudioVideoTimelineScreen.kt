@@ -870,7 +870,7 @@ internal fun StudioVideoTimelineScreen(projectId: String, onBack: () -> Unit) {
                 }
                 val compositionBuilder = Composition.Builder(sequences)
                 if (chromaKeyEnabled && replacementBackground != null) {
-                    compositionBuilder.setVideoCompositorSettings(studioReplacementBackgroundCompositorSettings())
+                    compositionBuilder.setVideoCompositorSettings(StudioMedia3VideoCompositorSettings(StudioReplacementBackgroundLayoutPlanner.layouts(backgroundLayout)))
                 }
                 val composition = compositionBuilder.build()
                 val outputDirectory = File(context.filesDir, "studio-exports")
