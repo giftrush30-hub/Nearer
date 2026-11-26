@@ -22,7 +22,7 @@ class StudioPcmBlockMixerTest {
     @Test fun mixesTrimmedSourceIntoCorrectTimelineOffsetAndPreservesOutsideSamples() {
         val cue = StudioAudioMixCue("voice", "content://voice", 10L, 1_000L, 2_000L)
         val source = ConstantSource(0.25f, -0.25f)
-        val output = FloatArray(12) { 9f }
+        val output = FloatArray(44) { 9f }
         val result = StudioPcmBlockMixer.mixBlock(
             listOf(cue), mapOf("voice" to source), 70L, 20, 8_000, output, outputOffset = 2
         )
@@ -54,15 +54,16 @@ class StudioPcmBlockMixerTest {
     @Test fun appliesFadeInPerSampleAndLimitsSummedPeaks() {
         val fade = StudioAudioMixCue("fade", "content://fade", 0L, 0L, 100L, fadeInMs = 50L)
         val loud = StudioAudioMixCue("loud", "content://loud", 0L, 0L, 100L)
-        val output = FloatArray(16)
+        val output = FloatArray(1_024)
         val result = StudioPcmBlockMixer.mixBlock(
             listOf(fade, loud),
             mapOf("fade" to ConstantSource(0.8f, 0.8f), "loud" to ConstantSource(0.8f, 0.8f)),
-            0L, 8, 8_000, output
+            0L, 512, 8_000, output
         )
         assertEquals(0.8f, output[0], 0.0001f)
+        assertTrue(output[800] > 0.98f)
         assertTrue(result.peakBeforeLimiter > 1f)
-        assertTrue(result.peakAfterLimiter <= 0.98f)
+        assertTrue(result.peakAfterLimiter <= 1f)
     }
 
     @Test fun mutedAndOutOfWindowCuesDoNotReadSources() {
