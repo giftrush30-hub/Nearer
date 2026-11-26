@@ -2,6 +2,7 @@ package com.nearer.app
 
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 internal data class StudioPixelLayer(
     val id: String,
@@ -75,7 +76,7 @@ internal object StudioPixelCompositor {
     }
 
     private fun applyOpacity(argb: Int, opacity: Float): Int {
-        val alpha = (((argb ushr 24) and 0xFF) * opacity.coerceIn(0f, 1f)).toInt().coerceIn(0, 255)
+        val alpha = (((argb ushr 24) and 0xFF) * opacity.coerceIn(0f, 1f)).roundToInt().coerceIn(0, 255)
         return (argb and 0x00FFFFFF) or (alpha shl 24)
     }
 
@@ -94,9 +95,9 @@ internal object StudioPixelCompositor {
         fun channel(cs: Float, cd: Float): Int {
             val blended = blendChannel(cs, cd, mode)
             val premultiplied = (1f - sa) * da * cd + (1f - da) * sa * cs + sa * da * blended
-            return (premultiplied / outA * 255f).toInt().coerceIn(0, 255)
+            return (premultiplied / outA * 255f).roundToInt().coerceIn(0, 255)
         }
-        val alpha = (outA * 255f).toInt().coerceIn(0, 255)
+        val alpha = (outA * 255f).roundToInt().coerceIn(0, 255)
         return (alpha shl 24) or (channel(sr, dr) shl 16) or (channel(sg, dg) shl 8) or channel(sb, db)
     }
 
