@@ -1,36 +1,29 @@
-# NeaRer Studio — AAC encoding and mux timing contract
+# NeaRer Studio — AAC encoding and mux timing
 
-This milestone adds a platform-independent planning layer for the next Android MediaCodec AAC-LC encoder integration. It does not claim to encode AAC or produce MP4 by itself.
+The offline audio pipeline now has an Android AAC-LC encoder stage in addition to the JVM-testable timing planner.
 
-## Rules enforced by the planner
+## Implemented
 
-- Restrict requested AAC-LC output to MPEG-4 audio sample rates and mono/stereo channels.
-- Validate a conservative bitrate range before allocating codec resources.
-- Convert codec input capacity into complete interleaved PCM16 frames; never submit a partial sample frame.
-- Derive every input presentation timestamp from the absolute PCM frame position. The clock is not advanced by repeatedly adding a rounded packet duration, avoiding cumulative timestamp drift.
-- Check arithmetic overflow for very long projects.
-- Validate the actual encoder output MIME type, sample rate, channel count and codec-specific data before adding the audio track to an MP4 muxer.
-- Reject negative, duplicate and out-of-order per-track sample timestamps.
+- Validates AAC-LC sample rate, mono/stereo output and bitrate before creating the codec.
+- Reads the existing little-endian stereo Float PCM master from disk in bounded chunks; it does not load a whole song or movie soundtrack into memory.
+- Converts normalized float samples to signed PCM16 with explicit clipping and the full asymmetric signed range.
+- Feeds complete interleaved PCM frames into the Android AAC encoder, deriving each input timestamp from the absolute source frame position.
+- Waits for the actual encoder output-format event, verifies MIME type, sample rate, channel count and codec-specific data, then registers the AAC track with MediaMuxer.
+- Writes encoded AAC samples in chronological order with a per-track timestamp guard.
+- Signals input EOS, drains encoder EOS, closes codec/muxer resources and deletes partial output on cancellation or failure.
+- Produces an audio-only MP4 temporary asset for the next video/audio remux stage.
 
-## Android encoder integration sequence
+## Important boundary
 
-1. Configure MediaCodec with AAC-LC, selected sample rate, channel count, bitrate and PCM16 input.
-2. Start the encoder and inspect the output format event. Do not invent the mux track format; use the encoder's returned format and codec-specific data.
-3. Add the AAC track to MediaMuxer only after that format is available. Add the video track too before starting the muxer.
-4. Feed PCM16 frames in bounded chunks using planInputChunk; set each input buffer timestamp from the returned absolute-frame timestamp.
-5. Drain output buffers promptly, copy each encoded sample and its BufferInfo, and write samples in chronological order per track. Release every codec output buffer promptly.
-6. Signal input EOS, drain encoder EOS, stop and release codec/muxer safely. Write to a temporary output and publish only after muxer stop succeeds; delete partial output on cancellation or failure.
+This is real Android codec/muxer implementation code, but it has not yet been exercised on physical phones. Device encoder behavior, AAC playback compatibility, long-file cancellation and audio/video synchronization still need validation. The current result is an audio-only MP4 asset, not the final combined movie export. The final coordinator must register both the video and AAC tracks before starting its muxer, then write both tracks in chronological order on a shared movie timebase.
 
-## Important integration caveats
+## Platform constraints and research
 
-- AAC encoder output is device-dependent. The actual encoder may expose a different input PCM format or buffer capacity; the Android adapter must inspect and verify capabilities rather than assume.
-- Codec output buffers and codec-specific data have ownership/lifetime rules. Copy encoded bytes before releasing an output buffer if writing is deferred.
-- MediaMuxer requires all tracks to be registered before start, and each track's samples must be written in chronological order.
-- Audio packet PTS and video frame PTS must share the same movie time origin. The eventual export coordinator must reconcile source trims, timeline offsets, frame-rate timestamps and the final movie duration.
-- This pure JVM layer is deliberately testable without a device. Actual AAC encoding, muxing, cancellation under codec load, and playback compatibility still require Android integration and physical-device testing.
+- Android MediaCodec synchronous processing: obtain buffers by ID, queue input, drain output and release output buffers promptly.
+- Android MediaMuxer: register tracks before start and write each track's samples in chronological order; AAC is supported in MP4.
+- AAC codec-specific data belongs in the output MediaFormat supplied when adding the muxer track; it must not be copied as a normal encoded sample.
+- Runtime codec capabilities must be checked on each phone rather than assuming every hardware encoder accepts the same profile, input PCM encoding or buffer size.
 
-## Research
-
-- Android MediaCodec: synchronous buffer ownership, queue/dequeue and prompt output-buffer release.
-- Android MediaMuxer: add tracks before start; write encoded samples in chronological order; use codec-provided output format.
-- Android media format support: AAC-LC and MP4 support vary by Android version/device; check actual codec capabilities at runtime.
+Official references:
+- https://developer.android.com/reference/android/media/MediaCodec
+- https://developer.android.com/reference/android/media/MediaMuxer
