@@ -58,12 +58,16 @@ class StudioMedia3TransformCompilerTest {
         assertFalse(plan.needsOpacity)
     }
 
-    @Test fun rejectsTranslationAndFeatheredMaskInsteadOfSilentlyDroppingThem() {
-        val result = StudioTransformEffectPlanner.plan(transform(x = 0.2f, feather = 0.02f))
-        assertFalse(result.isValid)
-        assertNull(result.plan)
-        assertTrue(result.errors.any { it.contains("translation") })
-        assertTrue(result.errors.any { it.contains("Feathered masks") })
+    @Test fun rejectsTranslationButAllowsFeatherForTheGpuMaskPass() {
+        val translated = StudioTransformEffectPlanner.plan(transform(x = 0.2f, feather = 0.02f))
+        assertFalse(translated.isValid)
+        assertNull(translated.plan)
+        assertTrue(translated.errors.any { it.contains("translation") })
+        assertFalse(translated.errors.any { it.contains("Feathered masks") })
+
+        val feathered = StudioTransformEffectPlanner.plan(transform(feather = 0.02f))
+        assertTrue(feathered.isValid)
+        assertEquals(0.02f, feathered.plan!!.let { 0.02f }, 0f)
     }
 
     @Test fun rejectsNonFiniteAndOutOfRangeValues() {
