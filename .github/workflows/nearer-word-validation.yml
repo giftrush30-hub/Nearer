@@ -135,6 +135,7 @@ jobs:
           script: |
             adb wait-for-device
             gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.nearer.app.bible.BibleWordOccurrenceInstrumentedTest
+            gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.nearer.app.LibraryEpubReaderInstrumentedTest
 
   android-apk:
     runs-on: ubuntu-24.04
