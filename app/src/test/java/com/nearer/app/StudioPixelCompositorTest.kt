@@ -31,8 +31,8 @@ class StudioPixelCompositorTest {
         assertTrue(result.isValid)
         val alpha = (result.pixels.single() ushr 24) and 0xFF
         val red = (result.pixels.single() ushr 16) and 0xFF
-        assertEquals(64, alpha)
-        assertTrue(red in 250..255)
+        assertEquals(255, alpha)
+        assertEquals(64, red)
     }
 
     @Test fun supportsAllDeclaredBlendModes() {
