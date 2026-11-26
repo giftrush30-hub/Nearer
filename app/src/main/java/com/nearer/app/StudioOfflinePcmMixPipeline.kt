@@ -64,7 +64,15 @@ internal object StudioOfflinePcmMixPipeline {
                     onProgress("Decoding audio", index.toLong(), activeCues.size.toLong())
                     StudioAndroidAudioDecoder.decodeToFloatPcm(
                         context, Uri.parse(uri), workingDirectory, sampleRate, isCancelled
-                    ).also { decodedFiles[uri] = it }
+                    ).also { info ->
+                        decodedFiles[uri] = info
+                        // Decoded sources and the final Float master coexist temporarily.
+                        // Recheck free space after every new source instead of trusting only
+                        // the initial master-file estimate.
+                        require(workingDirectory.usableSpace >= estimatedBytes) {
+                            "Phone storage is too low to finish the audio master safely."
+                        }
+                    }
                 }
                 sources[cue.id] = sources[decoded.file.absolutePath]
                     ?: StudioDecodedPcmFileSource(decoded).also { sources[decoded.file.absolutePath] = it }
