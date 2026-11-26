@@ -101,7 +101,7 @@ internal object StudioOfflineParticleEngine {
             val endExclusive = emitted.toInt()
             for (index in firstPossible until endExclusive) {
                 if (output.size >= MAX_PARTICLES_PER_FRAME) {
-                    return StudioParticleFrame(timestampUs, output, listOf("Particle frame exceeds the 50000-instance safety limit."))
+                    return StudioParticleFrame(timestampUs, emptyList(), listOf("Particle frame exceeds the 50000-instance safety limit."))
                 }
                 val birthUs = emitter.startTimeUs + (index.toDouble() * MICROS_PER_SECOND / emitter.particlesPerSecond).toLong()
                 val ageUs = timestampUs - birthUs
