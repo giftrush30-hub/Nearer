@@ -33,7 +33,11 @@ class StudioMedia3TransformCompilerTest {
         )
         assertTrue(result.isValid)
         val plan = result.plan!!
-        assertEquals(StudioCropNdcBounds(-0.8f, 0.8f, -0.6f, 0.6f), plan.crop)
+        assertNotNull(plan.crop)
+        assertEquals(-0.8f, plan.crop!!.left, 0.0001f)
+        assertEquals(0.8f, plan.crop!!.right, 0.0001f)
+        assertEquals(-0.6f, plan.crop!!.bottom, 0.0001f)
+        assertEquals(0.6f, plan.crop!!.top, 0.0001f)
         assertEquals(1.5f, plan.scaleX, 0f)
         assertEquals(0.75f, plan.scaleY, 0f)
         assertEquals(270f, plan.rotationDegrees, 0.0001f)
